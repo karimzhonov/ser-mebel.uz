@@ -1,0 +1,35 @@
+{% extends 'admin/index.html' %}
+
+{% load i18n unfold %}
+
+{% block breadcrumbs %}{% endblock %}
+
+{% block title %}
+    {% trans 'Dashboard' %} | {{ site_title|default:_('Django site admin') }}
+{% endblock %}
+
+{% block extrahead %}
+    {{ block.super }}
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    {% if plausible_domain %}
+        <script defer data-domain="{{ plausible_domain }}" src="https://plausible.io/js/script.js"></script>
+    {% endif %}
+{% endblock %}
+
+{% block branding %}
+    {% include "unfold/helpers/site_branding.html" %}
+{% endblock %}
+
+{% block content %}
+    {% include "unfold/helpers/messages.html" %}
+
+    {% component "unfold/components/container.html" %}
+        <div class="flex flex-col gap-8 mb-12">
+
+            {% component "unfold/components/card.html" with title=_("Статистика заказов") %}
+                {% component "order/components/warning_banner.html" with component_class="WarningBanner" %}{% endcomponent %}
+                {% component "order/components/status_banner.html" with component_class="StatusBanner" %}{% endcomponent %}
+            {% endcomponent %}
+        </div>
+    {% endcomponent %}
+{% endblock %}

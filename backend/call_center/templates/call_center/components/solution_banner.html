@@ -1,0 +1,13 @@
+<div class="mb-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-9 gap-3">
+    {% for solution in solutions %}
+        <a href="/admin/call_center/invoice/?solution={{solution.solution}}" class="flex flex-col items-center justify-between p-3 border border-{{solution.color}}-500 rounded">
+            <span class="material-symbols-outlined text-{{solution.color}}-500" style="font-size: 50px;">
+                {{solution.icon}}
+            </span>
+            <h3 class="text-semibold text-lg text-center">{{ solution.label }}</h3>
+            <strong class="text-2xl">
+                {{ solution.count }}
+            </strong>
+        </a>
+    {% endfor %}
+</div>
