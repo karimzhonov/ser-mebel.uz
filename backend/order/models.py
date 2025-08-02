@@ -52,6 +52,10 @@ class Order(models.Model):
     def change_status(self, status):
         self.status = status
         self.save()
+        self.send_sms()
+
+    def send_sms(self):
+        pass
 
 
 @receiver(post_save, sender=Order)

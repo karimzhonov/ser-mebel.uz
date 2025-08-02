@@ -48,14 +48,28 @@ class InvoiceAdmin(ModelAdmin):
             self.log_change(request, obj, f'Код ответа "{solution}"га ўзгартирилди')
             
             if solution == SolutionChoice.given_location:
-                def callback(flag: bool):
+                try:
+                    obj.send_location()
                     self.message_user(request, 
                         f'Мижознинг ({obj.client.fio}) {obj.client.phone} рақамига лакация юборилди'
-                    ) if flag else self.message_user(request, 
-                        f'Мижознинг ({obj.client.fio}) {obj.client.phone} рақамига лакация юборилмади. Техник хато!!!',
+                    )
+                except ValueError as e:
+                    self.message_user(request, 
+                        f'Мижознинг ({obj.client.fio}) {obj.client.phone} рақамига лакация юборилмади. Техник хато!!! {e}',
                         level=40
                     )
-                obj.send_location(callback)
+
+            if solution == SolutionChoice.go_for_measured:
+                try:
+                    obj.create_measured()
+                    self.message_user(request, 
+                        f'Мижозга ({obj.client.fio}) замер план килинди'
+                    )
+                except ValueError as e:
+                    self.message_user(request, 
+                        f'Мижознинг ({obj.client.fio}) замер план килинмади. Техник хато!!! {e}',
+                        level=40
+                    )
 
             return redirect(
                 reverse_lazy("admin:call_center_invoice_changelist")
