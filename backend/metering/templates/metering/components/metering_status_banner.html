@@ -1,8 +1,6 @@
-{% load i18n unfold %}
-
-<div class="mb-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
-    {% for status in warnings %}
-        <a href="/admin/order/order/?warning={{status.color}}" class="flex flex-col items-center justify-between p-3 {{status.border}} border-{{status.color}}-500 rounded">
+<div class="mb-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+    {% for status in statuses %}
+        <a href="/admin/metering/metering/?status={{status.status}}" class="flex flex-col items-center justify-between p-3 border border-{{status.color}}-500 rounded">
             <span class="material-symbols-outlined text-{{status.color}}-500" style="font-size: 50px;">
                 {{status.icon}}
             </span>

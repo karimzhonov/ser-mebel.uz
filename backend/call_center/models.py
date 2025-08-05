@@ -14,12 +14,4 @@ class Invoice(models.Model):
         verbose_name_plural = 'Заяавки'
 
     def __str__(self):
-        return str(self.client)
-
-    def send_location(self):
-        # TODO: send location from SMS, if error raise ValueError
-        pass
-
-    def create_measured(self):
-        # TODO: create measured, if error raise ValueError
-        pass
+        return str(self.client_id)

@@ -10,6 +10,7 @@
 
 {% block extrahead %}
     {{ block.super }}
+    <meta http-equiv="refresh" content="1800">
     <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     {% if plausible_domain %}
         <script defer data-domain="{{ plausible_domain }}" src="https://plausible.io/js/script.js"></script>
@@ -25,11 +26,24 @@
 
     {% component "unfold/components/container.html" %}
         <div class="flex flex-col gap-8 mb-12">
+            {% if perms.order.view_order %}
+                {% component "unfold/components/card.html" with title=_("Статистика заказов") %}
+                    {% component "order/components/warning_banner.html" with component_class="WarningBanner" %}{% endcomponent %}
+                    {% component "order/components/status_banner.html" with component_class="StatusBanner" %}{% endcomponent %}
+                {% endcomponent %}
+            {% endif %}
 
-            {% component "unfold/components/card.html" with title=_("Статистика заказов") %}
-                {% component "order/components/warning_banner.html" with component_class="WarningBanner" %}{% endcomponent %}
-                {% component "order/components/status_banner.html" with component_class="StatusBanner" %}{% endcomponent %}
-            {% endcomponent %}
+            {% if perms.call_center.view_invoice %}
+                {% component "unfold/components/card.html" with title=_("Статистика call-center") %}
+                    {% component "call_center/components/solution_banner.html" with component_class="SolutionBanner" %}{% endcomponent %}
+                {% endcomponent %}
+            {% endif %}
+
+            {% if perms.metering.view_metering %}
+                {% component "unfold/components/card.html" with title=_("Статистика замери") %}
+                    {% component "metering/components/metering_status_banner.html" with component_class="MeteringStatusBanner" %}{% endcomponent %}
+                {% endcomponent %}
+            {% endif %}
         </div>
     {% endcomponent %}
 {% endblock %}

@@ -1,33 +1,30 @@
+from typing import Any
 from django.contrib import admin
-from django.urls import reverse_lazy
-from django.shortcuts import redirect
+from django.forms import Form
+from django.http import HttpRequest
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
 from unfold.contrib.filters.admin import RangeDateFilter
 from unfold.admin import ModelAdmin
-from unfold.decorators import display, action
+from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
 from core.utils import get_tag
+
+from .forms import OrderAddForm
+from .actions import OrderActions
 from .models import Order, OrderStatus
 from .filters import OrderStatusDropdownFilter, OrderWarningDropdownFilter
-from .constants import WARNING_ORDER_DAYS, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERSE_STATUS_PERMISSION
+from .constants import WARNING_ORDER_DAYS, ORDER_VIEW_PRICE_PERMISSION
 from .components import *
 
 
 @admin.register(Order)
-class OrderAdmin(ModelAdmin, SimpleHistoryAdmin):
-    list_display = ['name', 'show_status', 'reception_date', 'end_date', 'show_days']
-    readonly_fields = ['show_status', 'show_days', 'link_folder_document', 'link_folder_images', 'link_folder_schemas']
+class OrderAdmin(OrderActions, ModelAdmin, SimpleHistoryAdmin):
+    list_display = ['client', 'show_status', 'reception_date', 'end_date', 'show_days']
+    readonly_fields = ['link_folder_document', 'link_folder_images', 'link_folder_schemas']
     ordering = ['-reception_date']
     autocomplete_fields = ['client']
-    fieldsets = (
-        ('Заказ', {"fields": ('client', 'name', 'desc', 'reception_date', 'end_date'), "classes": ("tab-primary",)}),
-        ('Адрес', {"fields": ('address', 'address_link'), "classes": ("tab-secondary",)}),
-        ('Цена', {'fields': ('currency', 'price', 'advance'), "classes": ("tab-info",)}),
-        ('Файлы', {'fields': ('link_folder_document', 'link_folder_images', 'link_folder_schemas'), "classes": ("tab-help",)}),
-    )
-    actions_row = ['change_status', 'reverse_status']
     list_filter = [
         OrderStatusDropdownFilter,
         OrderWarningDropdownFilter,
@@ -35,7 +32,33 @@ class OrderAdmin(ModelAdmin, SimpleHistoryAdmin):
     ]
     list_filter_submit = True
     list_before_template = 'order/order_list_before.html'
-     
+
+    def get_fieldsets(self, request: HttpRequest, obj=None):
+        fieldsets = [
+            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'metering'), "classes": ("tab-primary",)}),
+            ('Адрес', {"fields": ('address', 'address_link'), "classes": ("tab-secondary",)}),
+        ]
+        if request.user.has_perm(f'order.{ORDER_VIEW_PRICE_PERMISSION}'):
+            fieldsets.append(
+                ('Цена', {'fields': ('currency', 'price', 'advance'), "classes": ("tab-info",)}),
+            )
+        fieldsets.append(
+            ('Файлы', {'fields': ('link_folder_document', 'link_folder_images', 'link_folder_schemas'), "classes": ("tab-help",)})
+        )
+        add_fieldsets = [
+            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'metering')}),
+            ('Адрес', {"fields": ('address', 'address_link')}),
+            ('Цена', {'fields': ('currency', 'price', 'advance')}),
+        ]
+        if obj:
+            return fieldsets
+        return add_fieldsets
+    
+    def get_form(self, request, obj=None, **kwargs):
+        if obj is None:
+            kwargs['form'] = OrderAddForm
+        return super().get_form(request, obj, **kwargs)
+    
     @display(
         description='Статус',
     )
@@ -83,59 +106,3 @@ class OrderAdmin(ModelAdmin, SimpleHistoryAdmin):
     )
     def link_folder_schemas(self, obj: Order):
         return format_html(f'<a class="text-blue-700" href="/admin/filer/folder/{obj.folder_schemas_id}/list/">Перейти</a>') if obj.folder_schemas_id else '-'
-
-    # Row actions
-    @action(
-        description=_("Изменить статус"),
-        permissions=[f'order.{ORDER_CHANGE_STATUS_PERMISSION}'],
-        url_path="change-status",
-        icon='check',
-        variant='success'
-    )
-    def change_status(self, request, object_id):
-        obj = Order.objects.only('status').get(pk=object_id)
-        current_status = obj.status
-        next_status = OrderStatus.next_status(current_status)
-
-        if next_status:
-            obj.change_status(next_status)
-            self.message_user(
-                request,
-                _(f"Статус изменён с «{OrderStatus(current_status).label}» на «{next_status.label}».")
-            )
-        else:
-            self.message_user(
-                request,
-                _(f"Невозможно изменить статус: «{OrderStatus(current_status).label}» — финальный."),
-                level="warning"
-            )
-        return redirect(
-          reverse_lazy("admin:order_order_changelist")
-        )
-    
-    @action(
-        description=_("Возвращать статус"),
-        permissions=[f'order.{ORDER_REVERSE_STATUS_PERMISSION}'],
-        url_path="reverse-status",
-        icon='close',
-        variant='danger'
-    )
-    def reverse_status(self, request, object_id):
-        obj = Order.objects.only('status').get(pk=object_id)
-        current_status = obj.status
-        previous_status = OrderStatus.previous_status(current_status)
-        if previous_status:
-            obj.change_status(previous_status)
-            self.message_user(
-                request,
-                _(f"Статус изменён с «{OrderStatus(current_status).label}» на «{previous_status.label}».")
-            )
-        else:
-            self.message_user(
-                request,
-                _(f"Невозможно возвращать статус: «{OrderStatus(current_status).label}» — начальный."),
-                level="warning"
-            )
-        return redirect(
-          reverse_lazy("admin:order_order_changelist")
-        )

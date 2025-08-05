@@ -1,14 +1,12 @@
 from django.contrib import admin
-from django.shortcuts import redirect
-from django.urls import reverse_lazy
 
 from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import RangeDateFilter
-from unfold.dataclasses import UnfoldAction
 from unfold.decorators import display
 
 from core.utils import get_tag
 
+from .actions import InvoiceActions
 from .filters import InvoiceSolutionDropdownFilter
 from .constants import SolutionChoice
 from .models import Invoice
@@ -17,7 +15,7 @@ from .components import *
  
 
 @admin.register(Invoice)
-class InvoiceAdmin(ModelAdmin):
+class InvoiceAdmin(InvoiceActions, ModelAdmin):
     list_display = ['client', 'create_date', 'get_solution']
     list_filter = [
         InvoiceSolutionDropdownFilter,
@@ -27,9 +25,8 @@ class InvoiceAdmin(ModelAdmin):
     list_filter_sheet = False
     list_fullwidth = True
     exclude = ['solution']
-    actions_row = SolutionChoice.get_order()
     list_before_template = 'call_center/invoice_list_before.html'
-    
+
     def get_readonly_fields(self, request, obj = None):
         return ['client', 'create_date', 'update_date'] if obj else []
 
@@ -38,56 +35,9 @@ class InvoiceAdmin(ModelAdmin):
             kwargs['form'] = InvoiceCreateForm
         return super().get_form(request, obj, **kwargs)
 
-    def get_unfold_action(self, action: str) -> UnfoldAction:
-        solution = SolutionChoice(action)
-        
-        def method(request, object_id):
-            obj = Invoice.objects.get(pk=object_id)
-            obj.solution = solution
-            obj.save()
-            self.log_change(request, obj, f'Код ответа "{solution}"га ўзгартирилди')
-            
-            if solution == SolutionChoice.given_location:
-                try:
-                    obj.send_location()
-                    self.message_user(request, 
-                        f'Мижознинг ({obj.client.fio}) {obj.client.phone} рақамига лакация юборилди'
-                    )
-                except ValueError as e:
-                    self.message_user(request, 
-                        f'Мижознинг ({obj.client.fio}) {obj.client.phone} рақамига лакация юборилмади. Техник хато!!! {e}',
-                        level=40
-                    )
-
-            if solution == SolutionChoice.go_for_measured:
-                try:
-                    obj.create_measured()
-                    self.message_user(request, 
-                        f'Мижозга ({obj.client.fio}) замер план килинди'
-                    )
-                except ValueError as e:
-                    self.message_user(request, 
-                        f'Мижознинг ({obj.client.fio}) замер план килинмади. Техник хато!!! {e}',
-                        level=40
-                    )
-
-            return redirect(
-                reverse_lazy("admin:call_center_invoice_changelist")
-            ) 
-        
-        method.attrs = None
-        return UnfoldAction(
-            action_name=f"{self.model._meta.app_label}_{self.model._meta.model_name}_{action}",
-            method=method,
-            description=solution.label,
-            path=f"change-solution-{action}",
-            icon=SolutionChoice.icon(solution),
-            variant=SolutionChoice.variant(solution)
-        )
-    
     @display(
         description='Код ответа'
     )
     def get_solution(self, obj: Invoice):
-        return get_tag(SolutionChoice(obj.solution).label, SolutionChoice.variant(obj.solution).value)
+        return get_tag(SolutionChoice(obj.solution).label, SolutionChoice.variant(obj.solution).value) if obj.solution else '-'
     

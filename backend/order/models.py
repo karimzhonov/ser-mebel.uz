@@ -6,23 +6,21 @@ from django.dispatch import receiver
 from simple_history.models import HistoricalRecords
 from filer.models.foldermodels import Folder
 from filer.fields.folder import FilerFolderField
-from .constants import OrderStatus, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERSE_STATUS_PERMISSION
+
+from core.constants import Currency
+
+from .constants import OrderStatus, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERSE_STATUS_PERMISSION, ORDER_VIEW_PRICE_PERMISSION
 from .managers import OrderManager
 
 
-CURRENCY = (
-    ('$', _('Доллар($)')),
-    ('sum', _('Сўм')),
-)
-
 class Order(models.Model):
-    name = models.CharField(max_length=255, verbose_name=_('Наименование'))
     desc = models.TextField(_('Описание'), null=True, blank=True)
-    currency = models.CharField(max_length=10, choices=CURRENCY, default=CURRENCY[0][0], verbose_name='Валюта')
+    currency = models.CharField(max_length=10, choices=Currency.choices, default=Currency.dollar, verbose_name='Валюта')
     price = models.FloatField(verbose_name='Цена')
     advance = models.FloatField(verbose_name='Аванс')
     status = models.CharField(max_length=32, choices=OrderStatus.choices, default=OrderStatus.CREATED, verbose_name='Статус')
     client = models.ForeignKey('client.Client', models.PROTECT, null=True, verbose_name='Мижоз')
+    metering = models.OneToOneField('metering.Metering', models.PROTECT, blank=True, null=True)
 
     reception_date = models.DateField(verbose_name='Дата получение')
     end_date = models.DateField(verbose_name='Дата сдачи')
@@ -43,11 +41,12 @@ class Order(models.Model):
         
         permissions = [
             (ORDER_CHANGE_STATUS_PERMISSION ,'Order change status'),
-            (ORDER_REVERSE_STATUS_PERMISSION ,'Order reverse status')
+            (ORDER_REVERSE_STATUS_PERMISSION ,'Order reverse status'),
+            (ORDER_VIEW_PRICE_PERMISSION, 'Order price view')
         ]
     
     def __str__(self):
-        return self.name
+        return str(self.client)
     
     def change_status(self, status):
         self.status = status

@@ -3,6 +3,7 @@ from django.utils.translation import gettext_lazy as _
 
 ORDER_CHANGE_STATUS_PERMISSION = 'change_status_order'
 ORDER_REVERSE_STATUS_PERMISSION = 'reverse_status_order'
+ORDER_VIEW_PRICE_PERMISSION = 'view_order_price'
 
 WARNING_ORDER_DAYS = 7
 

@@ -15,6 +15,9 @@ class StatusBanner(BaseComponent):
     def status_context(self):
         from .admin import OrderAdmin
 
+        self.request.GET._mutable = True
+        current_status = self.request.GET.pop('status', [])
+
         change_list = OrderAdmin(Order, admin.site).get_changelist_instance(self.request)
         queryset = change_list.get_queryset(self.request)
 
@@ -23,6 +26,7 @@ class StatusBanner(BaseComponent):
 
         statuses = [
             {
+                'border': 'border-2' if status in current_status else 'border',
                 'status': status,
                 'label': status.label,
                 'count': queryset.filter(status=status).count(),
@@ -71,12 +75,16 @@ class WarningBanner(BaseComponent):
     
     def warnings_context(self):
         from .admin import OrderAdmin
+        
+        self.request.GET._mutable = True
+        current_warning = self.request.GET.pop('warning', [])
 
         change_list = OrderAdmin(Order, admin.site).get_changelist_instance(self.request)
         queryset = change_list.get_queryset(self.request)
         return {
             'warnings': [
                 {
+                    'border': 'border-2' if color in current_warning else 'border',
                     'label': warning['label'],
                     'count': queryset.exclude(status=OrderStatus.DONE).filter(**warning['filters']).count(),
                     'color': color,

@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'order',
     'client',
     'call_center',
+    'metering',
 
     'easy_thumbnails',
     'mptt',
@@ -218,7 +219,7 @@ UNFOLD = {
     },
     "EXTENSIONS": {},
     "SIDEBAR": {
-        "show_all_applications": True,  # Dropdown with all applications and models
+        "show_all_applications": True,
         "navigation": [
             {
                 "title": "База",
@@ -227,19 +228,25 @@ UNFOLD = {
                         "title": 'Клиенти',
                         "icon": "people",
                         "link": reverse_lazy("admin:client_client_changelist"),
-                        "permission": lambda request: True,
+                        "permission": lambda request: request.user.has_perm('client.view_client'),
                     },
                     {
                         "title": "Закази",
                         "icon": "box",
                         "link": reverse_lazy("admin:order_order_changelist"),
-                        "permission": lambda request: True,
+                        "permission": lambda request: request.user.has_perm('order.view_order'),
                     },
                     {
                         "title": "Call-center",
                         "icon": "phone",
                         "link": reverse_lazy("admin:call_center_invoice_changelist"),
-                        "permission": lambda request: True,
+                        "permission": lambda request: request.user.has_perm('call_center.view_invoice'),
+                    },
+                    {
+                        "title": "Замери",
+                        "icon": "settings",
+                        "link": reverse_lazy("admin:metering_metering_changelist"),
+                        "permission": lambda request: request.user.has_perm('metering.view_metering'),
                     },
                 ],
             },
