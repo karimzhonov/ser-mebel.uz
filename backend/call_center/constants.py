@@ -6,10 +6,10 @@ class SolutionChoice(IntegerChoices):
     declined = (-1, 'Сотув амалга ошмади')
     dont_need = (0, 'Керак эмас')
     re_phone = (1, 'Қайта телефон қилиш')
-    given_info = (2, 'Телеграм орқали маълумот берилди')
+    given_info = (2, 'Телеграмда маълумот берилди')
     given_location = (3, 'Локация юборилади')
     price_problem = (4, 'Нархи қониқтирмади')
-    go_for_measured = (5, 'Ўлчов олиш учун борилади')
+    go_for_measured = (5, 'Замерга борилади')
     sold_out = (6, 'Сотилди')
 
     @classmethod

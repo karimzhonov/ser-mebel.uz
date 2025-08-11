@@ -6,7 +6,7 @@ class Invoice(models.Model):
     client = models.ForeignKey('client.Client', models.PROTECT, verbose_name='Мижоз')
     create_date = models.DateTimeField('Дата создание', auto_now_add=True)
     update_date = models.DateTimeField('Дата изменение', auto_now=True)
-    desc = models.TextField('Описание')
+    desc = models.TextField('Описание', blank=True, null=True)
     solution = models.IntegerField('Код ответа', choices=SolutionChoice.choices, default=None, null=True)
 
     class Meta:
