@@ -24,10 +24,10 @@ class MeteringStatus(TextChoices):
     @classmethod
     def icon(cls, status):
         return {
-            cls.created: 'close',
+            cls.created: 'add',
             cls.dont_need: 'close',
-            cls.re_phone: 'warning',
             cls.price_problem: 'close',
+            cls.re_phone: 'warning',
             cls.sold_out: 'check'
         }[status]
     

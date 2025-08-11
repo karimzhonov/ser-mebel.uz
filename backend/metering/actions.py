@@ -28,7 +28,7 @@ class MeteringActions:
         
         def method(request, object_id):
             obj = Metering.objects.get(pk=object_id)
-
+ 
             if obj.status in [MeteringStatus.sold_out]:
                 self.message_user(request, 
                     f'Мижозга ({obj.client.fio}) хизмат кўрсатилган',

@@ -14,7 +14,7 @@ class MeteringFromCallCenterForm(forms.ModelForm):
 
     def save(self, commit: bool = True):
         if self.instance.invoice:
-            self.instance.invoice.solution = SolutionChoice.go_for_measured
+            self.instance.invoice.solution = SolutionChoice.sold_out
             self.instance.invoice.save()
         return super().save(commit)
 

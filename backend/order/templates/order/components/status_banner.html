@@ -1,7 +1,7 @@
 <div class="mb-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
     {% for status in statuses %}
-        <a href="/admin/order/order/?status={{status.status}}" class="flex flex-col items-center justify-between p-3 border border-{{status.color}}-500 rounded">
-            <span class="material-symbols-outlined text-{{status.color}}-500" style="font-size: 50px;">
+        <a href="/admin/order/order/?status={{status.status}}" class="flex flex-col items-center justify-between p-3 {{status.border}} {{status.color}} rounded">
+            <span class="material-symbols-outlined" style="font-size: 50px;">
                 {{status.icon}}
             </span>
             <h3 class="text-semibold text-lg text-center">{{ status.label }}</h3>

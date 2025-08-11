@@ -1,6 +1,6 @@
 from unfold.components import BaseComponent, register_component
 from django.contrib.admin import site
-from core.utils import sev_to_color
+from core.utils import get_colors
 
 from .models import Metering
 from .constants import MeteringStatus
@@ -20,17 +20,18 @@ class MeteringStatusBanner(BaseComponent):
         
         statuses = [
             {
-                'border': 'border-2' if status in current_status else 'border',
+                'border': f'border-2 border-{MeteringStatus.variant(status).value}-500' if status in current_status else '',
                 'status': status,
                 'label': status.label,
                 'count': queryset.filter(status=status).count(),
                 'icon': MeteringStatus.icon(status),
-                'color': sev_to_color(MeteringStatus.variant(status).value),
+                'color': get_colors(MeteringStatus.variant(status).value),
             } for status in MeteringStatus.get_order()
         ]
         context.update({
             'statuses': [
                 {
+                    'border': 'border dark:border-transparent',
                     'status': '',
                     'label': 'Все заявки',
                     'count': queryset.count(),
