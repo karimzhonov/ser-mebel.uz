@@ -1,10 +1,10 @@
-from unfold.contrib.filters.admin import DropdownFilter
+from unfold.contrib.filters.admin import MultipleDropdownFilter
 from django.utils.translation import gettext_lazy as _
 
 from .constants import MeteringStatus
 
 
-class MeteringStatusDropdownFilter(DropdownFilter):
+class MeteringStatusDropdownFilter(MultipleDropdownFilter):
     title = _("Статус")
     parameter_name = "status"
 
@@ -16,6 +16,6 @@ class MeteringStatusDropdownFilter(DropdownFilter):
         ]]
 
     def queryset(self, request, queryset):
-        if not self.value() in ['', None]:
-            return queryset.filter(status=self.value())
+        if self.value() and not self.value() in ['', None]:
+            return queryset.filter(status__in=self.value())
         return queryset

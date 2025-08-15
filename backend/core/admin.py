@@ -7,6 +7,8 @@ from filer.admin import FileAdmin, FolderAdmin, PermissionAdmin
 from unfold.decorators import display
 from unfold.admin import ModelAdmin
 
+from discussion.inlines import DiscussionInline
+
 admin.site.unregister(Group)
 admin.site.unregister(Folder)
 admin.site.unregister(File)
@@ -23,7 +25,7 @@ class AuthPermissionAdmin(ModelAdmin):
 
 @admin.register(Folder)
 class UFolderAdmin(ModelAdmin, FolderAdmin):
-    pass
+    inlines = [DiscussionInline]
 
 
 @admin.register(File)
@@ -31,6 +33,7 @@ class UFileAdmin(ModelAdmin, FileAdmin):
     fieldsets = ()
     fields = ['display_canonical', 'file', '_file_size', 'owner', 'uploaded_at', 'modified_at', 'is_public']
     readonly_fields = ['display_canonical', '_file_size', 'owner', 'uploaded_at', 'modified_at']
+    inlines = [DiscussionInline]
 
     def get_model_perms(self, request):
         """

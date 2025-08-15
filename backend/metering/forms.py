@@ -10,11 +10,11 @@ from .models import Metering
 class MeteringFromCallCenterForm(forms.ModelForm):
     class Meta:
         model = Metering
-        fields = ['client', 'address', 'address_link', 'invoice']
+        fields = ['client', 'address', 'address_link', 'invoice', 'date_time']
 
     def save(self, commit: bool = True):
         if self.instance.invoice:
-            self.instance.invoice.solution = SolutionChoice.sold_out
+            self.instance.invoice.solution = SolutionChoice.go_for_measured
             self.instance.invoice.save()
         return super().save(commit)
 
@@ -25,7 +25,7 @@ class MeteringCreateForm(forms.ModelForm):
 
     class Meta:
         model = Metering
-        fields = ['fio', 'phone', 'address', 'address_link']
+        fields = ['fio', 'phone', 'address', 'address_link', 'date_time']
 
     def save(self, commit=True):
         phone = self.cleaned_data['phone']

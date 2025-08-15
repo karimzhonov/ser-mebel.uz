@@ -1,6 +1,4 @@
-from typing import Any
 from django.contrib import admin
-from django.forms import Form
 from django.http import HttpRequest
 from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
@@ -10,12 +8,12 @@ from unfold.admin import ModelAdmin
 from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
 from core.utils import get_tag
-
+from constance import config
 from .forms import OrderAddForm
 from .actions import OrderActions
 from .models import Order, OrderStatus
 from .filters import OrderStatusDropdownFilter, OrderWarningDropdownFilter
-from .constants import WARNING_ORDER_DAYS, ORDER_VIEW_PRICE_PERMISSION
+from .constants import ORDER_VIEW_PRICE_PERMISSION
 from .components import *
 
 
@@ -32,6 +30,9 @@ class OrderAdmin(OrderActions, ModelAdmin, SimpleHistoryAdmin):
     ]
     list_filter_submit = True
     list_before_template = 'order/order_list_before.html'
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return False
 
     def get_fieldsets(self, request: HttpRequest, obj=None):
         fieldsets = [
@@ -81,7 +82,7 @@ class OrderAdmin(OrderActions, ModelAdmin, SimpleHistoryAdmin):
             return get_tag('Заказ готов', 'success')
         days = obj.days
         return (
-            get_tag(f'До сдачи заказа осталось {days} дней', 'secondary' if days > WARNING_ORDER_DAYS else 'warning')
+            get_tag(f'До сдачи заказа осталось {days} дней', 'secondary' if days > config.WARNING_ORDER_DAYS else 'warning')
             if days >= 0 
             else get_tag(f'Заказ просрочен на {abs(days)} дней', 'danger')
         )

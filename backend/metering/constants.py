@@ -5,20 +5,18 @@ METERING_CHANGE_STATUS_PERMISSION = 'change_status'
 
 
 class MeteringStatus(TextChoices):
-    created = ('created', 'Создан')
-    dont_need = ('dont_need', 'Керак эмас')
-    re_phone = ('re_phone', 'Қайта телефон қилиш')
-    price_problem = ('price_problem', 'Нархи қониқтирмади')
-    sold_out = ('sold_out', 'Сотилди')
+    created = ('created', 'Заявка олинди')
+    dont_need = ('dont_need', 'Отмен болди')
+    other_day = ('re_phone', 'Бошқа кунга ўзгартирилди')
+    done = ('done', 'Бажарилди')
 
     @classmethod
     def get_order(cls):
         return [
             cls.created,
             cls.dont_need,
-            cls.re_phone,
-            cls.price_problem,
-            cls.sold_out,
+            cls.other_day,
+            cls.done,
         ]
 
     @classmethod
@@ -26,19 +24,17 @@ class MeteringStatus(TextChoices):
         return {
             cls.created: 'add',
             cls.dont_need: 'close',
-            cls.price_problem: 'close',
-            cls.re_phone: 'warning',
-            cls.sold_out: 'check'
+            cls.other_day: 'warning',
+            cls.done: 'check'
         }[status]
     
     @classmethod
     def colors(cls):
         return {
             cls.created: ActionVariant.INFO,
-            cls.price_problem: ActionVariant.DANGER,
             cls.dont_need: ActionVariant.DANGER,
-            cls.re_phone: ActionVariant.WARNING,
-            cls.sold_out: ActionVariant.SUCCESS
+            cls.other_day: ActionVariant.WARNING,
+            cls.done: ActionVariant.SUCCESS
         }
 
     @classmethod

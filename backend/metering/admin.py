@@ -7,8 +7,9 @@ from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import RangeDateFilter
 from unfold.decorators import display
 
-from core.utils import get_tag
+from core.utils import get_tag, get_folder_link_html
 
+from .design.inlines import DesignInline
 from .actions import MeteringActions
 from .filters import MeteringStatusDropdownFilter
 from .constants import MeteringStatus
@@ -26,14 +27,22 @@ class MeteringAdmin(MeteringActions, ModelAdmin):
     ]
     list_filter_submit = True
     list_before_template = 'metering/metering_list_before.html'
-    
-    def get_exclude(self, request: HttpRequest, obj: Metering=None) -> Any:
-        return ['status'] if obj and obj.price else ['currency', 'price', 'status']
+    exclude = ['status', 'folder']
+    inlines = [DesignInline]
 
+    def get_readonly_fields(self, request, obj = None):
+        return ['folder_link'] if obj else []
+    
     def get_form(self, request, obj=None, **kwargs):
         if obj is None:
             kwargs['form'] = MeteringFromCallCenterForm if request.GET.get('invoice') else MeteringCreateForm
         return super().get_form(request, obj, **kwargs)
+    
+    @display(
+        description='Папка'
+    )
+    def folder_link(self, obj: Metering):
+        return get_folder_link_html(obj.folder_id)
 
     @display(
         description='Статус'

@@ -29,7 +29,7 @@ class MeteringActions:
         def method(request, object_id):
             obj = Metering.objects.get(pk=object_id)
  
-            if obj.status in [MeteringStatus.sold_out]:
+            if obj.status in [MeteringStatus.done]:
                 self.message_user(request, 
                     f'Мижозга ({obj.client.fio}) хизмат кўрсатилган',
                     level=30
@@ -37,7 +37,7 @@ class MeteringActions:
                 return redirect(
                     reverse_lazy("admin:metering_metering_changelist")
                 ) 
-            if status == MeteringStatus.sold_out:
+            if status == MeteringStatus.done:
                 return self._sold_out(request, obj)
             
             obj.status = status

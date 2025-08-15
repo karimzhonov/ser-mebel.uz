@@ -1,10 +1,9 @@
 from django.contrib import admin
 
 from unfold.components import BaseComponent, register_component
-
+from constance import config
 from core.utils import get_colors
 from .models import Order, OrderStatus
-from .constants import WARNING_ORDER_DAYS
 
 
 @register_component
@@ -54,16 +53,19 @@ class StatusBanner(BaseComponent):
 
 @register_component
 class WarningBanner(BaseComponent):
-    defaults = {
+
+    @staticmethod
+    def defaults():
+        return {
         'success': {
             "icon": "check",
             "label": 'До сдачи заказа осталось более 7 дней',
-            "filters": {"days__gte": WARNING_ORDER_DAYS}
+            "filters": {"days__gte": config.WARNING_ORDER_DAYS}
         },
         'warning': {
             "icon": "warning",
             "label": 'До сдачи заказа осталось менее 7 дней',
-            "filters": {"days__lt": WARNING_ORDER_DAYS, "days__gt": 0}
+            "filters": {"days__lt": config.WARNING_ORDER_DAYS, "days__gt": 0}
         },
         'danger': {
             "icon": 'close',
@@ -71,6 +73,7 @@ class WarningBanner(BaseComponent):
             "filters": {"days__lte": 0}
         }
     }
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context.update(self.warnings_context())
@@ -93,6 +96,6 @@ class WarningBanner(BaseComponent):
                     'count': queryset.exclude(status=OrderStatus.DONE).filter(**warning['filters']).count(),
                     'color': get_colors(color),
                     'icon': warning['icon'],
-                } for color, warning in self.defaults.items()
+                } for color, warning in self.defaults().items()
             ]
         }

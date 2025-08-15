@@ -10,10 +10,16 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
+from collections import OrderedDict
 from pathlib import Path
 from dotenv import load_dotenv
+from django.core.management.utils import get_random_secret_key
 from django.templatetags.static import static
 from django.urls import reverse_lazy
+from constance import config
+from djmoney.money import Money
+
+from .utils import media
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,7 +29,7 @@ load_dotenv()
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv('SECRET_KEY')
+SECRET_KEY = os.getenv('SECRET_KEY', get_random_secret_key())
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
@@ -40,8 +46,9 @@ INSTALLED_APPS = [
     "unfold.contrib.inlines",  # optional, if special inlines are needed
     "unfold.contrib.import_export",  # optional, if django-import-export package is used
     "unfold.contrib.simple_history",  # optional, if django-simple-history package is used
-    # "unfold.contrib.constance",  # optional, if django-constance package is used
-    "django.contrib.admin",
+    "unfold.contrib.constance",  # optional, if django-constance package is used
+    
+    'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
@@ -51,14 +58,23 @@ INSTALLED_APPS = [
     'core',
     'oauth',
     'order',
+    'order.assembly',
+    'order.detailing',
+    'order.painter',
+    'order.rover',
     'client',
     'call_center',
     'metering',
+    'metering.design',
+    'metering.price',
+    'discussion',
+    'accounting',
 
     'easy_thumbnails',
     'mptt',
     'filer',
-    
+    'constance',
+    'djmoney',
     'simple_history',
     'import_export',
     'corsheaders',
@@ -157,28 +173,151 @@ STATIC_ROOT = BASE_DIR / '../static'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10240000000
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 1024000
+
+CSRF_TRUSTED_ORIGINS = ["https://www.ser-mebel.uz", "https://ser-mebel.uz", "http://localhost:8000", "http://127.0.0.1:8000", "http://109.196.103.69"]
+
+USE_X_FORWARDED_HOST = True
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+X_FRAME_OPTIONS = 'ALLOWALL'
+
+FILER_DEBUG = DEBUG
+FILER_SUBJECT_LOCATION_IMAGE_DEBUG = True
+FILER_ENABLE_PERMISSIONS = True
+FILER_FOLDER_ADMIN_DEFAULT_LIST_TYPE = 'th'
+
+from djmoney import settings as dj_setting
+# Валюты, которые будут разрешены
+dj_setting.CURRENCY_CHOICES = [('USD', 'USD'), ('UZS', 'UZS')]
+# Валюта по умолчанию
+dj_setting.DEFAULT_CURRENCY = 'USD'
+dj_setting.DECIMAL_PLACES = 0
+
+CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
+
+# Определяем настройки и их значения по умолчанию
+CONSTANCE_CONFIG = {
+    'SITE_TITLE': ('Django Admin', 'Название сайта', str),
+    'SITE_HEADER': (None, 'Описание сайта', str),
+    'SITE_SUBHEADER': (None, 'SITE_SUBHEADER', str),
+    'SITE_ICON_LIGHT': (None, 'Light Icon', 'image_field'),
+    'SITE_ICON_DARK': (None, 'Dark Icon', 'image_field'),
+    'SITE_ICON_LOGO': (None, 'Logo Icon', 'image_field'),
+    'LOGIN_IMAGE': (None, 'Login Image', 'image_field'),
+    'WARNING_ORDER_DAYS': (7, 'Предупреждение о прасрочка заказа', int),
+    'ASSEMBLY_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Сборка цена за квадрат', 'price_field'),
+    'ROVER_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Ровер цена за квадрат', 'price_field'),
+    'PAINTER_PRICE_PR_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Моляр цена за квадрат', 'price_field'),
+}
+
+CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
+    {
+        "General Settings": {
+            "fields": (
+                "SITE_TITLE",
+                "SITE_HEADER",
+                "SITE_SUBHEADER",
+            ),
+        },
+        "Theme & Design": {
+            "fields": (
+                "SITE_ICON_LIGHT",
+                "SITE_ICON_DARK",
+                "SITE_ICON_LOGO",
+                "LOGIN_IMAGE",
+            ),
+        },
+        "Заказ": {
+            "fields": {
+                "WARNING_ORDER_DAYS",
+            }
+        },
+        "Ровер": {
+            "fields": {
+                "ROVER_PRICE_PER_SQUARE"
+            }
+        },
+        "Сборка": {
+            "fields": {
+                "ASSEMBLY_PRICE_PER_SQUARE",
+            }
+        },
+        "Моляр": {
+            "fields": {
+                "PAINTER_PRICE_PR_SQUARE"
+            }
+        }
+    }
+)
+
+CONSTANCE_ADDITIONAL_FIELDS = {
+    str: [
+        "django.forms.CharField",
+        {
+            "widget": "unfold.widgets.UnfoldAdminTextInputWidget",
+            "required": False,
+        },
+    ],
+    int: [
+        "django.forms.IntegerField",
+        {
+            "widget": "unfold.widgets.UnfoldAdminIntegerFieldWidget",
+            "required": False,
+        },
+    ],
+    bool: [
+        "django.forms.BooleanField",
+        {
+            "widget": "unfold.widgets.UnfoldBooleanSwitchWidget",
+            "required": False,
+        },
+    ],
+    "file_field": [
+        "django.forms.fields.FileField",
+        {
+            "widget": "unfold.widgets.UnfoldAdminFileFieldWidget",
+            "required": False,
+        },
+    ],
+    "image_field": [
+        "django.forms.fields.ImageField",
+        {
+            "widget": "unfold.widgets.UnfoldAdminImageFieldWidget",
+            "required": False,
+        },
+    ],
+    "price_field": [
+        "djmoney.forms.fields.MoneyField",
+        {
+            "widget": "unfold.widgets.UnfoldAdminMoneyWidget",
+            "required": False,
+        }
+    ]
+}
 
 UNFOLD = {
-    "SITE_TITLE": "Ser Mebel",
-    "SITE_HEADER": "Ser Mebel",
-    "SITE_SUBHEADER": "ser-mebel.uz",
+    "SITE_TITLE": lambda request: config.SITE_TITLE,
+    "SITE_HEADER": lambda request: config.SITE_HEADER,
+    "SITE_SUBHEADER": lambda request: config.SITE_SUBHEADER,
     "SITE_URL": "/",
     "SITE_ICON": {
-        "light": lambda request: static("core/logo.jpg"),  # light mode
-        "dark": lambda request: static("core/logo.jpg"),  # dark mode
+        "light": lambda request: media(config.SITE_ICON_LIGHT) if config.SITE_ICON_LIGHT else static('core/logo.jpg'),  # light mode
+        "dark": lambda request: media(config.SITE_ICON_DARK) if config.SITE_ICON_DARK else static('core/logo.jpg'),  # dark mode
     },
     "SITE_FAVICONS": [
         {
             "rel": "icon",
             "sizes": "32x32",
             "type": "image/jpg",
-            "href": lambda request: static("core/logo.jpg"),
+            "href": lambda request: media(config.SITE_ICON_LOGO) if config.SITE_ICON_LOGO else static('core/logo.jpg'),
         },
     ],
     "ENVIRONMENT": ["Development" , "info"] if DEBUG else ["Production" , "danger"], # environment name in header
     # "DASHBOARD_CALLBACK": "core.views.dashboard_callback",
     "LOGIN": {
-        "image": lambda request: static("core/login-bg.jpg"),
+        "image": lambda request: media(config.LOGIN_IMAGE) if config.LOGIN_IMAGE else static('core/login-bg.jpg'),
     },
     "BORDER_RADIUS": "6px",
     "COLORS": {
@@ -222,7 +361,24 @@ UNFOLD = {
         "show_all_applications": True,
         "navigation": [
             {
-                "title": "База",
+                "title": "Бухгалтерия",
+                "items": [
+                    {
+                        "title": 'Приходы',
+                        "icon": "download",
+                        "link": reverse_lazy("admin:accounting_income_changelist"),
+                        "permission": lambda request: request.user.has_perm('accounting.view_income'),
+                    },
+                    {
+                        "title": 'Расходы',
+                        "icon": "upload",
+                        "link": reverse_lazy("admin:accounting_expense_changelist"),
+                        "permission": lambda request: request.user.has_perm('accounting.view_expense'),
+                    },
+                ]
+            },
+            {
+                "title": "Клиент база",
                 "items": [
                     {
                         "title": 'Клиенти',
@@ -230,6 +386,45 @@ UNFOLD = {
                         "link": reverse_lazy("admin:client_client_changelist"),
                         "permission": lambda request: request.user.has_perm('client.view_client'),
                     },
+                ]
+            },
+            {
+                "title": "Call-center база",
+                "items": [
+                    {
+                        "title": "Call-center",
+                        "icon": "phone",
+                        "link": reverse_lazy("admin:call_center_invoice_changelist"),
+                        "permission": lambda request: request.user.has_perm('call_center.view_invoice'),
+                    },
+                ]
+            },
+            {
+                "title": "Замер база",
+                "items": [
+                    {
+                        "title": "Замери",
+                        "icon": "settings",
+                        "link": reverse_lazy("admin:metering_metering_changelist"),
+                        "permission": lambda request: request.user.has_perm('metering.view_metering'),
+                    },
+                    {
+                        "title": "Дизайн",
+                        "icon": "brush",
+                        "link": reverse_lazy("admin:design_design_changelist"),
+                        "permission": lambda request: request.user.has_perm('design.view_design'),
+                    },
+                    {
+                        "title": "Нарх чикариш",
+                        "icon": "attach_money",
+                        "link": reverse_lazy("admin:price_price_changelist"),
+                        "permission": lambda request: request.user.has_perm('price.view_price'),
+                    },
+                ]
+            },
+            {
+                "title": "Заказ база",
+                "items": [
                     {
                         "title": "Закази",
                         "icon": "box",
@@ -237,17 +432,29 @@ UNFOLD = {
                         "permission": lambda request: request.user.has_perm('order.view_order'),
                     },
                     {
-                        "title": "Call-center",
-                        "icon": "phone",
-                        "link": reverse_lazy("admin:call_center_invoice_changelist"),
-                        "permission": lambda request: request.user.has_perm('call_center.view_invoice'),
+                        "title": "Деталировка",
+                        "icon": "book",
+                        "link": reverse_lazy("admin:detailing_detailing_changelist"),
+                        "permission": lambda request: request.user.has_perm('detailing.view_detailing'),
                     },
                     {
-                        "title": "Замери",
-                        "icon": "settings",
-                        "link": reverse_lazy("admin:metering_metering_changelist"),
-                        "permission": lambda request: request.user.has_perm('metering.view_metering'),
+                        "title": "Ровер",
+                        "icon": "design_services",
+                        "link": reverse_lazy("admin:rover_rover_changelist"),
+                        "permission": lambda request: request.user.has_perm('rover.view_rover'),
                     },
+                    {
+                        "title": "Моляр",
+                        "icon": "brush",
+                        "link": reverse_lazy("admin:painter_painter_changelist"),
+                        "permission": lambda request: request.user.has_perm('painter.view_painter'),
+                    },
+                    {
+                        "title": "Сборка",
+                        "icon": "bolt",
+                        "link": reverse_lazy("admin:assembly_assembly_changelist"),
+                        "permission": lambda request: request.user.has_perm('assembly.view_assembly'),
+                    }
                 ],
             },
         ],
@@ -274,18 +481,3 @@ UNFOLD = {
         # },
     ],
 }
-
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10240000000
-DATA_UPLOAD_MAX_NUMBER_FIELDS = 1024000
-
-CSRF_TRUSTED_ORIGINS = ["https://www.ser-mebel.uz", "https://ser-mebel.uz", "http://localhost:8000", "http://127.0.0.1:8000", "http://109.196.103.69"]
-
-USE_X_FORWARDED_HOST = True
-SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
-
-X_FRAME_OPTIONS = 'ALLOWALL'
-
-FILER_DEBUG = DEBUG
-FILER_SUBJECT_LOCATION_IMAGE_DEBUG = True
-FILER_ENABLE_PERMISSIONS = True
-FILER_FOLDER_ADMIN_DEFAULT_LIST_TYPE = 'th'

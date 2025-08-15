@@ -5,8 +5,6 @@ ORDER_CHANGE_STATUS_PERMISSION = 'change_status_order'
 ORDER_REVERSE_STATUS_PERMISSION = 'reverse_status_order'
 ORDER_VIEW_PRICE_PERMISSION = 'view_order_price'
 
-WARNING_ORDER_DAYS = 7
-
 
 class OrderStatus(TextChoices):
     CREATED = 'created', _('Создан')

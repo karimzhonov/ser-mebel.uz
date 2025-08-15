@@ -11,12 +11,12 @@ class OrderWarningDropdownFilter(DropdownFilter):
     def lookups(self, request, model_admin):
         return [
             (color, warning['label'])
-            for color, warning in WarningBanner.defaults.items()
+            for color, warning in WarningBanner.defaults().items()
         ]
     
     def queryset(self, request, queryset):
-        if self.value() and self.value() in WarningBanner.defaults.keys():
-            return queryset.filter(**WarningBanner.defaults[self.value()]['filters'])
+        if self.value() and self.value() in WarningBanner.defaults().keys():
+            return queryset.filter(**WarningBanner.defaults()[self.value()]['filters'])
         return queryset
 
 
