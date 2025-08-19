@@ -5,7 +5,7 @@ services:
     container_name: back
     image: khtkarimzhonov/api.ser-mebel.uz:latest
     ports:
-      - "5000:5000"
+      - "8000:8000"
     env_file:
       - ./backend/.env
     command: sh -c "uvicorn core.asgi:application --host 0.0.0.0 --port 8000 --workers 4"
