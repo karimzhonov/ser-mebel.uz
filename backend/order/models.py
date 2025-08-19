@@ -1,8 +1,12 @@
+from typing import Type
 from django.db import models
 from django.utils.translation import gettext_lazy as _
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from simple_history.models import HistoricalRecords
 from filer.fields.folder import FilerFolderField
 from djmoney.models.fields import MoneyField
+from core.utils import create_folder
 from .constants import OrderStatus, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERSE_STATUS_PERMISSION, ORDER_VIEW_PRICE_PERMISSION
 from .managers import OrderManager
 
@@ -22,9 +26,10 @@ class Order(models.Model):
     address = models.CharField(max_length=255, verbose_name='Адрес')
     address_link = models.URLField(max_length=1000, blank=True, null=True, verbose_name='Ссылка на яндекс карты')
 
-    design_folder = FilerFolderField(on_delete=models.SET_NULL, related_name='orders_design_folder', null=True)
-
-    history = HistoricalRecords()
+    design_type = models.ForeignKey("design.DesignType", models.PROTECT, null=True)
+    folder = FilerFolderField(on_delete=models.SET_NULL, related_name='order_folder', null=True, blank=True)
+    
+    history = HistoricalRecords(excluded_fields=["price", "lost_money"])
     objects = OrderManager()
 
     class Meta:
@@ -42,8 +47,15 @@ class Order(models.Model):
     
     def change_status(self, status):
         self.status = status
-        self.save()
+        self.save(update_fields=['status'])
         self.send_sms()
 
     def send_sms(self):
         pass
+
+
+@receiver(post_save, sender=Order)
+def create_design_type_folders(sender: Type[Order], instance: Order, created, **kwargs):
+    if not created: return
+    create_folder(instance, 'Заказ')
+    

@@ -195,7 +195,7 @@ dj_setting.CURRENCY_CHOICES = [('USD', 'USD'), ('UZS', 'UZS')]
 dj_setting.DEFAULT_CURRENCY = 'USD'
 dj_setting.DECIMAL_PLACES = 0
 
-CONSTANCE_BACKEND = 'constance.backends.database.DatabaseBackend'
+CONSTANCE_BACKEND = 'core.utils.constance.DatabaseBackend'
 
 # Определяем настройки и их значения по умолчанию
 CONSTANCE_CONFIG = {
@@ -209,7 +209,7 @@ CONSTANCE_CONFIG = {
     'WARNING_ORDER_DAYS': (7, 'Предупреждение о прасрочка заказа', int),
     'ASSEMBLY_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Сборка цена за квадрат', 'price_field'),
     'ROVER_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Ровер цена за квадрат', 'price_field'),
-    'PAINTER_PRICE_PR_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Моляр цена за квадрат', 'price_field'),
+    'PAINTER_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Моляр цена за квадрат', 'price_field'),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
@@ -246,7 +246,7 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
         },
         "Моляр": {
             "fields": {
-                "PAINTER_PRICE_PR_SQUARE"
+                "PAINTER_PRICE_PER_SQUARE"
             }
         }
     }
@@ -358,7 +358,7 @@ UNFOLD = {
     },
     "EXTENSIONS": {},
     "SIDEBAR": {
-        "show_all_applications": True,
+        "show_all_applications": lambda request: request.user.is_superuser,
         "navigation": [
             {
                 "title": "Бухгалтерия",

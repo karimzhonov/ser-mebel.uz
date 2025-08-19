@@ -3,7 +3,7 @@ from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from djmoney.models.fields import MoneyField
-from core.utils import create_folder
+from filer.models import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 
@@ -26,4 +26,11 @@ class Rover(models.Model):
 @receiver(post_save, sender=Rover)
 def create_rover_folders(sender: Type[Rover], instance: Rover, created, **kwargs):
     if not created: return
-    create_folder(instance, 'rover')
+    
+    folder, _ = Folder.objects.get_or_create(
+        name='Ровер',
+        parent=instance.order.folder,
+        owner=instance.order.folder.owner,
+    )
+    instance.folder = folder
+    instance.save(update_fields=['folder'])

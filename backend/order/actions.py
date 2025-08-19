@@ -1,22 +1,46 @@
 from django.urls import reverse_lazy
 from django.shortcuts import redirect
 from django.utils.translation import gettext_lazy as _
-
+from unfold.enums import ActionVariant
 from unfold.decorators import action
-
+from .detailing.models import Detailing
 from .models import Order
 from .constants import OrderStatus, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERSE_STATUS_PERMISSION
 
 
 class OrderActions:
     actions_row = ['change_status', 'reverse_status']
+    actions_detail = ['detailing_action']
+
+    def get_actions_detail(self, request, object_id: int):
+        obj = Order.objects.get(pk=object_id)
+        return [self.get_unfold_action('detailing_action')] if obj.status == OrderStatus.CREATED else []
+
+    @action(
+        description=_('Деталировка'),
+        url_path='detailing',
+        icon=OrderStatus.icon(OrderStatus.DETAILING),
+        variant=ActionVariant.SUCCESS
+    )
+    def detailing_action(self, request, object_id):
+        obj = Order.objects.only('status').get(pk=object_id)
+        Detailing.objects.get_or_create(order=obj)
+        self.message_user(
+            request,
+            _(f"Заказ деталировкага жонатилди"),
+            level="info"
+        )
+        obj.change_status(OrderStatus.DETAILING)
+        return redirect(
+          reverse_lazy("admin:order_order_change", kwargs={'object_id': object_id})
+        )
 
     @action(
         description=_("Изменить статус"),
         permissions=[f'order.{ORDER_CHANGE_STATUS_PERMISSION}'],
         url_path="change-status",
         icon='check',
-        variant='success'
+        variant=ActionVariant.SUCCESS
     )
     def change_status(self, request, object_id):
         obj = Order.objects.only('status').get(pk=object_id)
@@ -44,7 +68,7 @@ class OrderActions:
         permissions=[f'order.{ORDER_REVERSE_STATUS_PERMISSION}'],
         url_path="reverse-status",
         icon='close',
-        variant='danger'
+        variant=ActionVariant.DANGER
     )
     def reverse_status(self, request, object_id):
         obj = Order.objects.only('status').get(pk=object_id)

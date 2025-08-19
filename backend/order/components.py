@@ -22,17 +22,14 @@ class StatusBanner(BaseComponent):
         change_list = OrderAdmin(Order, admin.site).get_changelist_instance(self.request)
         queryset = change_list.get_queryset(self.request)
 
-        status_icons = ['add', 'book', 'monitor', 'bolt', 'build', 'check']
-        status_colors = ['info', 'info', 'info', 'warning', 'warning', 'success']
-
         statuses = [
             {
-                'border': f'border-2 border-{status_colors[i]}-500' if status in current_status else f'',
+                'border': f'border-2 border-{OrderStatus.get_sev(status)}-500' if status in current_status else f'',
                 'status': status,
                 'label': status.label,
                 'count': queryset.filter(status=status).count(),
-                'icon': status_icons[i],
-                'color': get_colors(status_colors[i]),
+                'icon': OrderStatus.icon(status),
+                'color': get_colors(OrderStatus.get_sev(status)),
             } for i, status in enumerate(OrderStatus.get_order())
         ]
 

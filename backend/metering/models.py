@@ -37,4 +37,4 @@ class Metering(models.Model):
 @receiver(post_save, sender=Metering)
 def create_metering_folders(sender: Type[Metering], instance: Metering, created, **kwargs):
     if not created: return
-    create_folder(instance, 'metering')
+    create_folder(instance, 'Нарх чикариш')

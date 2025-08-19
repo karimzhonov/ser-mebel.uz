@@ -17,6 +17,28 @@ class OrderStatus(TextChoices):
     @classmethod
     def get_order(cls):
         return [cls.CREATED, cls.DETAILING, cls.WORKING, cls.ASSEMBLY, cls.INSTALLING, cls.DONE]
+    
+    @classmethod
+    def get_sev(cls, status):
+        return {
+            OrderStatus.CREATED: "info",
+            OrderStatus.DETAILING: "info",
+            OrderStatus.WORKING: "warning",
+            OrderStatus.ASSEMBLY:  "warning",
+            OrderStatus.INSTALLING:  "warning",
+            OrderStatus.DONE:  "success",
+        }[status]
+    
+    @classmethod
+    def icon(cls, status):
+        return {
+            OrderStatus.CREATED: "add",
+            OrderStatus.DETAILING: "book",
+            OrderStatus.WORKING: "monitor",
+            OrderStatus.ASSEMBLY:  "bolt",
+            OrderStatus.INSTALLING:  "build",
+            OrderStatus.DONE:  "check",
+        }[status]
 
     @classmethod
     def next_status(cls, current):

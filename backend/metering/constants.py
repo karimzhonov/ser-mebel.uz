@@ -7,8 +7,9 @@ METERING_CHANGE_STATUS_PERMISSION = 'change_status'
 class MeteringStatus(TextChoices):
     created = ('created', 'Заявка олинди')
     dont_need = ('dont_need', 'Отмен болди')
-    other_day = ('re_phone', 'Бошқа кунга ўзгартирилди')
+    other_day = ('other_day', 'Бошқа кунга ўзгартирилди')
     done = ('done', 'Бажарилди')
+    sold_out = ('sold_out', 'Сотилди')
 
     @classmethod
     def get_order(cls):
@@ -17,6 +18,7 @@ class MeteringStatus(TextChoices):
             cls.dont_need,
             cls.other_day,
             cls.done,
+            cls.sold_out,
         ]
 
     @classmethod
@@ -25,7 +27,8 @@ class MeteringStatus(TextChoices):
             cls.created: 'add',
             cls.dont_need: 'close',
             cls.other_day: 'warning',
-            cls.done: 'check'
+            cls.done: 'check',
+            cls.sold_out: 'done_all',
         }[status]
     
     @classmethod
@@ -34,7 +37,8 @@ class MeteringStatus(TextChoices):
             cls.created: ActionVariant.INFO,
             cls.dont_need: ActionVariant.DANGER,
             cls.other_day: ActionVariant.WARNING,
-            cls.done: ActionVariant.SUCCESS
+            cls.done: ActionVariant.SUCCESS,
+            cls.sold_out: ActionVariant.SUCCESS,
         }
 
     @classmethod

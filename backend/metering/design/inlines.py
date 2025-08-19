@@ -1,20 +1,20 @@
 from unfold.admin import StackedInline
 from unfold.decorators import display
 from core.utils import get_folder_link_html
-from .models import Design
+from .models import DesignType
 
 
-class DesignInline(StackedInline):
-    model = Design
+class DesignTypeInline(StackedInline):
+    model = DesignType
     extra = 0
-    fk_name = 'metering'
-    fields = ['price']
+    exclude = ['folder']
+    tab = True
 
-    def folder_link(self, obj: Design):
+    def folder_link(self, obj: DesignType):
         return get_folder_link_html(obj.folder_id)
 
     @display(
         description='Папка'
     )
     def get_readonly_fields(self, request, obj=None):
-        return ['created_at', 'folder_link'] if obj else []
+        return ['folder_link'] if obj else []

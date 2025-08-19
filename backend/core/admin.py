@@ -24,7 +24,7 @@ class AuthPermissionAdmin(ModelAdmin):
     search_fields = ['codename']
 
 @admin.register(Folder)
-class UFolderAdmin(ModelAdmin, FolderAdmin):
+class UFolderAdmin(FolderAdmin, ModelAdmin):
     inlines = [DiscussionInline]
 
 

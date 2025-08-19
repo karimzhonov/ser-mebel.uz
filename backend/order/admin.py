@@ -1,26 +1,26 @@
+from typing import Any
 from django.contrib import admin
 from django.http import HttpRequest
-from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
 from unfold.contrib.filters.admin import RangeDateFilter
 from unfold.admin import ModelAdmin
+from unfold.dataclasses import UnfoldAction
 from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
-from core.utils import get_tag
+from core.utils import get_tag, get_folder_link_html
 from constance import config
 from .forms import OrderAddForm
 from .actions import OrderActions
 from .models import Order, OrderStatus
-from .filters import OrderStatusDropdownFilter, OrderWarningDropdownFilter
 from .constants import ORDER_VIEW_PRICE_PERMISSION
+from .filters import OrderStatusDropdownFilter, OrderWarningDropdownFilter
 from .components import *
 
 
 @admin.register(Order)
-class OrderAdmin(OrderActions, ModelAdmin, SimpleHistoryAdmin):
+class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
     list_display = ['client', 'show_status', 'reception_date', 'end_date', 'show_days']
-    readonly_fields = ['link_folder_document', 'link_folder_images', 'link_folder_schemas']
     ordering = ['-reception_date']
     autocomplete_fields = ['client']
     list_filter = [
@@ -29,31 +29,26 @@ class OrderAdmin(OrderActions, ModelAdmin, SimpleHistoryAdmin):
         ('reception_date', RangeDateFilter),
     ]
     list_filter_submit = True
-    list_before_template = 'order/order_list_before.html'
-
-    def has_add_permission(self, request: HttpRequest) -> bool:
-        return False
+    
+    def get_readonly_fields(self, request: HttpRequest, obj: Any | None = ...) -> list[str] | tuple[Any, ...]:
+        return ['metering_folder', 'design_folder', 'price_folder', 'folder_link', 'metering', 'client'] if obj else []
 
     def get_fieldsets(self, request: HttpRequest, obj=None):
         fieldsets = [
-            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'metering'), "classes": ("tab-primary",)}),
-            ('Адрес', {"fields": ('address', 'address_link'), "classes": ("tab-secondary",)}),
+            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date'), "classes": ("tab-info",)}),
+            ('Адрес', {"fields": ('address', 'address_link'), "classes": ("tab-info",)}),
+            ('Файли', {'fields': ('folder_link', 'metering_folder', 'design_folder', 'price_folder'), "classes": ("tab-info",)})
+        ]
+        add_fieldsets = [
+            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'design_type', 'metering')}),
+            ('Адрес', {"fields": ('address', 'address_link')}),
+            ('Цена', {'fields': ('price', 'lost_money')}),
         ]
         if request.user.has_perm(f'order.{ORDER_VIEW_PRICE_PERMISSION}'):
             fieldsets.append(
-                ('Цена', {'fields': ('currency', 'price', 'advance'), "classes": ("tab-info",)}),
+                ('Цена', {'fields': ('price', 'lost_money'), "classes": ("tab-info",)}),
             )
-        fieldsets.append(
-            ('Файлы', {'fields': ('link_folder_document', 'link_folder_images', 'link_folder_schemas'), "classes": ("tab-help",)})
-        )
-        add_fieldsets = [
-            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'metering')}),
-            ('Адрес', {"fields": ('address', 'address_link')}),
-            ('Цена', {'fields': ('currency', 'price', 'advance')}),
-        ]
-        if obj:
-            return fieldsets
-        return add_fieldsets
+        return add_fieldsets if not obj else fieldsets
     
     def get_form(self, request, obj=None, **kwargs):
         if obj is None:
@@ -64,15 +59,7 @@ class OrderAdmin(OrderActions, ModelAdmin, SimpleHistoryAdmin):
         description='Статус',
     )
     def show_status(self, obj: Order):
-        statuses = {
-            OrderStatus.CREATED: "info",
-            OrderStatus.DETAILING: "info",
-            OrderStatus.WORKING: "warning",
-            OrderStatus.ASSEMBLY:  "warning",
-            OrderStatus.INSTALLING:  "warning",
-            OrderStatus.DONE:  "success",
-        }
-        return get_tag(OrderStatus(obj.status).label, statuses[obj.status])
+        return get_tag(OrderStatus(obj.status).label, OrderStatus.get_sev(obj.status))
     
     @display(
         description='Дней осталось',
@@ -89,21 +76,25 @@ class OrderAdmin(OrderActions, ModelAdmin, SimpleHistoryAdmin):
     
     # Filer links
     @display(
-        description='Документы',
+        description='Папка',
     )
-    def link_folder_document(self, obj: Order):
-        return format_html(f'<a class="text-blue-700" href="/admin/filer/folder/{obj.folder_documents_id}/list/">Перейти</a>') if obj.folder_documents_id else '-'
-
-
+    def folder_link(self, obj: Order):
+        return get_folder_link_html(obj.folder_id)
+    
     @display(
-        description='Фото',
+        description='Папка замери',
     )
-    def link_folder_images(self, obj: Order):
-        return format_html(f'<a class="text-blue-700" href="/admin/filer/folder/{obj.folder_images_id}/list/">Перейти</a>') if obj.folder_images_id else '-'
-
-
+    def metering_folder(self, obj: Order):
+        return get_folder_link_html(obj.metering.folder_id)
+    
     @display(
-        description='Схеми',
+        description='Папка дизайн',
     )
-    def link_folder_schemas(self, obj: Order):
-        return format_html(f'<a class="text-blue-700" href="/admin/filer/folder/{obj.folder_schemas_id}/list/">Перейти</a>') if obj.folder_schemas_id else '-'
+    def design_folder(self, obj: Order):
+        return get_folder_link_html(obj.design_type.folder_id)
+    
+    @display(
+        description='Папка нарх чикариш',
+    )
+    def price_folder(self, obj: Order):
+        return get_folder_link_html(obj.metering.price.folder_id)
