@@ -17,11 +17,15 @@ from .models import Price
 class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     list_display = ['metering', 'is_done']
     actions_detail = ['done_action']
-    exclude = ['folder', 'done']
-    readonly_fields = ['metering', 'folder_link']
+    exclude = ['folder', 'done', 'metering']
+    readonly_fields = ['metering_folder', 'folder_link']
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
+        
+    @display(description='Замер файлы')
+    def metering_folder(self, obj: Price):
+        return get_folder_link_html(obj.metering.folder_id)
     
     @display(description='Папка')
     def folder_link(self, obj: Price):

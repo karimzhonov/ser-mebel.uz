@@ -18,6 +18,18 @@ class MeteringActions:
         'create_design', 'create_price'
     ]
 
+    def get_actions_detail(self, request, object_id: int):
+        obj = Metering.objects.get(pk=object_id)
+        actions = []
+        if not hasattr(obj, 'design'):
+            actions.append('create_design')
+
+        if not hasattr(obj, 'price'):
+            actions.append('create_price')
+
+        return [self.get_unfold_action(action_name) for action_name in actions]
+    
+
     @action(
         description=MeteringStatus.dont_need.label,
         url_path='dont-need',

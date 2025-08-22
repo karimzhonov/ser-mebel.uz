@@ -1,0 +1,5 @@
+{% load i18n unfold %}
+
+{% component "unfold/components/card.html" with title=_("Добавление клиентов") class="h-full" %}
+    {% component "unfold/components/chart/line.html" with data=data %}{% endcomponent %}
+{% endcomponent %}

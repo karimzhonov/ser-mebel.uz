@@ -43,7 +43,7 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
         return super().response_add(request, obj, post_url_continue)
 
     def get_readonly_fields(self, request, obj = None):
-        return ['folder_link', 'design', 'price'] if obj else []
+        return ['folder_link', 'design', 'price', 'invoice', 'address', 'address_link', 'client'] if obj else []
     
     def get_form(self, request, obj=None, **kwargs):
         if not obj:

@@ -6,7 +6,6 @@ from filer.admin import FileAdmin, FolderAdmin, PermissionAdmin
 
 from unfold.decorators import display
 from unfold.admin import ModelAdmin
-
 from discussion.inlines import DiscussionInline
 
 admin.site.unregister(Group)
@@ -23,13 +22,14 @@ class AuthPermissionAdmin(ModelAdmin):
     list_display = ['name', 'codename', 'content_type']
     search_fields = ['codename']
 
+
 @admin.register(Folder)
 class UFolderAdmin(FolderAdmin, ModelAdmin):
     inlines = [DiscussionInline]
 
 
 @admin.register(File)
-class UFileAdmin(ModelAdmin, FileAdmin):
+class UFileAdmin(FileAdmin, ModelAdmin):
     fieldsets = ()
     fields = ['display_canonical', 'file', '_file_size', 'owner', 'uploaded_at', 'modified_at', 'is_public']
     readonly_fields = ['display_canonical', '_file_size', 'owner', 'uploaded_at', 'modified_at']

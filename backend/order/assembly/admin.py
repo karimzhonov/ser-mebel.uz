@@ -13,8 +13,8 @@ from .models import Assembly
 @admin.register(Assembly)
 class AssemblyAdmin(ModelAdmin):
     list_display = ['order', 'is_done', 'is_installing_done']
-    exclude = ['folder', 'done', 'installing_done']
-    readonly_fields = ['folder_link', 'order', 'square', 'price']
+    exclude = ['folder', 'done', 'installing_done', 'order']
+    readonly_fields = ['folder_link', 'order_folder_link', 'square', 'price']
     actions_detail = ['done_action', 'installing_done_action']
     
     def has_add_permission(self, request: HttpRequest) -> bool:
@@ -28,9 +28,13 @@ class AssemblyAdmin(ModelAdmin):
     def is_installing_done(self, obj: Assembly):
         return get_boolean_icons([obj.installing_done])
     
-    @display(description='Папка')
+    @display(description='Файли деталировкы')
     def folder_link(self, obj: Assembly):
         return get_folder_link_html(obj.folder_id)
+    
+    @display(description='Файлы заказа')
+    def order_folder_link(self, obj: Assembly):
+        return get_folder_link_html(obj.order.folder_id) 
     
     def get_actions_detail(self, request, object_id: int):
         obj = Assembly.objects.get(pk=object_id)

@@ -8,7 +8,7 @@ from unfold.admin import ModelAdmin
 from unfold.dataclasses import ActionVariant, UnfoldAction
 from unfold.decorators import action, display
 from simple_history.admin import SimpleHistoryAdmin
-from core.utils.html import get_boolean_icons
+from core.utils.html import get_boolean_icons, get_folder_link_html
 from .models import Design
 from .inlines import DesignTypeInline
 
@@ -18,12 +18,16 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
     list_display = ['metering', 'is_done']
     actions_detail = ['create_order', 'done_action']
     inlines = [DesignTypeInline]
-    readonly_fields = ['metering']
-    exclude = ['done']
+    readonly_fields = ['metering_folder', 'created_at']
+    exclude = ['done', 'metering']
     
     @display(description='Выполнен')
     def is_done(self, obj: Design):
         return get_boolean_icons([obj.done])
+    
+    @display(description='Замер файлы')
+    def metering_folder(self, obj: Design):
+        return get_folder_link_html(obj.metering.folder_id)
 
     def get_actions_detail(self, request: HttpRequest, object_id: int) -> list[UnfoldAction]:
         obj = Design.objects.get(pk=object_id)

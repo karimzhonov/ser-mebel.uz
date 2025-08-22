@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.http import HttpRequest
 from unfold.admin import ModelAdmin
 from .models import Client
+from .components import *
 
 
 @admin.register(Client)

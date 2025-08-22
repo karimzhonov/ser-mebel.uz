@@ -66,3 +66,4 @@ def create_folder(instance, global_folder_name, folder_name = None):
 
     instance.folder = folder
     instance.save()
+    return folder

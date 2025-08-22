@@ -5,6 +5,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from simple_history.models import HistoricalRecords
 from filer.fields.folder import FilerFolderField
+from filer.models.foldermodels import Folder
 from djmoney.models.fields import MoneyField
 from core.utils import create_folder
 from .constants import OrderStatus, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERSE_STATUS_PERMISSION, ORDER_VIEW_PRICE_PERMISSION
@@ -57,5 +58,9 @@ class Order(models.Model):
 @receiver(post_save, sender=Order)
 def create_design_type_folders(sender: Type[Order], instance: Order, created, **kwargs):
     if not created: return
-    create_folder(instance, 'Заказ')
+    
+    folder = create_folder(instance, 'Заказ')
+    instance.metering.folder.parent = folder
+    instance.metering.folder.save()
+    Folder.objects.filter(parent=instance.metering.folder).update(parent=folder)
     

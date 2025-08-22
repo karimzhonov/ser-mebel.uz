@@ -1,0 +1,11 @@
+{% load unfold %}
+
+{% if perms.call_center.view_call_center %}
+    <div class="grid grid-cols-1 gap-4">
+        <div class="col-span-1 h-full">
+            {% component "unfold/components/card.html" with title=_("Статистика call-center") %}
+                {% component "call_center/components/solution_banner.html" with component_class="SolutionBanner" %}{% endcomponent %}
+            {% endcomponent %}
+        </div>
+    </div>
+{% endif %}

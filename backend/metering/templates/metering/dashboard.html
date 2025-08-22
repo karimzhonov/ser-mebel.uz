@@ -1,0 +1,11 @@
+{% load unfold %}
+
+{% if perms.metering.view_metering %}
+    <div class="grid grid-cols-1 gap-4">
+        <div class="col-span-1 h-full">
+            {% component "unfold/components/card.html" with title=_("Статистика замери") %}
+                {% component "metering/components/metering_status_banner.html" with component_class="MeteringStatusBanner" %}{% endcomponent %}
+            {% endcomponent %}
+        </div> 
+    </div>
+{% endif %}

@@ -30,7 +30,7 @@ def create_assembly_folders(sender: Type[Assembly], instance: Assembly, created,
     if not created: return
     
     folder, _ = Folder.objects.get_or_create(
-        name='Сборка',
+        name='Сборка / Установка',
         parent=instance.order.folder,
         owner=instance.order.folder.owner,
     )

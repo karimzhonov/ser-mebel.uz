@@ -22,7 +22,7 @@ class SolutionChoice(IntegerChoices):
             cls.given_location: 'info',
             cls.price_problem: 'close',
             cls.go_for_measured: 'check',
-            cls.sold_out: 'check'
+            cls.sold_out: 'done_all'
         }[solution]
     
     @classmethod

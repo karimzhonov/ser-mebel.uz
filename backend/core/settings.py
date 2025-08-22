@@ -315,7 +315,7 @@ UNFOLD = {
         },
     ],
     "ENVIRONMENT": ["Development" , "info"] if DEBUG else ["Production" , "danger"], # environment name in header
-    # "DASHBOARD_CALLBACK": "core.views.dashboard_callback",
+    "DASHBOARD_CALLBACK": "core.views.dashboard_callback",
     "LOGIN": {
         "image": lambda request: media(config.LOGIN_IMAGE) if config.LOGIN_IMAGE else static('core/login-bg.jpg'),
     },
@@ -432,7 +432,7 @@ UNFOLD = {
                         "permission": lambda request: request.user.has_perm('order.view_order'),
                     },
                     {
-                        "title": "Деталировка",
+                        "title": "Деталировка / Производстьво",
                         "icon": "book",
                         "link": reverse_lazy("admin:detailing_detailing_changelist"),
                         "permission": lambda request: request.user.has_perm('detailing.view_detailing'),
@@ -450,7 +450,7 @@ UNFOLD = {
                         "permission": lambda request: request.user.has_perm('painter.view_painter'),
                     },
                     {
-                        "title": "Сборка",
+                        "title": "Сборка / Установка",
                         "icon": "bolt",
                         "link": reverse_lazy("admin:assembly_assembly_changelist"),
                         "permission": lambda request: request.user.has_perm('assembly.view_assembly'),

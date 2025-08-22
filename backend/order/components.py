@@ -83,7 +83,7 @@ class WarningBanner(BaseComponent):
         current_warning = self.request.GET.pop('warning', [])
 
         change_list = OrderAdmin(Order, admin.site).get_changelist_instance(self.request)
-        queryset = change_list.get_queryset(self.request)
+        queryset = change_list.get_queryset(self.request, exclude_parameters=['tabs'])
         return {
             'warnings': [
                 {

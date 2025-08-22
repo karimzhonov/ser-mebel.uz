@@ -30,15 +30,11 @@ def create_price_folders(sender: Type[Price], instance: Price, created, **kwargs
     created_history = instance.history.order_by('history_date').first()
     created_user = created_history.history_user if created_history else None
 
-    parent_folder, _ = Folder.objects.get_or_create(
-        name='price',
-        defaults={'owner': created_user}
-    )
-
     price_folder = Folder.objects.create(
-        name=f'price-{instance.pk}',
-        parent=parent_folder,
+        name='Нарх чикариш',
+        parent=instance.metering.folder,
         owner=created_user
     )
 
-    sender.objects.filter(pk=instance.pk).update(folder=price_folder)
+    instance.folder=price_folder
+    instance.save()

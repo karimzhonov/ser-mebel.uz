@@ -12,8 +12,8 @@ from .models import Painter
 @admin.register(Painter)
 class PainterAdmin(ModelAdmin):
     list_display = ['order', 'is_done']
-    exclude = ['folder', 'done']
-    readonly_fields = ['folder_link']
+    exclude = ['folder', 'done', 'order']
+    readonly_fields = ['folder_link', 'order_folder_link']
     actions_detail = ['done_action']
     
     def has_add_permission(self, request: HttpRequest) -> bool:
@@ -26,9 +26,13 @@ class PainterAdmin(ModelAdmin):
     def is_done(self, obj: Painter):
         return get_boolean_icons([obj.done])
     
-    @display(description='Папка')
+    @display(description='Файлы')
     def folder_link(self, obj: Painter):
         return get_folder_link_html(obj.folder_id)
+    
+    @display(description='Файлы заказа')
+    def order_folder_link(self, obj: Painter):
+        return get_folder_link_html(obj.order.folder_id) 
     
     def get_actions_detail(self, request, object_id: int):
         obj = Painter.objects.get(pk=object_id)

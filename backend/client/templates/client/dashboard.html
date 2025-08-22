@@ -1,0 +1,14 @@
+{% load unfold %}
+
+{% if perms.client.view_client %}
+    <div class="grid grid-cols-1 lg:grid-cols-7 gap-4">
+        <div class="col-span-1 lg:col-span-5 h-full">
+            {% component "client/components/line-chart.html" with component_class="ClientLineChartComponent" %}{% endcomponent %}
+        </div>
+
+        <div class="col-span-1 lg:col-span-2 h-full">
+            {% component "client/components/top.html" with component_class="ClientTopComponent" %}{% endcomponent %}
+        </div>
+
+    </div>
+{% endif %}

@@ -13,8 +13,8 @@ from ..constants import OrderStatus
 class DetailingAdmin(ModelAdmin):
     list_display = ['order', 'is_done', 'is_working_done']
     actions_detail = ['done_action', 'working_done_action']
-    readonly_fields = ['order', 'folder_link']
-    exclude = ['folder', 'done', 'working_done']
+    readonly_fields = ['order_folder_link', 'folder_link']
+    exclude = ['folder', 'done', 'working_done', 'order']
 
     @display(description='Выполнен деталировку')
     def is_done(self, obj: Detailing):
@@ -24,9 +24,13 @@ class DetailingAdmin(ModelAdmin):
     def is_working_done(self, obj: Detailing):
         return get_boolean_icons([obj.working_done])
     
-    @display(description='Папка')
+    @display(description='Файли')
     def folder_link(self, obj: Detailing):
         return get_folder_link_html(obj.folder_id)
+    
+    @display(description='Файлы заказа')
+    def order_folder_link(self, obj: Detailing):
+        return get_folder_link_html(obj.order.folder_id) 
     
     def get_actions_detail(self, request, object_id: int):
         obj = Detailing.objects.get(pk=object_id)

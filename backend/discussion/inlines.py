@@ -1,12 +1,13 @@
-from unfold.admin import TabularInline
-from django.contrib.contenttypes.admin import GenericTabularInline
+from unfold.admin import GenericTabularInline
 from django.contrib.contenttypes.models import ContentType
 from .models import DiscussionMessage
 
 
-class DiscussionInline(TabularInline, GenericTabularInline):
+class DiscussionInline(GenericTabularInline):
     model = DiscussionMessage
     extra = 0
+    exclude = ['author']
+    can_delete = False
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)

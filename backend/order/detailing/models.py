@@ -61,7 +61,7 @@ def create_detailing_folders(sender: Type[Detailing], instance: Detailing, creat
     if not created: return
     
     folder = Folder.objects.create(
-        name='Деталировка',
+        name='Деталировка / Производстьво',
         parent=instance.order.folder,
         owner=instance.order.folder.owner,
     )

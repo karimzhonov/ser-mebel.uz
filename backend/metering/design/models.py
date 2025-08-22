@@ -3,8 +3,7 @@ from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from djmoney.models.fields import MoneyField
-
-from core.utils import create_folder
+from filer.models.foldermodels import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 
@@ -40,4 +39,21 @@ def create_design_type_folders(sender: Type[Design], instance: Design, created, 
 @receiver(post_save, sender=DesignType)
 def create_design_type_folders(sender: Type[DesignType], instance: DesignType, created, **kwargs):
     if not created: return
-    create_folder(instance.design, 'Дизайн', instance.name)
+
+    created_history = instance.history.order_by('history_date').first()
+    created_user = created_history.history_user if created_history else None
+
+    design_folder, _ = Folder.objects.get_or_create(
+        name='Дизайн',
+        parent=instance.design.metering.folder,
+        defaults={'owner': created_user}
+    )
+
+    design_type_folder = Folder.objects.get_or_create(
+        name=instance.name,
+        parent=design_folder,
+        defaults={'owner': created_user}
+    )
+
+    instance.folder = design_type_folder
+    instance.save()

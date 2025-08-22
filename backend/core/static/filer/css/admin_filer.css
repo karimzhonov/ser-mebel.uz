@@ -14,6 +14,34 @@
     margin-inline: auto;
 }
 
+.navigator-breadcrumbs, .filter-files-container {
+    display: none!important;
+}
+
+.tools-container .actions-wrapper {
+    display: none!important;
+}
+
+.tools-container .actions-wrapper {
+    display: none!important;
+}
+
+.filer-list-type-switcher-wrapper {
+    display: none!important;
+}
+
+.navigator-checkbox { 
+    display: none;
+}
+
+.navigator-button-wrapper > .navigator-button:first-child {
+    display: none!important;
+}
+
+.filer-dropdown-container {
+    display: none!important;
+}
+
 @media (min-width: 40rem) {
     .breadcrumbs {
         max-width: 40rem;

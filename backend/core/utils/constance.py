@@ -6,14 +6,14 @@ from constance.codecs import register_type
 def money_encoder(obj):
     return {
         "__money__": True,
-        "amount": str(obj.amount),
+        "amount": int(obj.amount),
         "currency": obj.currency.code,
     }
 
 
 def money_decoder(dct):
     if "__money__" in dct:
-        return Money(float(dct["amount"]), dct["currency"])
+        return Money(int(dct["amount"]), dct["currency"])
     return dct
 
 

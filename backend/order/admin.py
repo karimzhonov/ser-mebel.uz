@@ -31,13 +31,12 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
     list_filter_submit = True
     
     def get_readonly_fields(self, request: HttpRequest, obj: Any | None = ...) -> list[str] | tuple[Any, ...]:
-        return ['metering_folder', 'design_folder', 'price_folder', 'folder_link', 'metering', 'client'] if obj else []
+        return ['folder_link', 'metering', 'client'] if obj else []
 
     def get_fieldsets(self, request: HttpRequest, obj=None):
         fieldsets = [
-            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date'), "classes": ("tab-info",)}),
+            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'folder_link'), "classes": ("tab-info",)}),
             ('Адрес', {"fields": ('address', 'address_link'), "classes": ("tab-info",)}),
-            ('Файли', {'fields': ('folder_link', 'metering_folder', 'design_folder', 'price_folder'), "classes": ("tab-info",)})
         ]
         add_fieldsets = [
             ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'design_type', 'metering')}),
@@ -76,25 +75,8 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
     
     # Filer links
     @display(
-        description='Папка',
+        description='Файлы',
     )
     def folder_link(self, obj: Order):
         return get_folder_link_html(obj.folder_id)
     
-    @display(
-        description='Папка замери',
-    )
-    def metering_folder(self, obj: Order):
-        return get_folder_link_html(obj.metering.folder_id)
-    
-    @display(
-        description='Папка дизайн',
-    )
-    def design_folder(self, obj: Order):
-        return get_folder_link_html(obj.design_type.folder_id)
-    
-    @display(
-        description='Папка нарх чикариш',
-    )
-    def price_folder(self, obj: Order):
-        return get_folder_link_html(obj.metering.price.folder_id)

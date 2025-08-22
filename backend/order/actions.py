@@ -9,7 +9,7 @@ from .constants import OrderStatus, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERS
 
 
 class OrderActions:
-    actions_row = ['change_status', 'reverse_status']
+    actions_row = ['reverse_status']
     actions_detail = ['detailing_action']
 
     def get_actions_detail(self, request, object_id: int):
