@@ -1,0 +1,9 @@
+{% load unfold %}
+
+{% component "unfold/components/card.html" with title=_("Статистика по код ответу") class="h-full" %}
+<div class="flex flex-col gap-5">
+    {% for solution in solutions_per %}
+        {% component "unfold/components/progress.html" with title=solution.label value=solution.per description=solution.count %}{% endcomponent %}
+    {% endfor %}
+</div>
+{% endcomponent %}

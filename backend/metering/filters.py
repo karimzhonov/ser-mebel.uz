@@ -9,11 +9,7 @@ class MeteringStatusDropdownFilter(MultipleDropdownFilter):
     parameter_name = "status"
 
     def lookups(self, request, model_admin):
-        return [
-            *[
-            [status.value, _(status.label)]
-            for status in MeteringStatus.get_order()
-        ]]
+        return MeteringStatus.choices
 
     def queryset(self, request, queryset):
         if self.value() and not self.value() in ['', None]:

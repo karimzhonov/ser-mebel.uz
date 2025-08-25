@@ -207,6 +207,7 @@ CONSTANCE_CONFIG = {
     'SITE_ICON_LOGO': (None, 'Logo Icon', 'image_field'),
     'LOGIN_IMAGE': (None, 'Login Image', 'image_field'),
     'WARNING_ORDER_DAYS': (7, 'Предупреждение о прасрочка заказа', int),
+    'PRODUCTION_WARNING_ORDER_DAYS': (14, 'Предупреждение о прасрочка заказа (производство)', int),
     'ASSEMBLY_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Сборка цена за квадрат', 'price_field'),
     'ROVER_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Ровер цена за квадрат', 'price_field'),
     'PAINTER_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Моляр цена за квадрат', 'price_field'),
@@ -232,6 +233,7 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
         "Заказ": {
             "fields": {
                 "WARNING_ORDER_DAYS",
+                "PRODUCTION_WARNING_ORDER_DAYS"
             }
         },
         "Ровер": {
@@ -475,7 +477,7 @@ UNFOLD = {
         #                 "title": status.label,
         #                 "link": reverse_lazy("admin:order_order_changelist", query={'status': status}),
         #                 "permission": lambda request: True,
-        #             } for status in OrderStatus.get_order()
+        #             } for status in OrderStatus.values
         #         ]
         #     ],
         # },

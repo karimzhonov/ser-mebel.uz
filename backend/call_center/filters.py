@@ -9,11 +9,7 @@ class InvoiceSolutionDropdownFilter(DropdownFilter):
     parameter_name = "solution"
 
     def lookups(self, request, model_admin):
-        return [
-            *[
-            [solution.value, _(solution.label)]
-            for solution in SolutionChoice.get_order()
-        ]]
+        return SolutionChoice.choices
 
     def queryset(self, request, queryset):
         if not self.value() in ['', None]:

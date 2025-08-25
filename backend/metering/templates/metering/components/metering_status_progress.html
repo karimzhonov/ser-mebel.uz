@@ -1,0 +1,9 @@
+{% load unfold %}
+
+{% component "unfold/components/card.html" with title=_("Статистика по статусов") class="h-full" %}
+<div class="flex flex-col gap-5">
+    {% for status in statuses_per %}
+        {% component "unfold/components/progress.html" with title=status.label value=status.per description=status.count %}{% endcomponent %}
+    {% endfor %}
+</div>
+{% endcomponent %}

@@ -1,0 +1,5 @@
+{% load i18n unfold %}
+
+{% component "unfold/components/card.html" with title=_("Список заказов") class="h-full" %}
+    {% component "unfold/components/table.html" with table=table_data card_included=1 striped=1 %}{% endcomponent %}
+{% endcomponent %}

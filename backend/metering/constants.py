@@ -12,16 +12,6 @@ class MeteringStatus(TextChoices):
     sold_out = ('sold_out', 'Сотилди')
 
     @classmethod
-    def get_order(cls):
-        return [
-            cls.created,
-            cls.dont_need,
-            cls.other_day,
-            cls.done,
-            cls.sold_out,
-        ]
-
-    @classmethod
     def icon(cls, status):
         return {
             cls.created: 'add',

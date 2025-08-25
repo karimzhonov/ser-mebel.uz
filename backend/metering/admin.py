@@ -8,6 +8,7 @@ from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
 from core.utils import get_tag, get_folder_link_html
 from core.utils.html import get_boolean_icons
+from core.filters import get_date_filter
 
 from .actions import MeteringActions
 from .filters import MeteringStatusDropdownFilter
@@ -22,7 +23,7 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
     list_display = ['client', 'create_date', 'get_status', 'has_design', 'has_price']
     list_filter = [
         MeteringStatusDropdownFilter,
-        ('create_date', RangeDateFilter),
+        get_date_filter('create_date'),
     ]
     list_filter_submit = True
     list_before_template = 'metering/metering_list_before.html'

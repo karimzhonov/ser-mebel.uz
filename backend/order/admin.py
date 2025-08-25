@@ -3,12 +3,11 @@ from django.contrib import admin
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 
-from unfold.contrib.filters.admin import RangeDateFilter
 from unfold.admin import ModelAdmin
-from unfold.dataclasses import UnfoldAction
 from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
 from core.utils import get_tag, get_folder_link_html
+from core.filters import get_date_filter
 from constance import config
 from .forms import OrderAddForm
 from .actions import OrderActions
@@ -26,7 +25,7 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
     list_filter = [
         OrderStatusDropdownFilter,
         OrderWarningDropdownFilter,
-        ('reception_date', RangeDateFilter),
+        get_date_filter('reception_date')
     ]
     list_filter_submit = True
     
@@ -63,10 +62,10 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
     @display(
         description='Дней осталось',
     )
-    def show_days(self, obj: Order):
+    def show_days(self, obj: Order, days_minus = 0):
         if obj.status == OrderStatus.DONE:
             return get_tag('Заказ готов', 'success')
-        days = obj.days
+        days = obj.days - days_minus
         return (
             get_tag(f'До сдачи заказа осталось {days} дней', 'secondary' if days > config.WARNING_ORDER_DAYS else 'warning')
             if days >= 0 

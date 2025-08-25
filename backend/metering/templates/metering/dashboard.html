@@ -1,11 +1,21 @@
 {% load unfold %}
 
 {% if perms.metering.view_metering %}
-    <div class="grid grid-cols-1 gap-4">
-        <div class="col-span-1 h-full">
+    <div class="grid grid-cols-7 gap-4">
+        <div class="col-span-7 h-full">
             {% component "unfold/components/card.html" with title=_("Статистика замери") %}
                 {% component "metering/components/metering_status_banner.html" with component_class="MeteringStatusBanner" %}{% endcomponent %}
             {% endcomponent %}
         </div> 
+        <div class="col-span-7 lg:col-span-5 h-full">
+            {% component "metering/components/line-chart.html" with component_class="MeteringLineChartComponent" %}{% endcomponent %}
+        </div>
+        <div class="col-span-7 lg:col-span-2 h-full">
+            {% component "metering/components/metering_status_progress.html" with component_class="MeteringStatusBanner" %}{% endcomponent %}
+        </div>
+        <div class="col-span-7 h-full flex flex-col lg:flex-row gap-4">
+            {% component "metering/design/status.html" with component_class="DesignStatusComponent" %}{% endcomponent %}
+            {% component "metering/price/status.html" with component_class="PriceStatusComponent" %}{% endcomponent %}
+        </div>
     </div>
 {% endif %}

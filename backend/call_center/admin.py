@@ -4,6 +4,7 @@ from unfold.admin import ModelAdmin
 from unfold.contrib.filters.admin import RangeDateFilter
 from unfold.decorators import display
 
+from core.filters import get_date_filter
 from core.utils import get_tag
 
 from .actions import InvoiceActions
@@ -19,7 +20,7 @@ class InvoiceAdmin(InvoiceActions, ModelAdmin):
     list_display = ['client', 'create_date', 'get_solution']
     list_filter = [
         InvoiceSolutionDropdownFilter,
-        ('create_date', RangeDateFilter),
+        get_date_filter('create_date'),
     ]
     list_filter_submit = True
     list_filter_sheet = False

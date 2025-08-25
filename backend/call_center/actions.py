@@ -8,7 +8,7 @@ from .models import Invoice
 
 
 class InvoiceActions:
-    actions_row = [solution for solution in SolutionChoice.get_order() if solution not in [SolutionChoice.sold_out]]
+    actions_row = [solution for solution in SolutionChoice.values if solution not in [SolutionChoice.sold_out]]
     
     def _go_for_measured(self, request, obj: Invoice):
         url = reverse_lazy("admin:metering_metering_add")

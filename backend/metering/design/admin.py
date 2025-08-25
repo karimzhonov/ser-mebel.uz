@@ -9,8 +9,10 @@ from unfold.dataclasses import ActionVariant, UnfoldAction
 from unfold.decorators import action, display
 from simple_history.admin import SimpleHistoryAdmin
 from core.utils.html import get_boolean_icons, get_folder_link_html
+from core.filters import get_date_filter
 from .models import Design
 from .inlines import DesignTypeInline
+from .components import *
 
 
 @admin.register(Design)
@@ -20,6 +22,7 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
     inlines = [DesignTypeInline]
     readonly_fields = ['metering_folder', 'created_at']
     exclude = ['done', 'metering']
+    list_filter = [get_date_filter('created_at')]
     
     @display(description='Выполнен')
     def is_done(self, obj: Design):

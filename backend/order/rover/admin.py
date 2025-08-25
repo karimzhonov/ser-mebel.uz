@@ -6,6 +6,8 @@ from unfold.admin import ModelAdmin
 from unfold.enums import ActionVariant
 from unfold.decorators import display, action
 from core.utils.html import get_boolean_icons, get_folder_link_html
+from core.filters import get_date_filter
+from .components import *
 from .models import Rover
 
 
@@ -15,6 +17,7 @@ class RoverAdmin(ModelAdmin):
     exclude = ['folder', 'done', 'order']
     readonly_fields = ['folder_link', 'order_folder_link']
     actions_detail = ['done_action']
+    list_filter = [get_date_filter('created_at')]
     
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False

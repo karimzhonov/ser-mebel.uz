@@ -1,0 +1,24 @@
+{% load unfold %}
+
+{% component "unfold/components/card.html" with title=_("Статистика дизайнов") %}
+    <div class="grid grid-cols-2 gap-4">
+        <a href="/admin/design/design/?done=0" class="flex flex-col items-center justify-between p-3 border-2 border-red-500 bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 rounded">
+            <span class="material-symbols-outlined" style="font-size: 50px;">
+                close
+            </span>
+            <h3 class="text-semibold text-lg text-center">не выполнено</h3>
+            <strong class="text-2xl">
+                {{not_done}}
+            </strong>
+        </a>
+        <a href="/admin/design/design/?done=1" class="flex flex-col items-center justify-between p-3 border-2 border-green-500 bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 rounded">
+            <span class="material-symbols-outlined" style="font-size: 50px;">
+                check
+            </span>
+            <h3 class="text-semibold text-lg text-center">Выполнено</h3>
+            <strong class="text-2xl">
+                {{done}}
+            </strong>
+        </a>
+    </div>
+{% endcomponent %}

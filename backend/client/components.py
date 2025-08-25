@@ -1,6 +1,7 @@
-import json, datetime
+import json
 from django.db.models import Count
-from django.db.models.functions import TruncDate
+from django.contrib.admin import site
+from django.db.models.functions import TruncDate, TruncMonth
 from unfold.components import register_component, BaseComponent
 
 from .models import Client
@@ -10,14 +11,21 @@ from .models import Client
 class ClientLineChartComponent(BaseComponent):
 
     def get_context_data(self, **kwargs):
-        qs = list(Client.objects.annotate(
-            date=TruncDate("created_at")
+        from .admin import ClientAdmin
+
+        change_list = ClientAdmin(Client, site).get_changelist_instance(self.request)
+        queryset = change_list.get_queryset(self.request)
+
+        dateExp = TruncMonth if 'year' in self.request.GET.get('date', []) else TruncDate
+        
+        qs = list(queryset.annotate(
+            date=dateExp("created_at")
         ).values('date').annotate(
             count=Count('phone'),
         ).order_by('date'))
 
         kwargs.update(data=json.dumps({
-            "labels": [v['date'].strftime('%d.%m.%Y') for v in qs],
+            "labels": [v['date'].strftime('%B' if 'year' in self.request.GET.get('date', []) else '%d.%m.%Y') for v in qs],
             "datasets": [
                 {
                     "data": [v['count'] for v in qs],
@@ -32,7 +40,12 @@ class ClientLineChartComponent(BaseComponent):
 class ClientTopComponent(BaseComponent):
 
     def get_context_data(self, **kwargs):
-        qs = Client.objects.annotate(
+        from .admin import ClientAdmin
+
+        change_list = ClientAdmin(Client, site).get_changelist_instance(self.request)
+        queryset = change_list.get_queryset(self.request)
+
+        qs = queryset.annotate(
             count_order=Count('order__id', distinct=True)
         ).order_by('-count_order')[:10]
         kwargs.update(

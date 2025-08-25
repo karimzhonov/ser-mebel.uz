@@ -25,11 +25,7 @@ class OrderStatusDropdownFilter(DropdownFilter):
     parameter_name = "status"
 
     def lookups(self, request, model_admin):
-        return [
-            *[
-            [status, _(status.label)]
-            for status in OrderStatus.get_order()
-        ]]
+        return OrderStatus.choices
 
     def queryset(self, request, queryset):
         if self.value():

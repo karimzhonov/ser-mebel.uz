@@ -7,9 +7,10 @@ from unfold.decorators import display, action
 from unfold.dataclasses import ActionVariant
 from simple_history.admin import SimpleHistoryAdmin
 
+from core.filters import get_date_filter
 from core.utils import get_folder_link_html
 from core.utils.html import get_boolean_icons
-
+from .components import *
 from .models import Price
 
 
@@ -19,6 +20,7 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     actions_detail = ['done_action']
     exclude = ['folder', 'done', 'metering']
     readonly_fields = ['metering_folder', 'folder_link']
+    list_filter = [get_date_filter('created_at')]
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False

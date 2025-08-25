@@ -1,6 +1,6 @@
 from urllib.parse import urlparse, parse_qs
 from django.http.request import HttpRequest
-
+from .constants import DashboardFilterChoices
 
 def get_navigation(tab):
     navigation = [
@@ -51,22 +51,16 @@ def get_navigation(tab):
 def get_filters(filter):
     filters = [
         {
-            "title": "All",
+            "title": "Все",
             "slug": '',
-        },
-        {
-            "title": "Last year",
-            "slug": 'year',
-        },
-        {
-            "title": "Last month",
-            "slug": 'month',
-        },
-        {
-            "title": "Last week",
-            "slug": 'week',
-        },
+        }
     ]
+
+    for choice in DashboardFilterChoices.choices:
+        filters.append({
+            "title": choice[1],
+            "slug": choice[0],
+        })
 
     for fil in filters:
         if fil['slug'] == filter:
@@ -78,7 +72,7 @@ def get_filters(filter):
 def dashboard_callback(request: HttpRequest, context):
     request.GET._mutable = True
     tab = ''.join(request.GET.pop('tab', []))
-    date = ''.join(request.GET.pop('date', []))
+    date = ''.join(request.GET.get('date', []))
     nav, navigation = get_navigation(tab)
     filters = get_filters(date)
     context.update(

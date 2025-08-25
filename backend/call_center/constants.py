@@ -41,16 +41,3 @@ class SolutionChoice(IntegerChoices):
     @classmethod
     def variant(cls, solution):
         return cls.colors()[solution]
-
-    @classmethod
-    def get_order(cls):
-        return [
-            cls.declined,
-            cls.dont_need,
-            cls.price_problem,
-            cls.re_phone,
-            cls.given_info,
-            cls.given_location,
-            cls.go_for_measured,
-            cls.sold_out,
-        ]

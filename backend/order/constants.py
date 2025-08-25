@@ -15,10 +15,6 @@ class OrderStatus(TextChoices):
     DONE = 'done', _('Готов')
 
     @classmethod
-    def get_order(cls):
-        return [cls.CREATED, cls.DETAILING, cls.WORKING, cls.ASSEMBLY, cls.INSTALLING, cls.DONE]
-    
-    @classmethod
     def get_sev(cls, status):
         return {
             OrderStatus.CREATED: "info",
@@ -42,7 +38,7 @@ class OrderStatus(TextChoices):
 
     @classmethod
     def next_status(cls, current):
-        order = cls.get_order()
+        order = cls.values
         try:
             idx = order.index(current)
             return order[idx + 1]
@@ -51,7 +47,7 @@ class OrderStatus(TextChoices):
 
     @classmethod
     def previous_status(cls, current):
-        order = cls.get_order()
+        order = cls.values
         try:
             idx = order.index(current)
             return order[idx - 1] if idx > 0 else None
