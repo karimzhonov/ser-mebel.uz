@@ -13,6 +13,9 @@ class ClientLineChartComponent(BaseComponent):
     def get_context_data(self, **kwargs):
         from .admin import ClientAdmin
 
+        self.request.GET._mutable = True
+        self.request.GET.setdefault('date', 'month')
+
         change_list = ClientAdmin(Client, site).get_changelist_instance(self.request)
         queryset = change_list.get_queryset(self.request)
 

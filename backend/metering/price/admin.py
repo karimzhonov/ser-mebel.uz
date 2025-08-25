@@ -21,6 +21,7 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     exclude = ['folder', 'done', 'metering']
     readonly_fields = ['metering_folder', 'folder_link']
     list_filter = [get_date_filter('created_at')]
+    list_filter_submit = True
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False

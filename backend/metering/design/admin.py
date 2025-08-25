@@ -23,6 +23,7 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
     readonly_fields = ['metering_folder', 'created_at']
     exclude = ['done', 'metering']
     list_filter = [get_date_filter('created_at')]
+    list_filter_submit = True
     
     @display(description='Выполнен')
     def is_done(self, obj: Design):

@@ -108,6 +108,9 @@ class OrderLineChartComponent(BaseComponent):
     def get_context_data(self, **kwargs):
         from .admin import OrderAdmin
 
+        self.request.GET._mutable = True
+        self.request.GET.setdefault('date', 'month')
+
         change_list = OrderAdmin(Order, site).get_changelist_instance(self.request)
         queryset = change_list.get_queryset(self.request)
         dateExp = TruncMonth if 'year' in self.request.GET.get('date', []) else TruncDate

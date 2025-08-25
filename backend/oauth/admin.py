@@ -42,6 +42,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     )
     list_display = ("phone", "is_staff", "is_superuser", "is_active")
     list_filter = ("is_staff", "is_superuser", "is_active", "groups")
+    list_filter_submit = True
     search_fields = ("phone",)
     ordering = ("phone",)
     filter_horizontal = (

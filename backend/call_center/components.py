@@ -58,6 +58,9 @@ class InvoiceLineChartComponent(BaseComponent):
     def get_context_data(self, **kwargs):
         from .admin import InvoiceAdmin
 
+        self.request.GET._mutable = True
+        self.request.GET.setdefault('date', 'month')
+
         change_list = InvoiceAdmin(Invoice, site).get_changelist_instance(self.request)
         queryset = change_list.get_queryset(self.request)
         dateExp = TruncMonth if 'year' in self.request.GET.get('date', []) else TruncDate

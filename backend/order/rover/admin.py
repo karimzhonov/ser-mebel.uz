@@ -18,6 +18,7 @@ class RoverAdmin(ModelAdmin):
     readonly_fields = ['folder_link', 'order_folder_link']
     actions_detail = ['done_action']
     list_filter = [get_date_filter('created_at')]
+    list_filter_submit = True
     
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False

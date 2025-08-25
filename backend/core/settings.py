@@ -90,6 +90,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     "simple_history.middleware.HistoryRequestMiddleware",
+    "core.djmoney.ConvertedCostMiddleware",
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -194,6 +195,8 @@ dj_setting.CURRENCY_CHOICES = [('USD', 'USD'), ('UZS', 'UZS')]
 # Валюта по умолчанию
 dj_setting.DEFAULT_CURRENCY = 'USD'
 dj_setting.DECIMAL_PLACES = 0
+dj_setting.EXCHANGE_BACKEND = 'core.djmoney.CBUBackend'
+dj_setting.BASE_CURRENCY = 'UZS'
 
 CONSTANCE_BACKEND = 'core.utils.constance.DatabaseBackend'
 

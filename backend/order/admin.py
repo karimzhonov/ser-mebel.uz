@@ -8,6 +8,7 @@ from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
 from core.utils import get_tag, get_folder_link_html
 from core.filters import get_date_filter
+from accounting.inlines import ExposeInline
 from constance import config
 from .forms import OrderAddForm
 from .actions import OrderActions
@@ -28,6 +29,9 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
         get_date_filter('reception_date')
     ]
     list_filter_submit = True
+    
+    def get_inlines(self, request: HttpRequest, obj: Any | None):
+        return [ExposeInline] if obj else []
     
     def get_readonly_fields(self, request: HttpRequest, obj: Any | None = ...) -> list[str] | tuple[Any, ...]:
         return ['folder_link', 'metering', 'client'] if obj else []

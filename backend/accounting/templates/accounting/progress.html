@@ -1,0 +1,9 @@
+{% load unfold %}
+
+{% component "unfold/components/card.html" with title=_("По категории") class="h-full" %}
+<div class="flex flex-col gap-5">
+    {% for category in categories %}
+        {% component "unfold/components/progress.html" with title=category.label value=category.per description=category.cost %}{% endcomponent %}
+    {% endfor %}
+</div>
+{% endcomponent %}

@@ -11,6 +11,7 @@ class ClientAdmin(ModelAdmin):
     list_display = ['fio', 'phone']
     search_fields = ['fio', 'phone']
     list_filter = [get_date_filter('created_at')]
+    list_filter_submit = True
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
