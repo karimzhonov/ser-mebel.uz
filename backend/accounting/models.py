@@ -1,8 +1,9 @@
 from django.db import models
 from djmoney.models.fields import MoneyField
 from djmoney.money import Money
-from djmoney.settings import BASE_CURRENCY
 from core.djmoney import ConvertedCostManager
+
+EXPENSE_ORDER_PERMISSION = 'create_order_expose'
 
 
 class ExpenseCategory(models.Model):
@@ -15,7 +16,7 @@ class ExpenseCategory(models.Model):
 
 
 class Expense(models.Model):
-    user = models.ForeignKey('oauth.User', models.CASCADE)
+    user = models.ForeignKey('oauth.User', models.SET_NULL, null=True, blank=True)
     cost = MoneyField(max_digits=12)
     category = models.ForeignKey(ExpenseCategory, models.PROTECT)
     desc = models.TextField(blank=True, null=True)
@@ -23,6 +24,19 @@ class Expense(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     manager = ConvertedCostManager(['cost'])
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                name="User or order",
+                check=(
+                    models.Q(user__isnull=False) | models.Q(order__isnull=False)
+                ),
+            )
+        ]
+        permissions = [
+            (EXPENSE_ORDER_PERMISSION, 'Create expense in order instance')
+        ]
 
     def __str__(self):
         return ' - '.join([str(self.category), str(self.cost)])

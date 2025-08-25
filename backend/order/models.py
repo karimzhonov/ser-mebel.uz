@@ -8,6 +8,8 @@ from filer.fields.folder import FilerFolderField
 from filer.models.foldermodels import Folder
 from djmoney.models.fields import MoneyField
 from core.utils import create_folder
+from accounting.constants import DefaultExpenseCategoryChoices
+
 from .constants import OrderStatus, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERSE_STATUS_PERMISSION, ORDER_VIEW_PRICE_PERMISSION
 from .managers import OrderManager
 
@@ -56,9 +58,11 @@ class Order(models.Model):
 
 
 @receiver(post_save, sender=Order)
-def create_design_type_folders(sender: Type[Order], instance: Order, created, **kwargs):
+def replace_order_folders(sender: Type[Order], instance: Order, created, **kwargs):
     if not created: return
-    
+    DefaultExpenseCategoryChoices.update_or_create_expense(
+        DefaultExpenseCategoryChoices.design, instance
+    )
     folder = create_folder(instance, 'Заказ')
     instance.metering.folder.parent = folder
     instance.metering.folder.save()

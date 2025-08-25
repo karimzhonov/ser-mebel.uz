@@ -6,6 +6,7 @@ from djmoney.models.fields import MoneyField
 from filer.models import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
+from accounting.constants import DefaultExpenseCategoryChoices
 
 
 class Painter(models.Model):
@@ -25,6 +26,10 @@ class Painter(models.Model):
 
 @receiver(post_save, sender=Painter)
 def create_painter_folders(sender: Type[Painter], instance: Painter, created, **kwargs):
+    DefaultExpenseCategoryChoices.update_or_create_expense(
+        DefaultExpenseCategoryChoices.rover, instance.order
+    )
+    
     if not created: return
     
     folder, _ = Folder.objects.get_or_create(

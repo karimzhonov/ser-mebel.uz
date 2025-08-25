@@ -1,0 +1,10 @@
+{% load unfold %}
+<div class="flex flex-col gap-4">
+    {% component "unfold/components/card.html" with title=_("Приходы") class="h-full" %}
+        {% include 'accounting/income_before_list.html' %}
+    {% endcomponent %}
+    
+    {% component "unfold/components/card.html" with title=_("Расходы") class="h-full" %}
+        {% include 'accounting/expense_before_list.html' %}
+    {% endcomponent %}
+</div>

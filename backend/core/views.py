@@ -38,6 +38,20 @@ def get_navigation(tab):
             "html_file": 'order/dashboard.html',
             "icon": "box",
             "permission": "order.view_order",
+        },
+        {
+            "title": "Бухгалтерия",
+            "link": '/admin/?tab=accounting',
+            "html_file": 'accounting/dashboard.html',
+            "icon": "finance_mode",
+            "permission": "accounting.view_expense",
+        },
+        {
+            "title": "Очеред заказов",
+            "link": '/admin/?tab=order_wait_list',
+            "html_file": 'order/order_wait_list.html',
+            "icon": "box",
+            "permission": "order.wait_list_order",
         }
     ]
     

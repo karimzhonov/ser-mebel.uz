@@ -32,7 +32,7 @@ class Detailing(models.Model):
 @receiver(post_save, sender=Detailing)
 def create_detailing_folders(sender: Type[Detailing], instance: Detailing, created, **kwargs):
     if instance.square:
-        Assembly.objects.get_or_create(
+        Assembly.objects.update_or_create(
             order=instance.order,
             defaults={
                 'square': instance.square,
@@ -41,7 +41,7 @@ def create_detailing_folders(sender: Type[Detailing], instance: Detailing, creat
         )
 
     if instance.painter_square:
-        Painter.objects.get_or_create(
+        Painter.objects.update_or_create(
             order=instance.order,
             defaults={
                 'square': instance.painter_square,
@@ -50,7 +50,7 @@ def create_detailing_folders(sender: Type[Detailing], instance: Detailing, creat
         )
 
     if instance.rover_square:
-        Rover.objects.get_or_create(
+        Rover.objects.update_or_create(
             order=instance.order,
             defaults={
                 'square': instance.rover_square,

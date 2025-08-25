@@ -6,6 +6,7 @@ from djmoney.models.fields import MoneyField
 from filer.models.foldermodels import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
+from accounting.constants import DefaultExpenseCategoryChoices
 
 
 class Assembly(models.Model):
@@ -27,6 +28,9 @@ class Assembly(models.Model):
 
 @receiver(post_save, sender=Assembly)
 def create_assembly_folders(sender: Type[Assembly], instance: Assembly, created, **kwargs):
+    DefaultExpenseCategoryChoices.update_or_create_expense(
+        DefaultExpenseCategoryChoices.rover, instance.order,
+    )
     if not created: return
     
     folder, _ = Folder.objects.get_or_create(
