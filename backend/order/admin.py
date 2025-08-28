@@ -2,11 +2,12 @@ from typing import Any
 from django.contrib import admin
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
-
+from djmoney.money import Money
 from unfold.admin import ModelAdmin
 from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
 from core.utils import get_tag, get_folder_link_html
+from core.utils.admin import not_add_permission_in_admin
 from core.filters import get_date_filter
 from accounting.inlines import ExposeInline
 from constance import config
@@ -29,12 +30,26 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
         get_date_filter('reception_date')
     ]
     list_filter_submit = True
+
+    def get_changeform_initial_data(self, request: HttpRequest) -> dict[str, str]:
+        initial = super().get_changeform_initial_data(request)
+        try:
+            price = request.GET.get("price")
+            if price:
+                amount, currency = price.split(":")
+                initial["price"] = Money(amount, currency)
+        except Exception:
+            pass
+        return initial
+
+    def has_add_permission(self, request: HttpRequest) -> bool:
+        return not_add_permission_in_admin
     
     def get_inlines(self, request: HttpRequest, obj: Any | None):
         return [ExposeInline] if obj else []
     
     def get_readonly_fields(self, request: HttpRequest, obj: Any | None = ...) -> list[str] | tuple[Any, ...]:
-        return ['folder_link', 'metering', 'client'] if obj else []
+        return ['folder_link', 'metering', 'client', 'reception_date', 'end_date', 'address', 'address_link'] if obj else []
 
     def get_fieldsets(self, request: HttpRequest, obj=None):
         fieldsets = [

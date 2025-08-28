@@ -27,7 +27,7 @@ class Rover(models.Model):
 @receiver(post_save, sender=Rover)
 def create_rover_folders(sender: Type[Rover], instance: Rover, created, **kwargs):
     DefaultExpenseCategoryChoices.update_or_create_expense(
-        DefaultExpenseCategoryChoices.rover, instance.order, 
+        DefaultExpenseCategoryChoices.rover, instance.order, instance.price, 
     )
 
     if not created: return

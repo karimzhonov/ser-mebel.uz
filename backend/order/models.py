@@ -59,11 +59,12 @@ class Order(models.Model):
 
 @receiver(post_save, sender=Order)
 def replace_order_folders(sender: Type[Order], instance: Order, created, **kwargs):
-    if not created: return
     DefaultExpenseCategoryChoices.update_or_create_expense(
-        DefaultExpenseCategoryChoices.design, instance
+        DefaultExpenseCategoryChoices.design, instance, instance.metering.design.price
     )
+    if not created: return
     folder = create_folder(instance, 'Заказ')
+    instance.metering.folder.name = 'Замеры'
     instance.metering.folder.parent = folder
     instance.metering.folder.save()
     Folder.objects.filter(parent=instance.metering.folder).update(parent=folder)

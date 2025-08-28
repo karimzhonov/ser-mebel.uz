@@ -23,7 +23,7 @@ def get_navigation(tab):
             "link": '/admin/?tab=call_center',
             "html_file": 'call_center/dashboard.html',
             "icon": "phone",
-            "permission": "call_center.view_call_center",
+            "permission": "call_center.view_invoice",
         },
         {
             "title": "Замер",

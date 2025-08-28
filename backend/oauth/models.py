@@ -21,6 +21,8 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     phone = PhoneNumberField(unique=True, region='UZ')  # Указывается регион по умолчанию (UZ = Узбекистан)
+    name = models.CharField(max_length=255, blank=True, null=True)
+
     is_staff = models.BooleanField(
         _("staff status"),
         default=False,
@@ -41,4 +43,4 @@ class User(AbstractBaseUser, PermissionsMixin):
     objects = UserManager()
 
     def __str__(self):
-        return str(self.phone)
+        return str(self.phone) if not self.name else f'{self.name} ({self.phone})'

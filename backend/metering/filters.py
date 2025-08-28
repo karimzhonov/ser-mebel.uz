@@ -12,6 +12,7 @@ class MeteringStatusDropdownFilter(MultipleDropdownFilter):
         return MeteringStatus.choices
 
     def queryset(self, request, queryset):
-        if self.value() and not self.value() in ['', None]:
-            return queryset.filter(status__in=self.value())
+        value = ','.join(self.value())
+        if value and not value in ['']:
+            return queryset.filter(status__in=value.split(','))
         return queryset

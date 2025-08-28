@@ -3,7 +3,7 @@ from django.contrib.auth.models import Group, Permission
 from django.utils.html import format_html
 from filer.models import File, Folder, FolderPermission, ThumbnailOption, Image
 from filer.admin import FileAdmin, FolderAdmin, PermissionAdmin
-
+from djmoney.settings import CURRENCY_CHOICES
 from unfold.decorators import display
 from unfold.admin import ModelAdmin
 from discussion.inlines import DiscussionInline
@@ -31,8 +31,8 @@ class UFolderAdmin(FolderAdmin, ModelAdmin):
 @admin.register(File)
 class UFileAdmin(FileAdmin, ModelAdmin):
     fieldsets = ()
-    fields = ['display_canonical', 'file', '_file_size', 'owner', 'uploaded_at', 'modified_at', 'is_public']
-    readonly_fields = ['display_canonical', '_file_size', 'owner', 'uploaded_at', 'modified_at']
+    fields = ['preview', 'owner', 'uploaded_at']
+    readonly_fields = ['preview', 'owner', 'uploaded_at']
     inlines = [DiscussionInline]
 
     def get_model_perms(self, request):
@@ -44,12 +44,20 @@ class UFileAdmin(FileAdmin, ModelAdmin):
             'change': False,
             'delete': False,
         }
+    
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+    
+    @display(description='Файл')
+    def preview(self, obj: File):
+        return format_html(f'<a href="{obj.canonical_url}" target="_blank">{obj.original_filename}</a>') if obj.canonical_url else '-'
+
 
 
 @admin.register(Image)
 class UImageAdmin(UFileAdmin):
-    fields = ['preview', 'display_canonical', 'file', '_file_size', 'owner', 'uploaded_at', 'modified_at', 'is_public']
-    readonly_fields = ['preview', 'display_canonical', '_file_size', 'owner', 'uploaded_at', 'modified_at']
+    fields = ['preview', 'owner', 'uploaded_at']
+    readonly_fields = ['preview', 'owner', 'uploaded_at']
     
     @display(image=True, description='Фото')
     def preview(self, obj: Image):

@@ -7,6 +7,7 @@ from filer.models.foldermodels import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 from accounting.constants import DefaultExpenseCategoryChoices
+from .constants import ASSEMBLY_MANAGER_PERMISSION
 
 
 class Assembly(models.Model):
@@ -24,12 +25,17 @@ class Assembly(models.Model):
 
     def __str__(self):
         return str(self.order)
+    
+    class Meta:
+        permissions = [
+            (ASSEMBLY_MANAGER_PERMISSION, 'Assembly manager')
+        ]
 
 
 @receiver(post_save, sender=Assembly)
 def create_assembly_folders(sender: Type[Assembly], instance: Assembly, created, **kwargs):
     DefaultExpenseCategoryChoices.update_or_create_expense(
-        DefaultExpenseCategoryChoices.rover, instance.order,
+        DefaultExpenseCategoryChoices.assembly, instance.order, instance.price
     )
     if not created: return
     

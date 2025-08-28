@@ -4,8 +4,7 @@ from django.db.models.query import QuerySet
 from django.db.models import F, ExpressionWrapper, DecimalField, FloatField, Value, Case, When
 from django.utils.deprecation import MiddlewareMixin
 from djmoney.contrib.exchange.backends.base import SimpleExchangeBackend
-from djmoney.settings import DEFAULT_CURRENCY
-from djmoney.settings import BASE_CURRENCY
+from djmoney.settings import DEFAULT_CURRENCY, BASE_CURRENCY
 
 
 class CBUBackend(SimpleExchangeBackend):
@@ -28,9 +27,9 @@ class CBUBackend(SimpleExchangeBackend):
 
 def get_rate(currency):
     backend = CBUBackend()
-    rates = backend.get_rates(currency=currency)
-    rate = float(rates.get(currency, 1))
-    return rate if currency == BASE_CURRENCY else (1 / rate)
+    rates = backend.get_rates(currency='USD')
+    rate = float(rates.get('USD', 1))
+    return (1 / rate) if currency == 'USD' else rate
 
 
 class ConvertedCostManager(Manager):
@@ -48,7 +47,7 @@ class ConvertedCostManager(Manager):
             print(_exp)
             rate = get_rate(DEFAULT_CURRENCY)
             currency = DEFAULT_CURRENCY
-        
+        print(rate)
         annotate_dict = {}
 
         for field in self.fields:

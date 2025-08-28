@@ -9,7 +9,7 @@ from simple_history.models import HistoricalRecords
 
 
 class Price(models.Model):
-    metering = models.OneToOneField('metering.Metering', models.PROTECT)
+    metering = models.OneToOneField('metering.Metering', models.CASCADE)
     price = MoneyField(max_digits=12, blank=True, null=True)
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='price_folder', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -30,10 +30,12 @@ def create_price_folders(sender: Type[Price], instance: Price, created, **kwargs
     created_history = instance.history.order_by('history_date').first()
     created_user = created_history.history_user if created_history else None
 
-    price_folder = Folder.objects.create(
+    price_folder, _ = Folder.objects.get_or_create(
         name='Нарх чикариш',
         parent=instance.metering.folder,
-        owner=created_user
+        defaults={
+            "owner": created_user
+        }
     )
 
     instance.folder=price_folder

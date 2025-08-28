@@ -18,6 +18,7 @@ from django.templatetags.static import static
 from django.urls import reverse_lazy
 from constance import config
 from djmoney.money import Money
+from metering.constants import MeteringStatus
 
 from .utils import media
 
@@ -186,7 +187,7 @@ X_FRAME_OPTIONS = 'ALLOWALL'
 
 FILER_DEBUG = DEBUG
 FILER_SUBJECT_LOCATION_IMAGE_DEBUG = True
-FILER_ENABLE_PERMISSIONS = True
+FILER_ENABLE_PERMISSIONS = False
 FILER_FOLDER_ADMIN_DEFAULT_LIST_TYPE = 'th'
 
 from djmoney import settings as dj_setting
@@ -410,19 +411,19 @@ UNFOLD = {
                     {
                         "title": "Замери",
                         "icon": "settings",
-                        "link": reverse_lazy("admin:metering_metering_changelist"),
+                        "link": reverse_lazy("admin:metering_metering_changelist", query={'status': ','.join(MeteringStatus.active_statuses())}),
                         "permission": lambda request: request.user.has_perm('metering.view_metering'),
                     },
                     {
                         "title": "Дизайн",
                         "icon": "brush",
-                        "link": reverse_lazy("admin:design_design_changelist"),
+                        "link": reverse_lazy("admin:design_design_changelist", query={'done': False}),
                         "permission": lambda request: request.user.has_perm('design.view_design'),
                     },
                     {
                         "title": "Нарх чикариш",
                         "icon": "attach_money",
-                        "link": reverse_lazy("admin:price_price_changelist"),
+                        "link": reverse_lazy("admin:price_price_changelist", query={'done': False}),
                         "permission": lambda request: request.user.has_perm('price.view_price'),
                     },
                 ]
@@ -439,25 +440,25 @@ UNFOLD = {
                     {
                         "title": "Деталировка / Производстьво",
                         "icon": "book",
-                        "link": reverse_lazy("admin:detailing_detailing_changelist"),
+                        "link": reverse_lazy("admin:detailing_detailing_changelist", query={'working_done': False}),
                         "permission": lambda request: request.user.has_perm('detailing.view_detailing'),
                     },
                     {
                         "title": "Ровер",
                         "icon": "design_services",
-                        "link": reverse_lazy("admin:rover_rover_changelist"),
+                        "link": reverse_lazy("admin:rover_rover_changelist", query={'done': False}),
                         "permission": lambda request: request.user.has_perm('rover.view_rover'),
                     },
                     {
                         "title": "Моляр",
                         "icon": "brush",
-                        "link": reverse_lazy("admin:painter_painter_changelist"),
+                        "link": reverse_lazy("admin:painter_painter_changelist", query={'done': False}),
                         "permission": lambda request: request.user.has_perm('painter.view_painter'),
                     },
                     {
                         "title": "Сборка / Установка",
                         "icon": "bolt",
-                        "link": reverse_lazy("admin:assembly_assembly_changelist"),
+                        "link": reverse_lazy("admin:assembly_assembly_changelist", query={'installing_done': False}),
                         "permission": lambda request: request.user.has_perm('assembly.view_assembly'),
                     }
                 ],
@@ -465,24 +466,124 @@ UNFOLD = {
         ],
     },
     "TABS": [
-        # {
-        #     "models": [
-        #         "order.order",
-        #     ],
-        #     "items": [
-        #         {
-        #             "title": 'Все закази',
-        #             "link": reverse_lazy("admin:order_order_changelist", query={'status': 'all'}),
-        #             "permission": lambda request: True,
-        #         },
-        #         *[
-        #             {
-        #                 "title": status.label,
-        #                 "link": reverse_lazy("admin:order_order_changelist", query={'status': status}),
-        #                 "permission": lambda request: True,
-        #             } for status in OrderStatus.values
-        #         ]
-        #     ],
-        # },
+        {
+            'models': [
+                'metering.metering'
+            ],
+            'items': [
+                {
+                    "title": 'Активний',
+                    "link": reverse_lazy("admin:metering_metering_changelist", query={'status': ','.join(MeteringStatus.active_statuses())}),
+                    "permission": lambda request: True,
+                },
+                {
+                    "title": 'Архив',
+                    "link": reverse_lazy("admin:metering_metering_changelist", query={'status': ','.join(MeteringStatus.archive_statuses())}),
+                    "permission": lambda request: True,
+                }
+            ]
+        },
+        {
+            'models': [
+                'design.design'
+            ],
+            'items': [
+                {
+                    "title": 'Активний',
+                    "link": reverse_lazy("admin:design_design_changelist", query={'done': False}),
+                    "permission": lambda request: True,
+                },
+                {
+                    "title": 'Архив',
+                    "link": reverse_lazy("admin:design_design_changelist", query={'status': True}),
+                    "permission": lambda request: True,
+                }
+            ]
+        },
+        {
+            'models': [
+                'price.price'
+            ],
+            'items': [
+                {
+                    "title": 'Активний',
+                    "link": reverse_lazy("admin:price_price_changelist", query={'done': False}),
+                    "permission": lambda request: True,
+                },
+                {
+                    "title": 'Архив',
+                    "link": reverse_lazy("admin:price_price_changelist", query={'done': True}),
+                    "permission": lambda request: True,
+                }
+            ]
+        },
+        {
+            'models': [
+                'detailing.detailing'
+            ],
+            'items': [
+                {
+                    "title": 'Активний',
+                    "link": reverse_lazy("admin:detailing_detailing_changelist", query={'working_done': False}),
+                    "permission": lambda request: True,
+                },
+                {
+                    "title": 'Архив',
+                    "link": reverse_lazy("admin:detailing_detailing_changelist", query={'working_done': True}),
+                    "permission": lambda request: True,
+                }
+            ]
+        },
+        {
+            'models': [
+                'rover.rover'
+            ],
+            'items': [
+                {
+                    "title": 'Активний',
+                    "link": reverse_lazy("admin:rover_rover_changelist", query={'done': False}),
+                    "permission": lambda request: True,
+                },
+                {
+                    "title": 'Архив',
+                    "link": reverse_lazy("admin:rover_rover_changelist", query={'done': True}),
+                    "permission": lambda request: True,
+                }
+            ]
+        },
+        {
+            'models': [
+                'painter.painter'
+            ],
+            'items': [
+                {
+                    "title": 'Активний',
+                    "link": reverse_lazy("admin:painter_painter_changelist", query={'done': False}),
+                    "permission": lambda request: True,
+                },
+                {
+                    "title": 'Архив',
+                    "link": reverse_lazy("admin:painter_painter_changelist", query={'done': True}),
+                    "permission": lambda request: True,
+                }
+            ]
+        },
+        {
+            'models': [
+                'assembly.assembly'
+            ],
+            'items': [
+                {
+                    "title": 'Активний',
+                    "link": reverse_lazy("admin:assembly_assembly_changelist", query={'installing_done': False}),
+                    "permission": lambda request: True,
+                },
+                {
+                    "title": 'Архив',
+                    "link": reverse_lazy("admin:assembly_assembly_changelist", query={'installing_done': True}),
+                    "permission": lambda request: True,
+                }
+            ]
+        }
     ],
 }

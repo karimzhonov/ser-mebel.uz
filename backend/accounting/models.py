@@ -23,7 +23,7 @@ class Expense(models.Model):
     order = models.ForeignKey('order.Order', models.SET_NULL, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    manager = ConvertedCostManager(['cost'])
+    objects = ConvertedCostManager(['cost'])
 
     class Meta:
         constraints = [
@@ -64,7 +64,7 @@ class Income(models.Model):
     desc = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    manager = ConvertedCostManager(['cost'])
+    objects = ConvertedCostManager(['cost'])
 
     def __str__(self):
         return ' - '.join([str(self.category), str(self.cost)])

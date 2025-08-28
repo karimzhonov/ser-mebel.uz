@@ -7,6 +7,7 @@ from django.contrib.admin import site
 
 from constance import config
 from core.utils import get_colors
+from .assembly.constants import ASSEMBLY_MANAGER_PERMISSION
 from .models import Order, OrderStatus
 
 
@@ -16,6 +17,11 @@ class StatusBanner(BaseComponent):
         context = super().get_context_data(**kwargs)
         context.update(self.status_context())
         return context
+    
+    def _get_count(self, queryset, status):
+        if status in [OrderStatus.ASSEMBLY, OrderStatus.INSTALLING] and not self.request.user.has_perm(f'assembly.{ASSEMBLY_MANAGER_PERMISSION}'):
+            return queryset.filter(status=status, assembly__user=self.request.user).count()
+        return queryset.filter(status=status).count()
     
     def status_context(self):
         from .admin import OrderAdmin
@@ -31,24 +37,28 @@ class StatusBanner(BaseComponent):
                 'border': f'border-2 border-{OrderStatus.get_sev(status)}-500' if status in current_status else f'',
                 'status': status,
                 'label': OrderStatus(status).label,
-                'count': queryset.filter(status=status).count(),
+                'count': self._get_count(queryset, status),
                 'icon': OrderStatus.icon(status),
                 'color': get_colors(OrderStatus.get_sev(status)),
+                'permission': OrderStatus.permission(status),
             } for status in OrderStatus.values
         ]
 
+        statuses = [
+            {
+                "border": "border dark:border-transparent",
+                'status': '',
+                'label': 'Все закази',
+                'count': queryset.count(),
+                'icon': 'box',
+                'color': 'gray',
+                'permission': 'order.view_order',
+            },
+            *statuses,
+        ]
+
         return {
-            'statuses': [
-                {
-                    "border": "border dark:border-transparent",
-                    'status': '',
-                    'label': 'Все закази',
-                    'count': queryset.count(),
-                    'icon': 'box',
-                    'color': 'gray',
-                },
-                *statuses,
-            ]
+            'statuses': [status for status in statuses if self.request.user.has_perm(status['permission'])]
         }
 
 

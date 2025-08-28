@@ -15,6 +15,25 @@ class OrderStatus(TextChoices):
     DONE = 'done', _('Готов')
 
     @classmethod
+    def permission(cls, status):
+        return {
+            OrderStatus.CREATED: "order.view_order",
+            OrderStatus.DETAILING: "detailing.view_detailing",
+            OrderStatus.WORKING: "detailing.view_detailing",
+            OrderStatus.ASSEMBLY:  "assembly.view_assembly",
+            OrderStatus.INSTALLING:  "assembly.view_assembly",
+            OrderStatus.DONE: "order.view_order",
+        }[status]
+
+    @classmethod
+    def active_statuses(cls):
+        return [cls.CREATED, cls.DETAILING, cls.WORKING, cls.ASSEMBLY, cls.INSTALLING]
+    
+    @classmethod
+    def archive_statuses(cls):
+        return [cls.DONE]
+
+    @classmethod
     def get_sev(cls, status):
         return {
             OrderStatus.CREATED: "info",

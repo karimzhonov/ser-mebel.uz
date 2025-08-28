@@ -27,7 +27,7 @@ class Painter(models.Model):
 @receiver(post_save, sender=Painter)
 def create_painter_folders(sender: Type[Painter], instance: Painter, created, **kwargs):
     DefaultExpenseCategoryChoices.update_or_create_expense(
-        DefaultExpenseCategoryChoices.rover, instance.order
+        DefaultExpenseCategoryChoices.painter, instance.order, instance.price
     )
     
     if not created: return

@@ -1,15 +1,16 @@
 {% load i18n unfold %}
-
-<div class="mb-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
-    {% for status in warnings %}
-        <a href="/admin/order/order/?warning={{status.warning}}" class="flex flex-col items-center justify-between p-3 {{status.border}} {{status.color}} rounded">
-            <span class="material-symbols-outlined" style="font-size: 50px;">
-                {{status.icon}}
-            </span>
-            <h3 class="text-semibold text-lg text-center">{{ status.label }}</h3>
-            <strong class="text-2xl">
-                {{ status.count }}
-            </strong>
-        </a>
-    {% endfor %}
-</div>
+{% if perms.order.view_order %}
+    <div class="mb-3 grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {% for status in warnings %}
+            <a href="/admin/order/order/?warning={{status.warning}}" class="flex flex-col items-center justify-between p-3 {{status.border}} {{status.color}} rounded">
+                <span class="material-symbols-outlined" style="font-size: 50px;">
+                    {{status.icon}}
+                </span>
+                <h3 class="text-semibold text-lg text-center">{{ status.label }}</h3>
+                <strong class="text-2xl">
+                    {{ status.count }}
+                </strong>
+            </a>
+        {% endfor %}
+    </div>
+{% endif %}

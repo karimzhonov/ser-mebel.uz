@@ -15,6 +15,7 @@ class Metering(models.Model):
     address = models.TextField(blank=True, null=True, verbose_name='Адрес')
     address_link = models.URLField(max_length=1000, blank=True, null=True, verbose_name='Адрес ссылка')
     create_date = models.DateTimeField(auto_now_add=True, verbose_name='Дата создание')
+    desc = models.TextField(blank=True, null=True)
     
     date_time = models.DateTimeField(null=True)
     invoice = models.OneToOneField('call_center.Invoice', models.PROTECT, blank=True, null=True, verbose_name='Call-center инвойс')

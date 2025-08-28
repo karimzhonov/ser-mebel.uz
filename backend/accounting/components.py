@@ -4,7 +4,8 @@ from django.contrib.admin import site
 from django.db.models import Count, Sum, F
 from django.db.models.functions import TruncDate, TruncMonth
 from django.contrib.admin import site
-
+from djmoney.settings import CURRENCY_CHOICES, DEFAULT_CURRENCY
+from djmoney.money import Money
 from .models import Expense, Income
 
 
@@ -17,18 +18,22 @@ class ExpenseProgressComponent(BaseComponent):
         change_list = ExpenseAdmin(Expense, site).get_changelist_instance(self.request)
         queryset = change_list.get_queryset(self.request)
         cost = queryset.aggregate(cost=Sum('converted_cost')).get('cost')
+        currency = ''.join(self.request.GET.get('currency', [DEFAULT_CURRENCY]))
 
         kwargs.update(
             categories=queryset.values(
                 "category"
             ).annotate(
                 label = F('category__name'),
-                per = (Sum('converted_cost') / cost) if cost else 0,
-                cost = F('converted_cost'),
-                cost_currency = F('converted_cost_currency')
+                per = (Sum('converted_cost') / cost) if cost else 100,
+                cost = Sum('converted_cost'),
             ))
         for cat in kwargs['categories']:
-            cat['cost'] = f'{round(cat["cost"], 2)} {cat["cost_currency"]}'
+            cat['cost'] = Money(round(cat["cost"], 2), currency)
+
+        kwargs.update(
+            cost=Money(round(cost, 2), currency)
+        )
         return kwargs
 
 
@@ -48,14 +53,14 @@ class ExpenseLineChartComponent(BaseComponent):
         qs = list(queryset.annotate(
             date=dateExp("created_at")
         ).values('date').annotate(
-            count=Count('id'),
+            count=Sum('converted_cost'),
         ).order_by('date'))
 
         kwargs.update(data=json.dumps({
             "labels": [v['date'].strftime('%B' if 'year' in self.request.GET.get('date', []) else '%d.%m.%Y') for v in qs],
             "datasets": [
                 {
-                    "data": [v['count'] for v in qs],
+                    "data": [float(v['count']) for v in qs],
                     "borderColor": "var(--color-primary-700)",
                 }
             ]
@@ -73,18 +78,22 @@ class IncomeProgressComponent(BaseComponent):
         change_list = IncomeAdmin(Income, site).get_changelist_instance(self.request)
         queryset = change_list.get_queryset(self.request)
         cost = queryset.aggregate(cost=Sum('converted_cost')).get('cost')
+        currency = ''.join(self.request.GET.get('currency', [DEFAULT_CURRENCY]))
 
         kwargs.update(
             categories=queryset.values(
                 "category"
             ).annotate(
                 label = F('category__name'),
-                per = (Sum('converted_cost') / cost) if cost else 0,
-                cost = F('converted_cost'),
-                cost_currency = F('converted_cost_currency')
+                per = (Sum('converted_cost') / cost) if cost else 100.0,
+                cost = Sum('converted_cost'),
             ))
         for cat in kwargs['categories']:
-            cat['cost'] = f'{round(cat["cost"], 2)} {cat["cost_currency"]}'
+            cat['cost'] = Money(round(cat["cost"], 2), currency)
+        
+        kwargs.update(
+            cost=Money(round(cost, 2), currency)
+        )
         return kwargs
 
 
@@ -108,9 +117,21 @@ class IncomeLineChartComponent(BaseComponent):
             "labels": [v['date'].strftime('%B' if 'year' in self.request.GET.get('date', []) else '%d.%m.%Y') for v in qs],
             "datasets": [
                 {
-                    "data": [v['count'] for v in qs],
+                    "data": [float(v['count']) for v in qs],
                     "borderColor": "var(--color-primary-700)",
                 }
             ]
         }))
+        return kwargs
+
+
+@register_component
+class CurrenciesComponent(BaseComponent):
+
+    def get_context_data(self, **kwargs):
+        currency = ''.join(self.request.GET.get('currency', [DEFAULT_CURRENCY]))
+        currencies = [{"title": c, 'active': c == currency} for c in list(dict(CURRENCY_CHOICES).keys())]
+        kwargs.update(
+            items=currencies
+        )
         return kwargs

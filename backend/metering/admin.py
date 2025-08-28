@@ -20,14 +20,15 @@ from .components import *
 
 @admin.register(Metering)
 class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
-    list_display = ['client', 'create_date', 'get_status', 'has_design', 'has_price']
+    list_display = ['client', 'date_time', 'get_status', 'has_design', 'has_price']
     list_filter = [
         MeteringStatusDropdownFilter,
         get_date_filter('create_date'),
     ]
     list_filter_submit = True
-    list_before_template = 'metering/metering_list_before.html'
+    # list_before_template = 'metering/metering_list_before.html'
     exclude = ['status', 'folder']
+    ordering = ['date_time']
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         if request.resolver_match.view_name.endswith("changelist"):
@@ -44,7 +45,12 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
         return super().response_add(request, obj, post_url_continue)
 
     def get_readonly_fields(self, request, obj = None):
-        return ['folder_link', 'design', 'price', 'invoice', 'address', 'address_link', 'client'] if obj else []
+        readonly_fields = ['folder_link', 'invoice', 'address', 'address_link', 'client']
+        if obj and hasattr(obj, 'design'):
+            readonly_fields.append('design')
+        if obj and hasattr(obj, 'price'):
+            readonly_fields.append('price')
+        return readonly_fields if obj else []
     
     def get_form(self, request, obj=None, **kwargs):
         if not obj:
@@ -80,3 +86,16 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
             hasattr(obj, 'price') and obj.price,
             hasattr(obj, 'price') and obj.price and obj.price.done,
         ])
+    
+    def get_fieldsets(self, request, obj=None):
+        if not obj: return super().get_fieldsets(request, obj)
+        fields = ['client', 'invoice', 'address', 'address_link', 'folder_link', 'date_time', 'desc']
+        if obj and hasattr(obj, 'design'):
+            fields.append('design')
+        if obj and hasattr(obj, 'price'):
+            fields.append('price')
+        return [
+            (None, {
+                "fields": fields
+                })
+            ]

@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.shortcuts import redirect
+from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.http import HttpRequest
 from unfold.admin import ModelAdmin
@@ -13,11 +13,11 @@ from .models import Painter
 
 @admin.register(Painter)
 class PainterAdmin(ModelAdmin):
-    list_display = ['order', 'is_done']
+    list_display = ['order', 'is_done', 'square', 'price']
     exclude = ['folder', 'done', 'order']
     readonly_fields = ['folder_link', 'order_folder_link']
     actions_detail = ['done_action']
-    list_filter = [get_date_filter('created_at')]
+    list_filter = [get_date_filter('created_at'), 'done']
     list_filter_submit = True
     
     def has_add_permission(self, request: HttpRequest) -> bool:
@@ -45,10 +45,15 @@ class PainterAdmin(ModelAdmin):
     @action(
         description='Выполнить',
         url_path="done",
-        variant=ActionVariant.SUCCESS
+        variant=ActionVariant.SUCCESS,
+        permissions=['done_action']
     )
     def done_action(self, request, object_id):
         obj = Painter.objects.get(pk=object_id)
         obj.done = True
         obj.save()
-        return redirect(reverse_lazy('admin:detailing_detailing_changelist'))
+        return redirect(reverse_lazy('admin:painter_painter_changelist'))
+
+    def has_done_action_permission(self, request, object_id: Painter):
+        obj = get_object_or_404(Painter, pk=object_id)
+        return request.user.has_perm('painter.change_painter') and not obj.done

@@ -9,18 +9,19 @@ class DefaultExpenseCategoryChoices(IntegerChoices):
     assembly = (4, 'Услуга сборка/установка')
 
     @classmethod
-    def update_or_create_expense(cls, category_id, order=None):
+    def update_or_create_expense(cls, category_id, order, price):
         category, _ = ExpenseCategory.objects.update_or_create(
             id=category_id,
             defaults={
                 "name": cls(category_id).label
             }
         )
-
+        print(price)
         return Expense.objects.update_or_create(
             order=order,
             category=category,
             defaults={
-                'cost': order.price
+                'cost': price,
+                'desc': 'Platforma tomonidan kirgizilgan rasxod'
             }
         )

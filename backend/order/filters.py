@@ -1,4 +1,4 @@
-from unfold.contrib.filters.admin import DropdownFilter
+from unfold.contrib.filters.admin import DropdownFilter, MultipleDropdownFilter
 from django.utils.translation import gettext_lazy as _
 from .components import WarningBanner
 from .constants import OrderStatus
@@ -20,7 +20,7 @@ class OrderWarningDropdownFilter(DropdownFilter):
         return queryset
 
 
-class OrderStatusDropdownFilter(DropdownFilter):
+class OrderStatusDropdownFilter(MultipleDropdownFilter):
     title = _("Статус")
     parameter_name = "status"
 
@@ -28,6 +28,7 @@ class OrderStatusDropdownFilter(DropdownFilter):
         return OrderStatus.choices
 
     def queryset(self, request, queryset):
-        if self.value():
-            return queryset.filter(status=self.value())
+        value = ','.join(self.value())
+        if value and not value in ['']:
+            return queryset.filter(status__in=value.split(','))
         return queryset

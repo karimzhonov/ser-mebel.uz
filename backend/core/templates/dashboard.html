@@ -1,17 +1,22 @@
 {% load unfold %}
 
 <div class="grid grid-cols-7 gap-4">
-    {% if perms.order.view_order %}
-        <div class="col-span-7 h-full">
-            {% component "unfold/components/card.html" with title=_("Статистика заказов") %}
-                {% component "order/components/warning_banner.html" with component_class="WarningBanner" %}{% endcomponent %}
-                {% component "order/components/status_banner.html" with component_class="StatusBanner" %}{% endcomponent %}
-            {% endcomponent %}
-        </div>
-        <div class="col-span-7 h-full">
-            {% component "order/components/wait_list.html" with component_class="OrderWaitListComponent" %}{% endcomponent %}
-        </div>
-    {% endif %}
+    
+    <div class="col-span-7 h-full">
+        {% component "unfold/components/card.html" with title=_("Статистика заказов") %}
+            {% component "order/components/warning_banner.html" with component_class="WarningBanner" %}{% endcomponent %}
+            {% component "order/components/status_banner.html" with component_class="StatusBanner" %}{% endcomponent %}
+            <div class="flex flex-col lg:flex-row gap-4 w-full">
+                {% if perms.rover.view_rover %}
+                    {% component "order/rover/status.html" with component_class="RoverStatusComponent" %}{% endcomponent %}
+                {% endif %}
+                
+                {% if perms.painter.view_painter %}
+                    {% component "order/painter/status.html" with component_class="PainterStatusComponent" %}{% endcomponent %}
+                {% endif %}
+            </div>
+        {% endcomponent %}
+    </div>
     
     {% if perms.metering.view_metering %}
         <div class="col-span-7 h-full">
@@ -20,6 +25,15 @@
             {% endcomponent %}
         </div>
     {% endif %}
+
+    <div class="col-span-7 h-full flex flex-col lg:flex-row gap-4">
+        {% if perms.design.view_design %}
+            {% component "metering/design/status.html" with component_class="DesignStatusComponent" %}{% endcomponent %}
+        {% endif %}
+        {% if perms.price.view_price %}
+            {% component "metering/price/status.html" with component_class="PriceStatusComponent" %}{% endcomponent %}
+        {% endif %}
+    </div>
 
     {% if perms.call_center.view_invoice %}
         <div class="col-span-7 lg:col-span-5 h-full">

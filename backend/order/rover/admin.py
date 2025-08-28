@@ -1,5 +1,5 @@
 from django.contrib import admin
-from django.shortcuts import redirect
+from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.http import HttpRequest
 from unfold.admin import ModelAdmin
@@ -13,17 +13,17 @@ from .models import Rover
 
 @admin.register(Rover)
 class RoverAdmin(ModelAdmin):
-    list_display = ['order', 'is_done']
+    list_display = ['order', 'is_done', 'square', 'price']
     exclude = ['folder', 'done', 'order']
-    readonly_fields = ['folder_link', 'order_folder_link']
+    readonly_fields = ['square', 'price', 'order_folder_link', 'folder_link']
     actions_detail = ['done_action']
-    list_filter = [get_date_filter('created_at')]
+    list_filter = [get_date_filter('created_at'), 'done']
     list_filter_submit = True
     
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
     
-    def has_change_permission(self, request: HttpRequest, obj:  None = None) -> bool:
+    def has_change_permission(self, request: HttpRequest, obj = None) -> bool:
         return False
 
     @display(description='Выполнен')
@@ -38,17 +38,18 @@ class RoverAdmin(ModelAdmin):
     def order_folder_link(self, obj: Rover):
         return get_folder_link_html(obj.order.folder_id) 
     
-    def get_actions_detail(self, request, object_id: int):
-        obj = Rover.objects.get(pk=object_id)
-        return [] if obj.done else [self.get_unfold_action('done_action')]
-
     @action(
         description='Выполнить',
         url_path="done",
-        variant=ActionVariant.SUCCESS
+        variant=ActionVariant.SUCCESS,
+        permissions=['done_action'],
     )
     def done_action(self, request, object_id):
         obj = Rover.objects.get(pk=object_id)
         obj.done = True
         obj.save()
-        return redirect(reverse_lazy('admin:detailing_detailing_changelist'))
+        return redirect(reverse_lazy('admin:rover_rover_changelist', query={'done': False}))
+
+    def has_done_action_permission(self, request, object_id: Rover):
+        obj = get_object_or_404(Rover, pk=object_id)
+        return request.user.has_perm('rover.change_rover') and not obj.done

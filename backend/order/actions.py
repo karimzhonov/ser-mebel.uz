@@ -1,5 +1,5 @@
 from django.urls import reverse_lazy
-from django.shortcuts import redirect
+from django.shortcuts import redirect, get_object_or_404
 from django.utils.translation import gettext_lazy as _
 from unfold.enums import ActionVariant
 from unfold.decorators import action
@@ -12,15 +12,12 @@ class OrderActions:
     actions_row = ['reverse_status']
     actions_detail = ['detailing_action']
 
-    def get_actions_detail(self, request, object_id: int):
-        obj = Order.objects.get(pk=object_id)
-        return [self.get_unfold_action('detailing_action')] if obj.status == OrderStatus.CREATED else []
-
     @action(
         description=_('Деталировка'),
         url_path='detailing',
         icon=OrderStatus.icon(OrderStatus.DETAILING),
-        variant=ActionVariant.SUCCESS
+        variant=ActionVariant.SUCCESS,
+        permissions=['detailing_action']
     )
     def detailing_action(self, request, object_id):
         obj = Order.objects.only('status').get(pk=object_id)
@@ -34,6 +31,10 @@ class OrderActions:
         return redirect(
           reverse_lazy("admin:order_order_change", kwargs={'object_id': object_id})
         )
+    
+    def has_detailing_action_permission(self, request, object_id):
+        obj = get_object_or_404(Order, pk=object_id)
+        return request.user.has_perm('detailing.add_detailing') and obj.status == OrderStatus.CREATED
 
     @action(
         description=_("Изменить статус"),

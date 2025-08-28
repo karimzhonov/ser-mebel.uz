@@ -9,7 +9,7 @@ from simple_history.models import HistoricalRecords
 
 
 class Design(models.Model):
-    metering = models.OneToOneField('metering.Metering', models.PROTECT)
+    metering = models.OneToOneField('metering.Metering', models.CASCADE)
     price = MoneyField(blank=True, null=True, max_digits=12)
     created_at = models.DateTimeField(auto_now_add=True)
     done = models.BooleanField(default=False)
@@ -40,7 +40,7 @@ def create_design_type_folders(sender: Type[Design], instance: Design, created, 
 def create_design_type_folders(sender: Type[DesignType], instance: DesignType, created, **kwargs):
     if not created: return
 
-    created_history = instance.history.order_by('history_date').first()
+    created_history = instance.design.history.order_by('history_date').first()
     created_user = created_history.history_user if created_history else None
 
     design_folder, _ = Folder.objects.get_or_create(
@@ -49,7 +49,7 @@ def create_design_type_folders(sender: Type[DesignType], instance: DesignType, c
         defaults={'owner': created_user}
     )
 
-    design_type_folder = Folder.objects.get_or_create(
+    design_type_folder, _ = Folder.objects.get_or_create(
         name=instance.name,
         parent=design_folder,
         defaults={'owner': created_user}

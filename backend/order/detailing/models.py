@@ -20,8 +20,8 @@ class Detailing(models.Model):
     working_done = models.BooleanField(default=False)
     
     square = models.FloatField(default=0)
-    painter_square = models.FloatField(default=0)
-    rover_square = models.FloatField(default=0)
+    painter_square = models.FloatField(default=0, blank=True)
+    rover_square = models.FloatField(default=0, blank=True)
     
     history = HistoricalRecords()
 
