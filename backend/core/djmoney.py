@@ -35,26 +35,26 @@ def get_rate(currency):
 class ConvertedCostManager(Manager):
     request: HttpRequest
 
-    def __init__(self, fields: list[str]) -> None:
+    def __init__(self, fields: list[str], currency = None) -> None:
         super().__init__()
         self.fields = fields
+        self.currency = currency
 
     def get_queryset(self) -> QuerySet:
-        currency = ''.join(self.request.GET.get('currency', [DEFAULT_CURRENCY]))
+        currency = self.currency or ''.join(self.request.GET.get('currency', [DEFAULT_CURRENCY]))
         try:
             rate = get_rate(currency)            
         except Exception as _exp:
             print(_exp)
             rate = get_rate(DEFAULT_CURRENCY)
             currency = DEFAULT_CURRENCY
-        print(rate)
         annotate_dict = {}
 
         for field in self.fields:
             annotate_dict[f'converted_{field}'] = ExpressionWrapper(
                 Case(
-                    When(cost_currency=currency, then=F('cost')),
-                    default=(F("cost") * rate) if rate else F('cost'),
+                    When(**{f"{field}_currency": currency}, then=F(field)),
+                    default=(F(field) * rate) if rate else F(field),
                     output_field=FloatField()
                 ),
                 output_field=DecimalField()

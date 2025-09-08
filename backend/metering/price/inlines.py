@@ -1,12 +1,16 @@
-from unfold.admin import StackedInline
-from unfold.decorators import display
-from core.utils import get_folder_link_html
-from .models import Price
+from unfold.admin import StackedInline, TabularInline
+from .models import Calculate, Inventory
+from .forms import CalculateForm
 
 
-
-class PriceInline(StackedInline):
-    model = Price
+class CalculateInline(StackedInline):
+    model = Calculate
     extra = 0
-    fk_name = 'metering'
-    fields = []
+    tab = True
+    form = CalculateForm
+
+
+class InventoryInline(TabularInline):
+    model = Inventory
+    extra = 0
+    tab = True

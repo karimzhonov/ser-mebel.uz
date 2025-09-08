@@ -9,8 +9,10 @@ from core.utils.messages import instance_archive
 from core.filters import get_date_filter
 from core.utils import get_folder_link_html
 from core.utils.html import get_boolean_icons
+
 from .components import *
-from .models import Price
+from .models import Price, Inventory, InventoryType, ObjectType
+from .inlines import CalculateInline, InventoryInline
 
 
 @admin.register(Price)
@@ -21,6 +23,21 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     readonly_fields = ['metering_folder', 'folder_link']
     list_filter = [get_date_filter('created_at'), 'done']
     list_filter_submit = True
+    inlines = [CalculateInline]
+
+    def get_inlines(self, request, obj):
+        inlines = []
+        for o in ObjectType.objects.all():
+            class ObjectCalculateInline(CalculateInline):
+                verbose_name = o.name
+                verbose_name_plural = o.name
+                
+                def get_formset(self, request, obj = ..., **kwargs):
+                    self.form.object_type_id = o.pk
+                    return super().get_formset(request, obj, **kwargs)
+
+            inlines.append(ObjectCalculateInline)
+        return inlines
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
@@ -58,3 +75,20 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
         if not object_id: return True
         obj = get_object_or_404(Price, pk=object_id)
         return request.user.has_perm('price.change_price') and not obj.done
+
+
+@admin.register(InventoryType)
+class InventoryTypeAdmin(ModelAdmin):
+    list_display = ['name', 'obj']
+    inlines = [InventoryInline]
+
+
+@admin.register(Inventory)
+class InventoryAdmin(ModelAdmin):
+    list_display = ['name', 'type', 'price']
+    list_filter = ['type']
+
+
+@admin.register(ObjectType)
+class ObjectTypeAdmin(ModelAdmin):
+    list_display = ['name']
