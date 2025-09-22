@@ -8,3 +8,6 @@ class User(Model):
     telegram_id = fields.BigIntField(null=True)
     is_staff = fields.BooleanField(default=False)
     is_active = fields.BooleanField(default=True)
+
+    class Meta:
+        table = 'oauth_user'

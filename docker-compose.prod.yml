@@ -20,3 +20,4 @@ services:
       - "7000:80"
     env_file:
       - ./bot/.env
+    command: sh -c "uvicorn main:app --host 0.0.0.0 --port 80 --workers 4"
