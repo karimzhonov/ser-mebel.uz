@@ -47,8 +47,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         return str(self.phone) if not self.name else f'{self.name} ({self.phone})'
 
     def send_message(self, text):
+        if not self.telegram_id: return
         try:
-            requests.post('http://bot.ser-mebel.uz/{}/message', json={
+            requests.post(f'http://bot.ser-mebel.uz/{self.telegram_id}/message', json={
                 'text': text
             })
         except Exception as e:
