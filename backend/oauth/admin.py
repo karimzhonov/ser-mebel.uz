@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.shortcuts import redirect
+from django.urls import reverse_lazy
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import Group
@@ -59,6 +61,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         user = User.objects.filter(pk=object_id).first()
         if user:
             user.send_message('Test notification')
+        return redirect(reverse_lazy("admin:metering_metering_changelist", query={'status': ','.join(MeteringStatus.active_statuses())}))
 
 
 @admin.register(Group)
