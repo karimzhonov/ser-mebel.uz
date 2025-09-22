@@ -50,6 +50,11 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         "user_permissions",
     )
 
+    def test_message(self, request, object_id):
+        user = User.objects.filter(pk=object_id).first()
+        if user:
+            user.send_message('Test notification')
+
 
 @admin.register(Group)
 class GroupAdmin(BaseGroupAdmin, ModelAdmin):

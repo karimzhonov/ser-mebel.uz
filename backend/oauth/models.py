@@ -1,3 +1,4 @@
+import requests
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils.translation import gettext_lazy as _
@@ -44,3 +45,11 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return str(self.phone) if not self.name else f'{self.name} ({self.phone})'
+
+    def send_message(self, text):
+        try:
+            requests.post('http://bot.ser-mebel.uz/{}/message', json={
+                'text': text
+            })
+        except Exception as e:
+            print(e)
