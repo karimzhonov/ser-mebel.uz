@@ -4,6 +4,7 @@ from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import Group
 from django.utils.translation import gettext_lazy as _
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
+from unfold.decorators import action
 from core.unfold import ModelAdmin
 
 from .models import User
@@ -11,7 +12,7 @@ from .models import User
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
-    # Forms loaded from `unfold.forms`
+    actions_row = ['test_message']
     form = UserChangeForm
     add_form = UserCreationForm
     change_password_form = AdminPasswordChangeForm
@@ -50,6 +51,10 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         "user_permissions",
     )
 
+    @action(
+        description='Test message',
+        url_path='test-message',
+    )
     def test_message(self, request, object_id):
         user = User.objects.filter(pk=object_id).first()
         if user:
