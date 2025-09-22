@@ -1,4 +1,3 @@
-import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -15,9 +14,13 @@ dp = Dispatcher(storage=MemoryStorage())
 async def handle_any_message(message: Message):
     args = message.text.split()
 
-    if len(args) > 1 and args[0] == 'start':
+    print(args)
+
+    if len(args) > 1 and args[0] == '/start':
         user_id = args[1]
-        await User.filter(id=user_id).update(telegram_id=message.from_user.id)
+        user = await User.get_or_none(id=user_id)
+        user.telegram_id = message.from_user.id
+        await user.save()
 
         await message.reply(
             text='Сизни профилингиз телеграмга уланди'
@@ -31,12 +34,3 @@ async def send_message(chat_id: int | str, text: str):
     except AiogramError as e:
         print(f"Ошибка при отправке сообщения: {e}")
         raise ConnectionError(f"{e}")
-
-
-async def main():
-    await init_tortoise()
-    await dp.start_polling(bot)
-
-
-if __name__ == '__main__':
-    asyncio.run(main())
