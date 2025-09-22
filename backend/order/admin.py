@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 from djmoney.money import Money
-from unfold.admin import ModelAdmin
+from core.unfold import ModelAdmin
 from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
 from core.utils import get_tag, get_folder_link_html
@@ -57,7 +57,7 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
             ('Адрес', {"fields": ('address', 'address_link'), "classes": ("tab-info",)}),
         ]
         add_fieldsets = [
-            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'design_type', 'metering')}),
+            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'count_days', 'design_type', 'metering')}),
             ('Адрес', {"fields": ('address', 'address_link')}),
             ('Цена', {'fields': ('price', 'lost_money')}),
         ]

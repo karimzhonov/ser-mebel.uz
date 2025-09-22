@@ -4,7 +4,7 @@ from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.models import Group
 from django.utils.translation import gettext_lazy as _
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
-from unfold.admin import ModelAdmin
+from core.unfold import ModelAdmin
 
 from .models import User
 

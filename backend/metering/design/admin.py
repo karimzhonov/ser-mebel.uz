@@ -3,7 +3,7 @@ from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.utils.http import urlencode
 from django.http import HttpRequest
-from unfold.admin import ModelAdmin
+from core.unfold import ModelAdmin
 from unfold.dataclasses import ActionVariant
 from unfold.decorators import action, display
 from simple_history.admin import SimpleHistoryAdmin
@@ -17,12 +17,12 @@ from .components import *
 
 @admin.register(Design)
 class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
-    list_display = ['metering', 'is_done', 'price']
+    list_display = ['metering', 'is_done']
     actions_detail = ['create_order']
     actions_submit_line = ['done_action']
     inlines = [DesignTypeInline]
     readonly_fields = ['metering_folder', 'created_at']
-    exclude = ['done', 'metering']
+    exclude = ['done', 'metering', 'confirm']
     list_filter = [get_date_filter('created_at'), 'done']
     list_filter_submit = True
 
@@ -36,7 +36,7 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
     
     @display(description='Выполнен')
     def is_done(self, obj: Design):
-        return get_boolean_icons([obj.done])
+        return get_boolean_icons([obj.done, obj.confirm])
     
     @display(description='Замер файлы')
     def metering_folder(self, obj: Design):
@@ -60,7 +60,7 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
             "address_link": obj.metering.address_link or '',
             "reception_date": obj.metering.date_time.strftime('%d.%m.%Y'),
             "metering": obj.metering.pk,
-            "price": f"{float(obj.metering.price.price.amount)}:{obj.metering.price.price.currency}",
+            "price": f"{int(obj.metering.price.price.amount)}:{obj.metering.price.price.currency}",
         })
         return redirect(f'{url}?{params}')
     

@@ -16,10 +16,14 @@ REDIRECT_OBJ = lambda object_id: redirect(reverse_lazy("admin:metering_metering_
 
 class MeteringActions:
     actions_row = [
-        'action_dont_need', 'action_other_day', 'action_done'
+        'action_dont_need', 'action_metering_done'
     ]
     actions_detail = [
-        'create_design', 'create_price'
+        'create_design', 'create_price', 'action_done'
+    ]
+
+    actions_submit_line = [
+        'action_other_day'
     ]
 
     @action(
@@ -27,7 +31,6 @@ class MeteringActions:
         url_path='dont-need',
         icon='close',
         variant=ActionVariant.DANGER,
-        permissions=[f'metering.{METERING_CHANGE_STATUS_PERMISSION}'],
     )
     def action_dont_need(self, request, object_id):
         obj = get_object_or_404(Metering, pk=object_id)
@@ -43,16 +46,29 @@ class MeteringActions:
         description=MeteringStatus.other_day.label,
         url_path='other_day',
         icon='info',
-        variant=ActionVariant.INFO,
-        permissions=[f'metering.{METERING_CHANGE_STATUS_PERMISSION}'],
+        variant=ActionVariant.PRIMARY,
     )
-    def action_other_day(self, request, object_id):
+    def action_other_day(self, request, obj: Metering):
+        if obj.status in MeteringStatus.archive_statuses():
+            instance_archive(request)
+            return REDIRECT()
+
+        obj.status=MeteringStatus.other_day
+        obj.save(update_fields=['status'])
+
+    @action(
+        description=MeteringStatus.metering_done.label,
+        url_path='metering-done',
+        icon='check',
+        variant=ActionVariant.SUCCESS,
+    )
+    def action_metering_done(self, request, object_id):
         obj = get_object_or_404(Metering, pk=object_id)
         if obj.status in MeteringStatus.archive_statuses():
             instance_archive(request)
             return REDIRECT()
         Metering.objects.filter(pk=object_id).update(
-            status=MeteringStatus.other_day
+            status=MeteringStatus.metering_done
         )
         return REDIRECT()
 
@@ -61,7 +77,7 @@ class MeteringActions:
         url_path='done',
         icon='check',
         variant=ActionVariant.SUCCESS,
-        permissions=[f'metering.{METERING_CHANGE_STATUS_PERMISSION}'],
+        permissions=['action_done']
     )
     def action_done(self, request, object_id):
         obj = get_object_or_404(Metering, pk=object_id)
@@ -72,6 +88,9 @@ class MeteringActions:
             status=MeteringStatus.done
         )
         return REDIRECT()
+
+    def has_action_done_permission(self, request, object_id):
+        return request.user.has_perm(f'metering.{METERING_CHANGE_STATUS_PERMISSION}')
 
     @action(
         description='Дизайн қилиш',

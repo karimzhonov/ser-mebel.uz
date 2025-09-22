@@ -10,9 +10,9 @@ from simple_history.models import HistoricalRecords
 
 class Design(models.Model):
     metering = models.OneToOneField('metering.Metering', models.CASCADE)
-    price = MoneyField(blank=True, null=True, max_digits=12)
     created_at = models.DateTimeField(auto_now_add=True)
     done = models.BooleanField(default=False)
+    confirm = models.BooleanField(default=False)
 
     history = HistoricalRecords()
 

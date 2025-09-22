@@ -43,20 +43,21 @@ def create_price_folders(sender: Type[Price], instance: Price, created, **kwargs
     instance.save()
 
 
-class Calculate(models.Model):
-    name = models.CharField(max_length=255)
-    price = models.ForeignKey(Price, models.CASCADE)
-    amount = MoneyField(max_digits=12, blank=True, null=True)
-    objects = ConvertedCostManager(['amount'])
-    history = HistoricalRecords()
+class ObjectType(models.Model):
+    """Kuxnya, shkaf"""
+    name = models.CharField(max_length=255, unique=True)
 
     def __str__(self):
         return self.name
 
 
-class ObjectType(models.Model):
-    """Kuxnya, shkaf"""
-    name = models.CharField(max_length=255, unique=True)
+class Calculate(models.Model):
+    name = models.CharField(max_length=255)
+    price = models.ForeignKey(Price, models.CASCADE)
+    amount = MoneyField(max_digits=12, blank=True, null=True)
+    objects = ConvertedCostManager(['amount'])
+    obj = models.ForeignKey(ObjectType, models.PROTECT)
+    history = HistoricalRecords()
 
     def __str__(self):
         return self.name

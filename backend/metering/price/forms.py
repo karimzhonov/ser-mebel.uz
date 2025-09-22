@@ -48,6 +48,7 @@ class CalculateForm(forms.ModelForm):
             self.initial['data'].append([inv_type.name, inventory, count, price])
 
     def save(self, commit = True):
+        self.instance.obj_id = self.object_type_id
         instance: Calculate = super().save(True)
         amount = 0
         

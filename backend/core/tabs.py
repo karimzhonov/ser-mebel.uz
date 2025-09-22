@@ -29,12 +29,12 @@ def get_tabs(request):
             'items': [
                 {
                     "title": 'Активний',
-                    "link": reverse_lazy("admin:design_design_changelist", query={'done': False}),
+                    "link": reverse_lazy("admin:design_design_changelist", query={'confirm': False}),
                     "permission": lambda request: True,
                 },
                 {
                     "title": 'Архив',
-                    "link": reverse_lazy("admin:design_design_changelist", query={'status': True}),
+                    "link": reverse_lazy("admin:design_design_changelist", query={'confirm': True}),
                     "permission": lambda request: True,
                 }
             ]

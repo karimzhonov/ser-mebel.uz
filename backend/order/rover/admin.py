@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.http import HttpRequest
-from unfold.admin import ModelAdmin
+from core.unfold import ModelAdmin
 from unfold.enums import ActionVariant
 from unfold.decorators import display, action
 from core.utils.html import get_boolean_icons, get_folder_link_html

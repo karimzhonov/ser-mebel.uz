@@ -2,8 +2,7 @@ from django.contrib import admin
 from django.shortcuts import redirect
 from django.urls import reverse_lazy
 from django.http import HttpRequest, HttpResponse
-from unfold.admin import ModelAdmin
-from unfold.contrib.filters.admin import RangeDateFilter
+from core.unfold import ModelAdmin
 from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
 from core.utils import get_tag, get_folder_link_html

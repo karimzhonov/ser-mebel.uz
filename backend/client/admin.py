@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.http import HttpRequest
-from unfold.admin import ModelAdmin
+from core.unfold import ModelAdmin
 from core.filters import get_date_filter
 from .models import Client
 from .components import *

@@ -2,7 +2,7 @@ from django.contrib import admin
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from unfold.enums import ActionVariant
-from unfold.admin import ModelAdmin
+from core.unfold import ModelAdmin
 from unfold.decorators import action, display
 from core.utils.html import get_boolean_icons, get_folder_link_html
 from core.filters import get_date_filter
@@ -16,13 +16,6 @@ class DetailingAdmin(ModelAdmin):
     actions_submit_line = ['done_action', 'working_done_action']
     exclude = ['folder', 'done', 'working_done', 'order']
     list_filter = [get_date_filter('created_at'), 'done']
-
-    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
-        extra_context = extra_context or {}
-        extra_context["show_save"] = False
-        extra_context["show_save_and_continue"] = False
-        extra_context["show_save_and_add_another"] = False
-        return super().changeform_view(request, object_id, form_url, extra_context)
 
     def get_readonly_fields(self, request: HttpRequest, obj = None):
         return ['square', 'rover_square', 'painter_square', 'order_folder_link', 'folder_link'] if obj and obj.done else ['order_folder_link', 'folder_link']      

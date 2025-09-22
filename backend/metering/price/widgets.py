@@ -26,7 +26,8 @@ class InventoryCountWidget(forms.MultiWidget):
             else:
                 id = getattr(InventoryType.objects.filter(name=name).first(), 'id', None)
             if id:
-                self.widgets[1].choices = ((None, ''), *Inventory.objects.filter(type_id=id).values_list('id', 'name'))
+                inventories = Inventory.objects.filter(type_id=id)
+                self.widgets[1].choices = ((None, ''), *[(i.id, f"{i.name} ({i.price})") for i in inventories])
             return [name, inventory, count, price]
         return [None, None, None, None]
 

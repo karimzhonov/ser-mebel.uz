@@ -324,6 +324,14 @@ UNFOLD = {
     "LOGIN": {
         "image": lambda request: media(config.LOGIN_IMAGE) if config.LOGIN_IMAGE else static('core/login-bg.jpg'),
     },
+    "ACCOUNT": {
+        "navigation": [
+            {
+                "title": "Связать Telegram",
+                "link": lambda request: 'https://t.me/ser_mebel_admin_bot?start=%s' % request.user.id,
+            },
+        ],
+    },
     "BORDER_RADIUS": "6px",
     "COLORS": {
         "base": {

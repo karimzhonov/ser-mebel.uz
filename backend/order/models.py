@@ -59,9 +59,8 @@ class Order(models.Model):
 
 @receiver(post_save, sender=Order)
 def replace_order_folders(sender: Type[Order], instance: Order, created, **kwargs):
-    DefaultExpenseCategoryChoices.update_or_create_expense(
-        DefaultExpenseCategoryChoices.design, instance, instance.metering.design.price
-    )
+    instance.metering.design.confirm = True
+    instance.metering.design.save(update_fields=['confirm'])
     if not created: return
     folder = create_folder(instance, 'Заказ')
     instance.metering.folder.name = 'Замеры'

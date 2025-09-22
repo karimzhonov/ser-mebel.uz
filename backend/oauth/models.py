@@ -22,7 +22,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     phone = PhoneNumberField(unique=True, region='UZ')  # Указывается регион по умолчанию (UZ = Узбекистан)
     name = models.CharField(max_length=255, blank=True, null=True)
-
+    telegram_id = models.BigIntegerField(blank=True, null=True)
     is_staff = models.BooleanField(
         _("staff status"),
         default=False,

@@ -10,6 +10,8 @@ cd /var/www/ser-mebel.uz || exit
 git pull origin master
 docker-compose down
 docker build -t khtkarimzhonov/api.ser-mebel.uz:latest ./backend
+docker build -t khtkarimzhonov/bot.ser-mebel.uz:latest ./bot
+
 docker-compose -f docker-compose.prod.yml up -d
 ENDSSH
 )

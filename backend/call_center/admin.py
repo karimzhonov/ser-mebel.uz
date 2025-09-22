@@ -1,7 +1,6 @@
 from django.contrib import admin
 
-from unfold.admin import ModelAdmin
-from unfold.contrib.filters.admin import RangeDateFilter
+from core.unfold import ModelAdmin
 from unfold.decorators import display
 
 from core.filters import get_date_filter
@@ -42,3 +41,5 @@ class InvoiceAdmin(InvoiceActions, ModelAdmin):
     def get_solution(self, obj: Invoice):
         return get_tag(SolutionChoice(obj.solution).label, SolutionChoice.variant(obj.solution).value) if obj.solution else '-'
     
+    def has_add_permission(self, request):
+        return request.user.has_perm('call_center.add_invoice')

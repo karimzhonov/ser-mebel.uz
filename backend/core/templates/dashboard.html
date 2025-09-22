@@ -1,29 +1,61 @@
 {% load unfold %}
+{% block extrastyle %}
+    <style>
+        .gradient-1 { background: linear-gradient(to right, #7c3aed, #ec4899); color: #fff; }  /* violet → pink */
+        .gradient-2 { background: linear-gradient(to right, #06b6d4, #3b82f6); color: #fff; }  /* cyan → blue */
+        .gradient-3 { background: linear-gradient(to right, #22c55e, #84cc16); color: #fff; }  /* green → lime */
+        .gradient-4 { background: linear-gradient(to right, #f59e0b, #ef4444); color: #fff; }  /* amber → red */
+        .gradient-5 { background: linear-gradient(to right, #14b8a6, #9333ea); color: #fff; }  /* teal → purple */
+        .gradient-6 { background: linear-gradient(to right, #2563eb, #7c3aed); color: #fff; }  /* blue → violet */
+        .gradient-7 { background: linear-gradient(to right, #f43f5e, #f97316); color: #fff; }  /* rose → orange */
+        .gradient-8 { background: linear-gradient(to right, #10b981, #3b82f6); color: #fff; }  /* emerald → blue */
+        .gradient-9 { background: linear-gradient(to right, #e11d48, #7e22ce); color: #fff; }  /* crimson → indigo */
+        .gradient-10 { background: linear-gradient(to right, #0ea5e9, #14b8a6); color: #fff; } /* sky → teal */
+        .gradient-11 { background: linear-gradient(to right, #facc15, #f97316); color: #000; } /* yellow → orange */
+        .gradient-12 { background: linear-gradient(to right, #8b5cf6, #ec4899); color: #fff; } /* indigo → pink */
+        .gradient-13 { background: linear-gradient(to right, #64748b, #1e293b); color: #fff; } /* slate → dark */
 
-<div class="grid grid-cols-7 gap-4">
-    
+        @media (min-width: 768px) {
+            .md\:grid {
+                display: grid;
+            }
+
+            .md\:hidden {
+                display: hidden;
+            }
+            .md\:flex {
+                display: flex;
+            }
+        }
+
+    </style>
+
+{% endblock %}
+
+<div class="hidden md:grid grid-cols-7 gap-4">
+
     <div class="col-span-7 h-full">
         {% component "unfold/components/card.html" with title=_("Статистика заказов") %}
-            {% component "order/components/warning_banner.html" with component_class="WarningBanner" %}{% endcomponent %}
-            {% component "order/components/status_banner.html" with component_class="StatusBanner" %}{% endcomponent %}
-            <div class="flex flex-col lg:flex-row gap-4 w-full">
-                {% if perms.rover.view_rover %}
-                    {% component "order/rover/status.html" with component_class="RoverStatusComponent" %}{% endcomponent %}
-                {% endif %}
-                
-                {% if perms.painter.view_painter %}
-                    {% component "order/painter/status.html" with component_class="PainterStatusComponent" %}{% endcomponent %}
-                {% endif %}
-            </div>
+        {% component "order/components/warning_banner.html" with component_class="WarningBanner" %}{% endcomponent %}
+        {% component "order/components/status_banner.html" with component_class="StatusBanner" %}{% endcomponent %}
+        <div class="flex flex-col lg:flex-row gap-4 w-full">
+            {% if perms.rover.view_rover %}
+                {% component "order/rover/status.html" with component_class="RoverStatusComponent" %}{% endcomponent %}
+            {% endif %}
+
+            {% if perms.painter.view_painter %}
+                {% component "order/painter/status.html" with component_class="PainterStatusComponent" %}{% endcomponent %}
+            {% endif %}
+        </div>
         {% endcomponent %}
     </div>
-    
+
     {% if perms.metering.view_metering %}
-        <div class="col-span-7 h-full">
-            {% component "unfold/components/card.html" with title=_("Статистика замери") %}
-                {% component "metering/components/metering_status_banner.html" with component_class="MeteringStatusBanner" %}{% endcomponent %}
-            {% endcomponent %}
-        </div>
+    <div class="col-span-7 h-full">
+        {% component "unfold/components/card.html" with title=_("Статистика замери") %}
+        {% component "metering/components/metering_status_banner.html" with component_class="MeteringStatusBanner" %}{% endcomponent %}
+        {% endcomponent %}
+    </div>
     {% endif %}
 
     <div class="col-span-7 h-full flex flex-col lg:flex-row gap-4">
@@ -36,12 +68,31 @@
     </div>
 
     {% if perms.call_center.view_invoice %}
-        <div class="col-span-7 lg:col-span-5 h-full">
-            {% component "call_center/components/line-chart.html" with component_class="InvoiceLineChartComponent" %}{% endcomponent %}
-        </div>
-        <div class="col-span-7 lg:col-span-2 h-full">
-            {% component "call_center/components/solution_progress.html" with component_class="SolutionBanner" %}{% endcomponent %}
-        </div>
+    <div class="col-span-7 lg:col-span-5 h-full">
+        {% component "call_center/components/line-chart.html" with component_class="InvoiceLineChartComponent" %}{% endcomponent %}
+    </div>
+    <div class="col-span-7 lg:col-span-2 h-full">
+        {% component "call_center/components/solution_progress.html" with component_class="SolutionBanner" %}{% endcomponent %}
+    </div>
     {% endif %}
 
+</div>
+<div class="md:hidden flex flex-col gap-5">
+    {% for group in sidebar_navigation %}
+<!--        {% if group.items|length > 0 %}-->
+<!--            <h2 class="font-lg">{{group.title}}</h2>-->
+<!--        {% endif %}-->
+        <div class="grid grid-cols-4 gap-5">
+            {% for item in group.items %}
+                {% if item.has_permission %}
+                <a href="{{item.link}}" class="flex flex-col gap-2 justify-start items-center">
+                    <span class="material-symbols-outlined text-center {{item.color}} p-3 rounded-full">
+                        {{item.icon}}
+                    </span>
+                    <p class="text-center">{{item.title}}</p>
+                </a>
+                {% endif %}
+            {% endfor %}
+        </div>
+    {% endfor %}
 </div>

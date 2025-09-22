@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
-from unfold.admin import ModelAdmin
+from core.unfold import ModelAdmin
 from unfold.decorators import display, action
 from unfold.dataclasses import ActionVariant
 from simple_history.admin import SimpleHistoryAdmin
@@ -28,15 +28,13 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     def get_inlines(self, request, obj):
         inlines = []
         for o in ObjectType.objects.all():
-            class ObjectCalculateInline(CalculateInline):
-                verbose_name = o.name
-                verbose_name_plural = o.name
-                
-                def get_formset(self, request, obj = ..., **kwargs):
-                    self.form.object_type_id = o.pk
-                    return super().get_formset(request, obj, **kwargs)
-
-            inlines.append(ObjectCalculateInline)
+            class_attrs = {
+                "verbose_name": o.name,
+                "verbose_name_plural": o.name,
+                "object_type_id": int(o.pk),
+            }
+            inlines.append(type(f'Object{o.pk}CalculateInline',(CalculateInline,), class_attrs))
+        print(inlines)
         return inlines
 
     def has_add_permission(self, request: HttpRequest) -> bool:
