@@ -17,6 +17,6 @@ services:
     container_name: bot
     image: khtkarimzhonov/bot.ser-mebel.uz:latest
     ports:
-      "7000:80"
+      - "7000:80"
     env_file:
       - ./bot/.env
