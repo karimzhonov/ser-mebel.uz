@@ -1,5 +1,6 @@
 import hmac
 import hashlib
+from django.shortcuts import render
 from django.contrib.auth import login
 from django.http import HttpResponseForbidden
 from django.shortcuts import redirect
@@ -35,6 +36,8 @@ def check_telegram_auth(init_data: dict) -> bool:
 def telegram_admin_login(request):
     # initData может приходить как GET-параметры
     init_data = request.GET.dict()
+    if not init_data:
+        return render(request, 'oauth/twa.html')
     print('GET', init_data)
     if not check_telegram_auth(init_data):
         return HttpResponseForbidden("Invalid Telegram auth")
