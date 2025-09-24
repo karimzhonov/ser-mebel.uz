@@ -11,7 +11,7 @@ from django.conf import settings
 User = get_user_model()
 
 
-@csrf_exempt
+
 def check_telegram_auth(auth_cred: str) -> bool:
     """
     Проверяет подпись initData от Telegram
@@ -25,9 +25,11 @@ def check_telegram_auth(auth_cred: str) -> bool:
         raise InvalidInitDataError("Missing hash")
 
 
+@csrf_exempt
 def telegram_admin_login(request):
     # initData может приходить как GET-параметры
     init_data = request.POST.get('initData')
+    print(init_data)
     if not init_data:
         return render(request, 'oauth/twa.html')
     init_data = check_telegram_auth(init_data)
