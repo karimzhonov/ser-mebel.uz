@@ -327,6 +327,9 @@ UNFOLD = {
             "href": lambda request: media(config.SITE_ICON_LOGO) if config.SITE_ICON_LOGO else static('core/logo.jpg'),
         },
     ],
+    "SCRIPTS": [
+        "core/js/telegram.js"
+    ],
     "ENVIRONMENT": ["Development" , "info"] if DEBUG else ["Production" , "danger"], # environment name in header
     "DASHBOARD_CALLBACK": "core.views.dashboard_callback",
     "LOGIN": {

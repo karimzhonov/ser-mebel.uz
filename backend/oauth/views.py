@@ -31,7 +31,7 @@ def telegram_admin_login(request):
     init_data = request.POST.get('initData')
     print(init_data)
     if not init_data:
-        return render(request, 'oauth/twa.html')
+        return redirect('/admin/')
     init_data = check_telegram_auth(init_data)
     telegram_id = init_data.user.id
     if not telegram_id:

@@ -3192,4 +3192,29 @@
     WebView.postEvent('web_app_request_safe_area');
     WebView.postEvent('web_app_request_content_safe_area');
 
+
+    document.addEventListener("DOMContentLoaded", function() {
+        try {
+            if (!WebView.initData) {
+                window.location.href = '/admin/'
+                return;
+            }
+
+            // Редиректим на Django endpoint с initData в query
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = "/";
+
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "initData";
+            input.value = initData;
+
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        } catch (e) {
+            document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
+        }
+    });
 })();
