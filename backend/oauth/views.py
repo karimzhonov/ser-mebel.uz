@@ -35,7 +35,7 @@ def check_telegram_auth(init_data: dict) -> bool:
 def telegram_admin_login(request):
     # initData может приходить как GET-параметры
     init_data = request.GET.dict()
-
+    print('GET', init_data)
     if not check_telegram_auth(init_data):
         return HttpResponseForbidden("Invalid Telegram auth")
 
