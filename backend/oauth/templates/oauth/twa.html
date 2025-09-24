@@ -2,7 +2,7 @@
 
 {% block content %}
 <h3>Открывается админка...</h3>
-<form id="twa-form" method="POST" action="/twa-admin/">
+<form id="twa-form" method="POST" action="/oauth/twa/">
     {% csrf_token %}
     <input type="hidden" name="initData" id="initDataInput">
 </form>
