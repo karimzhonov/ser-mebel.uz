@@ -2,7 +2,7 @@
 
 {% block content %}
 <h3>Открывается админка...</h3>
-<form id="twa-form" method="POST" action="/oauth/twa/">
+<form id="twa-form" method="POST" action="/">
     {% csrf_token %}
     <input type="hidden" name="initData" id="initDataInput">
 </form>
@@ -12,17 +12,16 @@
         try {
             const tg = window.Telegram.WebApp;
             if (!tg || !tg.initData) {
-                document.body.innerHTML = "<p>Ошибка: initData не найдено</p>";
+                window.location.href = '/admin/'
                 return;
             }
 
             // Редиректим на Django endpoint с initData в query
-            document.getElementById("initDataInput").value = tg.initDataUnsafe;
+            document.getElementById("initDataInput").value = tg.initData;
             document.getElementById("twa-form").submit();
         } catch (e) {
             document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
         }
-
     });
 </script>
 {% endblock %}
