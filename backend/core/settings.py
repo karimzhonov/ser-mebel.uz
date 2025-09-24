@@ -381,3 +381,6 @@ UNFOLD = {
     "SIDEBAR": 'core.sidebars.get_sidebar_items',
     "TABS": 'core.tabs.get_tabs'
 }
+
+
+TELEGRAM_BOT_TOKEN = os.getenv('BOT_TOKEN')
