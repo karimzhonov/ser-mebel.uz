@@ -8,7 +8,7 @@ SSH_KEY="~/.ssh/id_rsa"  # путь к приватному ключу
 DEPLOY_COMMANDS=$(cat << 'ENDSSH'
 cd /var/www/ser-mebel.uz || exit
 git pull origin master
-docker-compose down
+docker-compose -f docker-compose.prod.yml down
 docker build -t khtkarimzhonov/api.ser-mebel.uz:latest ./backend
 docker build -t khtkarimzhonov/bot.ser-mebel.uz:latest ./bot
 

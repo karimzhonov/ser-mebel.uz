@@ -177,7 +177,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10240000000
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 1024000
 
-CSRF_TRUSTED_ORIGINS = ["https://www.ser-mebel.uz", "https://ser-mebel.uz", "http://localhost:8000", "http://127.0.0.1:8000", "http://109.196.103.69"]
+CSRF_TRUSTED_ORIGINS = [
+    "https://www.ser-mebel.uz",
+    "https://ser-mebel.uz",
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://109.196.103.69",
+    "https://t.me",
+    "https://web.telegram.org",
+]
 
 USE_X_FORWARDED_HOST = True
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')

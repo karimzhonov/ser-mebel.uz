@@ -61,7 +61,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
         user = User.objects.filter(pk=object_id).first()
         if user:
             user.send_message('Test notification')
-        return redirect(reverse_lazy("admin:metering_metering_changelist", query={'status': ','.join(MeteringStatus.active_statuses())}))
+        return redirect(reverse_lazy("admin:oauth_user_changelist"))
 
 
 @admin.register(Group)
