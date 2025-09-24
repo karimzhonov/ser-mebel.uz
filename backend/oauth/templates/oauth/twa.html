@@ -16,7 +16,10 @@
             const initData = tg.initData;
 
             // Редиректим на Django endpoint с initData в query
-            window.location.href = "/oauth/twa/?" + initData;
+
+            const params = new URLSearchParams();
+            params.set("initData", initData);
+            window.location.href = "/twa-admin/?" + params.toString();
         } catch (e) {
             document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
         }

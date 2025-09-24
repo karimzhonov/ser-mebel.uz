@@ -1,5 +1,5 @@
-import hmac
-import hashlib
+from telegram_webapp_auth.auth import TelegramAuthenticator, generate_secret_key
+from telegram_webapp_auth.errors import InvalidInitDataError
 from django.shortcuts import render
 from django.contrib.auth import login
 from django.http import HttpResponseForbidden
@@ -10,39 +10,26 @@ from django.conf import settings
 User = get_user_model()
 
 
-def check_telegram_auth(init_data: dict) -> bool:
+def check_telegram_auth(auth_cred: str) -> bool:
     """
     Проверяет подпись initData от Telegram
     """
-    hash_received = init_data.pop("hash", None)
-    data_check_arr = [f"{k}={v}" for k, v in sorted(init_data.items())]
-    data_check_string = "\n".join(data_check_arr)
-
-    secret_key = hmac.new(
-        key=b"WebAppData",
-        msg=settings.TELEGRAM_BOT_TOKEN.encode(),
-        digestmod=hashlib.sha256
-    ).digest()
-
-    hash_calculated = hmac.new(
-        secret_key,
-        data_check_string.encode(),
-        hashlib.sha256
-    ).hexdigest()
-
-    return hmac.compare_digest(hash_received, hash_calculated)
+    bot_token = settings.TELEGRAM_BOT_TOKEN
+    secret = generate_secret_key(bot_token)
+    telegram_authenticator = TelegramAuthenticator(secret)
+    try:
+        return telegram_authenticator.validate(auth_cred)
+    except InvalidInitDataError:
+        raise InvalidInitDataError("Missing hash")
 
 
 def telegram_admin_login(request):
     # initData может приходить как GET-параметры
-    init_data = request.GET.dict()
+    init_data = request.GET.dict().get('initData')
     if not init_data:
         return render(request, 'oauth/twa.html')
-    print('GET', init_data)
-    if not check_telegram_auth(init_data):
-        return HttpResponseForbidden("Invalid Telegram auth")
-
-    telegram_id = init_data.get("user[id]")
+    init_data = check_telegram_auth(init_data)
+    telegram_id = init_data.user.id
     if not telegram_id:
         return HttpResponseForbidden("Telegram ID not found")
 
