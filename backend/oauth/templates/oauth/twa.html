@@ -6,7 +6,7 @@
     {% csrf_token %}
     <input type="hidden" name="initData" id="initDataInput">
 </form>
-<script src="https://telegram.org/js/telegram-web-app.js?56"></script>
+<script src="{% static 'core/js/telegram.js' %}"></script>
 <script>
     document.addEventListener("DOMContentLoaded", function() {
         try {
