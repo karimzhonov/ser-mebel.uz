@@ -1,6 +1,7 @@
 from telegram_webapp_auth.auth import TelegramAuthenticator, generate_secret_key
 from telegram_webapp_auth.errors import InvalidInitDataError
 from django.shortcuts import render
+from django.views.decorators.csrf import csrf_protect
 from django.contrib.auth import login
 from django.http import HttpResponseForbidden
 from django.shortcuts import redirect
@@ -10,6 +11,7 @@ from django.conf import settings
 User = get_user_model()
 
 
+@csrf_protect
 def check_telegram_auth(auth_cred: str) -> bool:
     """
     Проверяет подпись initData от Telegram
