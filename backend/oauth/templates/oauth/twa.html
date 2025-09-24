@@ -2,6 +2,10 @@
 
 {% block content %}
 <h3>Открывается админка...</h3>
+<form id="twa-form" method="POST" action="/twa-admin/">
+    {% csrf_token %}
+    <input type="hidden" name="initData" id="initDataInput">
+</form>
 <script src="https://telegram.org/js/telegram-web-app.js?56"></script>
 <script>
     document.addEventListener("DOMContentLoaded", function() {
@@ -12,24 +16,9 @@
                 return;
             }
 
-            // Берём initData
-            const initData = tg.initData;
-
             // Редиректим на Django endpoint с initData в query
-            const form = document.createElement("form");
-            form.method = "POST";
-            form.action = "/oauth/twa/";
-
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = "initData";
-            input.value = initData;
-
-            form.appendChild(input);
-            document.body.appendChild(form);
-
-            // отправляем как POST
-            form.submit();
+            document.getElementById("initDataInput").value = tg.initData;
+            document.getElementById("twa-form").submit();
         } catch (e) {
             document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
         }
