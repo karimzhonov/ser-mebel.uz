@@ -5,17 +5,22 @@
 
 <script>
     document.addEventListener("DOMContentLoaded", function() {
-        const tg = window.Telegram.WebApp;
-        if (!tg || !tg.initData) {
-            document.body.innerHTML = "<p>Ошибка: initData не найдено</p>";
-            return;
+        try {
+            const tg = window.Telegram.WebApp;
+            if (!tg || !tg.initData) {
+                document.body.innerHTML = "<p>Ошибка: initData не найдено</p>";
+                return;
+            }
+
+            // Берём initData
+            const initData = tg.initData;
+
+            // Редиректим на Django endpoint с initData в query
+            window.location.href = "/oauth/twa/?" + initData;
+        } catch (e) {
+            document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
         }
 
-        // Берём initData
-        const initData = tg.initData;
-
-        // Редиректим на Django endpoint с initData в query
-        window.location.href = "/oauth/twa/?" + initData;
     });
 </script>
 {% endblock %}
