@@ -16,10 +16,20 @@
             const initData = tg.initData;
 
             // Редиректим на Django endpoint с initData в query
+            const form = document.createElement("form");
+            form.method = "POST";
+            form.action = "/oauth/twa/";
 
-            const params = new URLSearchParams();
-            params.set("initData", initData);
-            window.location.href = "/oauth/twa/?" + params.toString();
+            const input = document.createElement("input");
+            input.type = "hidden";
+            input.name = "initData";
+            input.value = initData;
+
+            form.appendChild(input);
+            document.body.appendChild(form);
+
+            // отправляем как POST
+            form.submit();
         } catch (e) {
             document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
         }

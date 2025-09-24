@@ -25,7 +25,7 @@ def check_telegram_auth(auth_cred: str) -> bool:
 
 def telegram_admin_login(request):
     # initData может приходить как GET-параметры
-    init_data = request.GET.get('initData')
+    init_data = request.POST.get('initData')
     if not init_data:
         return render(request, 'oauth/twa.html')
     init_data = check_telegram_auth(init_data)
