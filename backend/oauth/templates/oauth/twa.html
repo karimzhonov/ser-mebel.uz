@@ -17,7 +17,7 @@
             }
 
             // Редиректим на Django endpoint с initData в query
-            document.getElementById("initDataInput").value = tg.initData;
+            document.getElementById("initDataInput").value = tg.initDataUnsafe;
             document.getElementById("twa-form").submit();
         } catch (e) {
             document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
