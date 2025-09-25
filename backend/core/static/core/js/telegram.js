@@ -3195,10 +3195,11 @@
 
 
     document.addEventListener('DOMContentLoaded', () => {
-        if (window.location.pathname === '/admin/login/' && WebView.initData) {
-            window.location.href = `/?telegram_id=${WebView.initDataUnsafe.user?.id}`            
+        const telegram_id = window.Telegram?.WebApp?.initDataUnsafe?.user?.id
+        if (window.location.pathname === '/admin/login/' && telegram_id) {
+            window.location.href = `/?telegram_id=${telegram_id}`            
         } else {
-            document.body.innerText = `${window.location.pathname}:::${WebView.initData}`
+            document.body.innerText = `${window.location.pathname}:::${telegram_id}`
         }
     })
 })();
