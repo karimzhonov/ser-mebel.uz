@@ -12,7 +12,7 @@ def telegram_admin_login(request):
     print(request.GET)
     telegram_id = request.GET.get('telegram_id')
     if not telegram_id:
-        return HttpResponseForbidden("Telegram ID not found")
+        return redirect('/admin/login/')
 
     try:
         user = User.objects.get(telegram_id=telegram_id)

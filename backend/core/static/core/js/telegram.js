@@ -3193,15 +3193,7 @@
     WebView.postEvent('web_app_request_content_safe_area');
 
 
-    try {
-        if (window.location.href === '/') {
-            if (!WebView.initData) {
-                window.location.href = '/admin/'
-                return;
-            }
-            window.location.href = `/?telegram_id=${WebView.initDataUnsafe.user?.id}`
-        }
-    } catch (e) {
-        document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
+    if (window.location.href === '/admin/login/' && WebView.initData) {
+        window.location.href = `/?telegram_id=${WebView.initDataUnsafe.user?.id}`            
     }
 })();
