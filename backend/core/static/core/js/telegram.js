@@ -3193,7 +3193,7 @@
     WebView.postEvent('web_app_request_content_safe_area');
 
 
-    if (window.location.href === '/admin/login/' && WebView.initData) {
+    if (window.location.pathname === '/admin/login/' && WebView.initData) {
         window.location.href = `/?telegram_id=${WebView.initDataUnsafe.user?.id}`            
     }
 })();
