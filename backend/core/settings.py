@@ -328,7 +328,7 @@ UNFOLD = {
         },
     ],
     "SCRIPTS": [
-        static("core/js/telegram.js")
+        lambda request: static("core/js/telegram.js")
     ],
     "ENVIRONMENT": ["Development" , "info"] if DEBUG else ["Production" , "danger"], # environment name in header
     "DASHBOARD_CALLBACK": "core.views.dashboard_callback",
