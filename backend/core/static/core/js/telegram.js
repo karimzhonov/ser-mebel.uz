@@ -3217,7 +3217,7 @@
                 window.location.href = '/admin/'
             }
 
-            if (window.location.pathname !== '/admin/' && !window.Telegram?.WebApp?.BackButton.isVisible) {
+            if (!['/admin/', '/admin/login/'].includes(window.location.pathname) && !window.Telegram?.WebApp?.BackButton.isVisible) {
                 window.Telegram?.WebApp?.BackButton.show()
                 window.Telegram?.WebApp?.BackButton.onClick(back)
             } else {
