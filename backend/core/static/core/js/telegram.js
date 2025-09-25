@@ -3209,6 +3209,8 @@
                 document.body.style.marginTop = "100px";
             }
 
+            document.body.innerHTML = `${window.Telegram?.WebApp?.platform}::;${window.Telegram?.WebApp.isFullscreen}`
+
             if (window.location.pathname !== '/admin/' && !window.Telegram?.WebApp?.BackButton.isVisible) {
                 window.Telegram?.WebApp?.BackButton.show()
                 window.Telegram?.WebApp?.BackButton.onClick(window.history.back)
@@ -3219,7 +3221,6 @@
             if (window.location.pathname === '/admin/login/') {
                 window.location.href = `/?telegram_id=${telegram_id}`
             }
-            
         }
     })
 })();
