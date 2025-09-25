@@ -3206,7 +3206,7 @@
             window.Telegram?.WebApp.enableClosingConfirmation()
 
             if (['ios', 'android'].includes(window.Telegram?.WebApp?.platform) && window.Telegram?.WebApp.isFullscreen) {
-                document.body.style.marginTop = "100px";
+                document.body.style.paddingTop = "90px";
             }
 
             document.body.innerHTML = `${window.Telegram?.WebApp?.platform}::;${window.Telegram?.WebApp.isFullscreen}`
