@@ -3206,10 +3206,10 @@
             window.Telegram?.WebApp.enableClosingConfirmation()
 
             if (['ios', 'android'].includes(window.Telegram?.WebApp?.platform) && window.Telegram?.WebApp.isFullscreen) {
-                document.body.style.paddingTop = "80px";
+                document.body.style.marginTop = "80px";
                 const sidebar = document.querySelector('#nav-sidebar')
                 if (sidebar) {
-                    sidebar.style.paddingTop = "80px";
+                    sidebar.style.marginTop = "80px";
                 }
             }
 
@@ -3224,7 +3224,10 @@
                 window.Telegram?.WebApp?.BackButton.hide()
                 window.Telegram?.WebApp?.BackButton.offClick(back)
             }
-            if (window.location.pathname === '/admin/login/') {
+
+            const params = new URLSearchParams(window.location.search)
+
+            if (window.location.pathname === '/admin/login/' && !params.get('redirected')) {
                 window.location.href = `/?telegram_id=${telegram_id}`
             }
         }

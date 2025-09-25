@@ -12,12 +12,12 @@ def telegram_admin_login(request):
     print(request.GET)
     telegram_id = request.GET.get('telegram_id')
     if not telegram_id:
-        return redirect('/admin/login/')
+        return redirect('/admin/login/?redirected=true')
 
     try:
         user = User.objects.get(telegram_id=telegram_id)
     except User.DoesNotExist:
-        return redirect('/admin/login/')
+        return redirect('/admin/login/?redirected=true')
 
     # Логиним
     login(request, user)
