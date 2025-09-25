@@ -17,7 +17,7 @@ def telegram_admin_login(request):
     try:
         user = User.objects.get(telegram_id=telegram_id)
     except User.DoesNotExist:
-        return HttpResponseForbidden("User not allowed")
+        return redirect('/admin/login/')
 
     # Логиним
     login(request, user)
