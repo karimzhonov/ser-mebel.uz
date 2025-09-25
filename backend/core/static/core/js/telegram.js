@@ -3209,8 +3209,6 @@
                 document.body.style.paddingTop = "90px";
             }
 
-            document.body.innerHTML = `${window.Telegram?.WebApp?.platform}::;${window.Telegram?.WebApp.isFullscreen}`
-
             if (window.location.pathname !== '/admin/' && !window.Telegram?.WebApp?.BackButton.isVisible) {
                 window.Telegram?.WebApp?.BackButton.show()
                 window.Telegram?.WebApp?.BackButton.onClick(window.history.back)
