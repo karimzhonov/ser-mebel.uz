@@ -3195,5 +3195,7 @@
 
     if (window.location.pathname === '/admin/login/' && WebView.initData) {
         window.location.href = `/?telegram_id=${WebView.initDataUnsafe.user?.id}`            
+    } else {
+        document.body.innerText = `${window.location.pathname}:::${WebView.initData}`
     }
 })();
