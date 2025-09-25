@@ -9,7 +9,7 @@ User = get_user_model()
 
 
 def telegram_admin_login(request):
-    telegram_id = request.POST.get('telegram_id')
+    telegram_id = request.GET.get('telegram_id')
     if not telegram_id:
         return HttpResponseForbidden("Telegram ID not found")
 

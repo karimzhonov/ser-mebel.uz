@@ -3199,25 +3199,7 @@
                 window.location.href = '/admin/'
                 return;
             }
-            // Редиректим на Django endpoint с initData в query
-            const form = document.createElement("form");
-            form.method = "POST";
-            form.action = "/";
-
-            const telegram_id = document.createElement("input");
-            telegram_id.type = "hidden";
-            telegram_id.name = "telegram_id";
-            telegram_id.value = WebView.initDataUnsafe.user?.id;
-
-            const csrf_token = document.createElement("input");
-            csrf_token.type = "hidden";
-            csrf_token.name = "csrf_token";
-            csrf_token.value = "{% csrf_token %}";
-
-            form.appendChild(telegram_id);
-            form.appendChild(csrf_token)
-            document.body.appendChild(form);
-            form.submit();
+            window.location.href = `/?telegram_id=${WebView.initDataUnsafe.user?.id}`
         }
     } catch (e) {
         document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
