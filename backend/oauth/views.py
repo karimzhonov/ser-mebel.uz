@@ -9,7 +9,6 @@ User = get_user_model()
 
 
 def telegram_admin_login(request):
-    print(request.GET)
     telegram_id = request.GET.get('telegram_id')
     if not telegram_id:
         return redirect('/admin/login/')
