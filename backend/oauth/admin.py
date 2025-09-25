@@ -19,7 +19,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     add_form = UserCreationForm
     change_password_form = AdminPasswordChangeForm
     fieldsets = (
-        (None, {"fields": ("phone", "password")}),
+        (None, {"fields": ("phone", "telegram_id", "password")}),
         (
             _("Permissions"),
             {

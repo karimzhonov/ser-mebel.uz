@@ -3207,6 +3207,10 @@
 
             if (['ios', 'android'].includes(window.Telegram?.WebApp?.platform) && window.Telegram?.WebApp.isFullscreen) {
                 document.body.style.paddingTop = "80px";
+                const sidebar = document.querySelector('#nav-sidebar')
+                if (sidebar) {
+                    sidebar.style.paddingTop = "80px";
+                }
             }
 
             const back = () => {
