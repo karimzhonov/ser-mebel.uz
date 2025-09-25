@@ -3196,15 +3196,30 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         const telegram_id = window.Telegram?.WebApp?.initDataUnsafe?.user?.id
-        if (window.location.pathname === '/admin/login/' && telegram_id) {
+        if (telegram_id) {
             window.Telegram?.WebApp.ready()
-            window.Telegram?.WebApp.requestFullscreen()
+            try {
+                window.Telegram?.WebApp.requestFullscreen()
+            } catch {
+                window.Telegram?.WebApp.expand()
+            }
             window.Telegram?.WebApp.enableClosingConfirmation()
-            
-            if (['ios', 'android'].includes(window.Telegram?.WebApp?.platform)) {
+
+            if (['ios', 'android'].includes(window.Telegram?.WebApp?.platform) && window.Telegram?.WebApp.isFullscreen) {
                 document.body.style.marginTop = "100px";
             }
-            window.location.href = `/?telegram_id=${telegram_id}`            
+
+            if (window.location.pathname !== '/admin/' && !window.Telegram?.WebApp?.BackButton.isVisible) {
+                window.Telegram?.WebApp?.BackButton.show()
+                window.Telegram?.WebApp?.BackButton.onClick(window.history.back)
+            } else {
+                window.Telegram?.WebApp?.BackButton.hide()
+                window.Telegram?.WebApp?.BackButton.offClick(window.history.back)
+            }
+            if (window.location.pathname === '/admin/login/') {
+                window.location.href = `/?telegram_id=${telegram_id}`
+            }
+            
         }
     })
 })();
