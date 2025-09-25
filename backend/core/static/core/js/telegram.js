@@ -3193,13 +3193,12 @@
     WebView.postEvent('web_app_request_content_safe_area');
 
 
-    document.addEventListener("DOMContentLoaded", function() {
-        try {
+    try {
+        if (window.location.href === '/') {
             if (!WebView.initData) {
                 window.location.href = '/admin/'
                 return;
             }
-
             // Редиректим на Django endpoint с initData в query
             const form = document.createElement("form");
             form.method = "POST";
@@ -3210,11 +3209,16 @@
             input.name = "initData";
             input.value = initData;
 
+            const csrf_token = document.createElement("input");
+            csrf_token.type = "hidden";
+            csrf_token.name = "csrf_token";
+            csrf_token.value = "{% csrf_token %}";
+
             form.appendChild(input);
             document.body.appendChild(form);
             form.submit();
-        } catch (e) {
-            document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
         }
-    });
+    } catch (e) {
+        document.body.innerHTML = `<p>Ошибка: initData не найдено: ${e}</p>`;
+    }
 })();
