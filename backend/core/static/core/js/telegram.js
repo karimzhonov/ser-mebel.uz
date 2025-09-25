@@ -3204,17 +3204,18 @@
             form.method = "POST";
             form.action = "/";
 
-            const input = document.createElement("input");
-            input.type = "hidden";
-            input.name = "initData";
-            input.value = initData;
+            const telegram_id = document.createElement("input");
+            telegram_id.type = "hidden";
+            telegram_id.name = "telegram_id";
+            telegram_id.value = WebView.initDataUnsafe.user?.id;
 
             const csrf_token = document.createElement("input");
             csrf_token.type = "hidden";
             csrf_token.name = "csrf_token";
             csrf_token.value = "{% csrf_token %}";
 
-            form.appendChild(input);
+            form.appendChild(telegram_id);
+            form.appendChild(csrf_token)
             document.body.appendChild(form);
             form.submit();
         }
