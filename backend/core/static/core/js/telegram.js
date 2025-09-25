@@ -3206,15 +3206,19 @@
             window.Telegram?.WebApp.enableClosingConfirmation()
 
             if (['ios', 'android'].includes(window.Telegram?.WebApp?.platform) && window.Telegram?.WebApp.isFullscreen) {
-                document.body.style.paddingTop = "90px";
+                document.body.style.paddingTop = "80px";
+            }
+
+            const back = () => {
+                window.location.href = '/admin/'
             }
 
             if (window.location.pathname !== '/admin/' && !window.Telegram?.WebApp?.BackButton.isVisible) {
                 window.Telegram?.WebApp?.BackButton.show()
-                window.Telegram?.WebApp?.BackButton.onClick(window.history.back)
+                window.Telegram?.WebApp?.BackButton.onClick(back)
             } else {
                 window.Telegram?.WebApp?.BackButton.hide()
-                window.Telegram?.WebApp?.BackButton.offClick(window.history.back)
+                window.Telegram?.WebApp?.BackButton.offClick(back)
             }
             if (window.location.pathname === '/admin/login/') {
                 window.location.href = `/?telegram_id=${telegram_id}`
