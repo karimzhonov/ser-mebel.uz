@@ -14,9 +14,9 @@ async def webhook(request: Request) -> None:
     print("Update processed")
 
 
-@router.post("/{user_id}/message")
-async def message(user_id: str | int, data: MessageSchema):
+@router.post("/{chat_id}/message")
+async def message(data: MessageSchema):
     try:
-        return await send_message(chat_id=user_id, **data.model_dump())
+        return await send_message(**data.model_dump())
     except ConnectionError as e:
         raise HTTPException(400, {'status': 'error', 'message': str(e)})

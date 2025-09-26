@@ -2,7 +2,6 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import Message, InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.exceptions import AiogramError
-from db.utils import init_tortoise
 from db.models.oauth import User
 from config import BOT_TOKEN, BASE_SITE
 
@@ -15,7 +14,7 @@ def build_keyboard(url: str = ''):
         [
             InlineKeyboardButton(
                 text="Открыть",
-                web_app=WebAppInfo(url=''.join(BASE_SITE, url))
+                web_app=WebAppInfo(url=''.join([BASE_SITE, url]))
             )
         ]
     ])
@@ -35,6 +34,11 @@ async def handle_any_message(message: Message):
             text='Сизни профилингиз телеграмга уланди',
             reply_markup=build_keyboard()
         )
+    
+    await message.answer(
+        text='Бу админ панел ser-mebel.uz сайти учун',
+        reply_markup=build_keyboard()
+    )
 
 
 async def send_message(chat_id: int | str, text: str, url: str):
