@@ -1,0 +1,7 @@
+CALL_CENTER_PERMISSION = 'user_call_center'
+METERING_PERMISSION = 'user_metering'
+DESIGN_PERMISSION = 'user_design'
+DETAILING_PERMISSION = 'user_detailing'
+ROVER_PERMISSION = 'user_rover'
+PAINTER_PERMISSION = 'user_painter'
+ASSEMBLY_PERMISSION = 'user_assembly'

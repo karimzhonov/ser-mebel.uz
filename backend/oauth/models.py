@@ -1,8 +1,11 @@
 import requests
+from django.urls import reverse_lazy
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils.translation import gettext_lazy as _
 from phonenumber_field.modelfields import PhoneNumberField
+from core.settings import TELEGRAM_BOT_SERVER
+from .constants import *
 
 
 class UserManager(BaseUserManager):
@@ -46,11 +49,27 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return str(self.phone) if not self.name else f'{self.name} ({self.phone})'
 
-    def send_message(self, text):
+    def send_message(self, url = None):
+        url = url or ''
         if not self.telegram_id: return
-        try:
-            requests.post(f'http://bot.ser-mebel.uz/{self.telegram_id}/message', json={
-                'text': text
-            })
-        except Exception as e:
-            print(e)
+        requests.post(f'{TELEGRAM_BOT_SERVER}/user/{self.telegram_id}/message', json={
+            'text': 'Оповещение о заказе',
+            'url': url
+        })
+
+    @classmethod
+    def send_messages(cls, permission):
+        users = cls.objects.filter(models.Q(user_permissions__codename=permission) | models.Q(groups__permissions__codename=permission))
+        for user in users:
+            user.send_message(reverse_lazy('admin:metering_metering_add'))
+
+    class Meta:
+        permissions = [
+            (CALL_CENTER_PERMISSION, 'Call center'),
+            (METERING_PERMISSION, 'Metering'),
+            (DESIGN_PERMISSION, 'Design'),
+            (DETAILING_PERMISSION, 'Detailing'),
+            (ROVER_PERMISSION, 'Rover'),
+            (PAINTER_PERMISSION, 'Painter'),
+            (ASSEMBLY_PERMISSION, 'Assembly'),
+        ]

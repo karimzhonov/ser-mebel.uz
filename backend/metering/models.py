@@ -4,7 +4,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
-
+from oauth.models import User, METERING_PERMISSION
 from core.utils import create_folder
 from .constants import MeteringStatus, METERING_CHANGE_STATUS_PERMISSION
 
@@ -15,9 +15,9 @@ class Metering(models.Model):
     address = models.TextField(blank=True, null=True, verbose_name='Адрес')
     address_link = models.URLField(max_length=1000, blank=True, null=True, verbose_name='Адрес ссылка')
     create_date = models.DateTimeField(auto_now_add=True, verbose_name='Дата создание')
-    desc = models.TextField(blank=True, null=True)
+    desc = models.TextField(blank=True, null=True, verbose_name='Описание')
     
-    date_time = models.DateTimeField(null=True)
+    date_time = models.DateTimeField(verbose_name='Дата замера', null=True, )
     invoice = models.OneToOneField('call_center.Invoice', models.PROTECT, blank=True, null=True, verbose_name='Call-center инвойс')
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='metering_folder', null=True, blank=True)
 
@@ -39,3 +39,4 @@ class Metering(models.Model):
 def create_metering_folders(sender: Type[Metering], instance: Metering, created, **kwargs):
     if not created: return
     create_folder(instance, 'Замер')
+    User.send_messages(METERING_PERMISSION)

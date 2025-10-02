@@ -62,7 +62,8 @@ class ExpenseAdmin(ModelAdmin):
         return super().get_queryset(request).filter(user=request.user)
     
     def get_form(self, request: Any, obj: Expense, change: bool = False, **kwargs: Any) -> Any:
-        kwargs.update(form=ExpenseForm)
+        if obj is None:
+            kwargs.update(form=ExpenseForm)
         return super().get_form(request, obj, change, **kwargs)
 
     def save_model(self, request, obj: Expense, *args, **kwargs):

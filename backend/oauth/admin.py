@@ -3,13 +3,22 @@ from django.shortcuts import redirect
 from django.urls import reverse_lazy
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import Group, Permission
 from django.utils.translation import gettext_lazy as _
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 from unfold.decorators import action
 from core.unfold import ModelAdmin
 
 from .models import User
+
+
+admin.site.unregister(Group)
+
+
+@admin.register(Permission)
+class AuthPermissionAdmin(ModelAdmin):
+    list_display = ['name', 'codename', 'content_type']
+    search_fields = ['codename']
 
 
 @admin.register(User)

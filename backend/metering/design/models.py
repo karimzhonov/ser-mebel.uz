@@ -2,17 +2,17 @@ from typing import Type
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from djmoney.models.fields import MoneyField
+from oauth.models import User, DESIGN_PERMISSION
 from filer.models.foldermodels import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 
 
 class Design(models.Model):
-    metering = models.OneToOneField('metering.Metering', models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
-    done = models.BooleanField(default=False)
-    confirm = models.BooleanField(default=False)
+    metering = models.OneToOneField('metering.Metering', models.CASCADE, verbose_name='Замер')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создание')
+    done = models.BooleanField(default=False, verbose_name='Выполнено')
+    confirm = models.BooleanField(default=False, verbose_name='Подтверждено')
 
     history = HistoricalRecords()
 
@@ -21,10 +21,10 @@ class Design(models.Model):
 
 
 class DesignType(models.Model):
-    name = models.CharField(max_length=255, null=True)
-    design = models.ForeignKey(Design, models.CASCADE)
+    name = models.CharField(max_length=255, null=True, verbose_name='Название')
+    design = models.ForeignKey(Design, models.CASCADE, verbose_name='Дизайн')
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='design_files', null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создание')
 
     def __str__(self):
         return f'{self.name} ({self.design})'
@@ -34,6 +34,7 @@ class DesignType(models.Model):
 def create_design_type_folders(sender: Type[Design], instance: Design, created, **kwargs):
     if not created: return
     DesignType.objects.create(design=instance, name='Дизайн-1')
+    User.send_messages(DESIGN_PERMISSION)
 
 
 @receiver(post_save, sender=DesignType)

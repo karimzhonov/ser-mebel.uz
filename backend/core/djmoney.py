@@ -41,7 +41,10 @@ class ConvertedCostManager(Manager):
         self.currency = currency
 
     def get_queryset(self) -> QuerySet:
-        currency = self.currency or ''.join(self.request.GET.get('currency', [DEFAULT_CURRENCY]))
+        if self.request:
+            currency = self.currency or ''.join(self.request.GET.get('currency', [DEFAULT_CURRENCY]))
+        else:
+            currency = DEFAULT_CURRENCY
         try:
             rate = get_rate(currency)            
         except Exception as _exp:

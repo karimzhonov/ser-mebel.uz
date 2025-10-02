@@ -1,18 +1,22 @@
 from django.contrib import admin
 from django.http import HttpRequest
+from django import forms
 from django.shortcuts import get_object_or_404
 from core.unfold import ModelAdmin
 from unfold.decorators import display, action
 from unfold.dataclasses import ActionVariant
+from unfold.contrib.forms.widgets import ArrayWidget
+from unfold.widgets import UnfoldAdminSelectWidget
 from simple_history.admin import SimpleHistoryAdmin
 from core.utils.messages import instance_archive
 from core.filters import get_date_filter
 from core.utils import get_folder_link_html
 from core.utils.html import get_boolean_icons
 
+from .forms import CalculateForm, InventoryCountWidget
 from .components import *
 from .models import Price, Inventory, InventoryType, ObjectType
-from .inlines import CalculateInline, InventoryInline
+from .inlines import InventoryInline, CalculateInline
 
 
 @admin.register(Price)
@@ -23,8 +27,7 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     readonly_fields = ['metering_folder', 'folder_link']
     list_filter = [get_date_filter('created_at'), 'done']
     list_filter_submit = True
-    inlines = [CalculateInline]
-
+    
     def get_inlines(self, request, obj):
         inlines = []
         for o in ObjectType.objects.all():
@@ -34,7 +37,6 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
                 "object_type_id": int(o.pk),
             }
             inlines.append(type(f'Object{o.pk}CalculateInline',(CalculateInline,), class_attrs))
-        print(inlines)
         return inlines
 
     def has_add_permission(self, request: HttpRequest) -> bool:
@@ -77,7 +79,8 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
 
 @admin.register(InventoryType)
 class InventoryTypeAdmin(ModelAdmin):
-    list_display = ['name', 'obj']
+    list_display = ['name', 'type']
+    list_editable = ['type']
     inlines = [InventoryInline]
 
 

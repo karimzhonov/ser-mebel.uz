@@ -7,6 +7,7 @@ from filer.models import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 from accounting.constants import DefaultExpenseCategoryChoices
+from oauth.models import User, PAINTER_PERMISSION
 
 
 class Painter(models.Model):
@@ -31,6 +32,7 @@ def create_painter_folders(sender: Type[Painter], instance: Painter, created, **
     )
     
     if not created: return
+    User.send_messages(PAINTER_PERMISSION)
     
     folder, _ = Folder.objects.get_or_create(
         name='Моляр',

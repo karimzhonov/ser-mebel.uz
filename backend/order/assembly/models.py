@@ -7,6 +7,7 @@ from filer.models.foldermodels import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 from accounting.constants import DefaultExpenseCategoryChoices
+from oauth.models import ASSEMBLY_PERMISSION, User
 from .constants import ASSEMBLY_MANAGER_PERMISSION
 
 
@@ -38,7 +39,7 @@ def create_assembly_folders(sender: Type[Assembly], instance: Assembly, created,
         DefaultExpenseCategoryChoices.assembly, instance.order, instance.price
     )
     if not created: return
-    
+    User.send_messages(ASSEMBLY_PERMISSION)
     folder, _ = Folder.objects.get_or_create(
         name='Сборка / Установка',
         parent=instance.order.folder,

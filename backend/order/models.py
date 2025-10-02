@@ -16,12 +16,12 @@ from .managers import OrderManager
 
 class Order(models.Model):
     desc = models.TextField(_('Описание'), null=True, blank=True)
-    price = MoneyField(max_digits=12, null=True)
-    lost_money = MoneyField(max_digits=12, null=True)
+    price = MoneyField(max_digits=12, null=True, verbose_name='Все сумма')
+    lost_money = MoneyField(max_digits=12, null=True, verbose_name='Полученная сумма')
 
     status = models.CharField(max_length=32, choices=OrderStatus.choices, default=OrderStatus.CREATED, verbose_name='Статус')
     client = models.ForeignKey('client.Client', models.PROTECT, null=True, verbose_name='Мижоз')
-    metering = models.OneToOneField('metering.Metering', models.PROTECT, blank=True, null=True)
+    metering = models.OneToOneField('metering.Metering', models.PROTECT, blank=True, null=True, verbose_name='Замеры')
 
     reception_date = models.DateField(verbose_name='Дата получение')
     end_date = models.DateField(verbose_name='Дата сдачи')
@@ -29,7 +29,7 @@ class Order(models.Model):
     address = models.CharField(max_length=255, verbose_name='Адрес')
     address_link = models.URLField(max_length=1000, blank=True, null=True, verbose_name='Ссылка на яндекс карты')
 
-    design_type = models.ForeignKey("design.DesignType", models.PROTECT, null=True)
+    design_type = models.ForeignKey("design.DesignType", models.PROTECT, null=True, verbose_name='Дизайн')
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='order_folder', null=True, blank=True)
     
     history = HistoricalRecords(excluded_fields=["price", "lost_money"])

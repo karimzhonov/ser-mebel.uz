@@ -33,6 +33,11 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
         if request.resolver_match.view_name.endswith("changelist"):
             return False
         return True
+    
+    def has_change_permission(self, request, obj: Metering=None):
+        if obj and obj.status in MeteringStatus.archive_statuses():
+            return False
+        return super().has_change_permission(request, obj)
 
     def has_delete_permission(self, request: HttpRequest, obj = None) -> bool:
         return False

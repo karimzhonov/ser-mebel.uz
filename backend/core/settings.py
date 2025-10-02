@@ -40,6 +40,7 @@ ALLOWED_HOSTS = ["*"]
 # Application definition
 
 INSTALLED_APPS = [
+    "core",
     "unfold",  # before django.contrib.admin
     "unfold.contrib.filters",  # optional, if special filters are needed
     "unfold.contrib.forms",  # optional, if special form elements are needed
@@ -55,7 +56,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    'core',
+    
     'oauth',
     'order',
     'order.assembly',
@@ -387,3 +388,4 @@ UNFOLD = {
 
 
 TELEGRAM_BOT_TOKEN = os.getenv('BOT_TOKEN')
+TELEGRAM_BOT_SERVER = os.getenv('BOT_SERVER')

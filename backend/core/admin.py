@@ -1,5 +1,4 @@
 from django.contrib import admin
-from django.contrib.auth.models import Group, Permission
 from django.utils.html import format_html
 from filer.models import File, Folder, FolderPermission, ThumbnailOption, Image
 from filer.admin import FileAdmin, FolderAdmin, PermissionAdmin
@@ -7,20 +6,12 @@ from unfold.decorators import display
 from core.unfold import ModelAdmin
 from discussion.inlines import DiscussionInline
 
-admin.site.unregister(Group)
 admin.site.unregister(Folder)
 admin.site.unregister(File)
 admin.site.unregister(Image)
 admin.site.unregister(FolderPermission)
 admin.site.unregister(ThumbnailOption)
 admin.site.index_template = 'index.html'
-
-
-
-@admin.register(Permission)
-class AuthPermissionAdmin(ModelAdmin):
-    list_display = ['name', 'codename', 'content_type']
-    search_fields = ['codename']
 
 
 @admin.register(Folder)

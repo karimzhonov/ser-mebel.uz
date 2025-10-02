@@ -43,3 +43,8 @@ class InvoiceAdmin(InvoiceActions, ModelAdmin):
     
     def has_add_permission(self, request):
         return request.user.has_perm('call_center.add_invoice')
+
+    def has_change_permission(self, request, obj = None):
+        if obj and obj.solution in [SolutionChoice.sold_out, SolutionChoice.go_for_measured, SolutionChoice.price_problem, SolutionChoice.dont_need, SolutionChoice.declined]:
+            return False
+        return super().has_change_permission(request, obj)

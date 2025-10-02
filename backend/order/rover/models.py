@@ -7,6 +7,7 @@ from filer.models import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 from accounting.constants import DefaultExpenseCategoryChoices
+from oauth.models import User, ROVER_PERMISSION
 
 
 class Rover(models.Model):
@@ -31,6 +32,7 @@ def create_rover_folders(sender: Type[Rover], instance: Rover, created, **kwargs
     )
 
     if not created: return
+    User.send_messages(ROVER_PERMISSION)
     
     folder, _ = Folder.objects.get_or_create(
         name='Ровер',
