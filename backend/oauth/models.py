@@ -50,7 +50,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         return str(self.phone) if not self.name else f'{self.name} ({self.phone})'
 
     def send_message(self, url = None):
-        url = url or ''
+        url = str(url or '')
         if not self.telegram_id: return
         requests.post(f'{TELEGRAM_BOT_SERVER}/user/{self.telegram_id}/message', json={
             'text': 'Оповещение о заказе',
@@ -61,7 +61,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     def send_messages(cls, permission):
         users = cls.objects.filter(models.Q(user_permissions__codename=permission) | models.Q(groups__permissions__codename=permission))
         for user in users:
-            user.send_message(reverse_lazy('admin:metering_metering_add'))
+            user.send_message(reverse_lazy('admin:metering_metering_change', kwargs={'object_id': 1}))
 
     class Meta:
         permissions = [

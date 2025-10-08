@@ -77,22 +77,21 @@
     {% endif %}
 
 </div>
-<div class="md:hidden flex flex-col gap-5">
+<div class="!md:hidden flex flex-col gap-5">
     {% for group in sidebar_navigation %}
-<!--        {% if group.items|length > 0 %}-->
-<!--            <h2 class="font-lg">{{group.title}}</h2>-->
-<!--        {% endif %}-->
-        <div class="grid grid-cols-4 gap-5">
-            {% for item in group.items %}
-                {% if item.has_permission %}
-                <a href="{{item.link}}" class="flex flex-col gap-2 justify-start items-center">
-                    <span class="material-symbols-outlined text-center {{item.color}} p-3 rounded-full">
-                        {{item.icon}}
-                    </span>
-                    <p class="text-center">{{item.title}}</p>
-                </a>
-                {% endif %}
-            {% endfor %}
-        </div>
+        {% if group.items|length > 0 %}
+            <div class="grid grid-cols-4 gap-5">
+                {% for item in group.items %}
+                    {% if item.has_permission %}
+                    <a href="{{item.link}}" class="flex flex-col gap-2 justify-start items-center">
+                        <span class="material-symbols-outlined text-center {{item.color}} p-3 rounded-full">
+                            {{item.icon}}
+                        </span>
+                        <p class="text-center">{{item.title}}</p>
+                    </a>
+                    {% endif %}
+                {% endfor %}
+            </div>
+        {% endif %}
     {% endfor %}
 </div>
