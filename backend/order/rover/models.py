@@ -32,7 +32,7 @@ def create_rover_folders(sender: Type[Rover], instance: Rover, created, **kwargs
     )
 
     if not created: return
-    User.send_messages(ROVER_PERMISSION)
+    User.send_messages(ROVER_PERMISSION, 'admin:rover_rover_change', {'object_id': instance.pk})
     
     folder, _ = Folder.objects.get_or_create(
         name='Ровер',

@@ -60,7 +60,7 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
             "address_link": obj.metering.address_link or '',
             "reception_date": obj.metering.date_time.strftime('%d.%m.%Y'),
             "metering": obj.metering.pk,
-            "price": f"{int(obj.metering.price.price.amount)}:{obj.metering.price.price.currency}",
+            "price": f"{int(obj.metering.price.price.amount)}:{obj.metering.price.price.currency}" if obj.metering.price and obj.metering.price.price else '',
         })
         return redirect(f'{url}?{params}')
     

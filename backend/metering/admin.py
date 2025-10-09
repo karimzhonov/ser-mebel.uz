@@ -20,6 +20,7 @@ from .components import *
 @admin.register(Metering)
 class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
     list_display = ['client', 'date_time', 'get_status', 'has_design', 'has_price']
+    list_display_links = ['client', 'date_time', 'get_status', 'has_design', 'has_price']
     list_filter = [
         MeteringStatusDropdownFilter,
         get_date_filter('create_date'),

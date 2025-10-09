@@ -39,7 +39,7 @@ def create_assembly_folders(sender: Type[Assembly], instance: Assembly, created,
         DefaultExpenseCategoryChoices.assembly, instance.order, instance.price
     )
     if not created: return
-    User.send_messages(ASSEMBLY_PERMISSION)
+    User.send_messages(ASSEMBLY_PERMISSION, 'admin:assembly_assembly_change', {'object_id': instance.pk})
     folder, _ = Folder.objects.get_or_create(
         name='Сборка / Установка',
         parent=instance.order.folder,

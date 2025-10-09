@@ -15,11 +15,8 @@ REDIRECT = lambda: redirect(reverse_lazy("admin:metering_metering_changelist", q
 REDIRECT_OBJ = lambda object_id: redirect(reverse_lazy("admin:metering_metering_change", kwargs={'object_id': object_id}))
 
 class MeteringActions:
-    actions_row = [
-        'action_dont_need', 'action_metering_done'
-    ]
     actions_detail = [
-        'create_design', 'create_price', 'action_done'
+        'create_design', 'create_price', 'action_metering_done', 'action_dont_need'
     ]
 
     actions_submit_line = [
@@ -71,26 +68,6 @@ class MeteringActions:
             status=MeteringStatus.metering_done
         )
         return REDIRECT()
-
-    @action(
-        description=MeteringStatus.done.label,
-        url_path='done',
-        icon='check',
-        variant=ActionVariant.SUCCESS,
-        permissions=['action_done']
-    )
-    def action_done(self, request, object_id):
-        obj = get_object_or_404(Metering, pk=object_id)
-        if obj.status in MeteringStatus.archive_statuses():
-            instance_archive(request)
-            return REDIRECT()
-        Metering.objects.filter(pk=object_id).update(
-            status=MeteringStatus.done
-        )
-        return REDIRECT()
-
-    def has_action_done_permission(self, request, object_id):
-        return request.user.has_perm(f'metering.{METERING_CHANGE_STATUS_PERMISSION}')
 
     @action(
         description='Дизайн қилиш',

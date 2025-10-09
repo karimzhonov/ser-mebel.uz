@@ -32,7 +32,7 @@ class Price(models.Model):
 @receiver(post_save, sender=Price)
 def create_price_folders(sender: Type[Price], instance: Price, created, **kwargs):
     if not created: return
-    User.send_messages(CALL_CENTER_PERMISSION)
+    User.send_messages(CALL_CENTER_PERMISSION, 'admin:price_price_change', {'object_id': instance.pk})
     created_history = instance.history.order_by('history_date').first()
     created_user = created_history.history_user if created_history else None
 
@@ -60,7 +60,7 @@ class Calculate(models.Model):
     name = models.CharField(max_length=255, verbose_name='Название')
     price = models.ForeignKey(Price, models.CASCADE, verbose_name='Нарх')
     amount = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Сумма')
-    count = models.FloatField(null=True, verbose_name='Кол-во')
+    count = models.FloatField(null=True, verbose_name='Кв. м. / Пог м.')
     obj = models.ForeignKey(ObjectType, models.PROTECT, verbose_name='Объект')
     
     history = HistoricalRecords()

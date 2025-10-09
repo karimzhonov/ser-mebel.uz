@@ -59,6 +59,7 @@ class Order(models.Model):
 
 @receiver(post_save, sender=Order)
 def replace_order_folders(sender: Type[Order], instance: Order, created, **kwargs):
+    from metering.constants import MeteringStatus
     instance.metering.design.confirm = True
     instance.metering.design.save(update_fields=['confirm'])
     if not created: return
@@ -66,5 +67,7 @@ def replace_order_folders(sender: Type[Order], instance: Order, created, **kwarg
     instance.metering.folder.name = 'Замеры'
     instance.metering.folder.parent = folder
     instance.metering.folder.save()
+    instance.metering.status = MeteringStatus.sold_out
+    instance.metering.save(update_fields=['status'])
     Folder.objects.filter(parent=instance.metering.folder).update(parent=folder)
     

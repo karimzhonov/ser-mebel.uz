@@ -58,10 +58,10 @@ class User(AbstractBaseUser, PermissionsMixin):
         })
 
     @classmethod
-    def send_messages(cls, permission):
+    def send_messages(cls, permission, path_name, kwargs):
         users = cls.objects.filter(models.Q(user_permissions__codename=permission) | models.Q(groups__permissions__codename=permission))
         for user in users:
-            user.send_message(reverse_lazy('admin:metering_metering_change', kwargs={'object_id': 1}))
+            user.send_message(reverse_lazy(path_name, kwargs=kwargs))
 
     class Meta:
         permissions = [

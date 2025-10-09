@@ -32,7 +32,7 @@ def create_painter_folders(sender: Type[Painter], instance: Painter, created, **
     )
     
     if not created: return
-    User.send_messages(PAINTER_PERMISSION)
+    User.send_messages(PAINTER_PERMISSION, 'admin:painter_painter_change', {'object_id': instance.pk})
     
     folder, _ = Folder.objects.get_or_create(
         name='Моляр',

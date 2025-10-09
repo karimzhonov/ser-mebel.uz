@@ -39,4 +39,4 @@ class Metering(models.Model):
 def create_metering_folders(sender: Type[Metering], instance: Metering, created, **kwargs):
     if not created: return
     create_folder(instance, 'Замер')
-    User.send_messages(METERING_PERMISSION)
+    User.send_messages(METERING_PERMISSION, 'admin:metering_metering_change', {'object_id': instance.pk})
