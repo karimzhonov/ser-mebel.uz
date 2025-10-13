@@ -334,7 +334,7 @@ UNFOLD = {
     "ENVIRONMENT": ["Development" , "info"] if DEBUG else ["Production" , "danger"], # environment name in header
     "DASHBOARD_CALLBACK": "core.views.dashboard_callback",
     "LOGIN": {
-        "image": lambda request: media(config.LOGIN_IMAGE) if config.LOGIN_IMAGE else static('core/login-bg.jpg'),
+        "image": lambda request: media(config.LOGIN_IMAGE) if config.LOGIN_IMAGE else static('core/login-bg.png'),
     },
     "ACCOUNT": {
         "navigation": [

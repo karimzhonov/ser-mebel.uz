@@ -13,15 +13,15 @@ from ..painter.models import Painter
 
 
 class Detailing(models.Model):
-    order = models.OneToOneField('order.Order', models.CASCADE)
+    order = models.OneToOneField('order.Order', models.CASCADE, verbose_name='Заказ')
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='detailing_files', null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    done = models.BooleanField(default=False)
-    working_done = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+    done = models.BooleanField(default=False, verbose_name='Выполнено деталировка')
+    working_done = models.BooleanField(default=False, verbose_name='Выполнено заказ на сырье')
     
-    square = models.FloatField(default=0)
-    painter_square = models.FloatField(default=0, blank=True)
-    rover_square = models.FloatField(default=0, blank=True)
+    square = models.FloatField(default=0, verbose_name='Площадь')
+    painter_square = models.FloatField(default=0, blank=True, verbose_name='Площадь покраски')
+    rover_square = models.FloatField(default=0, blank=True, verbose_name='Площадь роверов')
     
     history = HistoricalRecords()
 

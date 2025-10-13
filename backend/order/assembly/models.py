@@ -12,15 +12,15 @@ from .constants import ASSEMBLY_MANAGER_PERMISSION
 
 
 class Assembly(models.Model):
-    order = models.OneToOneField('order.Order', models.CASCADE)
+    order = models.OneToOneField('order.Order', models.CASCADE, verbose_name='Заказ')
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='assembly_files', null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    done = models.BooleanField(default=False)
-    installing_done = models.BooleanField(default=False)
-    user = models.ForeignKey('oauth.User', models.PROTECT, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+    done = models.BooleanField(default=False, verbose_name='Выполнено сборка')
+    installing_done = models.BooleanField(default=False, verbose_name='Выполнено установка')
+    user = models.ForeignKey('oauth.User', models.PROTECT, blank=True, null=True, verbose_name='Сборшик')
     
-    square = models.FloatField()
-    price = MoneyField(max_digits=12, blank=True, null=True)
+    square = models.FloatField(verbose_name='Площадь')
+    price = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Нарх')
     
     history = HistoricalRecords()
 

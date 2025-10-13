@@ -11,13 +11,13 @@ from oauth.models import User, ROVER_PERMISSION
 
 
 class Rover(models.Model):
-    order = models.OneToOneField('order.Order', models.CASCADE)
+    order = models.OneToOneField('order.Order', models.CASCADE, verbose_name='Заказ')
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='rover_files', null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    done = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
+    done = models.BooleanField(default=False, verbose_name='Выполнено')
     
-    square = models.FloatField()
-    price = MoneyField(max_digits=12, blank=True, null=True)
+    square = models.FloatField(verbose_name='Площадь')
+    price = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Нарх')
     
     history = HistoricalRecords()
 
