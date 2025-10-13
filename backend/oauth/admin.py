@@ -28,7 +28,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     add_form = UserCreationForm
     change_password_form = AdminPasswordChangeForm
     fieldsets = (
-        (None, {"fields": ("phone", "telegram_id", "password")}),
+        (None, {"fields": ("phone", "name", "telegram_id", "password")}),
         (
             _("Permissions"),
             {
@@ -52,7 +52,7 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
             },
         ),
     )
-    list_display = ("phone", "is_staff", "is_superuser", "is_active")
+    list_display = ("name", "phone", "is_staff", "is_superuser", "is_active")
     list_filter = ("is_staff", "is_superuser", "is_active", "groups")
     list_filter_submit = True
     search_fields = ("phone",)
