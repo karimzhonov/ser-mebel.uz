@@ -26,6 +26,11 @@ class AssemblyAdmin(ModelAdmin):
         if request.user.has_perm(f'assembly.{ASSEMBLY_MANAGER_PERMISSION}'):
             return [get_date_filter('created_at'), 'done', 'user']
         return super().get_list_filter(request)
+    
+    def has_change_permission(self, request: HttpRequest, obj = None):
+        if obj and obj.done:
+            return False
+        return super().has_change_permission(request, obj)
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
