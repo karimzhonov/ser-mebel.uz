@@ -21,7 +21,7 @@
             }
 
             .md\:hidden {
-                display: hidden;
+                display: hidden!important;
             }
             .md\:flex {
                 display: flex;
@@ -77,7 +77,7 @@
     {% endif %}
 
 </div>
-<div class="!md:hidden flex flex-col gap-5">
+<div class="md:hidden flex flex-col gap-5">
     {% for group in sidebar_navigation %}
         {% if group.items|length > 0 %}
             <div class="grid grid-cols-4 gap-5">
