@@ -12,6 +12,7 @@ def sev_to_color(sev):
         'orange': 'orange',
         'red': 'red',
         'blue': 'blue',
+        'white': 'white',
     }[sev]
 
 def get_colors(sev):
@@ -19,8 +20,9 @@ def get_colors(sev):
     return f"bg-{color}-100 text-{color}-700 dark:bg-{color}-500/20 dark:text-{color}-400"
 
 def get_tag_html(text, sev):
+    color = sev_to_color(sev)
     return f"""
-    <span class="inline-block font-semibold leading-normal px-2 py-1 rounded-default text-[12px] uppercase whitespace-nowrap {get_colors(sev)}">
+    <span class="inline-block font-semibold leading-normal px-2 py-1 rounded-default text-[12px] uppercase whitespace-nowrap {get_colors(color)}">
         {text}
     </span>
 """
