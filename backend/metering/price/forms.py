@@ -58,7 +58,7 @@ class CalculateForm(forms.ModelForm):
         return instance
 
 class InventoryCountWidget(forms.MultiWidget):
-    template_name = 'metering/price/inventory_list.html'
+    # template_name = 'metering/price/inventory_list.html'
     def __init__(self, choices=[], attrs=None):
         attrs = attrs or {}
         widgets = [

@@ -14,7 +14,7 @@ class MeteringStatus(TextChoices):
 
     @classmethod
     def active_statuses(cls):
-        return [cls.created, cls.other_day]
+        return [cls.created, cls.other_day, cls.metering_done]
     
     @classmethod
     def archive_statuses(cls):

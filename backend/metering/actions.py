@@ -28,6 +28,7 @@ class MeteringActions:
         url_path='dont-need',
         icon='close',
         variant=ActionVariant.DANGER,
+        permissions=['action_dont_need'],
     )
     def action_dont_need(self, request, object_id):
         obj = get_object_or_404(Metering, pk=object_id)
@@ -39,11 +40,16 @@ class MeteringActions:
         )
         return REDIRECT()
     
+    def has_action_dont_need_permission(self, request, object_id):
+        obj = Metering.objects.get(pk=object_id)
+        return obj.status in [MeteringStatus.created, MeteringStatus.other_day, MeteringStatus.metering_done]
+    
     @action(
         description=MeteringStatus.other_day.label,
         url_path='other_day',
         icon='info',
         variant=ActionVariant.PRIMARY,
+        permissions=['action_other_day'],
     )
     def action_other_day(self, request, obj: Metering):
         if obj.status in MeteringStatus.archive_statuses():
@@ -52,12 +58,17 @@ class MeteringActions:
 
         obj.status=MeteringStatus.other_day
         obj.save(update_fields=['status'])
+    
+    def has_action_other_day_permission(self, request, object_id):
+        obj = Metering.objects.get(pk=object_id)
+        return obj.status in [MeteringStatus.created, MeteringStatus.other_day]
 
     @action(
         description=MeteringStatus.metering_done.label,
         url_path='metering-done',
         icon='check',
         variant=ActionVariant.SUCCESS,
+        permissions=['action_metering_done'],
     )
     def action_metering_done(self, request, object_id):
         obj = get_object_or_404(Metering, pk=object_id)
@@ -68,6 +79,10 @@ class MeteringActions:
             status=MeteringStatus.metering_done
         )
         return REDIRECT()
+    
+    def has_action_metering_done_permission(self, request, object_id):
+        obj = Metering.objects.get(pk=object_id)
+        return obj.status in [MeteringStatus.created, MeteringStatus.other_day]
 
     @action(
         description='Дизайн қилиш',

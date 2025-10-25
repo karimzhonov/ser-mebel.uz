@@ -21,9 +21,6 @@ class InvoiceAdmin(InvoiceActions, ModelAdmin):
         InvoiceSolutionDropdownFilter,
         get_date_filter('create_date'),
     ]
-    list_filter_submit = True
-    list_filter_sheet = False
-    list_fullwidth = True
     exclude = ['solution']
     list_before_template = 'call_center/invoice_list_before.html'
 
