@@ -1,6 +1,5 @@
 from django.contrib import admin
 from django.http import HttpRequest
-from django.contrib.auth import get_permission_codename
 from django.shortcuts import get_object_or_404
 from core.unfold import ModelAdmin
 from unfold.decorators import display, action
@@ -77,13 +76,10 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
 @admin.register(InventoryType)
 class InventoryTypeAdmin(ModelAdmin):
     list_display = ['name', 'type']
-    list_editable = ['type']
     inlines = [InventoryInline]
 
     def has_add_permission(self, request):
-        opts = self.opts
-        codename = get_permission_codename("add", opts)
-        return request.user.has_perm("%s.%s" % (opts.app_label, codename))
+        return request.user.has_perm("price.add_inventorytype")
 
 
 @admin.register(Inventory)
