@@ -79,7 +79,7 @@ class InventoryType(models.Model):
         (TYPE_COUNT, 'Кол-во'),
     )
 
-    name = models.CharField(max_length=255, unique=True, verbose_name='Название')
+    name = models.CharField(max_length=255, verbose_name='Название')
     obj = models.ForeignKey(ObjectType, models.CASCADE, null=True, verbose_name='Объект')
     type = models.IntegerField(default=TYPE_COUNT, choices=TYPES, verbose_name='Тип')
 

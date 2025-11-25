@@ -80,6 +80,8 @@ class InventoryTypeAdmin(ModelAdmin):
     list_editable = ['type']
     inlines = [InventoryInline]
 
+    def has_add_permission(self, request):
+        return super(ModelAdmin, self).has_add_permission(request)
 
 @admin.register(Inventory)
 class InventoryAdmin(ModelAdmin):
