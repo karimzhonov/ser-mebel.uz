@@ -1,6 +1,6 @@
-from datetime import timedelta
+from datetime import timedelta, datetime
 from django import forms
-from unfold.widgets import UnfoldAdminSelect2Widget, UnfoldAdminIntegerFieldWidget
+from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminIntegerFieldWidget
 from metering.constants import MeteringStatus
 from metering.models import Metering
 from call_center.constants import SolutionChoice
@@ -11,7 +11,8 @@ from .models import Order
 class OrderAddForm(forms.ModelForm):
     design_type = forms.ModelChoiceField(
         queryset=DesignType.objects,
-        widget=UnfoldAdminSelect2Widget()
+        widget=UnfoldAdminSelectWidget(),
+        label='Дизайн'
     )
     count_days = forms.IntegerField(
         min_value=1, max_value=365,
@@ -38,7 +39,7 @@ class OrderAddForm(forms.ModelForm):
             )
 
     def save(self, commit=True):
-        self.instance.end_date = self.instance.reception_date + timedelta(days=self.cleaned_data['count_days'])
+        self.instance.end_date = datetime.now().date() + timedelta(days=self.cleaned_data['count_days'])
         if self.instance.metering:
             self.instance.metering.status = MeteringStatus.sold_out
             self.instance.metering.save()

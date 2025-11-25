@@ -12,6 +12,7 @@ def sev_to_color(sev):
         'orange': 'orange',
         'red': 'red',
         'blue': 'blue',
+        'white': 'white',
     }[sev]
 
 def get_colors(sev):

@@ -2,6 +2,9 @@ from unfold.admin import ModelAdmin as _ModelAdmin
 
 
 class ModelAdmin(_ModelAdmin):
+    list_filter_sheet = True
+    list_filter_submit = True
+    list_fullwidth = True
 
     def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
         extra_context = extra_context or {}

@@ -1,7 +1,7 @@
 import json
 from django import forms
 from djmoney.money import Money
-from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminDecimalFieldWidget, AdminTextInputWidget
+from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminDecimalFieldWidget
 from .models import Calculate, InventoryInCalculate, Inventory, InventoryType
 
 
@@ -58,13 +58,13 @@ class CalculateForm(forms.ModelForm):
         return instance
 
 class InventoryCountWidget(forms.MultiWidget):
-    template_name = 'metering/price/inventory_list.html'
+    # template_name = 'metering/price/inventory_list.html'
     def __init__(self, choices=[], attrs=None):
         attrs = attrs or {}
         widgets = [
             UnfoldAdminSelectWidget(choices=choices),
             UnfoldAdminDecimalFieldWidget(attrs={'placeholder': 'Количество'}),
-            AdminTextInputWidget(attrs={'disabled': True}),
+            UnfoldAdminDecimalFieldWidget(attrs={'disabled': True}),
         ]
         super().__init__(widgets, attrs)
 

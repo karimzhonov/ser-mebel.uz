@@ -1,6 +1,7 @@
 from typing import Any
 from django.contrib import admin
 from django.db.models.query import QuerySet
+from unfold.contrib.filters.admin import RangeDateFilter
 from django.http import HttpRequest
 from core.unfold import ModelAdmin
 from core.filters import get_date_filter
@@ -14,9 +15,9 @@ from .components import *
 class IncomeAdmin(ModelAdmin):
     exclude = ['user']
     list_display = ['category', 'desc', 'cost', 'created_at']
-    list_filter = [get_date_filter('created_at'), CurrencyDropdownFilter]
+    list_filter = [get_date_filter('created_at'), CurrencyDropdownFilter, ('created_at', RangeDateFilter)]
     list_filter_submit = True
-    # list_before_template = 'accounting/income_before_list.html'
+    list_before_template = 'accounting/income_before_list.html'
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).filter(user=request.user)
@@ -54,9 +55,9 @@ class IncomeCategoryAdmin(ModelAdmin):
 class ExpenseAdmin(ModelAdmin):
     exclude = ['user']
     list_display = ['category', 'desc', 'cost', 'order', 'created_at']
-    list_filter = [get_date_filter('created_at'), CurrencyDropdownFilter]
+    list_filter = [get_date_filter('created_at'), CurrencyDropdownFilter, ('created_at', RangeDateFilter)]
     list_filter_submit = True
-    # list_before_template = 'accounting/expense_before_list.html'
+    list_before_template = 'accounting/expense_before_list.html'
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
         return super().get_queryset(request).filter(user=request.user)

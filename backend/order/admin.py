@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.http import HttpRequest
 from django.utils.translation import gettext_lazy as _
 from djmoney.money import Money
+from djmoney import settings as dj_setting
 from core.unfold import ModelAdmin
 from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
@@ -38,6 +39,8 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
             if price:
                 amount, currency = price.split(":")
                 initial["price"] = Money(amount, currency)
+            else:
+                initial["price"] = Money(amount=0, currency=dj_setting.DEFAULT_CURRENCY)
         except Exception:
             pass
         return initial
