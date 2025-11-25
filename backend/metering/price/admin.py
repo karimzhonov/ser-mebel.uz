@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.http import HttpRequest
-from django import forms
+from django.contrib.auth import get_permission_codename
 from django.shortcuts import get_object_or_404
 from core.unfold import ModelAdmin
 from unfold.decorators import display, action
@@ -81,7 +81,10 @@ class InventoryTypeAdmin(ModelAdmin):
     inlines = [InventoryInline]
 
     def has_add_permission(self, request):
-        return super(ModelAdmin, self).has_add_permission(request)
+        opts = self.opts
+        codename = get_permission_codename("add", opts)
+        return request.user.has_perm("%s.%s" % (opts.app_label, codename))
+
 
 @admin.register(Inventory)
 class InventoryAdmin(ModelAdmin):
