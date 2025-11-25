@@ -95,5 +95,6 @@ class OrderActions:
         )
 
     def has_reverse_status_permission(self, request, object_id):
+        if not object_id: return False
         obj = get_object_or_404(Order, pk=object_id)
         return request.user.has_perm(f'order.{ORDER_REVERSE_STATUS_PERMISSION}') and obj.status != OrderStatus.CREATED
