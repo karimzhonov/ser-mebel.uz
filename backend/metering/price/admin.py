@@ -79,8 +79,7 @@ class InventoryTypeAdmin(ModelAdmin):
     inlines = [InventoryInline]
 
     def has_add_permission(self, request):
-        print(request.user.has_perm("price.add_inventorytype"))
-        return request.user.has_perm("price.add_inventorytype")
+        return super(ModelAdmin, self).has_add_permission(request)
 
 
 @admin.register(Inventory)

@@ -9,8 +9,7 @@ from .constants import OrderStatus, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERS
 
 
 class OrderActions:
-    actions_row = ['reverse_status']
-    actions_detail = ['detailing_action']
+    actions_detail = ['reverse_status,', 'detailing_action']
 
     @action(
         description=_('Деталировка'),
