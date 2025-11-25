@@ -75,4 +75,6 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
 
 @admin.register(Group)
 class GroupAdmin(BaseGroupAdmin, ModelAdmin):
-    pass
+    
+    def has_add_permission(self, request):
+        return super(ModelAdmin, self).has_add_permission(request)

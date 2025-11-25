@@ -14,4 +14,4 @@ class ModelAdmin(_ModelAdmin):
     def has_add_permission(self, request) -> bool:
         if request.resolver_match.view_name.endswith("changelist") or request.resolver_match.view_name.endswith("change"):
             return False
-        return True
+        return super().has_add_permission(request)

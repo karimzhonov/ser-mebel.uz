@@ -38,7 +38,7 @@ class OrderActions:
 
     @action(
         description=_("Изменить статус"),
-        permissions=[f'order.{ORDER_CHANGE_STATUS_PERMISSION}'],
+        permissions=['change_status'],
         url_path="change-status",
         icon='check',
         variant=ActionVariant.SUCCESS
@@ -64,9 +64,13 @@ class OrderActions:
           reverse_lazy("admin:order_order_changelist")
         )
     
+    def has_change_status_permission(self, request, object_id):
+        obj = get_object_or_404(Order, pk=object_id)
+        return request.user.has_perm(f'order.{ORDER_CHANGE_STATUS_PERMISSION}') and obj.status != OrderStatus.DONE
+    
     @action(
         description=_("Возвращать статус"),
-        permissions=[f'order.{ORDER_REVERSE_STATUS_PERMISSION}'],
+        permissions=['reverse_status'],
         url_path="reverse-status",
         icon='close',
         variant=ActionVariant.DANGER
@@ -90,3 +94,7 @@ class OrderActions:
         return redirect(
           reverse_lazy("admin:order_order_changelist")
         )
+
+    def has_reverse_status_permission(self, request, object_id):
+        obj = get_object_or_404(Order, pk=object_id)
+        return request.user.has_perm(f'order.{ORDER_REVERSE_STATUS_PERMISSION}') and obj.status != OrderStatus.CREATED

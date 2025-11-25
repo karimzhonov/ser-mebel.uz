@@ -41,7 +41,7 @@ class UFileAdmin(FileAdmin, ModelAdmin):
     
     @display(description='Файл')
     def preview(self, obj: File):
-        return format_html(f'<a href="{obj.canonical_url}" target="_blank">{obj.original_filename}</a>') if obj.canonical_url else '-'
+        return format_html(f'<a href="{obj.file.url}" target="_blank">{obj.original_filename}</a>') if obj.canonical_url else '-'
 
 
 
@@ -52,7 +52,7 @@ class UImageAdmin(UFileAdmin):
     
     @display(image=True, description='Фото')
     def preview(self, obj: Image):
-        return format_html(f'<a href="{obj.canonical_url}" target="_blank"><img src="{obj.canonical_url}" class="max-w-lg w-full" /></a>') if obj.canonical_url else '-'
+        return format_html(f'<a href="{obj.file.url}" target="_blank"><img src="{obj.canonical_url}" class="max-w-lg w-full" /></a>') if obj.canonical_url else '-'
 
 
 @admin.register(FolderPermission)
