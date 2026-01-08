@@ -21,3 +21,11 @@ services:
     env_file:
       - ./bot/.env
     command: sh -c "uvicorn main:app --host 0.0.0.0 --port 80 --workers 4"
+  
+  db: 
+    container_name: db
+    image: postgres:18
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./db-data:/var/lib/postgresql/data
