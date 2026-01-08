@@ -28,4 +28,4 @@ services:
     env_file:
       - ./backend/.env
     volumes:
-      - ./db-data:/var/lib/postgresql/data
+      - ./db-data:/var/lib/postgresql
