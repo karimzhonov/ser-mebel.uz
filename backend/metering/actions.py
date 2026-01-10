@@ -4,6 +4,9 @@ from django.shortcuts import get_object_or_404
 from unfold.enums import ActionVariant
 from unfold.decorators import action
 from core.utils.messages import instance_archive
+from oauth.constants import CALL_CENTER_PERMISSION
+from oauth.models import User
+
 from .design.models import Design
 from .price.models import Price
 
@@ -79,6 +82,7 @@ class MeteringActions:
         Metering.objects.filter(pk=object_id).update(
             status=MeteringStatus.metering_done
         )
+        User.send_messages(CALL_CENTER_PERMISSION, 'admin:metering_metering_change', {'object_id': object_id})
         return REDIRECT()
     
     def has_action_metering_done_permission(self, request, object_id):

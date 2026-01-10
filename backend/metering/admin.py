@@ -50,7 +50,7 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
         return super().response_add(request, obj, post_url_continue)
 
     def get_readonly_fields(self, request, obj = None):
-        readonly_fields = ['folder_link', 'invoice', 'address', 'address_link', 'client']
+        readonly_fields = ['folder_link', 'invoice', 'address', 'address_link', 'client', 'get_status']
         if obj and hasattr(obj, 'design'):
             readonly_fields.append('design')
         if obj and hasattr(obj, 'price'):
@@ -94,7 +94,7 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
     
     def get_fieldsets(self, request, obj=None):
         if not obj: return super().get_fieldsets(request, obj)
-        fields = ['client', 'invoice', 'address', 'address_link', 'folder_link', 'date_time', 'desc']
+        fields = ['client', 'invoice', 'address', 'address_link', 'folder_link', 'date_time', 'desc', 'get_status']
         if obj and hasattr(obj, 'design'):
             fields.append('design')
         if obj and hasattr(obj, 'price'):

@@ -86,9 +86,11 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     
     def has_download_excel_permission(self, request, object_id):
         return True
-    
-    def save_model(self, request, obj: Price, form, change):
-        super().save_model(request, obj, form, change)
+
+
+    def save_related(self, request, form, formsets, change):
+        super().save_related(request, form, formsets, change)
+        obj = form.instance
         amount = 0
         for calc in Calculate.objects.filter(price=obj):
             amount += calc.amount.amount

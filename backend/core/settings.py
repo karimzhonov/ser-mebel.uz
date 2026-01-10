@@ -92,6 +92,7 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     "simple_history.middleware.HistoryRequestMiddleware",
     "core.djmoney.ConvertedCostMiddleware",
+    "core.middleware.Redirect404Middleware"
 ]
 
 ROOT_URLCONF = 'core.urls'

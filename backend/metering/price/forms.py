@@ -19,7 +19,7 @@ class CalculateForm(forms.ModelForm):
                 if inv_in_calc.inventory.type.type == InventoryType.TYPE_KV:
                     self.initial[f'inv_{inv_in_calc.inventory.type_id}'] = inv_in_calc.inventory_id
                 elif inv_in_calc.inventory.type.type == InventoryType.TYPE_COUNT:
-                    self.initial[f'inv_{inv_in_calc.inventory.type_id}'] = [inv_in_calc.inventory_id, inv_in_calc.count, str(inv_in_calc.price)]
+                    self.initial[f'inv_{inv_in_calc.inventory.type_id}'] = [inv_in_calc.inventory_id, inv_in_calc.count, '']
 
     def save(self, commit = True):
         self.instance.obj_id = self.object_type_id

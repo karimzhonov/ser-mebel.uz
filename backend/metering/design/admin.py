@@ -10,6 +10,8 @@ from simple_history.admin import SimpleHistoryAdmin
 from core.utils.html import get_boolean_icons, get_folder_link_html
 from core.filters import get_date_filter
 from core.utils.messages import instance_archive
+from oauth.constants import CALL_CENTER_PERMISSION
+from oauth.models import User
 from .models import Design
 from .inlines import DesignTypeInline
 from .components import *
@@ -29,10 +31,10 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
     
-    def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
-        if obj and obj.done:
-            return False
-        return super().has_change_permission(request, obj)
+    # def has_change_permission(self, request: HttpRequest, obj: Design=None) -> bool:
+    #     if obj and obj.done:
+    #         return False
+    #     return super().has_change_permission(request, obj)
     
     @display(description='Выполнен')
     def is_done(self, obj: Design):
@@ -78,6 +80,7 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
             return
         obj.done = True
         obj.save()
+        User.send_messages(CALL_CENTER_PERMISSION, 'admin:design_design_change', {'object_id': obj.pk})
 
     def has_done_action_permission(self, request, object_id):
         if not object_id: return True
