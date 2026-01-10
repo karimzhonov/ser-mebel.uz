@@ -60,6 +60,7 @@ class MeteringActions:
         obj.save(update_fields=['status'])
     
     def has_action_other_day_permission(self, request, object_id):
+        if not object_id: return False
         obj = Metering.objects.get(pk=object_id)
         return obj.status in [MeteringStatus.created, MeteringStatus.other_day]
 

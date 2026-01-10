@@ -10,6 +10,7 @@ from core.filters import get_date_filter
 from core.utils import get_folder_link_html
 from core.utils.html import get_boolean_icons
 
+from .excel import download_inlines_excel
 from .components import *
 from .models import Price, Inventory, InventoryType, ObjectType
 from .inlines import InventoryInline, CalculateInline
@@ -71,6 +72,12 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
         if not object_id: return True
         obj = get_object_or_404(Price, pk=object_id)
         return request.user.has_perm('price.change_price') and not obj.done
+    
+    def download_excel(self, request, object_id):
+        return download_inlines_excel(request, object_id)
+    
+    def has_download_excel_permission(self, request, object_id):
+        return True
 
 
 @admin.register(InventoryType)

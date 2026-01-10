@@ -1,24 +1,11 @@
 version: '3.3'
 
 services:
-  nginx:
-    container_name: nginx
-    image: nginx:latest
-    ports:
-      - "5000:80"
-    depends_on:
-      - back
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/errors/:/etc/nginx/html/errors/
-      - ./media/:/media/
-      - ./static/:/static/
-
   back:
     container_name: back
     build: ./backend
-    expose:
-      - "8000"
+    ports:
+      - 8000:8000
     env_file:
       - ./backend/.env
     command: bash ./runserver.sh
@@ -26,3 +13,11 @@ services:
       - ./media/:/media/
       - ./static/:/static/
       - ./backend/:/app/
+
+  db: 
+    container_name: db
+    image: postgres:18
+    env_file:
+      - ./backend/.env
+    volumes:
+      - ./db-data:/var/lib/postgresql
