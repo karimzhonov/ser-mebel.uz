@@ -81,7 +81,7 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
         permissions=['download_excel']
     )
     def download_excel(self, request, object_id):
-        return download_inlines_excel(request, object_id)
+        return download_inlines_excel(self, request, object_id)
     
     def has_download_excel_permission(self, request, object_id):
         return True
