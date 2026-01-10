@@ -20,6 +20,7 @@ from .inlines import InventoryInline, CalculateInline
 class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     list_display = ['metering', 'is_done', 'price']
     actions_submit_line = ['done_action']
+    actions_detail = ['download_excel']
     exclude = ['folder', 'done', 'metering']
     readonly_fields = ['metering_folder', 'folder_link']
     list_filter = [get_date_filter('created_at'), 'done']
@@ -73,6 +74,12 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
         obj = get_object_or_404(Price, pk=object_id)
         return request.user.has_perm('price.change_price') and not obj.done
     
+    @action(
+        description='Excel',
+        url_path="download-excel",
+        variant=ActionVariant.PRIMARY,
+        permissions=['download_excel']
+    )
     def download_excel(self, request, object_id):
         return download_inlines_excel(request, object_id)
     
