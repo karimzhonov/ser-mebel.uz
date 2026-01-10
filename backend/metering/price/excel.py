@@ -29,18 +29,18 @@ def download_inlines_excel(modeladmin, request, object_id):
                 ws.append([
                     ic.inventory.type.name,
                     ic.inventory.name,
-                    ic.inventory.price,
+                    str(ic.inventory.price),
                     calc.count,
-                    ic.price
+                    str(ic.price)
                 ])
 
             elif ic.inventory.type.type == InventoryType.TYPE_COUNT:
                 ws.append([
                     ic.inventory.type.name,
                     ic.inventory.name,
-                    ic.inventory.price,
+                    str(ic.inventory.price),
                     ic.count,
-                    ic.price
+                    str(ic.price)
                 ])
 
         ws.append([
@@ -48,7 +48,7 @@ def download_inlines_excel(modeladmin, request, object_id):
             "",
             "",
             "",
-            calc.amount
+            str(calc.amount)
         ])
 
         ws.append([""])
