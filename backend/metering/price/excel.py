@@ -57,7 +57,7 @@ def download_inlines_excel(modeladmin, request, object_id):
     response = HttpResponse(
         content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-    response["Content-Disposition"] = 'attachment; filename="order_items.xlsx"'
+    response["Content-Disposition"] = f'attachment; filename="{price.metering}.xlsx"'
 
     wb.save(response)
     return response

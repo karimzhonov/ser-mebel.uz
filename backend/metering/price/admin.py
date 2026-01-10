@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from core.unfold import ModelAdmin
+from djmoney.money import Money
 from unfold.decorators import display, action
 from unfold.dataclasses import ActionVariant
 from simple_history.admin import SimpleHistoryAdmin
@@ -12,7 +13,7 @@ from core.utils.html import get_boolean_icons
 
 from .excel import download_inlines_excel
 from .components import *
-from .models import Price, Inventory, InventoryType, ObjectType
+from .models import Price, Inventory, InventoryType, ObjectType, Calculate
 from .inlines import InventoryInline, CalculateInline
 
 
@@ -85,6 +86,14 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     
     def has_download_excel_permission(self, request, object_id):
         return True
+    
+    def save_model(self, request, obj: Price, form, change):
+        super().save_model(request, obj, form, change)
+        amount = 0
+        for calc in Calculate.objects.filter(price=obj):
+            amount += calc.amount.amount
+        obj.price = Money(amount, currency='USD')
+        obj.save()
 
 
 @admin.register(InventoryType)

@@ -7,7 +7,7 @@ from django.contrib.auth.models import Group, Permission
 from django.utils.translation import gettext_lazy as _
 from unfold.forms import AdminPasswordChangeForm, UserChangeForm, UserCreationForm
 from unfold.decorators import action
-from core.unfold import ModelAdmin
+from unfold.admin import ModelAdmin
 
 from .models import User
 

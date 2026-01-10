@@ -1,7 +1,7 @@
 import json
 from django import forms
 from djmoney.money import Money
-from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminDecimalFieldWidget
+from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminDecimalFieldWidget, AdminTextInputWidget
 from .models import Calculate, InventoryInCalculate, Inventory, InventoryType
 
 
@@ -64,7 +64,7 @@ class InventoryCountWidget(forms.MultiWidget):
         widgets = [
             UnfoldAdminSelectWidget(choices=choices),
             UnfoldAdminDecimalFieldWidget(attrs={'placeholder': 'Количество'}),
-            UnfoldAdminDecimalFieldWidget(attrs={'disabled': True}),
+            AdminTextInputWidget(attrs={'disabled': True}),
         ]
         super().__init__(widgets, attrs)
 

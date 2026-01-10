@@ -59,7 +59,7 @@ class ObjectType(models.Model):
 class Calculate(models.Model):
     name = models.CharField(max_length=255, verbose_name='Название')
     price = models.ForeignKey(Price, models.CASCADE, verbose_name='Нарх')
-    amount = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Сумма')
+    amount = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Сумма (Итого)')
     count = models.FloatField(null=True, verbose_name='Кв. м. / Пог м.')
     obj = models.ForeignKey(ObjectType, models.PROTECT, verbose_name='Объект')
     
