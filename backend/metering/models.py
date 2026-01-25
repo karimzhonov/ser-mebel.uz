@@ -18,7 +18,7 @@ class Metering(models.Model):
     desc = models.TextField(blank=True, null=True, verbose_name='Описание')
     
     date_time = models.DateTimeField(verbose_name='Дата замера', null=True, )
-    invoice = models.OneToOneField('call_center.Invoice', models.PROTECT, blank=True, null=True, verbose_name='Call-center инвойс')
+    invoice = models.OneToOneField('call_center.Invoice', models.CASCADE, blank=True, null=True, verbose_name='Call-center инвойс')
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='metering_folder', null=True, blank=True)
 
     history = HistoricalRecords()

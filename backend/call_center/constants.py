@@ -7,7 +7,7 @@ class SolutionChoice(IntegerChoices):
     dont_need = (0, 'Керак эмас')
     re_phone = (1, 'Қайта телефон қилиш')
     given_info = (2, 'Телеграмда маълумот берилди')
-    given_location = (3, 'Локация юборилади')
+    given_location = (3, 'Мижоздан локация олиш')
     price_problem = (4, 'Нархи қониқтирмади')
     go_for_measured = (5, 'Замерга борилади')
     sold_out = (6, 'Сотилди')
