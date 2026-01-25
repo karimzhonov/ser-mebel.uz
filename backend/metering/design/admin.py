@@ -3,7 +3,7 @@ from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.utils.http import urlencode
 from django.http import HttpRequest
-from core.unfold import ModelAdmin
+from unfold.admin import ModelAdmin
 from unfold.dataclasses import ActionVariant
 from unfold.decorators import action, display
 from simple_history.admin import SimpleHistoryAdmin

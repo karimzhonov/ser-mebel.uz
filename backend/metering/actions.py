@@ -4,7 +4,7 @@ from django.shortcuts import get_object_or_404
 from unfold.enums import ActionVariant
 from unfold.decorators import action
 from core.utils.messages import instance_archive
-from oauth.constants import CALL_CENTER_PERMISSION
+from oauth.constants import METERING_PERMISSION
 from oauth.models import User
 
 from .design.models import Design
@@ -85,6 +85,7 @@ class MeteringActions:
         return REDIRECT()
     
     def has_action_metering_done_permission(self, request, object_id):
+        if not request.user.has_perm(f'oauth.{METERING_PERMISSION}'): return False
         obj = Metering.objects.get(pk=object_id)
         return obj.status in [MeteringStatus.created, MeteringStatus.other_day]
 
