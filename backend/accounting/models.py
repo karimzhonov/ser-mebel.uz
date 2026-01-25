@@ -18,7 +18,7 @@ class ExpenseCategory(models.Model):
 class Expense(models.Model):
     user = models.ForeignKey('oauth.User', models.SET_NULL, null=True, blank=True, verbose_name='Пользователь')
     cost = MoneyField(max_digits=12, verbose_name='Сумма')
-    category = models.ForeignKey(ExpenseCategory, models.PROTECT, verbose_name='Категория')
+    category = models.ForeignKey(ExpenseCategory, models.CASCADE, verbose_name='Категория')
     desc = models.TextField(blank=True, null=True, verbose_name='Описание')
     order = models.ForeignKey('order.Order', models.SET_NULL, blank=True, null=True, verbose_name='Заказ')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создание')
@@ -60,7 +60,7 @@ class IncomeCategory(models.Model):
 class Income(models.Model):
     user = models.ForeignKey('oauth.User', models.CASCADE, verbose_name='Пользователь')
     cost = MoneyField(max_digits=12, verbose_name='Сумма')
-    category = models.ForeignKey(IncomeCategory, models.PROTECT, verbose_name='Категория')
+    category = models.ForeignKey(IncomeCategory, models.CASCADE, verbose_name='Категория')
     desc = models.TextField(blank=True, null=True, verbose_name='Описание')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создание')
 

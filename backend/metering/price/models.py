@@ -61,7 +61,7 @@ class Calculate(models.Model):
     price = models.ForeignKey(Price, models.CASCADE, verbose_name='Нарх')
     amount = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Сумма (Итого)')
     count = models.FloatField(null=True, verbose_name='Кв. м. / Пог м.')
-    obj = models.ForeignKey(ObjectType, models.PROTECT, verbose_name='Объект')
+    obj = models.ForeignKey(ObjectType, models.CASCADE, verbose_name='Объект')
     
     history = HistoricalRecords()
     objects = ConvertedCostManager(['amount'])
@@ -102,7 +102,7 @@ class Inventory(models.Model):
 
 
 class InventoryInCalculate(models.Model):
-    inventory = models.ForeignKey(Inventory, models.PROTECT, verbose_name='Инвентарь')
+    inventory = models.ForeignKey(Inventory, models.CASCADE, verbose_name='Инвентарь')
     calculate = models.ForeignKey(Calculate, models.CASCADE, verbose_name='Калькуляция')
     count = models.IntegerField(default=1, verbose_name='Кол-во')
     price = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Нарх')

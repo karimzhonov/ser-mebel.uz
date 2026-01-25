@@ -17,7 +17,7 @@ class Assembly(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
     done = models.BooleanField(default=False, verbose_name='Выполнено сборка')
     installing_done = models.BooleanField(default=False, verbose_name='Выполнено установка')
-    user = models.ForeignKey('oauth.User', models.PROTECT, blank=True, null=True, verbose_name='Сборшик')
+    user = models.ForeignKey('oauth.User', models.CASCADE, blank=True, null=True, verbose_name='Сборшик')
     
     square = models.FloatField(verbose_name='Площадь')
     price = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Нарх')

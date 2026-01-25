@@ -10,7 +10,7 @@ from .constants import MeteringStatus, METERING_CHANGE_STATUS_PERMISSION
 
 
 class Metering(models.Model):
-    client = models.ForeignKey("client.Client", models.PROTECT, verbose_name='Мижоз')
+    client = models.ForeignKey("client.Client", models.CASCADE, verbose_name='Мижоз')
     status = models.CharField(verbose_name='Статус', max_length=255, choices=MeteringStatus.choices, default=MeteringStatus.created)
     address = models.TextField(blank=True, null=True, verbose_name='Адрес')
     address_link = models.URLField(max_length=1000, blank=True, null=True, verbose_name='Адрес ссылка')
