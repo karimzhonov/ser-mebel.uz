@@ -40,9 +40,6 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
             return False
         return super().has_change_permission(request, obj)
 
-    def has_delete_permission(self, request: HttpRequest, obj = None) -> bool:
-        return False
-
     def response_add(self, request: HttpRequest, obj: Metering, post_url_continue: str | None = None) -> HttpResponse:
         if request.GET.get('invoice'): return redirect(
             reverse_lazy('admin:call_center_invoice_changelist')
