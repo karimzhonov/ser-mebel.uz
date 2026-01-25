@@ -32,7 +32,12 @@ class Price(models.Model):
 @receiver(post_save, sender=Price)
 def create_price_folders(sender: Type[Price], instance: Price, created, **kwargs):
     if not created: return
-    User.send_messages(CALL_CENTER_PERMISSION, 'admin:price_price_change', {'object_id': instance.pk})
+    User.send_messages(
+        CALL_CENTER_PERMISSION, 
+        'admin:price_price_change', 
+        {'object_id': instance.pk},
+        text=f'{instance.metering.client} mijozga narx chiqarish kerak'
+    )
     created_history = instance.history.order_by('history_date').first()
     created_user = created_history.history_user if created_history else None
 

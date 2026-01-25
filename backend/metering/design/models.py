@@ -34,7 +34,12 @@ class DesignType(models.Model):
 def create_design_type_folders(sender: Type[Design], instance: Design, created, **kwargs):
     if not created: return
     DesignType.objects.create(design=instance, name='Дизайн-1')
-    User.send_messages(DESIGN_PERMISSION, 'admin:design_design_change', {'object_id': instance.pk})
+    User.send_messages(
+        DESIGN_PERMISSION, 
+        'admin:design_design_change', 
+        {'object_id': instance.pk},
+        text=f'{instance.metering.client} mijozga dizan qilish kerak'
+    )
 
 
 @receiver(post_save, sender=DesignType)

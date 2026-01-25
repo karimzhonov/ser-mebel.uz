@@ -80,7 +80,12 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
             return
         obj.done = True
         obj.save()
-        User.send_messages(CALL_CENTER_PERMISSION, 'admin:design_design_change', {'object_id': obj.pk})
+        User.send_messages(
+            CALL_CENTER_PERMISSION, 
+            'admin:design_design_change', 
+            {'object_id': obj.pk},
+            text=f'{obj.metering.client} dizayni tayyor'
+        )
 
     def has_done_action_permission(self, request, object_id):
         if not object_id: return True
