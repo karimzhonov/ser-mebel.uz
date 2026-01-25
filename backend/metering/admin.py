@@ -28,7 +28,7 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
     list_filter_submit = True
     # list_before_template = 'metering/metering_list_before.html'
     exclude = ['status', 'folder']
-    ordering = ['date_time']
+    ordering = ['-date_time']
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         if request.resolver_match.view_name.endswith("changelist"):
