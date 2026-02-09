@@ -56,6 +56,10 @@ def create_price_folders(sender: Type[Price], instance: Price, created, **kwargs
 class ObjectType(models.Model):
     """Kuxnya, shkaf"""
     name = models.CharField(max_length=255, unique=True, verbose_name='Название')
+    count_name = models.CharField(max_length=255, choices=(
+        ('kv', 'Кв. м.'),
+        ('pog', 'Пог. м.')
+    ), default='kv', verbose_name='Кол-во тип')
 
     def __str__(self):
         return self.name

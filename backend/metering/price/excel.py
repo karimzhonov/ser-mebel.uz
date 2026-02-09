@@ -30,7 +30,7 @@ def download_inlines_excel(modeladmin, request, object_id):
                     ic.inventory.type.name,
                     ic.inventory.name,
                     str(ic.inventory.price),
-                    calc.count,
+                    '',
                     str(ic.price)
                 ])
 
