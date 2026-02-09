@@ -7,8 +7,10 @@ from .models import Calculate, InventoryInCalculate, Inventory, InventoryType, O
 
 class CalculateForm(forms.ModelForm):
     object_type_id = None
-    
-    count = forms.FloatField()
+
+    count = forms.FloatField(
+        widget=UnfoldAdminDecimalFieldWidget()
+    )
 
     class Meta:
         model = Calculate

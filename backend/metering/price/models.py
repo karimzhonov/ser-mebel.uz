@@ -91,9 +91,15 @@ class InventoryType(models.Model):
     name = models.CharField(max_length=255, verbose_name='Название')
     obj = models.ForeignKey(ObjectType, models.CASCADE, null=True, verbose_name='Объект')
     type = models.IntegerField(default=TYPE_COUNT, choices=TYPES, verbose_name='Тип')
+    ordering = models.IntegerField(default=0, verbose_name='Порядковый номер')
 
     def __str__(self):
         return ' '.join([self.name, f"({self.obj})"])
+    
+    class Meta:
+        verbose_name = 'Тип инвентаря'
+        verbose_name_plural = 'Типы инвентаря'
+        ordering = ['ordering']
 
 
 class Inventory(models.Model):

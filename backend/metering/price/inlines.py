@@ -26,7 +26,7 @@ class CalculateInline(StackedInline):
         extra_fields = {
             "object_type_id": self.object_type_id
         }
-        for inv_type in InventoryType.objects.filter(obj_id=self.object_type_id).order_by('id').prefetch_related(
+        for inv_type in InventoryType.objects.filter(obj_id=self.object_type_id).prefetch_related(
             Prefetch(
                 'inventory_set',
                 queryset=Inventory.objects.all(),
