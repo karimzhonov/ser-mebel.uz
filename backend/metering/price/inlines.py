@@ -34,10 +34,10 @@ class CalculateInline(StackedInline):
             )
         ):
             if inv_type.type == InventoryType.TYPE_KV:
-                extra_fields[f'inv_{inv_type.id}'] = forms.ModelChoiceField(
+                extra_fields[f'inv_{inv_type.id}'] = forms.ChoiceField(
                     label=inv_type.name,
                     required=False,
-                    queryset=[
+                    choices=[
                         (None, '---------'),
                         *[
                             (inv.id, f'{inv.name} - {inv.price}') for inv in inv_type.inventories
