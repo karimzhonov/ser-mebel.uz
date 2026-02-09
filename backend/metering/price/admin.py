@@ -103,7 +103,7 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
 
 @admin.register(InventoryType)
 class InventoryTypeAdmin(ModelAdmin):
-    list_display = ['name', 'type']
+    list_display = ['name', 'type', 'ordering']
     inlines = [InventoryInline]
     list_editable = ['ordering']
 
