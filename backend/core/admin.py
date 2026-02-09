@@ -53,13 +53,13 @@ class UFileAdmin(FileAdmin):
 
         response = FileResponse(
             obj.file.open('rb'),
-            content_type=content_type or 'application/octet-stream'
+            content_type=content_type or 'application/octet-stream',
+            as_attachment=False,
+            filename=obj.file.name
         )
 
-        filename = os.path.basename(obj.file.name)
-
         response['Content-Disposition'] = (
-            "inline; filename*=UTF-8''{}".format(quote(filename))
+            "inline; filename*=UTF-8''{}".format(quote(obj.file.name))
         )
 
         return response
