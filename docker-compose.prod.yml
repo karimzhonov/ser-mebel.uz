@@ -12,6 +12,7 @@ services:
     volumes:
       - ./media/:/media/
       - ./static/:/static/
+      - ./backend/:/app
 
   bot:
     container_name: bot
