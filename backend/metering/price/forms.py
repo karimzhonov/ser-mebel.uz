@@ -21,7 +21,7 @@ class CalculateForm(forms.ModelForm):
 
         obj = ObjectType.objects.filter(pk=self.object_type_id).first()
         if obj:
-            self.fields['count'].label = obj.count_name
+            self.fields['count'].label = dict(obj.COUNT_NAMES)[obj.count_name]
 
         if self.instance.pk:
             for inv_in_calc in InventoryInCalculate.objects.filter(calculate=self.instance).select_related('inventory', 'inventory__type'):

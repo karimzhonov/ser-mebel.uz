@@ -1,4 +1,7 @@
+import mimetypes
 from django.contrib import admin
+from django.urls import path
+from django.http import FileResponse
 from django.utils.html import format_html
 from filer.models import File, Folder, FolderPermission, ThumbnailOption, Image
 from filer.admin import FileAdmin, FolderAdmin, PermissionAdmin
@@ -43,6 +46,30 @@ class UFileAdmin(FileAdmin, ModelAdmin):
     def preview(self, obj: File):
         return format_html(f'<a href="{obj.file.url}" target="_blank">{obj.original_filename}</a>') if obj.canonical_url else '-'
 
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<path:object_id>/change/',
+                self.admin_site.admin_view(self.redirect_to_file),
+            ),
+        ]
+        return custom_urls + urls
+
+    def redirect_to_file(self, request, object_id):
+        obj: File = self.get_object(request, object_id)
+        file_handle = obj.file.open()
+
+        content_type, _ = mimetypes.guess_type(obj.file.name)
+
+        response = FileResponse(
+            file_handle,
+            content_type=content_type or 'application/octet-stream'
+        )
+
+        response['Content-Disposition'] = f'inline; filename="{obj.original_filename}"'
+
+        return response
 
 
 @admin.register(Image)
