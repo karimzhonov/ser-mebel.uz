@@ -37,7 +37,12 @@ class CalculateInline(StackedInline):
                 extra_fields[f'inv_{inv_type.id}'] = forms.ModelChoiceField(
                     label=inv_type.name,
                     required=False,
-                    queryset=inv_type.inventories,
+                    queryset=[
+                        (None, '---------'),
+                        *[
+                            (inv.id, f'{inv.name} - {inv.price}') for inv in inv_type.inventories
+                        ]
+                    ],
                     widget=UnfoldAdminSelectWidget()
                 )
             elif inv_type.type == InventoryType.TYPE_COUNT:
