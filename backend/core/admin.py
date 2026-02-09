@@ -1,4 +1,5 @@
 import mimetypes
+from urllib.parse import quote
 from django.contrib import admin
 from django.urls import path
 from django.http import FileResponse
@@ -36,7 +37,7 @@ class UFileAdmin(FileAdmin, ModelAdmin):
         return {
             'add': False,
             'change': False,
-            'delete': False,
+            'delete': True,
         }
     
     def has_delete_permission(self, request, obj=None):
@@ -67,7 +68,7 @@ class UFileAdmin(FileAdmin, ModelAdmin):
             content_type=content_type or 'application/octet-stream'
         )
 
-        response['Content-Disposition'] = f'inline; filename="{obj.original_filename}"'
+        response['Content-Disposition'] = "inline; filename*=UTF-8''{}".format(quote(obj.file.name))
 
         return response
 
