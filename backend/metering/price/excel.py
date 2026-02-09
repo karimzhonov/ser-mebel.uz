@@ -20,7 +20,7 @@ def download_inlines_excel(modeladmin, request, object_id):
             calc.obj.name
         ])
         ws.append([
-            "Кв. м. / Пог м.",
+            calc.obj.count_name,
             calc.count
         ])
         

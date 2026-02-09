@@ -7,6 +7,9 @@ from .models import Calculate, InventoryInCalculate, Inventory, InventoryType, O
 
 class CalculateForm(forms.ModelForm):
     object_type_id = None
+    
+    count = forms.FloatField()
+
     class Meta:
         model = Calculate
         fields = ['name', 'count']
@@ -14,7 +17,7 @@ class CalculateForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        obj = ObjectType.objects.filter(pk=kwargs.get('object_type_id')).first()
+        obj = ObjectType.objects.filter(pk=self.object_type_id).first()
         if obj:
             self.fields['count'].label = obj.count_name
 
