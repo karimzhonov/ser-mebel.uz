@@ -105,7 +105,7 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
 class InventoryTypeAdmin(ModelAdmin):
     list_display = ['name', 'type']
     inlines = [InventoryInline]
-    list_editable = ['']
+    list_editable = ['ordering']
 
     def has_add_permission(self, request):
         return super(ModelAdmin, self).has_add_permission(request)
