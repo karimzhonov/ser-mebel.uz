@@ -39,15 +39,15 @@ class UFileAdmin(FileAdmin):
         urls = super().get_urls()
         custom_urls = [
             path(
-                'preview/<int:file_id>/',
+                '<path:object_id>/change/',
                 self.admin_site.admin_view(self.preview_file),
                 name='filer_preview',
             ),
         ]
         return custom_urls + urls
 
-    def preview_file(self, request, file_id):
-        obj = File.objects.get(pk=file_id)
+    def preview_file(self, request, object_id):
+        obj = File.objects.get(pk=object_id)
 
         content_type, _ = mimetypes.guess_type(obj.file.name)
 
