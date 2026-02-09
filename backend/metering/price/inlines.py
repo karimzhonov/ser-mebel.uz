@@ -1,4 +1,5 @@
 from django import forms
+from django.db.models import Prefetch
 from unfold.admin import TabularInline, StackedInline
 from unfold.widgets import UnfoldAdminSelectWidget
 from .models import Inventory, Calculate, InventoryType
@@ -25,12 +26,18 @@ class CalculateInline(StackedInline):
         extra_fields = {
             "object_type_id": self.object_type_id
         }
-        for inv_type in InventoryType.objects.filter(obj_id=self.object_type_id).order_by('id'):
+        for inv_type in InventoryType.objects.filter(obj_id=self.object_type_id).order_by('id').prefetch_related(
+            Prefetch(
+                'inventory_set',
+                queryset=Inventory.objects.all(),
+                to_attr='inventories'
+            )
+        ):
             if inv_type.type == InventoryType.TYPE_KV:
                 extra_fields[f'inv_{inv_type.id}'] = forms.ModelChoiceField(
                     label=inv_type.name,
                     required=False,
-                    queryset=Inventory.objects.filter(type=inv_type),
+                    queryset=inv_type.inventories,
                     widget=UnfoldAdminSelectWidget()
                 )
             elif inv_type.type == InventoryType.TYPE_COUNT:
@@ -40,7 +47,7 @@ class CalculateInline(StackedInline):
                     widget=InventoryCountWidget(choices=[
                         (None, '---------'), 
                         *[
-                            (inv.id, f'{inv.name} - {inv.price}') for inv in Inventory.objects.filter(type=inv_type)
+                            (inv.id, f'{inv.name} - {inv.price}') for inv in inv_type.inventories
                         ]
                     ])
                 )
