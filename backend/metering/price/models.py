@@ -121,7 +121,7 @@ class Inventory(models.Model):
 class InventoryInCalculate(models.Model):
     inventory = models.ForeignKey(Inventory, models.CASCADE, verbose_name='Инвентарь')
     calculate = models.ForeignKey(Calculate, models.CASCADE, verbose_name='Калькуляция')
-    count = models.IntegerField(default=1, verbose_name='Кол-во')
+    count = models.FloatField(default=1, verbose_name='Кол-во')
     price = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Нарх')
 
     objects = ConvertedCostManager(['price'])
