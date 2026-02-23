@@ -67,7 +67,7 @@ class UFileAdmin(FileAdmin):
 
 @admin.register(Image)
 class UImageAdmin(UFileAdmin):
-    fields = ['preview', 'owner', 'uploaded_at']
+    # fields = ['preview', 'owner', 'uploaded_at']
     readonly_fields = ['preview', 'owner', 'uploaded_at']
     
     @display(image=True, description='Фото')
