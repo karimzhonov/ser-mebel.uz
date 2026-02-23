@@ -42,8 +42,8 @@ class CalculateForm(forms.ModelForm):
                     inv = Inventory.objects.filter(id=inv).first() if inv else None
                     count = float(count or 0)
                 else:
-                    if value and isinstance(value, str):
-                        value = Inventory.objects.filter(id=value).first()
+                    # if value and isinstance(value, str):
+                    #     value = Inventory.objects.filter(id=value).first()
                     inv, count = value, instance.count
                 if not inv: continue
                 inv_in_calc = InventoryInCalculate.objects.filter(
