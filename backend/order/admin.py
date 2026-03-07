@@ -52,7 +52,7 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
         return [ExposeInline] if obj else []
     
     def get_readonly_fields(self, request: HttpRequest, obj: Any | None = ...) -> list[str] | tuple[Any, ...]:
-        return ['folder_link', 'metering', 'client', 'reception_date', 'end_date', 'address', 'address_link'] if obj else []
+        return ['folder_link', 'metering', 'client', 'reception_date', 'end_date', 'address', 'address_link', "show_total_price"] if obj else []
 
     def get_fieldsets(self, request: HttpRequest, obj=None):
         fieldsets = [
@@ -66,7 +66,7 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
         ]
         if request.user.has_perm(f'order.{ORDER_VIEW_PRICE_PERMISSION}'):
             fieldsets.append(
-                ('Цена', {'fields': ('price', 'lost_money', 'discount'), "classes": ("tab-info",), "readonly_fields": ('show_total_price',)}),
+                ('Цена', {'fields': ('price', 'lost_money', 'discount', "show_total_price"), "classes": ("tab-info",)}),
             )
         return add_fieldsets if not obj else fieldsets
     
