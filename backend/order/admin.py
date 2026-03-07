@@ -66,7 +66,7 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
         ]
         if request.user.has_perm(f'order.{ORDER_VIEW_PRICE_PERMISSION}'):
             fieldsets.append(
-                ('Цена', {'fields': ('price', 'lost_money', 'discount', 'show_total_price'), "classes": ("tab-info",), "readonly_fields": ('show_total_price',)}),
+                ('Цена', {'fields': ('price', 'lost_money', 'discount'), "classes": ("tab-info",), "readonly_fields": ('show_total_price',)}),
             )
         return add_fieldsets if not obj else fieldsets
     
