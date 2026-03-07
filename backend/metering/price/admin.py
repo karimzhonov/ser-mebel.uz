@@ -10,6 +10,7 @@ from core.utils.messages import instance_archive
 from core.filters import get_date_filter
 from core.utils import get_folder_link_html
 from core.utils.html import get_boolean_icons
+from order.models import Order
 
 from .excel import download_inlines_excel
 from .components import *
@@ -23,7 +24,7 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     actions_submit_line = ['done_action']
     actions_detail = ['download_excel']
     exclude = ['folder', 'done', 'metering']
-    readonly_fields = ['metering_folder', 'folder_link']
+    readonly_fields = ['metering_folder', 'folder_link', 'price']
     list_filter = [get_date_filter('created_at'), 'done']
     list_filter_submit = True
     
@@ -41,10 +42,10 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
 
-    def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
-        if obj and obj.done:
-            return False
-        return super().has_change_permission(request, obj)
+    # def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
+    #     if obj and obj.done:
+    #         return False
+    #     return super().has_change_permission(request, obj)
 
     @display(description='Замер файлы')
     def metering_folder(self, obj: Price):
@@ -90,12 +91,14 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
-        obj = form.instance
+        obj: Price = form.instance
         amount = 0
         for calc in Calculate.objects.filter(price=obj):
             amount += calc.amount.amount
         obj.price = Money(amount, currency='USD')
         obj.save()
+
+        Order.objects.filter(metering=obj.metering).update(price=Money(amount, currency='USD'))
 
 
 @admin.register(InventoryType)

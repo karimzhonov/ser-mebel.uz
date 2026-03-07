@@ -62,11 +62,11 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
         add_fieldsets = [
             ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'count_days', 'design_type', 'metering')}),
             ('Адрес', {"fields": ('address', 'address_link')}),
-            ('Цена', {'fields': ('price', 'lost_money')}),
+            ('Цена', {'fields': ('price', 'lost_money', 'discount')}),
         ]
         if request.user.has_perm(f'order.{ORDER_VIEW_PRICE_PERMISSION}'):
             fieldsets.append(
-                ('Цена', {'fields': ('price', 'lost_money'), "classes": ("tab-info",)}),
+                ('Цена', {'fields': ('price', 'lost_money', 'discount', 'show_total_price'), "classes": ("tab-info",), "readonly_fields": ('show_total_price',)}),
             )
         return add_fieldsets if not obj else fieldsets
     
@@ -100,4 +100,10 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
     )
     def folder_link(self, obj: Order):
         return get_folder_link_html(obj.folder_id)
+    
+    @display(
+        description="Итого",
+    )
+    def show_total_price(self, obj: Order):
+        return obj.total_price
     

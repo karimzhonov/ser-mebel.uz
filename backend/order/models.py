@@ -18,6 +18,7 @@ class Order(models.Model):
     desc = models.TextField(_('Описание'), null=True, blank=True)
     price = MoneyField(max_digits=12, null=True, verbose_name='Все сумма')
     lost_money = MoneyField(max_digits=12, null=True, verbose_name='Полученная сумма')
+    discount = models.FloatField(default=0, verbose_name='Скидка')
 
     status = models.CharField(max_length=32, choices=OrderStatus.choices, default=OrderStatus.CREATED, verbose_name='Статус')
     client = models.ForeignKey('client.Client', models.CASCADE, null=True, verbose_name='Мижоз')
@@ -47,6 +48,10 @@ class Order(models.Model):
     
     def __str__(self):
         return str(self.client)
+    
+    @property
+    def total_price(self):
+        return self.price * (1 - self.discount / 100)
     
     def change_status(self, status):
         self.status = status
