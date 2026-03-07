@@ -2,17 +2,26 @@ import json
 from django import forms
 from djmoney.money import Money
 from unfold.widgets import UnfoldAdminSelectWidget, UnfoldAdminDecimalFieldWidget, AdminTextInputWidget
-from .models import Calculate, InventoryInCalculate, Inventory, InventoryType
+from .models import Calculate, InventoryInCalculate, Inventory, InventoryType, ObjectType
 
 
 class CalculateForm(forms.ModelForm):
     object_type_id = None
+
+    count = forms.FloatField(
+        widget=UnfoldAdminDecimalFieldWidget()
+    )
+
     class Meta:
         model = Calculate
         fields = ['name', 'count']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+        obj = ObjectType.objects.filter(pk=self.object_type_id).first()
+        if obj:
+            self.fields['count'].label = dict(obj.COUNT_NAMES)[obj.count_name]
 
         if self.instance.pk:
             for inv_in_calc in InventoryInCalculate.objects.filter(calculate=self.instance).select_related('inventory', 'inventory__type'):
@@ -33,6 +42,8 @@ class CalculateForm(forms.ModelForm):
                     inv = Inventory.objects.filter(id=inv).first() if inv else None
                     count = float(count or 0)
                 else:
+                    if value and isinstance(value, str):
+                        value = Inventory.objects.filter(id=value).first()
                     inv, count = value, instance.count
                 if not inv: continue
                 inv_in_calc = InventoryInCalculate.objects.filter(

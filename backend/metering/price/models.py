@@ -55,7 +55,13 @@ def create_price_folders(sender: Type[Price], instance: Price, created, **kwargs
 
 class ObjectType(models.Model):
     """Kuxnya, shkaf"""
+    COUNT_NAMES = (
+        ('kv', 'Кв. м.'),
+        ('pog', 'Пог. м.')
+    )
+
     name = models.CharField(max_length=255, unique=True, verbose_name='Название')
+    count_name = models.CharField(max_length=255, choices=COUNT_NAMES, default='kv', verbose_name='Кол-во тип')
 
     def __str__(self):
         return self.name
@@ -87,9 +93,15 @@ class InventoryType(models.Model):
     name = models.CharField(max_length=255, verbose_name='Название')
     obj = models.ForeignKey(ObjectType, models.CASCADE, null=True, verbose_name='Объект')
     type = models.IntegerField(default=TYPE_COUNT, choices=TYPES, verbose_name='Тип')
+    ordering = models.IntegerField(default=0, verbose_name='Порядковый номер')
 
     def __str__(self):
         return ' '.join([self.name, f"({self.obj})"])
+    
+    class Meta:
+        verbose_name = 'Тип инвентаря'
+        verbose_name_plural = 'Типы инвентаря'
+        ordering = ['ordering']
 
 
 class Inventory(models.Model):
@@ -109,7 +121,7 @@ class Inventory(models.Model):
 class InventoryInCalculate(models.Model):
     inventory = models.ForeignKey(Inventory, models.CASCADE, verbose_name='Инвентарь')
     calculate = models.ForeignKey(Calculate, models.CASCADE, verbose_name='Калькуляция')
-    count = models.IntegerField(default=1, verbose_name='Кол-во')
+    count = models.FloatField(default=1, verbose_name='Кол-во')
     price = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Нарх')
 
     objects = ConvertedCostManager(['price'])

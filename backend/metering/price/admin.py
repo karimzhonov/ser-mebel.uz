@@ -1,8 +1,9 @@
 from django.contrib import admin
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
-from core.unfold import ModelAdmin
+
 from djmoney.money import Money
+from unfold.admin import ModelAdmin
 from unfold.decorators import display, action
 from unfold.dataclasses import ActionVariant
 from simple_history.admin import SimpleHistoryAdmin
@@ -26,7 +27,9 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     exclude = ['folder', 'done', 'metering']
     readonly_fields = ['metering_folder', 'folder_link', 'price']
     list_filter = [get_date_filter('created_at'), 'done']
+    list_filter_sheet = True
     list_filter_submit = True
+    list_fullwidth = True
     
     def get_inlines(self, request, obj):
         inlines = []
@@ -103,8 +106,9 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
 
 @admin.register(InventoryType)
 class InventoryTypeAdmin(ModelAdmin):
-    list_display = ['name', 'type']
+    list_display = ['name', 'type', 'ordering']
     inlines = [InventoryInline]
+    list_editable = ['ordering']
 
     def has_add_permission(self, request):
         return super(ModelAdmin, self).has_add_permission(request)

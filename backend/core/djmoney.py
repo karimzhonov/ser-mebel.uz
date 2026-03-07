@@ -35,9 +35,9 @@ def get_rate(currency):
 class ConvertedCostManager(Manager):
     request: HttpRequest
 
-    def __init__(self, fields: list[str], currency = None) -> None:
+    def __init__(self, fields: list[str] = None, currency = None) -> None:
         super().__init__()
-        self.fields = fields
+        self.fields = fields or []
         self.currency = currency
 
     def get_queryset(self) -> QuerySet:
