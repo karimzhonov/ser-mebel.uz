@@ -1,1 +1,1 @@
-uvicorn core.asgi:application --port 8000 --reload
+uvicorn core.asgi:application --port 8000 --reload --host 0.0.0.0

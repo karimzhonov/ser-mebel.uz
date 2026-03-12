@@ -18,11 +18,11 @@
     display: none!important;
 }
 
-.tools-container .actions-wrapper {
+.tools-container .actions-wrapper .js-action-copy{
     display: none!important;
 }
 
-.tools-container .actions-wrapper {
+.tools-container .actions-wrapper .js-action-move{
     display: none!important;
 }
 
@@ -30,9 +30,9 @@
     display: none!important;
 }
 
-.navigator-checkbox { 
+/* .navigator-checkbox { 
     display: none;
-}
+} */
 
 .navigator-button-wrapper > .navigator-button:first-child {
     display: none!important;

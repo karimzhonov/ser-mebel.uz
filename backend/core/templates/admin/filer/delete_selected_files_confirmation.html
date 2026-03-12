@@ -1,0 +1,52 @@
+{% extends "admin/delete_confirmation.html" %}
+{% load i18n static %}
+
+{% static "filer/css/admin_filer.css" %}
+
+{% block content %}
+    {% if perms_lacking or protected %}
+        {% if perms_lacking %}
+            <p>{% blocktrans %}Deleting the selected files and/or folders would result in deleting related objects, but your account doesn't have permission to delete the following types of objects:{% endblocktrans %}</p>
+            <ul>
+            {% for obj in perms_lacking %}
+                <li>{{ obj }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+        {% if protected %}
+            <p>{% blocktrans %}Deleting the selected files and/or folders would require deleting the following protected related objects:{% endblocktrans %}</p>
+            <ul>
+            {% for obj in protected %}
+                <li>{{ obj }}</li>
+            {% endfor %}
+            </ul>
+        {% endif %}
+    {% else %}
+        <p class="mb-3">{% blocktrans %}Are you sure you want to delete the selected files and/or folders? All of the following objects and their related items will be deleted:{% endblocktrans %}</p>
+        {% for deletable_object in deletable_objects %}
+            <ul class="mb-3">{{ deletable_object|unordered_list }}</ul>
+        {% endfor %}
+        <form action="" method="post">
+            {% csrf_token %}
+            <div>
+                {% for f in files_queryset %}
+                    <input type="hidden" name="{{ action_checkbox_name }}" value="file-{{ f.pk|safe }}">
+                {% endfor %}
+                {% for f in folders_queryset %}
+                    <input type="hidden" name="{{ action_checkbox_name }}" value="folder-{{ f.pk|safe }}">
+                {% endfor %}
+                {% if is_popup %}
+                    <input type="hidden" name="_popup" value="1">
+                    {% if select_folder %}<input type="hidden" name="select_folder" value="1">{% endif %}
+                {% endif %}
+                <input type="hidden" name="action" value="delete_files_or_folders">
+                <input type="hidden" name="post" value="yes">
+                <div class="flex flex-row gap-4">
+                    <a href="#" class="bg-red-600 cursor-pointer flex items-center justify-center font-medium h-[38px] ml-auto px-3 py-2 rounded-default text-center text-white lg:w-auto dark:bg-red-500/20 dark:text-red-500">{% translate "No, take me back" %}</a>
+                    <input type="submit" class="bg-primary-600 block border border-transparent cursor-pointer font-medium px-3 py-2 rounded-default text-white w-full lg:w-auto" value="{% translate 'Yes, I&#39;m sure' %}">
+                </div>
+                
+            </div>
+        </form>
+    {% endif %}
+{% endblock %}

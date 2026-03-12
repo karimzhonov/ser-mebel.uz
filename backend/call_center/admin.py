@@ -36,7 +36,7 @@ class InvoiceAdmin(InvoiceActions, ModelAdmin):
         description='Код ответа'
     )
     def get_solution(self, obj: Invoice):
-        return get_tag(SolutionChoice(obj.solution).label, SolutionChoice.variant(obj.solution).value) if obj.solution else '-'
+        return get_tag(SolutionChoice(obj.solution).label, SolutionChoice.variant(obj.solution).value) if obj.solution is not None else '-'
     
     def has_add_permission(self, request):
         return request.user.has_perm('call_center.add_invoice')

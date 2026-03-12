@@ -13,6 +13,8 @@ services:
       - ./media/:/media/
       - ./static/:/static/
       - ./backend/:/app/
+    depends_on:
+      - db
 
   db: 
     container_name: db
