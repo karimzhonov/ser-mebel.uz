@@ -7,6 +7,7 @@ from unfold.enums import ActionVariant
 from unfold.decorators import display, action
 from core.utils.html import get_boolean_icons, get_folder_link_html
 from core.filters import get_date_filter
+from oauth.constants import DETAILING_MANAGER
 from .components import *
 from .models import Painter
 
@@ -19,6 +20,13 @@ class PainterAdmin(ModelAdmin):
     actions_detail = ['done_action']
     list_filter = [get_date_filter('created_at'), 'done']
     list_filter_submit = True
+
+    def get_queryset(self, request):
+        if request.user.has_perm(f"oauth.{DETAILING_MANAGER}"):
+            return super().get_queryset(request)
+        return super().get_queryset(request).filter(
+            type__user=request.user
+        )
     
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False

@@ -7,7 +7,16 @@ from filer.models import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 from accounting.constants import DefaultExpenseCategoryChoices
-from oauth.models import User, PAINTER_PERMISSION
+from django.urls import reverse_lazy
+
+
+class PointerType(models.Model):
+    name = models.CharField(max_length=255, verbose_name='Название')
+    price = MoneyField(max_digits=12, verbose_name='Нарх')
+    user = models.ForeignKey('oauth.User', verbose_name='Пользователь')
+
+    def __str__(self):
+        return self.name
 
 
 class Painter(models.Model):
@@ -15,6 +24,7 @@ class Painter(models.Model):
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='painter_files', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
     done = models.BooleanField(default=False, verbose_name='Выполнено')
+    type = models.ForeignKey(PointerType, models.CASCADE, verbose_name='Тип', null=True)
     
     square = models.FloatField(verbose_name='Площадь')
     price = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Нарх')
@@ -26,13 +36,15 @@ class Painter(models.Model):
 
 
 @receiver(post_save, sender=Painter)
-def create_painter_folders(sender: Type[Painter], instance: Painter, created, **kwargs):
+def create_painter_folders(sender: Type[Painter], instance: Painter, created, update_fields, **kwargs):
     DefaultExpenseCategoryChoices.update_or_create_expense(
         DefaultExpenseCategoryChoices.painter, instance.order, instance.price
     )
+
+    if "type" in update_fields:
+        instance.type.user.send_message(reverse_lazy('admin:painter_painter_change', kwargs={'object_id': instance.pk}))
     
     if not created: return
-    User.send_messages(PAINTER_PERMISSION, 'admin:painter_painter_change', {'object_id': instance.pk})
     
     folder, _ = Folder.objects.get_or_create(
         name='Моляр',

@@ -72,4 +72,5 @@ class User(AbstractBaseUser, PermissionsMixin):
             (ROVER_PERMISSION, 'Rover'),
             (PAINTER_PERMISSION, 'Painter'),
             (ASSEMBLY_PERMISSION, 'Assembly'),
+            (DETAILING_MANAGER, 'Detailing manager'),
         ]

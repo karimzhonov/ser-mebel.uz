@@ -18,7 +18,7 @@ class DetailingAdmin(ModelAdmin):
     list_filter = [get_date_filter('created_at'), 'done']
 
     def get_readonly_fields(self, request: HttpRequest, obj = None):
-        return ['square', 'rover_square', 'painter_square', 'order_folder_link', 'folder_link'] if obj and obj.done else ['order_folder_link', 'folder_link']      
+        return ['order_folder_link', 'folder_link']      
     
     @display(description='Выполнен деталировку')
     def is_done(self, obj: Detailing):
