@@ -72,7 +72,7 @@ class ExpenseAdmin(ModelAdmin):
         super().save_model(request, obj, *args, **kwargs)
 
     def has_delete_permission(self, request: HttpRequest, obj: Any | None = ...) -> bool:
-        return False
+        return request.user.is_superuser
     
     def has_change_permission(self, request: HttpRequest, obj: Any | None = ...) -> bool:
         return False
