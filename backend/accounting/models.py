@@ -16,11 +16,11 @@ class ExpenseCategory(models.Model):
 
 
 class Expense(models.Model):
-    user = models.ForeignKey('oauth.User', models.SET_NULL, null=True, blank=True, verbose_name='Пользователь')
+    user = models.ForeignKey('oauth.User', models.CASCADE, null=True, blank=True, verbose_name='Пользователь')
     cost = MoneyField(max_digits=12, verbose_name='Сумма')
     category = models.ForeignKey(ExpenseCategory, models.CASCADE, verbose_name='Категория')
     desc = models.TextField(blank=True, null=True, verbose_name='Описание')
-    order = models.ForeignKey('order.Order', models.SET_NULL, blank=True, null=True, verbose_name='Заказ')
+    order = models.ForeignKey('order.Order', models.CASCADE, blank=True, null=True, verbose_name='Заказ')
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создание')
 
     objects = ConvertedCostManager(['cost'])
@@ -29,7 +29,7 @@ class Expense(models.Model):
         constraints = [
             models.CheckConstraint(
                 name="User or order",
-                check=(
+                condition=(
                     models.Q(user__isnull=False) | models.Q(order__isnull=False)
                 ),
             )
