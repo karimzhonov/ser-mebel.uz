@@ -51,7 +51,7 @@ def create_detailing_folders(sender: Type[Detailing], instance: Detailing, creat
             defaults={
                 'type': instance.pointer_type,
                 'square': instance.painter_square,
-                'price': Money(amount=float(config.PAINTER_PRICE_PER_SQUARE.amount) * instance.painter_square, currency=config.PAINTER_PRICE_PER_SQUARE.currency)
+                'price': Money(amount=float(instance.pointer_type.price.amount) * instance.painter_square, currency=instance.pointer_type.price.currency)
             }
         )
 
