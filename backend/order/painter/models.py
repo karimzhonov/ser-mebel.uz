@@ -10,7 +10,7 @@ from accounting.constants import DefaultExpenseCategoryChoices
 from django.urls import reverse_lazy
 
 
-class PointerType(models.Model):
+class PainterType(models.Model):
     name = models.CharField(max_length=255, verbose_name='Название')
     price = MoneyField(max_digits=12, verbose_name='Нарх')
     user = models.ForeignKey('oauth.User', verbose_name='Пользователь', on_delete=models.SET_NULL, null=True)
@@ -24,7 +24,7 @@ class Painter(models.Model):
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='painter_files', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
     done = models.BooleanField(default=False, verbose_name='Выполнено')
-    type = models.ForeignKey(PointerType, models.CASCADE, verbose_name='Тип', null=True)
+    type = models.ForeignKey(PainterType, models.CASCADE, verbose_name='Тип', null=True)
     
     square = models.FloatField(verbose_name='Площадь')
     price = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Нарх')
