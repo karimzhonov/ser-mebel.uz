@@ -9,7 +9,12 @@ from core.utils.html import get_boolean_icons, get_folder_link_html
 from core.filters import get_date_filter
 from oauth.constants import DETAILING_MANAGER
 from .components import *
-from .models import Painter
+from .models import Painter, PainterType
+
+
+@admin.register(PainterType)
+class PainterTypeAdmin(ModelAdmin):
+    list_display = ['name', 'price']
 
 
 @admin.register(Painter)
