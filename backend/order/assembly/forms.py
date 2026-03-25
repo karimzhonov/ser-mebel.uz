@@ -7,11 +7,17 @@ from .models import Assembly
 
 
 class AssemblyForm(forms.ModelForm):
-    user = forms.ModelChoiceField(
-        queryset=User.objects.filter(Q(user_permissions__codename=ASSEMBLY_PERMISSION) | Q(groups__permissions__codename=ASSEMBLY_PERMISSION)),
-        widget=UnfoldAdminSelectWidget()
+    user = forms.ChoiceField(
+        choices=[],
+        widget=UnfoldAdminSelectWidget(),
+        label="Сборщик",
     )
 
     class Meta:
         model = Assembly
         fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        self.fields["user"].choices = User.objects.filter(Q(user_permissions__codename=ASSEMBLY_PERMISSION) | Q(groups__permissions__codename=ASSEMBLY_PERMISSION)).values_list('id', 'name')

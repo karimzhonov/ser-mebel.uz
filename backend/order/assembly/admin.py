@@ -32,7 +32,7 @@ class AssemblyAdmin(ModelAdmin):
     def has_change_permission(self, request: HttpRequest, obj = None):
         if obj and obj.done:
             return False
-        return super().has_change_permission(request, obj)
+        return request.user.has_perm(f'assembly.{ASSEMBLY_MANAGER_PERMISSION}')
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return False
