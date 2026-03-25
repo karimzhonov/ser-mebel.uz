@@ -13,7 +13,7 @@ from django.urls import reverse_lazy
 class PointerType(models.Model):
     name = models.CharField(max_length=255, verbose_name='Название')
     price = MoneyField(max_digits=12, verbose_name='Нарх')
-    user = models.ForeignKey('oauth.User', verbose_name='Пользователь')
+    user = models.ForeignKey('oauth.User', verbose_name='Пользователь', on_delete=models.SET_NULL, null=True)
 
     def __str__(self):
         return self.name

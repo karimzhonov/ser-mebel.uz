@@ -23,7 +23,7 @@ class Detailing(models.Model):
     
     square = models.FloatField(default=0, verbose_name='Площадь')
     painter_square = models.FloatField(default=0, blank=True, verbose_name='Площадь покраски')
-    pointer_type = models.ForeignKey('pointer.PointerType', blank=True, null=True, verbose_name='Тип указателей')
+    pointer_type = models.ForeignKey('pointer.PointerType', on_delete=models.SET_NULL, blank=True, null=True, verbose_name='Тип указателей')
     rover_square = models.FloatField(default=0, blank=True, verbose_name='Площадь роверов')
     
     history = HistoricalRecords()
