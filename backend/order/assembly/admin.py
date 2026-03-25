@@ -12,6 +12,7 @@ from core.filters import get_date_filter
 from ..constants import OrderStatus
 from .models import Assembly
 from .constants import ASSEMBLY_MANAGER_PERMISSION
+from .forms import AssemblyForm
 
 
 @admin.register(Assembly)
@@ -21,6 +22,7 @@ class AssemblyAdmin(ModelAdmin):
     readonly_fields = ['folder_link', 'order_folder_link', 'square', 'price']
     actions_detail = ['done_action', 'installing_done_action']
     list_filter = [get_date_filter('created_at'), 'done']
+    form = AssemblyForm
 
     def get_list_filter(self, request: HttpRequest) -> Sequence[str]:
         if request.user.has_perm(f'assembly.{ASSEMBLY_MANAGER_PERMISSION}'):
