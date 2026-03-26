@@ -21,7 +21,7 @@ class PainterTypeAdmin(ModelAdmin):
 class PainterAdmin(ModelAdmin):
     list_display = ['order', 'is_done', 'square', 'price']
     exclude = ['folder', 'done', 'order']
-    readonly_fields = ['folder_link', 'order_folder_link']
+    readonly_fields = ['folder_link', 'order_folder_link', 'square', 'price']
     actions_detail = ['done_action']
     list_filter = [get_date_filter('created_at'), 'done']
     list_filter_submit = True
@@ -70,3 +70,14 @@ class PainterAdmin(ModelAdmin):
     def has_done_action_permission(self, request, object_id: Painter):
         obj = get_object_or_404(Painter, pk=object_id)
         return request.user.has_perm('painter.change_painter') and not obj.done
+
+    def save_model(self, request, obj, form, change):
+        update_fields = []
+
+        # True if something changed in model
+        # Note that change is False at the very first time
+        if change: 
+            if form.initial['type'] != form.cleaned_data['type']:
+                update_fields.append('type')
+
+        obj.save(update_fields=update_fields)
