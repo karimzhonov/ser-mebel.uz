@@ -19,7 +19,7 @@ from .forms import AssemblyForm
 class AssemblyAdmin(ModelAdmin):
     list_display = ['order', 'user', 'is_done', 'is_installing_done', 'square', 'price']
     exclude = ['folder', 'done', 'installing_done', 'order']
-    readonly_fields = ['folder_link', 'order_folder_link', 'square', 'price']
+    readonly_fields = ['folder_link', 'order_folder_link', 'square', 'price', 'address', 'address_link']
     actions_detail = ['done_action', 'installing_done_action']
     list_filter = [get_date_filter('created_at'), 'done']
     form = AssemblyForm
@@ -101,3 +101,15 @@ class AssemblyAdmin(ModelAdmin):
     def has_installing_done_action_permission(self, request, object_id):
         obj = get_object_or_404(Assembly, pk=object_id)
         return request.user.has_perm('assembly.change_assembly') and obj.done and not obj.installing_done
+
+    @display(
+        description="Аддрес",
+    )
+    def address(self, obj: Assembly):
+        return obj.order.address
+    
+    @display(
+        description="Ссылка на яндекс карты",
+    )
+    def address_link(self, obj: Assembly):
+        return obj.order.address_link
