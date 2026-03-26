@@ -37,7 +37,7 @@ class PainterAdmin(ModelAdmin):
         return False
     
     def has_change_permission(self, request: HttpRequest, obj:  None = None) -> bool:
-        return False
+        return request.user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
 
     @display(description='Выполнен')
     def is_done(self, obj: Painter):

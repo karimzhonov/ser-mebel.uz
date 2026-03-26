@@ -3,6 +3,8 @@ from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from djmoney.models.fields import MoneyField
+from djmoney.money import Money
+
 from filer.models import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
@@ -41,8 +43,10 @@ def create_painter_folders(sender: Type[Painter], instance: Painter, created, up
         DefaultExpenseCategoryChoices.painter, instance.order, instance.price
     )
 
-    if "type" in update_fields:
+    if "type" in update_fields and instance.type:
         instance.type.user.send_message(reverse_lazy('admin:painter_painter_change', kwargs={'object_id': instance.pk}))
+        instance.price = Money(amount=float(instance.type.price.amount) * instance.square, currency=instance.type.price.currency)
+        instance.save(update_fields=['price'])
     
     if not created: return
     

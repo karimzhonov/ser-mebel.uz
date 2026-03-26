@@ -2,7 +2,6 @@ from typing import Type
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.core.exceptions import ValidationError
 
 from djmoney.money import Money
 from constance import config
@@ -23,7 +22,6 @@ class Detailing(models.Model):
     
     square = models.FloatField(default=0, verbose_name='Площадь')
     painter_square = models.FloatField(default=0, blank=True, verbose_name='Площадь покраски')
-    pointer_type = models.ForeignKey('painter.PainterType', on_delete=models.SET_NULL, blank=True, null=True, verbose_name='Тип указателей')
     rover_square = models.FloatField(default=0, blank=True, verbose_name='Площадь роверов')
     
     history = HistoricalRecords()
@@ -44,14 +42,10 @@ def create_detailing_folders(sender: Type[Detailing], instance: Detailing, creat
         )
 
     if instance.painter_square:
-        if not instance.pointer_type:
-            raise ValidationError('Укажите тип молярки')
         Painter.objects.update_or_create(
             order=instance.order,
             defaults={
-                'type': instance.pointer_type,
                 'square': instance.painter_square,
-                'price': Money(amount=float(instance.pointer_type.price.amount) * instance.painter_square, currency=instance.pointer_type.price.currency)
             }
         )
 
