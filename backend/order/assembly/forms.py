@@ -7,8 +7,8 @@ from .models import Assembly
 
 
 class AssemblyForm(forms.ModelForm):
-    user = forms.ChoiceField(
-        choices=[],
+    user = forms.ModelChoiceField(
+        queryset=User.objects.none(),
         widget=UnfoldAdminSelectWidget(),
         label="Сборщик",
     )
@@ -20,4 +20,4 @@ class AssemblyForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         
-        self.fields["user"].choices = User.objects.filter(Q(user_permissions__codename=ASSEMBLY_PERMISSION) | Q(groups__permissions__codename=ASSEMBLY_PERMISSION)).values_list('id', 'name')
+        self.fields["user"].queryset = User.objects.filter(Q(user_permissions__codename=ASSEMBLY_PERMISSION) | Q(groups__permissions__codename=ASSEMBLY_PERMISSION)).values_list('id', 'name')
