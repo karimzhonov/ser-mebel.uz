@@ -4,6 +4,7 @@ from django.db.models.query import QuerySet
 from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse_lazy
 from django.http import HttpRequest
+from django.utils.html import format_html
 from core.unfold import ModelAdmin
 from unfold.enums import ActionVariant
 from unfold.decorators import display, action
@@ -112,4 +113,4 @@ class AssemblyAdmin(ModelAdmin):
         description="Ссылка на яндекс карты",
     )
     def address_link(self, obj: Assembly):
-        return obj.order.address_link
+        return format_html(f'<a class="text-blue-700" href="{obj.order.address_link}">Перейти</a>')
