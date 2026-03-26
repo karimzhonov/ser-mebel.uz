@@ -14,7 +14,7 @@ from ..constants import OrderStatus
 class DetailingAdmin(ModelAdmin):
     list_display = ['order', 'is_done', 'square', 'rover_square', 'painter_square']
     actions_submit_line = ['done_action']
-    exclude = ['folder', 'done', 'order']
+    exclude = ['folder', 'done', 'order', 'working_done']
     list_filter = [get_date_filter('created_at'), 'done']
 
     def get_readonly_fields(self, request: HttpRequest, obj = None):

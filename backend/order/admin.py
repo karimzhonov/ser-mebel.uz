@@ -52,12 +52,13 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
         return [ExposeInline] if obj else []
     
     def get_readonly_fields(self, request: HttpRequest, obj: Any | None = ...) -> list[str] | tuple[Any, ...]:
-        return ['folder_link', 'metering', 'client', 'reception_date', 'end_date', 'address', 'address_link', "show_total_price"] if obj else []
+        return ['folder_link', 'metering', 'client', 'reception_date', 'end_date', 'address', 'address_link', "show_total_price", 'rover', 'painter', "assembly"] if obj else []
 
     def get_fieldsets(self, request: HttpRequest, obj=None):
         fieldsets = [
             ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'folder_link'), "classes": ("tab-info",)}),
             ('Адрес', {"fields": ('address', 'address_link'), "classes": ("tab-info",)}),
+            ('Производство', {"fields": ('rover', 'painter', "assembly"), "classes": ("tab-info",)}),
         ]
         add_fieldsets = [
             ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'count_days', 'design_type', 'metering')}),

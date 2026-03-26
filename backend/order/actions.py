@@ -12,7 +12,8 @@ from .constants import OrderStatus, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERS
 class OrderActions:
     actions_detail = [
         # 'reverse_status', 
-        'detailing_action'
+        'detailing_action',
+        "go_to_assembly_action",
     ]
 
     @action(
