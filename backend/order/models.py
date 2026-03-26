@@ -8,7 +8,6 @@ from filer.fields.folder import FilerFolderField
 from filer.models.foldermodels import Folder
 from djmoney.models.fields import MoneyField
 from core.utils import create_folder
-from accounting.constants import DefaultExpenseCategoryChoices
 
 from .constants import OrderStatus, ORDER_CHANGE_STATUS_PERMISSION, ORDER_REVERSE_STATUS_PERMISSION, ORDER_VIEW_PRICE_PERMISSION
 from .managers import OrderManager

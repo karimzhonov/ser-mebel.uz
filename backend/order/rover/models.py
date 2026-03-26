@@ -6,7 +6,6 @@ from djmoney.models.fields import MoneyField
 from filer.models import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
-from accounting.constants import DefaultExpenseCategoryChoices
 from oauth.models import User, ROVER_PERMISSION
 
 
@@ -27,9 +26,9 @@ class Rover(models.Model):
 
 @receiver(post_save, sender=Rover)
 def create_rover_folders(sender: Type[Rover], instance: Rover, created, **kwargs):
-    DefaultExpenseCategoryChoices.update_or_create_expense(
-        DefaultExpenseCategoryChoices.rover, instance.order, instance.price, 
-    )
+    # DefaultExpenseCategoryChoices.update_or_create_expense(
+    #     DefaultExpenseCategoryChoices.rover, instance.order, instance.price, 
+    # )
 
     if not created: return
     User.send_messages(ROVER_PERMISSION, 'admin:rover_rover_change', {'object_id': instance.pk})

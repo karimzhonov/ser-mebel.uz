@@ -39,9 +39,9 @@ class Painter(models.Model):
 
 @receiver(post_save, sender=Painter)
 def create_painter_folders(sender: Type[Painter], instance: Painter, created, update_fields, **kwargs):
-    DefaultExpenseCategoryChoices.update_or_create_expense(
-        DefaultExpenseCategoryChoices.painter, instance.order, instance.price
-    )
+    # DefaultExpenseCategoryChoices.update_or_create_expense(
+    #     DefaultExpenseCategoryChoices.painter, instance.order, instance.price
+    # )
 
     if "type" in update_fields and instance.type:
         instance.type.user.send_message(reverse_lazy('admin:painter_painter_change', kwargs={'object_id': instance.pk}))
