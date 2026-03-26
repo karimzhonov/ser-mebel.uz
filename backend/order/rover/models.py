@@ -22,6 +22,10 @@ class Rover(models.Model):
 
     def __str__(self):
         return str(self.order)
+    
+    class Meta:
+        verbose_name = 'Ровер'
+        verbose_name_plural = 'Роверы'
 
 
 @receiver(post_save, sender=Rover)

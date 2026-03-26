@@ -35,6 +35,10 @@ class Painter(models.Model):
 
     def __str__(self):
         return str(self.order)
+    
+    class Meta:
+        verbose_name = 'Моляр'
+        verbose_name_plural = 'Моляры'
 
 
 @receiver(post_save, sender=Painter)

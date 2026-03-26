@@ -7,7 +7,7 @@ from djmoney import settings as dj_setting
 from core.unfold import ModelAdmin
 from unfold.decorators import display
 from simple_history.admin import SimpleHistoryAdmin
-from core.utils import get_tag, get_folder_link_html
+from core.utils import get_tag, get_folder_link_html, get_boolean_icons
 from core.utils.admin import not_add_permission_in_admin
 from core.filters import get_date_filter
 from accounting.inlines import ExposeInline
@@ -52,13 +52,13 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
         return [ExposeInline] if obj else []
     
     def get_readonly_fields(self, request: HttpRequest, obj: Any | None = ...) -> list[str] | tuple[Any, ...]:
-        return ['folder_link', 'metering', 'client', 'reception_date', 'end_date', 'address', 'address_link', "show_total_price", 'rover', 'painter', "assembly"] if obj else []
+        return ['folder_link', 'metering', 'client', 'reception_date', 'end_date', 'address', 'address_link', "show_total_price", 'rover', 'rover_done', 'painter', "painter_done" , "assembly", "assembly_done"] if obj else []
 
     def get_fieldsets(self, request: HttpRequest, obj=None):
         fieldsets = [
             ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'folder_link'), "classes": ("tab-info",)}),
             ('Адрес', {"fields": ('address', 'address_link'), "classes": ("tab-info",)}),
-            ('Производство', {"fields": ('rover', 'painter', "assembly"), "classes": ("tab-info",)}),
+            ('Производство', {"fields": ('rover', 'rover_done', 'painter', "painter_done" , "assembly", "assembly_done"), "classes": ("tab-info",)}),
         ]
         add_fieldsets = [
             ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'count_days', 'design_type', 'metering')}),
@@ -108,3 +108,20 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
     def show_total_price(self, obj: Order):
         return obj.total_price
     
+    @display(
+        description="Ровер выполнен",
+    )
+    def rover_done(self, obj: Order):
+        return get_boolean_icons([obj.rover.done]) if obj.rover else "-"
+    
+    @display(
+        description="Моляр выполнен",
+    )
+    def painter_done(self, obj: Order):
+        return get_boolean_icons([obj.painter.done]) if obj.painter else "-"
+    
+    @display(
+        description="Сборка/Установка выполнен",
+    )
+    def assembly_done(self, obj: Order):
+        return get_boolean_icons([obj.assembly.done]) if obj.assembly else "-"

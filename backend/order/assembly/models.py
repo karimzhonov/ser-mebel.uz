@@ -27,6 +27,8 @@ class Assembly(models.Model):
         return str(self.order)
     
     class Meta:
+        verbose_name = 'Сборка/Установка'
+        verbose_name_plural = 'Сборки/Установки'
         permissions = [
             (ASSEMBLY_MANAGER_PERMISSION, 'Assembly manager')
         ]

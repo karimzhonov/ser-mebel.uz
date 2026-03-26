@@ -110,9 +110,15 @@ class OrderActions:
         variant=ActionVariant.SUCCESS,
         permissions=['go_to_assembly_action']
     )
-    def go_to_assembly_action(self, request, obj: Order):
+    def go_to_assembly_action(self, request, object_id):
+        obj = get_object_or_404(Order, pk=object_id)
         obj.status = OrderStatus.ASSEMBLY
         obj.save(update_fields=['status'])
+        return redirect(
+          reverse_lazy("admin:assembly_assembly_change", kwargs={'object_id': obj.assembly.id})
+        ) if obj.assembly else redirect(
+          reverse_lazy("admin:order_order_change", kwargs={'object_id': object_id})
+        )
 
     def has_go_to_assembly_action_permission(self, request, object_id):
         obj = get_object_or_404(Order, pk=object_id)
