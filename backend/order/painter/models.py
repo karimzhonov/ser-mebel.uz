@@ -43,7 +43,7 @@ def create_painter_folders(sender: Type[Painter], instance: Painter, created, up
     #     DefaultExpenseCategoryChoices.painter, instance.order, instance.price
     # )
 
-    if "type" in update_fields and instance.type:
+    if update_fields and "type" in update_fields and instance.type:
         instance.type.user.send_message(reverse_lazy('admin:painter_painter_change', kwargs={'object_id': instance.pk}))
         instance.price = Money(amount=float(instance.type.price.amount) * instance.square, currency=instance.type.price.currency)
         instance.save(update_fields=['price'])
