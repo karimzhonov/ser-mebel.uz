@@ -18,6 +18,7 @@ class Detailing(models.Model):
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='detailing_files', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
     done = models.BooleanField(default=False, verbose_name='Выполнено деталировка')
+    working_done = models.BooleanField(default=False, verbose_name='Выполнено заказ на сырье')
     
     square = models.FloatField(default=0, verbose_name='Площадь')
     painter_square = models.FloatField(default=0, blank=True, verbose_name='Площадь покраски')
