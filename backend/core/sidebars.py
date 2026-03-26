@@ -96,7 +96,7 @@ def get_sidebar_items(request):
                     {
                         "title": "Деталировка / Производстьво",
                         "icon": "book",
-                        "link": reverse_lazy("admin:detailing_detailing_changelist", query={'working_done': False}),
+                        "link": reverse_lazy("admin:detailing_detailing_changelist", query={'done': False}),
                         "permission": lambda request: request.user.has_perm('detailing.view_detailing'),
                         "color": "gradient-10 col-span-2",
                     },

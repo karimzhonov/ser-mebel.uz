@@ -75,12 +75,12 @@ def get_tabs(request):
             'items': [
                 {
                     "title": 'Активний',
-                    "link": reverse_lazy("admin:detailing_detailing_changelist", query={'working_done': False}),
+                    "link": reverse_lazy("admin:detailing_detailing_changelist", query={'done': False}),
                     "permission": lambda request: True,
                 },
                 {
                     "title": 'Архив',
-                    "link": reverse_lazy("admin:detailing_detailing_changelist", query={'working_done': True}),
+                    "link": reverse_lazy("admin:detailing_detailing_changelist", query={'done': True}),
                     "permission": lambda request: True,
                 }
             ]
