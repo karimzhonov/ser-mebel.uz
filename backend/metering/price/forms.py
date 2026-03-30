@@ -79,8 +79,8 @@ class InventoryCountWidget(forms.MultiWidget):
         ]
         super().__init__(widgets, attrs)
 
-    def decompress(self, value):
-        value = json.loads(value)
-        if not value:
-            return []
-        return value
+    # def decompress(self, value):
+    #     value = json.loads(value)
+    #     if not value:
+    #         return []
+    #     return value
