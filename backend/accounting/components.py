@@ -1,7 +1,7 @@
 import json
 from unfold.components import BaseComponent, register_component
 from django.contrib.admin import site
-from django.db.models import Count, Sum, F
+from django.db.models import Count, Sum, F, Value
 from django.db.models.functions import TruncDate, TruncMonth
 from django.contrib.admin import site
 from djmoney.settings import CURRENCY_CHOICES, DEFAULT_CURRENCY
@@ -25,7 +25,7 @@ class ExpenseProgressComponent(BaseComponent):
                 "category"
             ).annotate(
                 label = F('category__name'),
-                per = (Sum('converted_cost') / cost) if cost else 100,
+                per = (Sum('converted_cost') / cost) if cost else Value(100),
                 cost = Sum('converted_cost'),
             ))
         for cat in kwargs['categories']:
