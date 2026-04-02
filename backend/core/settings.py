@@ -219,6 +219,7 @@ CONSTANCE_CONFIG = {
     'SITE_ICON_DARK': (None, 'Dark Icon', 'image_field'),
     'SITE_ICON_LOGO': (None, 'Logo Icon', 'image_field'),
     'LOGIN_IMAGE': (None, 'Login Image', 'image_field'),
+    'USD_CURRENCY': (12000.0, "Курс доллара", float),
     'WARNING_ORDER_DAYS': (7, 'Предупреждение о прасрочка заказа', int),
     'PRODUCTION_WARNING_ORDER_DAYS': (14, 'Предупреждение о прасрочка заказа (производство)', int),
     'ASSEMBLY_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Сборка цена за квадрат', 'price_field'),

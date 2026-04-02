@@ -5,6 +5,7 @@ from django.db.models import F, ExpressionWrapper, DecimalField, FloatField, Val
 from django.utils.deprecation import MiddlewareMixin
 from djmoney.contrib.exchange.backends.base import SimpleExchangeBackend
 from djmoney.settings import DEFAULT_CURRENCY, BASE_CURRENCY
+from constance import config
 
 
 class CBUBackend(SimpleExchangeBackend):
@@ -18,10 +19,10 @@ class CBUBackend(SimpleExchangeBackend):
         return super().get_url(**params)
 
     def get_rates(self, **params) -> dict:
-        response = self.get_response(**params)
-        currencies = self.parse_json(response)
+        # response = self.get_response(**params)
+        # currencies = self.parse_json(response)
         return {
-            currency['Ccy']: currency['Rate'] for currency in currencies
+            "USD": config.USD_CURRENCY
         }
 
 
