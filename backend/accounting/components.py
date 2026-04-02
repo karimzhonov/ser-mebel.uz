@@ -29,10 +29,10 @@ class ExpenseProgressComponent(BaseComponent):
                 cost = Sum('converted_cost'),
             ))
         for cat in kwargs['categories']:
-            cat['cost'] = Money(round(cat["cost"], 2), currency)
+            cat['cost'] = Money(round(cat["cost"], 2) if cat["cost"] else 0, currency)
 
         kwargs.update(
-            cost=Money(round(cost, 2), currency)
+            cost=Money(round(cost, 2) if cost else 0, currency)
         )
         return kwargs
 
