@@ -85,14 +85,14 @@ class IncomeProgressComponent(BaseComponent):
                 "category"
             ).annotate(
                 label = F('category__name'),
-                per = (Sum('converted_cost') / cost) if cost else 100.0,
+                per = (Sum('converted_cost') / cost) if cost else Value(100.0),
                 cost = Sum('converted_cost'),
             ))
         for cat in kwargs['categories']:
-            cat['cost'] = Money(round(cat["cost"], 2), currency)
+            cat['cost'] = Money(round(cat["cost"] if cat["cost"] else 0, 2), currency)
         
         kwargs.update(
-            cost=Money(round(cost, 2), currency)
+            cost=Money(round(cost, 2) if cost else 0, currency)
         )
         return kwargs
 
