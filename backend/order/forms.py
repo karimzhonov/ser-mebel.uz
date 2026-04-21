@@ -9,7 +9,6 @@ from .models import Order
 
 
 class OrderAddForm(forms.ModelForm):
-    id = forms.IntegerField(required=False)
     design_type = forms.ModelChoiceField(
         queryset=DesignType.objects,
         widget=UnfoldAdminSelectWidget(),

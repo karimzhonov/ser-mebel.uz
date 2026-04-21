@@ -58,12 +58,12 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
 
     def get_fieldsets(self, request: HttpRequest, obj=None):
         fieldsets = [
-            ('Заказ', {"fields": ('id', 'client', 'desc', 'reception_date', 'end_date', 'folder_link'), "classes": ("tab-info",)}),
+            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'folder_link'), "classes": ("tab-info",)}),
             ('Адрес', {"fields": ('address', 'address_link'), "classes": ("tab-info",)}),
             ('Производство', {"fields": ('rover', 'rover_done', 'painter', "painter_done" , "assembly", "assembly_done"), "classes": ("tab-info",)}),
         ]
         add_fieldsets = [
-            ('Заказ', {"fields": ('id', 'client', 'desc', 'reception_date', 'count_days', 'design_type', 'metering')}),
+            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'count_days', 'design_type', 'metering')}),
             ('Адрес', {"fields": ('address', 'address_link')}),
             ('Цена', {'fields': ('price', 'lost_money', 'discount')}),
         ]
