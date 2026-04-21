@@ -22,7 +22,7 @@ class Price(models.Model):
     history = HistoricalRecords()
 
     def __str__(self):
-        return str(self.metering)
+        return str(self.metering or self.pk)
     
     class Meta:
         verbose_name = 'Нарх чикариш'

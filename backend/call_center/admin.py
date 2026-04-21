@@ -23,6 +23,7 @@ class InvoiceAdmin(InvoiceActions, ModelAdmin):
     ]
     exclude = ['solution']
     list_before_template = 'call_center/invoice_list_before.html'
+    search_fields = ["client__fio", "client__phone"]
 
     def get_readonly_fields(self, request, obj = None):
         return ['client', 'create_date', 'update_date'] if obj else []
