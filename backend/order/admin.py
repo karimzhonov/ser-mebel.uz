@@ -22,7 +22,7 @@ from .components import *
 
 @admin.register(Order)
 class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
-    list_display = ["id", 'client', 'show_status', 'reception_date', 'end_date', 'show_days']
+    list_display = ["id", 'client', 'show_status', 'reception_date', 'end_date', 'price', 'lost_money', 'discount', 'show_days']
     list_display_links = ['id', 'client']
     ordering = ['-reception_date']
     autocomplete_fields = ['client']
@@ -92,7 +92,7 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
             return get_tag('Заказ готов', 'success')
         days = obj.days - days_minus
         return (
-            get_tag(f'До сдачи заказа осталось {days} дней', 'secondary' if days > config.WARNING_ORDER_DAYS else 'warning')
+            get_tag(f'До сдачи заказа {days} дней', 'secondary' if days > config.WARNING_ORDER_DAYS else 'warning')
             if days >= 0 
             else get_tag(f'Заказ просрочен на {abs(days)} дней', 'danger')
         )
