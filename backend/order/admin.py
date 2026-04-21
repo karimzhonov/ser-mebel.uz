@@ -22,7 +22,7 @@ from .components import *
 
 @admin.register(Order)
 class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
-    list_display = ['client', 'show_status', 'reception_date', 'end_date', 'show_days']
+    list_display = ["id", 'client', 'show_status', 'reception_date', 'end_date', 'show_days']
     ordering = ['-reception_date']
     autocomplete_fields = ['client']
     list_filter = [
@@ -31,6 +31,7 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
         get_date_filter('reception_date')
     ]
     list_filter_submit = True
+    search_fields = ["metering__client__fio", "metering__client__phone"]
 
     def get_changeform_initial_data(self, request: HttpRequest) -> dict[str, str]:
         initial = super().get_changeform_initial_data(request)

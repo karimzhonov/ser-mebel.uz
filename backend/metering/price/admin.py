@@ -42,9 +42,6 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
             inlines.append(type(f'Object{o.pk}CalculateInline',(CalculateInline,), class_attrs))
         return inlines
 
-    def has_add_permission(self, request: HttpRequest) -> bool:
-        return False
-
     # def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
     #     if obj and obj.done:
     #         return False

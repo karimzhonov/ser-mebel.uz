@@ -39,7 +39,7 @@ class OrderAddForm(forms.ModelForm):
             )
 
     def save(self, commit=True):
-        self.instance.end_date = datetime.now().date() + timedelta(days=self.cleaned_data['count_days'])
+        self.instance.end_date = self.instance.reception_date + timedelta(days=self.cleaned_data['count_days'])
         if self.instance.metering:
             self.instance.metering.status = MeteringStatus.sold_out
             self.instance.metering.save()

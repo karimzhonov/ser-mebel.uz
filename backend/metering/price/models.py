@@ -11,7 +11,7 @@ from core.djmoney import ConvertedCostManager
 
 
 class Price(models.Model):
-    metering = models.OneToOneField('metering.Metering', models.CASCADE, verbose_name='Замер')
+    metering = models.OneToOneField('metering.Metering', models.CASCADE, verbose_name='Замер', blank=True, null=True)
     price = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Нарх')
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='price_folder', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создание')
