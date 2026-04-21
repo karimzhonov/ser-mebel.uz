@@ -16,7 +16,7 @@ from .managers import OrderManager
 class Order(models.Model):
     id = models.BigAutoField(primary_key=True)
     desc = models.TextField(_('Описание'), null=True, blank=True)
-    price = MoneyField(max_digits=12, null=True, verbose_name='Все сумма')
+    price = MoneyField(max_digits=12, null=True, verbose_name='Вся сумма')
     lost_money = MoneyField(max_digits=12, null=True, verbose_name='Полученная сумма')
     discount = models.FloatField(default=0, verbose_name='Скидка')
 
