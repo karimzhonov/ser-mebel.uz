@@ -22,9 +22,9 @@ from .components import *
 
 @admin.register(Order)
 class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
-    list_display = ["id", 'client', 'show_status', 'reception_date', 'end_date', 'price', 'lost_money', 'discount', 'show_days']
+    list_display = ["id", 'client', 'client_phone', 'show_status', 'reception_date', 'end_date', 'price', 'lost_money', 'discount', 'show_days']
     list_display_links = ['id', 'client']
-    ordering = ['-reception_date']
+    ordering = ['-id']
     autocomplete_fields = ['client']
     list_filter = [
         OrderStatusDropdownFilter,
@@ -58,12 +58,12 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
 
     def get_fieldsets(self, request: HttpRequest, obj=None):
         fieldsets = [
-            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'end_date', 'folder_link'), "classes": ("tab-info",)}),
+            ('Заказ', {"fields": ('id', 'client', 'desc', 'reception_date', 'end_date', 'folder_link'), "classes": ("tab-info",)}),
             ('Адрес', {"fields": ('address', 'address_link'), "classes": ("tab-info",)}),
             ('Производство', {"fields": ('rover', 'rover_done', 'painter', "painter_done" , "assembly", "assembly_done"), "classes": ("tab-info",)}),
         ]
         add_fieldsets = [
-            ('Заказ', {"fields": ('client', 'desc', 'reception_date', 'count_days', 'design_type', 'metering')}),
+            ('Заказ', {"fields": ('id', 'client', 'desc', 'reception_date', 'count_days', 'design_type', 'metering')}),
             ('Адрес', {"fields": ('address', 'address_link')}),
             ('Цена', {'fields': ('price', 'lost_money', 'discount')}),
         ]

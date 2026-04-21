@@ -45,6 +45,9 @@ class Order(models.Model):
             (ORDER_REVERSE_STATUS_PERMISSION ,'Order reverse status'),
             (ORDER_VIEW_PRICE_PERMISSION, 'Order price view')
         ]
+
+    def client_phone(self):
+        return self.client.phone if self.client else None
     
     def __str__(self):
         return str(self.client)
