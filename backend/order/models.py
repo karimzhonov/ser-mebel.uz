@@ -56,6 +56,11 @@ class Order(models.Model):
     def total_price(self):
         return self.price * (1 - self.discount / 100)
     
+    @property
+    def other_money(self):
+        """Ostatks"""
+        return self.total_price - self.lost_money
+    
     def change_status(self, status):
         self.status = status
         self.save(update_fields=['status'])
