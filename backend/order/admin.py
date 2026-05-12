@@ -22,7 +22,7 @@ from .components import *
 
 @admin.register(Order)
 class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
-    list_display = ["id", 'client', 'client_phone', 'show_status', 'reception_date', 'end_date', 'price', 'lost_money', 'other_money', 'show_days']
+    list_display = ["id", 'client', 'client_phone', 'show_status', 'reception_date', 'end_date', 'price', 'lost_money', 'show_lost_money', 'show_days']
     list_display_links = ['id', 'client']
     ordering = ['-id']
     autocomplete_fields = ['client']
@@ -127,3 +127,7 @@ class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
     )
     def assembly_done(self, obj: Order):
         return get_boolean_icons([obj.assembly.done]) if obj.assembly else "-"
+    
+    @display(description="Остаток денег")
+    def show_lost_money(self, obj: Order):
+        return obj.lost_money
