@@ -22,7 +22,7 @@ from .components import *
 
 @admin.register(Order)
 class OrderAdmin(OrderActions,SimpleHistoryAdmin, ModelAdmin):
-    list_display = ["id", 'client', 'client_phone', 'address','show_status', 'reception_date', 'end_date', 'price', 'lost_money', 'show_lost_money', 'show_days']
+    list_display = ["id", 'client', 'client_phone', 'address','show_status', 'reception_date', 'end_date', 'show_total_price', 'lost_money', 'show_lost_money', 'show_days']
     list_display_links = ['id', 'client']
     ordering = ['-id']
     autocomplete_fields = ['client']
