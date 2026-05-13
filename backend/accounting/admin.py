@@ -20,7 +20,8 @@ class IncomeAdmin(ModelAdmin):
     list_before_template = 'accounting/income_before_list.html'
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return super().get_queryset(request).filter(user=request.user)
+        qs = super().get_queryset(request)
+        return qs if request.user.is_superuser else qs.filter(user=request.user)
 
     def save_model(self, request, obj: Income, *args, **kwargs):
         obj.user = request.user
@@ -60,7 +61,8 @@ class ExpenseAdmin(ModelAdmin):
     list_before_template = 'accounting/expense_before_list.html'
 
     def get_queryset(self, request: HttpRequest) -> QuerySet[Any]:
-        return super().get_queryset(request).filter(user=request.user)
+        qs = super().get_queryset(request)
+        return qs if request.user.is_superuser else qs.filter(user=request.user)
     
     def get_form(self, request: Any, obj: Expense, change: bool = False, **kwargs: Any) -> Any:
         if obj is None:
