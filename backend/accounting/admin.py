@@ -15,7 +15,7 @@ from .components import *
 class IncomeAdmin(ModelAdmin):
     exclude = ['user']
     list_display = ['category', 'desc', 'cost', 'created_at']
-    list_filter = [get_date_filter('created_at'), CurrencyDropdownFilter, ('created_at', RangeDateFilter)]
+    list_filter = [get_date_filter('created_at'), CurrencyDropdownFilter, ('created_at', RangeDateFilter), "user"]
     list_filter_submit = True
     list_before_template = 'accounting/income_before_list.html'
 
@@ -55,7 +55,7 @@ class IncomeCategoryAdmin(ModelAdmin):
 class ExpenseAdmin(ModelAdmin):
     exclude = ['user']
     list_display = ['category', 'desc', 'cost', 'order', 'created_at']
-    list_filter = [get_date_filter('created_at'), CurrencyDropdownFilter, ('created_at', RangeDateFilter)]
+    list_filter = [get_date_filter('created_at'), CurrencyDropdownFilter, ('created_at', RangeDateFilter), "user", "order"]
     list_filter_submit = True
     list_before_template = 'accounting/expense_before_list.html'
 

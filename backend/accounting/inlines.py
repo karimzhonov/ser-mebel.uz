@@ -8,6 +8,8 @@ class ExposeInline(TabularInline):
     model = Expense
     extra = 0
     tab = True
+    verbose_name = "Расход"
+    verbose_name_plural = "Расходы"
 
     def has_add_permission(self, request: HttpRequest, *args, **kwargs) -> bool:
         return request.user.has_perm(f'accounting.{EXPENSE_ORDER_PERMISSION}')
