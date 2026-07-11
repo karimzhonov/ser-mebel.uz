@@ -1,9 +1,10 @@
 from django import forms
 from django.db.models import Prefetch
-from unfold.admin import TabularInline, StackedInline
+from unfold.admin import StackedInline, TabularInline
 from unfold.widgets import UnfoldAdminSelectWidget
-from .models import Inventory, Calculate, InventoryType
-from .forms import InventoryCountWidget, CalculateForm
+
+from .forms import CalculateForm, InventoryCountFormField, InventoryCountWidget
+from .models import Calculate, Inventory, InventoryType
 
 
 class InventoryInline(TabularInline):
@@ -16,47 +17,41 @@ class CalculateInline(StackedInline):
     model = Calculate
     tab = True
     extra = 0
-    readonly_fields = ['amount']
+    readonly_fields = ["amount"]
     object_type_id = None
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(obj_id=self.object_type_id)
-    
-    def get_formset(self, request, obj = None, **kwargs):
-        extra_fields = {
-            "object_type_id": self.object_type_id
-        }
+
+    def get_formset(self, request, obj=None, **kwargs):
+        extra_fields = {"object_type_id": self.object_type_id}
         for inv_type in InventoryType.objects.filter(obj_id=self.object_type_id).prefetch_related(
-            Prefetch(
-                'inventory_set',
-                queryset=Inventory.objects.all(),
-                to_attr='inventories'
-            )
+            Prefetch("inventory_set", queryset=Inventory.objects.all(), to_attr="inventories")
         ):
             if inv_type.type == InventoryType.TYPE_KV:
-                extra_fields[f'inv_{inv_type.id}'] = forms.ChoiceField(
+                extra_fields[f"inv_{inv_type.id}"] = forms.ChoiceField(
                     label=inv_type.name,
                     required=False,
                     choices=[
-                        (None, '---------'),
-                        *[
-                            (inv.id, f'{inv.name} - {inv.price}') for inv in inv_type.inventories
-                        ]
+                        (None, "---------"),
+                        *[(inv.id, f"{inv.name} - {inv.price}") for inv in inv_type.inventories],
                     ],
-                    widget=UnfoldAdminSelectWidget()
+                    widget=UnfoldAdminSelectWidget(),
                 )
             elif inv_type.type == InventoryType.TYPE_COUNT:
-                extra_fields[f'inv_{inv_type.id}'] = forms.JSONField(
+                extra_fields[f"inv_{inv_type.id}"] = InventoryCountFormField(
                     label=inv_type.name,
                     required=False,
-                    widget=InventoryCountWidget(choices=[
-                        (None, '---------'), 
-                        *[
-                            (inv.id, f'{inv.name} - {inv.price}') for inv in inv_type.inventories
+                    widget=InventoryCountWidget(
+                        choices=[
+                            (None, "---------"),
+                            *[
+                                (inv.id, f"{inv.name} - {inv.price}")
+                                for inv in inv_type.inventories
+                            ],
                         ]
-                    ])
+                    ),
                 )
-        
-        kwargs.update(form=type('CalculateFullForm', (CalculateForm,), extra_fields))
+
+        kwargs.update(form=type("CalculateFullForm", (CalculateForm,), extra_fields))
         return super().get_formset(request, obj, **kwargs)
-    

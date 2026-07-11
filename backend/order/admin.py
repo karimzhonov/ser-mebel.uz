@@ -25,7 +25,6 @@ from .models import Order, OrderStatus
 @admin.register(Order)
 class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
     list_display = [
-        "id",
         "order_number",
         "client",
         "client_phone",
@@ -38,9 +37,9 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
         "show_lost_money",
         "show_days",
     ]
-    list_display_links = ["id", "client"]
+    list_display_links = ["order_number", "client"]
     list_select_related = ["client"]
-    ordering = ["-id"]
+    ordering = ["-order_number"]
     autocomplete_fields = ["client"]
     list_filter = [
         OrderStatusDropdownFilter,
@@ -78,7 +77,6 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
         # order/services.py resolve_order_status_on_save).
         return (
             [
-                "id",
                 "show_status",
                 "show_days",
                 "folder_link",
@@ -104,7 +102,7 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
             (
                 "Инфо",
                 {
-                    "fields": ("id", "order_number", "show_status", "show_days"),
+                    "fields": ("order_number", "show_status", "show_days"),
                     "classes": ("tab-info",),
                 },
             ),

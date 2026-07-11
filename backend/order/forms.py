@@ -25,8 +25,10 @@ class OrderAddForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
 
         # order_number is auto-derived from id on first save (see Order.save()) —
-        # it isn't shown/filled on the add form, so it must not be required here.
-        self.fields["order_number"].required = False
+        # it isn't shown/filled on the add form (absent from add_fieldsets), so the
+        # field may not exist in self.fields at all here; guard the access.
+        if "order_number" in self.fields:
+            self.fields["order_number"].required = False
 
         metering_id = self.initial.get("metering") or self.instance.metering_id
 

@@ -13,6 +13,7 @@ from core.filters import get_date_filter
 from core.unfold import ModelAdmin
 from core.utils.html import get_boolean_icons, get_folder_link_html
 
+from ..admin_display import order_days_display, order_ref_display, order_status_display
 from ..constants import OrderStatus
 from .constants import ASSEMBLY_MANAGER_PERMISSION
 from .forms import AssemblyForm
@@ -21,7 +22,17 @@ from .models import Assembly
 
 @admin.register(Assembly)
 class AssemblyAdmin(ModelAdmin):
-    list_display = ["order", "user", "is_done", "is_installing_done", "square", "price"]
+    list_display = [
+        "order",
+        "order_number",
+        "order_status",
+        "order_days",
+        "user",
+        "is_done",
+        "is_installing_done",
+        "square",
+        "price",
+    ]
     list_select_related = ["order__client", "user"]
     exclude = ["folder", "done", "installing_done", "order"]
     readonly_fields = [
@@ -76,6 +87,18 @@ class AssemblyAdmin(ModelAdmin):
     @display(description="Файлы заказа")
     def order_folder_link(self, obj: Assembly):
         return get_folder_link_html(obj.order.folder_id)
+
+    @display(description="Номер заказа")
+    def order_number(self, obj: Assembly):
+        return order_ref_display(obj.order)
+
+    @display(description="Статус заказа")
+    def order_status(self, obj: Assembly):
+        return order_status_display(obj.order)
+
+    @display(description="Дней осталось")
+    def order_days(self, obj: Assembly):
+        return order_days_display(obj.order)
 
     @action(
         description="Выполнить сборку",

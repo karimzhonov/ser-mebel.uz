@@ -132,3 +132,21 @@ class InventoryCountWidget(forms.MultiWidget):
             widget.value_from_datadict(data, files, f"{name}_{i}")
             for i, widget in enumerate(self.widgets)
         ]
+
+
+class InventoryCountFormField(forms.JSONField):
+    """JSONField paired with InventoryCountWidget.
+
+    forms.JSONField.bound_data() unconditionally does json.loads(data) when
+    re-rendering a bound form (e.g. after a validation error). But
+    InventoryCountWidget.value_from_datadict() returns a Python list, not a
+    JSON string, so json.loads() raises TypeError (not caught anywhere,
+    unlike JSONDecodeError which JSONField.to_python() does handle) and the
+    admin 500s on any invalid resubmit. Short-circuit for the list/tuple case
+    before it reaches json.loads().
+    """
+
+    def bound_data(self, data, initial):
+        if isinstance(data, (list, tuple)):
+            return list(data)
+        return super().bound_data(data, initial)

@@ -1,6 +1,6 @@
 import json
 
-from metering.price.forms import InventoryCountWidget
+from metering.price.forms import InventoryCountFormField, InventoryCountWidget
 
 
 def test_decompress_returns_three_item_list_for_empty_value():
@@ -58,3 +58,29 @@ def test_decompress_of_value_from_datadict_output_is_a_noop_when_already_a_list(
     value = widget.value_from_datadict(data, {}, "inv_1")
 
     assert widget.decompress(value) == value
+
+
+def test_inventory_count_form_field_bound_data_accepts_list_without_raising():
+    """Regression: forms.JSONField.bound_data() unconditionally does
+    json.loads(data), and InventoryCountWidget.value_from_datadict() returns a
+    Python list — json.loads(list) raises TypeError (uncaught by JSONField),
+    so re-rendering a bound CalculateForm after a validation error 500s.
+    InventoryCountFormField.bound_data() must short-circuit for list/tuple
+    input instead of forwarding it to json.loads() via the parent.
+    """
+    field = InventoryCountFormField(required=False)
+    data = ["5", "2.5", "100"]
+
+    result = field.bound_data(data, initial=None)
+
+    assert result == ["5", "2.5", "100"]
+
+
+def test_inventory_count_form_field_bound_data_still_parses_json_strings():
+    """Non-list bound data (e.g. a JSON-encoded string) must still go through
+    the normal forms.JSONField.bound_data()/json.loads() path."""
+    field = InventoryCountFormField(required=False)
+
+    result = field.bound_data(json.dumps([5, 2, "100"]), initial=None)
+
+    assert result == [5, 2, "100"]

@@ -10,6 +10,12 @@ from core.filters import get_date_filter
 from core.utils import get_folder_link_html
 from core.utils.html import get_boolean_icons
 from core.utils.messages import instance_archive
+from order.admin_display import (
+    order_days_display,
+    order_for_metering,
+    order_ref_display,
+    order_status_display,
+)
 from order.models import Order
 
 from .components import *
@@ -38,8 +44,15 @@ class MeteringPresenceFilter(admin.SimpleListFilter):
 
 @admin.register(Price)
 class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
-    list_display = ["metering", "is_done", "price"]
-    list_select_related = ["metering__client"]
+    list_display = [
+        "metering",
+        "order_number",
+        "order_status",
+        "order_days",
+        "is_done",
+        "price",
+    ]
+    list_select_related = ["metering__client", "metering__order"]
     actions_submit_line = ["done_action"]
     actions_detail = ["download_excel"]
     exclude = ["folder", "done", "metering"]
@@ -76,6 +89,18 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     @display(description="Выполнен")
     def is_done(self, obj: Price):
         return get_boolean_icons([obj.done])
+
+    @display(description="Номер заказа")
+    def order_number(self, obj: Price):
+        return order_ref_display(order_for_metering(obj.metering))
+
+    @display(description="Статус заказа")
+    def order_status(self, obj: Price):
+        return order_status_display(order_for_metering(obj.metering))
+
+    @display(description="Дней осталось")
+    def order_days(self, obj: Price):
+        return order_days_display(order_for_metering(obj.metering))
 
     @action(
         description="Выполнить",
