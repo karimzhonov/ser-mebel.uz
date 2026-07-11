@@ -1,0 +1,59 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git show*)",
+      "Bash(git blame*)",
+      "Bash(python manage.py test*)",
+      "Bash(python manage.py makemigrations*)",
+      "Bash(python manage.py migrate*)",
+      "Bash(python manage.py check*)",
+      "Bash(pytest*)",
+      "Bash(python -m pytest*)",
+      "Bash(black*)",
+      "Bash(python -m black*)",
+      "Bash(ruff*)",
+      "Bash(python -m ruff*)",
+      "Bash(mypy*)",
+      "Bash(python -m mypy*)",
+      "Bash(docker compose ps*)",
+      "Bash(docker compose logs*)",
+      "Bash(docker compose config*)",
+      "Bash(docker compose build*)",
+      "Bash(docker compose up*)",
+      "Bash(docker compose down)",
+      "Bash(docker compose restart*)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(backend/.env)",
+      "Read(backend/.env.*)",
+      "Read(bot/.env)",
+      "Read(bot/.env.*)",
+      "Bash(git push * --force*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(python manage.py migrate * zero*)",
+      "Bash(python manage.py sqlmigrate*rollback*)",
+      "Bash(rm -rf *)",
+      "Bash(rm -r -f *)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-on-write.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

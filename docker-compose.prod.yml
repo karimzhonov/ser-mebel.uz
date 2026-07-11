@@ -3,30 +3,46 @@ version: '3.3'
 services:
   back:
     container_name: back
-    image: khtkarimzhonov/api.ser-mebel.uz:latest
+    image: khtkarimzhonov/api.ser-mebel.uz:${IMAGE_TAG}
     ports:
       - "8000:8000"
-    env_file:
-      - ./backend/.env
+    environment:
+      - SECRET_KEY
+      - DEBUG
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_HOST
+      - POSTGRES_PORT
+      - BOT_TOKEN
+      - BOT_SERVER
     command: sh -c "uvicorn core.asgi:application --host 0.0.0.0 --port 8000 --workers 4"
     volumes:
       - ./media/:/media/
       - ./static/:/static/
-      - ./backend/:/app
 
   bot:
     container_name: bot
-    image: khtkarimzhonov/bot.ser-mebel.uz:latest
+    image: khtkarimzhonov/bot.ser-mebel.uz:${IMAGE_TAG}
     ports:
       - "7000:80"
-    env_file:
-      - ./bot/.env
+    environment:
+      - DEBUG
+      - BOT_TOKEN
+      - WEBHOOK_URL
+      - BASE_SITE
+      - POSTGRES_DB
+      - POSTGRES_HOST
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
     command: sh -c "uvicorn main:app --host 0.0.0.0 --port 80 --workers 4"
-  
-  db: 
+
+  db:
     container_name: db
     image: postgres:18
-    env_file:
-      - ./backend/.env
+    environment:
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
     volumes:
       - ./db-data:/var/lib/postgresql
