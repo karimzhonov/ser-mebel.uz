@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django import forms
 from unfold.widgets import UnfoldAdminIntegerFieldWidget, UnfoldAdminSelectWidget
 
@@ -14,12 +16,17 @@ class OrderAddForm(forms.ModelForm):
         queryset=DesignType.objects, widget=UnfoldAdminSelectWidget(), label="Дизайн"
     )
     count_days = forms.IntegerField(
-        min_value=1, max_value=365, label="Кол-во дней", widget=UnfoldAdminIntegerFieldWidget()
+        min_value=1,
+        max_value=365,
+        label="Кол-во дней",
+        widget=UnfoldAdminIntegerFieldWidget(),
+        required=False,
     )
 
     class Meta:
         model = Order
         fields = "__all__"
+        exclude = ["end_date"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -38,6 +45,11 @@ class OrderAddForm(forms.ModelForm):
             self.fields["design_type"].queryset = DesignType.objects.filter(design=metering.design)
 
     def save(self, commit=True):
+        reception_date = self.cleaned_data.get("reception_date")
+        count_days = self.cleaned_data.get("count_days")
+        if reception_date and count_days:
+            self.instance.end_date = reception_date + timedelta(days=count_days)
+
         if self.instance.metering:
             self.instance.metering.status = MeteringStatus.sold_out
             self.instance.metering.save()

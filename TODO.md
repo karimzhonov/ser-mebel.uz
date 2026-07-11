@@ -1,14 +1,4 @@
-1. Barcha zakazga (Order) oid modellarni admin qismida order.id, order.status va order.show_days atrubutlarini adminkada korsat changelistda (PriceAdmin,DesignAdmin, DetailngAdmin, RoverAdmin, PainterAdmin, AssemblyAdmin larda )
-
-2. Zakaz sozdat qilganda count_days ni obezatilniy qil.bunda kelip chiqadiki end_date ham nullable boladi, agar end date bolmasa zakaz statusi ojidaniyada bolsin
-
-3. Order.id ni adminkada editable qil
-
-4. PriceAdminda metering nullable bolgan instancelani aloxida korsatip, wunaqa instance larni sozdat qiladigan qil. hozirda sozdat qilgan adminka orqali owibka chiqvotti
-
-5. Harx chiqarish PriceAdminni yaxshilab test qil, hozirda dinamik inline bor uyerda wu dinamik inline mukammal iwlamayti. 
-
-6. Filer da imagelarni spiskasi ochilganda imageni bosa yangi oynaga otip ketvotti. shunga yangi template och. u teplateda misol uchun rasm tanlaganda Preview bolishi kerak va ongga chapga otkazip keyingi rasmlarni korish imkoni bolishi kerak, stilizatsiyasini ham chiroyli qil
+2. Order dan count_days polyani optawa, formalarda bolsa count_days agar berilsa end_date nisobla agar berilmasa hisoblama, OrderAddForm da end_date korsatilmaydi, agar count_days berilsa uwanga qarap calculate qiladi
 
 Bu topshiriqlarni hammasini bittada bajar keyin test qil keyin review qil
 

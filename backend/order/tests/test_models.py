@@ -1,7 +1,6 @@
 import datetime
 
 import pytest
-from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
 
 from order.constants import OrderStatus
@@ -9,36 +8,77 @@ from order.forms import OrderAddForm
 from order.models import Order
 
 
+def test_end_date_excluded_from_order_add_form_fields():
+    assert "end_date" not in OrderAddForm().fields
+
+
+def _make_design_type(db_client):
+    """design_type is a required OrderAddForm field with no model default, so
+    every add-form submission needs a real DesignType. Creating a Design
+    auto-creates one via metering.design.models.create_design_type_folders.
+    """
+    from metering.design.models import Design, DesignType
+    from metering.models import Metering
+
+    metering = Metering.objects.create(client=db_client, date_time=datetime.datetime.now())
+    design = Design.objects.create(metering=metering)
+    design_type = DesignType.objects.get(design=design)
+    return metering, design_type
+
+
 @pytest.mark.django_db
-def test_count_days_required_on_model(db_client, today):
-    order = Order(
-        client=db_client,
-        reception_date=today,
-        end_date=None,
-        address="addr",
-        count_days=None,
-    )
-    with pytest.raises(ValidationError) as exc_info:
-        order.full_clean()
-
-    assert "count_days" in exc_info.value.message_dict
-
-
-@pytest.mark.django_db
-def test_count_days_required_on_add_form(db_client, today):
+def test_order_add_form_valid_without_count_days_leaves_end_date_unset(db_client, today):
+    metering, design_type = _make_design_type(db_client)
     data = {
         "client": db_client.pk,
         "reception_date": today.isoformat(),
         "address": "addr",
         "price_0": "0",
         "price_1": "USD",
+        "lost_money_0": "0",
+        "lost_money_1": "USD",
         "discount": "0",
-        # count_days deliberately omitted
+        "status": OrderStatus.CREATED,
+        "metering": metering.pk,
+        "design_type": design_type.pk,
+        # count_days deliberately omitted — it's optional
     }
     form = OrderAddForm(data=data)
 
-    assert not form.is_valid()
-    assert "count_days" in form.errors
+    assert form.is_valid(), form.errors
+
+    order = form.save()
+
+    assert order.end_date is None
+    assert order.status == OrderStatus.WAITING
+
+
+@pytest.mark.django_db
+def test_order_add_form_with_count_days_computes_end_date(db_client, today):
+    metering, design_type = _make_design_type(db_client)
+    data = {
+        "client": db_client.pk,
+        "reception_date": today.isoformat(),
+        "address": "addr",
+        "price_0": "0",
+        "price_1": "USD",
+        "lost_money_0": "0",
+        "lost_money_1": "USD",
+        "discount": "0",
+        "status": OrderStatus.CREATED,
+        "metering": metering.pk,
+        "design_type": design_type.pk,
+        "count_days": "5",
+    }
+    form = OrderAddForm(data=data)
+
+    assert form.is_valid(), form.errors
+
+    order = form.save()
+
+    assert order.end_date == today + datetime.timedelta(days=5)
+    assert order.status != OrderStatus.WAITING
+    assert order.status == OrderStatus.CREATED
 
 
 @pytest.mark.django_db

@@ -138,7 +138,6 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
                         "desc",
                         "reception_date",
                         "count_days",
-                        "end_date",
                         "design_type",
                         "metering",
                     )

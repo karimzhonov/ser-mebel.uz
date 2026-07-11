@@ -61,14 +61,21 @@ def today():
     return datetime.date.today()
 
 
-def make_order(*, db_client, reception_date=None, end_date=None, count_days=1, metering=None, price=None, address="Test address"):
+def make_order(
+    *,
+    db_client,
+    reception_date=None,
+    end_date=None,
+    metering=None,
+    price=None,
+    address="Test address",
+):
     from order.models import Order
 
     return Order.objects.create(
         client=db_client,
         reception_date=reception_date or datetime.date.today(),
         end_date=end_date,
-        count_days=count_days,
         address=address,
         metering=metering,
         price=price,

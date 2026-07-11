@@ -46,9 +46,6 @@ class Order(models.Model):
     )
 
     reception_date = models.DateField(verbose_name="Дата получение")
-    count_days = models.PositiveIntegerField(
-        _("Количество дней"), null=False, blank=False, default=1
-    )
     end_date = models.DateField(verbose_name="Дата сдачи", null=True, blank=True)
 
     address = models.CharField(max_length=255, verbose_name="Адрес")
