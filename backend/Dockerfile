@@ -13,5 +13,3 @@ RUN pip install -r requirements.txt
 
 # Копируем остальной код
 COPY . .
-
-RUN python manage.py migrate
