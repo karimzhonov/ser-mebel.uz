@@ -21,21 +21,21 @@ services:
       - ./media/:/media/
       - ./static/:/static/
 
-  bot:
-    container_name: bot
-    image: khtkarimzhonov/bot.ser-mebel.uz:${IMAGE_TAG}
-    ports:
-      - "7000:80"
-    environment:
-      - DEBUG
-      - BOT_TOKEN
-      - WEBHOOK_URL
-      - BASE_SITE
-      - POSTGRES_DB
-      - POSTGRES_HOST
-      - POSTGRES_USER
-      - POSTGRES_PASSWORD
-    command: sh -c "uvicorn main:app --host 0.0.0.0 --port 80 --workers 4"
+  # bot:
+  #   container_name: bot
+  #   image: khtkarimzhonov/bot.ser-mebel.uz:${IMAGE_TAG}
+  #   ports:
+  #     - "7000:80"
+  #   environment:
+  #     - DEBUG
+  #     - BOT_TOKEN
+  #     - WEBHOOK_URL
+  #     - BASE_SITE
+  #     - POSTGRES_DB
+  #     - POSTGRES_HOST
+  #     - POSTGRES_USER
+  #     - POSTGRES_PASSWORD
+  #   command: sh -c "uvicorn main:app --host 0.0.0.0 --port 80 --workers 4"
 
   db:
     container_name: db
