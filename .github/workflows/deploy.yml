@@ -54,15 +54,15 @@ jobs:
       IMAGE_TAG: ${{ needs.build-and-push.outputs.tag }}
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
       DEBUG: ${{ secrets.DEBUG }}
-      POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
-      POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+      POSTGRES_DB: ${{ vars.POSTGRES_DB }}
+      POSTGRES_USER: ${{ vars.POSTGRES_USER }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
       POSTGRES_HOST: ${{ secrets.POSTGRES_HOST }}
       POSTGRES_PORT: ${{ secrets.POSTGRES_PORT }}
       BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-      BOT_SERVER: ${{ secrets.BOT_SERVER }}
-      WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-      BASE_SITE: ${{ secrets.BASE_SITE }}
+      BOT_SERVER: ${{ vars.BOT_SERVER }}
+      WEBHOOK_URL: ${{ vars.WEBHOOK_URL }}
+      BASE_SITE: ${{ vars.BASE_SITE }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -70,8 +70,8 @@ jobs:
       - name: Copy docker-compose.prod.yml to server
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           source: docker-compose.prod.yml
@@ -81,8 +81,8 @@ jobs:
       - name: Pull images & restart
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
+          host: ${{ vars.SERVER_HOST }}
+          username: ${{ vars.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           envs: IMAGE_TAG,SECRET_KEY,DEBUG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_HOST,POSTGRES_PORT,BOT_TOKEN,BOT_SERVER,WEBHOOK_URL,BASE_SITE
