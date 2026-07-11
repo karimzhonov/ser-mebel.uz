@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Strict senior review of changes to ser-mebel.uz — correctness, security, N+1, cross-service contract breaks. Runs after tester/linter, before a change is considered done.
+description: Strict senior review of changes to ser-mebel.uz — correctness, security, N+1, cross-service contract breaks. Runs after tester, before a change is considered done.
 tools: Read, Grep, Glob, Bash
 model: opus
 ---

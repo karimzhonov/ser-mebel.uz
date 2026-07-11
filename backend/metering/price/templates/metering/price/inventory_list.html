@@ -1,23 +1,38 @@
 {% load i18n %}
-
-<div class="flex flex-col gap-4" x-data="{items: []}">
-    {% for subwidget in widget.subwidgets %}
-        <div class="flex flex-row">
+{# Custom template for InventoryCountWidget (forms.py) — a 3-part MultiWidget: #}
+{# [inventory select, count, disabled price]. Only ONE (inventory, count) pair is #}
+{# read per InventoryType by CalculateForm.save() (it unpacks exactly one #}
+{# [inv_id, count, price] triple per `inv_*` key) — extra rows added below via #}
+{# "add row" are a UX convenience for trying a few options; they reuse the same #}
+{# field name as the real row, so only the last-filled row's value is actually #}
+{# submitted/saved. Real multi-item-per-type support would require changing #}
+{# CalculateForm.save()'s single-triple contract, which is out of scope here. #}
+<div class="flex flex-col gap-2" x-data="{ items: [] }">
+    <div class="flex flex-row">
+        {% for subwidget in widget.subwidgets %}
             {% with widget=subwidget %}
                 {% include widget.template_name %}
             {% endwith %}
-        </div>
-    {% endfor %}
+        {% endfor %}
+    </div>
 
-    <template x-for="(item, index) in items" :key="item.key">
-        <div class="flex flex-row" x-init="if ($el.getElementsByTagName('input')[0].name.includes('__prefix__')) { $el.getElementsByTagName('input')[0].name = $el.parentElement.getElementsByTagName('input')[0].name }">
-            {% with widget=template %}
-                {% include template.template_name %}
-            {% endwith %}
-
-            <a x-on:click="items.splice(index, 1)" class="bg-white border border-base-200 cursor-pointer flex items-center h-[38px] justify-center ml-2 rounded-default shadow-xs shrink-0 text-red-600 text-sm w-[38px] dark:bg-base-900 dark:border-base-700 dark:text-red-500">
+    <template x-for="item in items" :key="item.key">
+        <div class="flex flex-row">
+            {% for subwidget in widget.subwidgets %}
+                {% with widget=subwidget %}
+                    {% include widget.template_name %}
+                {% endwith %}
+            {% endfor %}
+            <a x-on:click="items = items.filter(i => i.key !== item.key)"
+               class="bg-white border border-base-200 cursor-pointer flex items-center h-[38px] justify-center ml-2 rounded-default shadow-xs shrink-0 text-red-600 text-sm w-[38px] dark:bg-base-900 dark:border-base-700 dark:text-red-500">
                 <span class="material-symbols-outlined">delete</span>
             </a>
         </div>
     </template>
+
+    <a x-on:click="items.push({key: Date.now() + '-' + Math.random()})"
+       class="bg-white border border-base-200 cursor-pointer flex items-center gap-1 h-[38px] justify-center px-3 rounded-default shadow-xs shrink-0 text-sm w-fit dark:bg-base-900 dark:border-base-700">
+        <span class="material-symbols-outlined">add</span>
+        {% translate "Добавить" %}
+    </a>
 </div>

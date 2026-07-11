@@ -14,16 +14,18 @@ from ..painter.models import Painter
 
 
 class Detailing(models.Model):
-    order = models.OneToOneField('order.Order', models.CASCADE, verbose_name='Заказ')
-    folder = FilerFolderField(on_delete=models.SET_NULL, related_name='detailing_files', null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
-    done = models.BooleanField(default=False, verbose_name='Выполнено деталировка')
-    working_done = models.BooleanField(default=False, verbose_name='Выполнено заказ на сырье')
-    
-    square = models.FloatField(default=0, verbose_name='Площадь')
-    painter_square = models.FloatField(default=0, blank=True, verbose_name='Площадь покраски')
-    rover_square = models.FloatField(default=0, blank=True, verbose_name='Площадь роверов')
-    
+    order = models.OneToOneField("order.Order", models.CASCADE, verbose_name="Заказ")
+    folder = FilerFolderField(
+        on_delete=models.SET_NULL, related_name="detailing_files", null=True, blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    done = models.BooleanField(default=False, verbose_name="Выполнено деталировка")
+    working_done = models.BooleanField(default=False, verbose_name="Выполнено заказ на сырье")
+
+    square = models.FloatField(default=0, verbose_name="Площадь")
+    painter_square = models.FloatField(default=0, blank=True, verbose_name="Площадь покраски")
+    rover_square = models.FloatField(default=0, blank=True, verbose_name="Площадь роверов")
+
     history = HistoricalRecords()
 
     def __str__(self):
@@ -36,35 +38,45 @@ def create_detailing_folders(sender: Type[Detailing], instance: Detailing, creat
         Assembly.objects.update_or_create(
             order=instance.order,
             defaults={
-                'square': instance.square,
-                'price': Money(amount=float(config.ASSEMBLY_PRICE_PER_SQUARE.amount) * instance.square, currency=config.ASSEMBLY_PRICE_PER_SQUARE.currency)
-            }
+                "square": instance.square,
+                "price": Money(
+                    amount=float(config.ASSEMBLY_PRICE_PER_SQUARE.amount) * instance.square,
+                    currency=config.ASSEMBLY_PRICE_PER_SQUARE.currency,
+                ),
+            },
         )
 
     if instance.painter_square:
         Painter.objects.update_or_create(
             order=instance.order,
             defaults={
-                'square': instance.painter_square,
-            }
+                "square": instance.painter_square,
+            },
         )
 
     if instance.rover_square:
         Rover.objects.update_or_create(
             order=instance.order,
             defaults={
-                'square': instance.rover_square,
-                'price': Money(amount=float(config.ROVER_PRICE_PER_SQUARE.amount) * instance.rover_square, currency=config.ROVER_PRICE_PER_SQUARE.currency)
-            }
+                "square": instance.rover_square,
+                "price": Money(
+                    amount=float(config.ROVER_PRICE_PER_SQUARE.amount) * instance.rover_square,
+                    currency=config.ROVER_PRICE_PER_SQUARE.currency,
+                ),
+            },
         )
 
-    if not created: return
-    
+    if not created:
+        return
+
+    if instance.order.folder is None:
+        return
+
     folder = Folder.objects.create(
-        name='Деталировка / Производстьво',
+        name="Деталировка / Производстьво",
         parent=instance.order.folder,
         owner=instance.order.folder.owner,
     )
 
     instance.folder = folder
-    instance.save(update_fields=['folder'])
+    instance.save(update_fields=["folder"])

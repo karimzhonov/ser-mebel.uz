@@ -1,37 +1,42 @@
 from typing import Type
+
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from djmoney.models.fields import MoneyField
-from filer.models.foldermodels import Folder
 from filer.fields.folder import FilerFolderField
+from filer.models.foldermodels import Folder
 from simple_history.models import HistoricalRecords
+
 from oauth.models import ASSEMBLY_PERMISSION, User
+
 from .constants import ASSEMBLY_MANAGER_PERMISSION
 
 
 class Assembly(models.Model):
-    order = models.OneToOneField('order.Order', models.CASCADE, verbose_name='Заказ')
-    folder = FilerFolderField(on_delete=models.SET_NULL, related_name='assembly_files', null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создания')
-    done = models.BooleanField(default=False, verbose_name='Выполнено сборка')
-    installing_done = models.BooleanField(default=False, verbose_name='Выполнено установка')
-    user = models.ForeignKey('oauth.User', models.CASCADE, blank=True, null=True, verbose_name='Сборшик')
-    
-    square = models.FloatField(verbose_name='Площадь')
-    price = MoneyField(max_digits=12, blank=True, null=True, verbose_name='Нарх')
-    
+    order = models.OneToOneField("order.Order", models.CASCADE, verbose_name="Заказ")
+    folder = FilerFolderField(
+        on_delete=models.SET_NULL, related_name="assembly_files", null=True, blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
+    done = models.BooleanField(default=False, verbose_name="Выполнено сборка")
+    installing_done = models.BooleanField(default=False, verbose_name="Выполнено установка")
+    user = models.ForeignKey(
+        "oauth.User", models.CASCADE, blank=True, null=True, verbose_name="Сборщик"
+    )
+
+    square = models.FloatField(verbose_name="Площадь")
+    price = MoneyField(max_digits=12, blank=True, null=True, verbose_name="Нарх")
+
     history = HistoricalRecords()
 
     def __str__(self):
         return str(self.order)
-    
+
     class Meta:
-        verbose_name = 'Сборка/Установка'
-        verbose_name_plural = 'Сборки/Установки'
-        permissions = [
-            (ASSEMBLY_MANAGER_PERMISSION, 'Assembly manager')
-        ]
+        verbose_name = "Сборка/Установка"
+        verbose_name_plural = "Сборки/Установки"
+        permissions = [(ASSEMBLY_MANAGER_PERMISSION, "Assembly manager")]
 
 
 @receiver(post_save, sender=Assembly)
@@ -39,12 +44,19 @@ def create_assembly_folders(sender: Type[Assembly], instance: Assembly, created,
     # DefaultExpenseCategoryChoices.update_or_create_expense(
     #     DefaultExpenseCategoryChoices.assembly, instance.order, instance.price
     # )
-    if not created: return
-    User.send_messages(ASSEMBLY_PERMISSION, 'admin:assembly_assembly_change', {'object_id': instance.pk})
+    if not created:
+        return
+    User.send_messages(
+        ASSEMBLY_PERMISSION, "admin:assembly_assembly_change", {"object_id": instance.pk}
+    )
+
+    if instance.order.folder is None:
+        return
+
     folder, _ = Folder.objects.get_or_create(
-        name='Сборка / Установка',
+        name="Сборка / Установка",
         parent=instance.order.folder,
         owner=instance.order.folder.owner,
     )
     instance.folder = folder
-    instance.save(update_fields=['folder'])
+    instance.save(update_fields=["folder"])

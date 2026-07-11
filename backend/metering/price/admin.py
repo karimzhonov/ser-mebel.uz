@@ -1,36 +1,54 @@
 from django.contrib import admin
-from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
-
 from djmoney.money import Money
-from unfold.admin import ModelAdmin
-from unfold.decorators import display, action
-from unfold.dataclasses import ActionVariant
 from simple_history.admin import SimpleHistoryAdmin
-from core.utils.messages import instance_archive
+from unfold.admin import ModelAdmin
+from unfold.dataclasses import ActionVariant
+from unfold.decorators import action, display
+
 from core.filters import get_date_filter
 from core.utils import get_folder_link_html
 from core.utils.html import get_boolean_icons
+from core.utils.messages import instance_archive
 from order.models import Order
 
-from .excel import download_inlines_excel
 from .components import *
-from .models import Price, Inventory, InventoryType, ObjectType, Calculate
-from .inlines import InventoryInline, CalculateInline
+from .excel import download_inlines_excel
+from .inlines import CalculateInline, InventoryInline
+from .models import Calculate, Inventory, InventoryType, ObjectType, Price
+
+
+class MeteringPresenceFilter(admin.SimpleListFilter):
+    title = "Замер"
+    parameter_name = "has_metering"
+
+    def lookups(self, request, model_admin):
+        return (
+            ("yes", "С замером"),
+            ("no", "Без замера"),
+        )
+
+    def queryset(self, request, queryset):
+        if self.value() == "yes":
+            return queryset.filter(metering__isnull=False)
+        if self.value() == "no":
+            return queryset.filter(metering__isnull=True)
+        return queryset
 
 
 @admin.register(Price)
 class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
-    list_display = ['metering', 'is_done', 'price']
-    actions_submit_line = ['done_action']
-    actions_detail = ['download_excel']
-    exclude = ['folder', 'done', 'metering']
-    readonly_fields = ['metering_folder', 'folder_link', 'price']
-    list_filter = [get_date_filter('created_at'), 'done']
+    list_display = ["metering", "is_done", "price"]
+    list_select_related = ["metering__client"]
+    actions_submit_line = ["done_action"]
+    actions_detail = ["download_excel"]
+    exclude = ["folder", "done", "metering"]
+    readonly_fields = ["metering_folder", "folder_link", "price"]
+    list_filter = [get_date_filter("created_at"), "done", MeteringPresenceFilter]
     list_filter_sheet = True
     list_filter_submit = True
     list_fullwidth = True
-    
+
     def get_inlines(self, request, obj):
         inlines = []
         for o in ObjectType.objects.all():
@@ -39,7 +57,7 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
                 "verbose_name_plural": o.name,
                 "object_type_id": int(o.pk),
             }
-            inlines.append(type(f'Object{o.pk}CalculateInline',(CalculateInline,), class_attrs))
+            inlines.append(type(f"Object{o.pk}CalculateInline", (CalculateInline,), class_attrs))
         return inlines
 
     # def has_change_permission(self, request: HttpRequest, obj=None) -> bool:
@@ -47,23 +65,23 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     #         return False
     #     return super().has_change_permission(request, obj)
 
-    @display(description='Замер файлы')
+    @display(description="Замер файлы")
     def metering_folder(self, obj: Price):
-        return get_folder_link_html(obj.metering.folder_id)
-    
-    @display(description='Папка')
+        return get_folder_link_html(obj.metering.folder_id) if obj.metering else "-"
+
+    @display(description="Папка")
     def folder_link(self, obj: Price):
         return get_folder_link_html(obj.folder_id)
 
-    @display(description='Выполнен')
+    @display(description="Выполнен")
     def is_done(self, obj: Price):
         return get_boolean_icons([obj.done])
-    
+
     @action(
-        description='Выполнить',
+        description="Выполнить",
         url_path="done",
         variant=ActionVariant.SUCCESS,
-        permissions=['done_action']
+        permissions=["done_action"],
     )
     def done_action(self, request, obj: Price):
         if obj.done:
@@ -72,22 +90,22 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
         obj.save()
 
     def has_done_action_permission(self, request, object_id):
-        if not object_id: return True
+        if not object_id:
+            return True
         obj = get_object_or_404(Price, pk=object_id)
-        return request.user.has_perm('price.change_price') and not obj.done
-    
+        return request.user.has_perm("price.change_price") and not obj.done
+
     @action(
-        description='Excel',
+        description="Excel",
         url_path="download-excel",
         variant=ActionVariant.PRIMARY,
-        permissions=['download_excel']
+        permissions=["download_excel"],
     )
     def download_excel(self, request, object_id):
         return download_inlines_excel(self, request, object_id)
-    
+
     def has_download_excel_permission(self, request, object_id):
         return True
-
 
     def save_related(self, request, form, formsets, change):
         super().save_related(request, form, formsets, change)
@@ -95,17 +113,18 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
         amount = 0
         for calc in Calculate.objects.filter(price=obj):
             amount += calc.amount.amount
-        obj.price = Money(amount, currency='USD')
+        obj.price = Money(amount, currency="USD")
         obj.save()
 
-        Order.objects.filter(metering=obj.metering).update(price=Money(amount, currency='USD'))
+        if obj.metering:
+            Order.objects.filter(metering=obj.metering).update(price=Money(amount, currency="USD"))
 
 
 @admin.register(InventoryType)
 class InventoryTypeAdmin(ModelAdmin):
-    list_display = ['name', 'type', 'ordering']
+    list_display = ["name", "type", "ordering"]
     inlines = [InventoryInline]
-    list_editable = ['ordering']
+    list_editable = ["ordering"]
 
     def has_add_permission(self, request):
         return super(ModelAdmin, self).has_add_permission(request)
@@ -113,10 +132,10 @@ class InventoryTypeAdmin(ModelAdmin):
 
 @admin.register(Inventory)
 class InventoryAdmin(ModelAdmin):
-    list_display = ['name', 'type', 'price']
-    list_filter = ['type']
+    list_display = ["name", "type", "price"]
+    list_filter = ["type"]
 
 
 @admin.register(ObjectType)
 class ObjectTypeAdmin(ModelAdmin):
-    list_display = ['name']
+    list_display = ["name"]

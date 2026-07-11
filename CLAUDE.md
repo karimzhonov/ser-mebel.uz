@@ -31,7 +31,7 @@ Prod: `docker-compose.prod.yml` — `back` (uvicorn ASGI, port 8000), `bot` (uvi
 
 ## Orchestration rules (subagent pipeline)
 
-Pipeline: **architect → (django-dev and/or bot-dev, per scope) → tester → linter → reviewer → fix loop (max 3) → done.**
+Pipeline: **architect → (django-dev and/or bot-dev, per scope) → tester → reviewer → fix loop (max 3) → done.**
 
 - Task touches only Django → `django-dev` only.
 - Task touches only the bot → `bot-dev` only.

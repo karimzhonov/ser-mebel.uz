@@ -258,11 +258,6 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
             "fields": {
                 "ASSEMBLY_PRICE_PER_SQUARE",
             }
-        },
-        "Моляр": {
-            "fields": {
-                "PAINTER_PRICE_PER_SQUARE"
-            }
         }
     }
 )
