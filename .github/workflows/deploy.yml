@@ -53,7 +53,7 @@ jobs:
     env:
       IMAGE_TAG: ${{ needs.build-and-push.outputs.tag }}
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
-      DEBUG: ${{ secrets.DEBUG }}
+      DEBUG: ${{ vars.DEBUG }}
       POSTGRES_DB: ${{ vars.POSTGRES_DB }}
       POSTGRES_USER: ${{ vars.POSTGRES_USER }}
       POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
