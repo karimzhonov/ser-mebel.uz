@@ -88,6 +88,6 @@ jobs:
           envs: IMAGE_TAG,SECRET_KEY,DEBUG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_HOST,POSTGRES_PORT,BOT_TOKEN,BOT_SERVER,WEBHOOK_URL,BASE_SITE
           script: |
             cd /var/www/ser-mebel.uz
-            docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml up -d
+            docker-compose -f docker-compose.prod.yml pull
+            docker-compose -f docker-compose.prod.yml up -d
             docker image prune -f
