@@ -16,15 +16,21 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.AddField(
-            model_name="objecttype",
-            name="count_name",
-            field=models.CharField(
-                choices=[("kv", "Кв. м."), ("pog", "Пог. м.")],
-                default="kv",
-                max_length=255,
-                verbose_name="Кол-во тип",
-            ),
+        migrations.RunSQL(
+            sql='ALTER TABLE "price_objecttype" ADD COLUMN IF NOT EXISTS "count_name" varchar(255) NOT NULL DEFAULT \'kv\';',
+            reverse_sql='ALTER TABLE "price_objecttype" DROP COLUMN IF EXISTS "count_name";',
+            state_operations=[
+                migrations.AddField(
+                    model_name="objecttype",
+                    name="count_name",
+                    field=models.CharField(
+                        choices=[("kv", "Кв. м."), ("pog", "Пог. м.")],
+                        default="kv",
+                        max_length=255,
+                        verbose_name="Кол-во тип",
+                    ),
+                ),
+            ],
         ),
         migrations.AlterField(
             model_name="calculate",
