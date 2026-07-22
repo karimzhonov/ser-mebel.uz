@@ -244,12 +244,17 @@
     </div>
 
     {# Lightbox modal — shared across all image items in this folder listing. #}
-    <div x-show="lightboxOpen" x-cloak
+    {# display:flex lives in this class, not inline style: Alpine's x-show hide/show #}
+    {# overwrites+removes the inline "display" property directly, so an inline #}
+    {# display:flex gets destroyed the first time the modal closes and never comes #}
+    {# back — only a stylesheet-defined display survives x-show's removeProperty(). #}
+    <style>.lightbox-modal { display: flex; }</style>
+    <div class="lightbox-modal" x-show="lightboxOpen" x-cloak
          @keydown.escape.window="lightboxOpen = false"
          @keydown.arrow-right.window="nextImage()"
          @keydown.arrow-left.window="prevImage()"
          @click.self="lightboxOpen = false"
-         style="position:fixed; inset:0; z-index:1000; display: flex; align-items:center; justify-content:center; background:rgba(0,0,0,0.85);">
+         style="position:fixed; inset:0; z-index:1000; align-items:center; justify-content:center; background:rgba(0,0,0,0.85);">
         <a href="javascript:void(0)" @click="lightboxOpen = false" title="{% trans 'Close' %}"
            style="position:absolute; top:16px; right:24px; color:#fff; font-size:32px; line-height:1; cursor:pointer;">&times;</a>
         <a href="javascript:void(0)" @click.stop="prevImage()" x-show="lightboxImages.length > 1" title="{% trans 'previous' %}"
