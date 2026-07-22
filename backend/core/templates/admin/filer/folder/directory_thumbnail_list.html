@@ -249,7 +249,8 @@
          @keydown.arrow-right.window="nextImage()"
          @keydown.arrow-left.window="prevImage()"
          @click.self="lightboxOpen = false"
-         style="position:fixed; inset:0; z-index:1000; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,0.85);">
+         :style="lightboxOpen ? 'display:flex' : 'display:none'"
+         style="position:fixed; inset:0; z-index:1000; align-items:center; justify-content:center; background:rgba(0,0,0,0.85);">
         <a href="javascript:void(0)" @click="lightboxOpen = false" title="{% trans 'Close' %}"
            style="position:absolute; top:16px; right:24px; color:#fff; font-size:32px; line-height:1; cursor:pointer;">&times;</a>
         <a href="javascript:void(0)" @click.stop="prevImage()" x-show="lightboxImages.length > 1" title="{% trans 'previous' %}"
