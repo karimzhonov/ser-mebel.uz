@@ -3,6 +3,7 @@ from typing import Any
 from constance import config
 from django.contrib import admin
 from django.http import HttpRequest
+from django.utils.html import format_html
 from djmoney import settings as dj_setting
 from djmoney.money import Money
 from simple_history.admin import SimpleHistoryAdmin
@@ -48,6 +49,9 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
     ]
     list_filter_submit = True
     search_fields = ["metering__client__fio", "metering__client__phone"]
+
+    class Media:
+        css = {"all": ["order/css/order_admin.css"]}
 
     def get_changeform_initial_data(self, request: HttpRequest) -> dict[str, str]:
         initial = super().get_changeform_initial_data(request)
@@ -178,13 +182,19 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
         if obj.status == OrderStatus.WAITING or obj.days is None:
             return get_tag("Ожидание даты сдачи", "secondary")
         days = obj.days - days_minus
-        return (
-            get_tag(
+        if days >= 0:
+            tag = get_tag(
                 f"До сдачи заказа {days} дней",
                 "secondary" if days > config.WARNING_ORDER_DAYS else "warning",
             )
-            if days >= 0
-            else get_tag(f"Заказ просрочен на {abs(days)} дней", "danger")
+            return (
+                format_html('<span class="order-row-warning">{}</span>', tag)
+                if days <= config.WARNING_ORDER_DAYS
+                else tag
+            )
+        return format_html(
+            '<span class="order-row-warning">{}</span>',
+            get_tag(f"Заказ просрочен на {abs(days)} дней", "danger"),
         )
 
     # Filer links

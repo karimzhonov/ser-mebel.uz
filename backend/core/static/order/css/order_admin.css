@@ -1,0 +1,7 @@
+/* OrderAdmin changelist: highlight rows close to or past the delivery
+   deadline (see order/admin.py OrderAdmin.show_days — marks the
+   "Дней осталось" cell with .order-row-warning when days <= config.WARNING_ORDER_DAYS,
+   including overdue orders). */
+#result_list tr:has(.order-row-warning) {
+    background-color: rgba(220, 38, 38, 0.12);
+}
