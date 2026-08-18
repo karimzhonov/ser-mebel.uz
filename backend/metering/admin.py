@@ -9,6 +9,8 @@ from core.utils import get_tag, get_folder_link_html
 from core.utils.html import get_boolean_icons
 from core.filters import get_date_filter
 
+from order.admin_display import order_days_display, order_for_metering, order_status_display
+
 from .actions import MeteringActions
 from .filters import MeteringStatusDropdownFilter
 from .constants import MeteringStatus
@@ -19,7 +21,7 @@ from .components import *
 
 @admin.register(Metering)
 class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
-    list_display = ['client', 'date_time', 'get_status', 'has_design', 'has_price']
+    list_display = ['client', 'date_time', 'get_status', 'has_design', 'has_price', 'order_status', 'order_days']
     list_display_links = ['client', 'date_time', 'get_status', 'has_design', 'has_price']
     list_filter = [
         MeteringStatusDropdownFilter,
@@ -27,6 +29,7 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
     ]
     list_filter_submit = True
     # list_before_template = 'metering/metering_list_before.html'
+    list_select_related = ['client', 'order']
     exclude = ['status', 'folder']
     ordering = ['-date_time']
     search_fields = ["client__fio", "client__phone"]
@@ -89,7 +92,19 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
             hasattr(obj, 'price') and obj.price,
             hasattr(obj, 'price') and obj.price and obj.price.done,
         ])
-    
+
+    @display(
+        description='Статус заказа'
+    )
+    def order_status(self, obj: Metering):
+        return order_status_display(order_for_metering(obj))
+
+    @display(
+        description='Дней осталось'
+    )
+    def order_days(self, obj: Metering):
+        return order_days_display(order_for_metering(obj))
+
     def get_fieldsets(self, request, obj=None):
         if not obj: return super().get_fieldsets(request, obj)
         fields = ['client', 'invoice', 'address', 'address_link', 'folder_link', 'date_time', 'desc', 'get_status']
