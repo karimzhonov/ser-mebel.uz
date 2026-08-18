@@ -86,7 +86,7 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
                 "folder_link",
                 "metering",
                 "client",
-                "reception_date",
+                # "reception_date",
                 "address",
                 "address_link",
                 "show_total_price",
