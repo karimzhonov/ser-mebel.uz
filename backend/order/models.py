@@ -23,7 +23,7 @@ from .services import resolve_order_status_on_save
 
 class Order(models.Model):
     id = models.BigAutoField(primary_key=True)
-    # null=True only to bootstrap new rows (see save()) before the real id/pk is known;
+    # null=True only to bootstrap new rows (see save()) before a number is assigned;
     # always populated after the first save — see save() below.
     order_number = models.PositiveIntegerField(
         unique=True, db_index=True, null=True, blank=False, verbose_name=_("Номер заказа")
@@ -94,18 +94,20 @@ class Order(models.Model):
         self.send_sms()
 
     def send_sms(self):
-        pass
+        from .services import send_order_status_sms
+
+        send_order_status_sms(self)
 
     def save(self, *args, **kwargs):
         resolve_order_status_on_save(self)
-        is_new = self.pk is None
+        if self.pk is None and not self.order_number:
+            # Auto-number = last assigned order_number + 1, not the pk (pk can have
+            # gaps from deleted orders). Manual entry is blocked on the add form
+            # (order_number isn't in OrderAdmin's add_fieldsets); editable afterwards
+            # from the change form.
+            last_number = Order.objects.aggregate(models.Max("order_number"))["order_number__max"]
+            self.order_number = (last_number or 0) + 1
         super().save(*args, **kwargs)
-        if is_new and not self.order_number:
-            # order_number can't be derived before the row exists (BigAutoField pk
-            # is only known after INSERT) — mirror id into it as a friendly,
-            # editable order number (decision: keep the real pk non-editable).
-            self.order_number = self.id
-            super().save(update_fields=["order_number"])
 
 
 @receiver(post_save, sender=Order)

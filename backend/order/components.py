@@ -81,7 +81,7 @@ class WarningBanner(BaseComponent):
         'danger': {
             "icon": 'close',
             "label": 'Заказ просрочен',
-            "filters": {"days__lte": 0}
+            "filters": {"days__lte": 0, "status__in": [OrderStatus.DETAILING, OrderStatus.ASSEMBLY, OrderStatus.INSTALLING]}
         }
     }
 

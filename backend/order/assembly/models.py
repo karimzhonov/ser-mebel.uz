@@ -47,7 +47,10 @@ def create_assembly_folders(sender: Type[Assembly], instance: Assembly, created,
     if not created:
         return
     User.send_messages(
-        ASSEMBLY_PERMISSION, "admin:assembly_assembly_change", {"object_id": instance.pk}
+        ASSEMBLY_PERMISSION,
+        "admin:assembly_assembly_change",
+        {"object_id": instance.pk},
+        sms_template="{xodim_ism}, Оповещение о заказе\n{url}",
     )
 
     if instance.order.folder is None:

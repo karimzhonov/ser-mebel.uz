@@ -140,17 +140,49 @@ def test_order_end_date_set_does_not_touch_non_waiting_status(order_factory, tod
 
 
 @pytest.mark.django_db
-def test_order_number_backfilled_and_unique(order_factory, db_client, today):
+def test_order_number_auto_increments_from_last_and_is_unique(order_factory, db_client, today):
     order = order_factory()
     order.refresh_from_db()
 
-    assert order.order_number == order.id
+    assert order.order_number is not None
 
     order2 = order_factory()
     order2.refresh_from_db()
-    assert order2.order_number == order2.id
-    assert order2.order_number != order.order_number
+    assert order2.order_number == order.order_number + 1
 
     with pytest.raises(IntegrityError):
         with transaction.atomic():
             Order.objects.filter(pk=order2.pk).update(order_number=order.order_number)
+
+
+@pytest.mark.django_db
+def test_order_number_continues_from_live_max_after_middle_order_deleted(
+    order_factory, db_client, today
+):
+    """order_number is derived from the current max on record, not the pk —
+    deleting a non-last order must not cause the next number to collide with
+    a still-live order (unlike pk-derived numbering, which can develop gaps
+    that don't matter, but must never collide)."""
+    order1 = order_factory()
+    order2 = order_factory()
+    order3 = order_factory()
+    order2.delete()
+
+    order4 = order_factory()
+
+    assert order4.order_number == order3.order_number + 1
+    assert order4.order_number not in {order1.order_number, order3.order_number}
+
+
+@pytest.mark.django_db
+def test_order_number_manual_value_preserved_on_update(order_factory, db_client, today):
+    """order_number is only auto-assigned on creation; an explicit change on an
+    existing order (change form) must be respected, not overwritten."""
+    order = order_factory()
+    original_number = order.order_number
+
+    order.order_number = original_number + 100
+    order.save()
+    order.refresh_from_db()
+
+    assert order.order_number == original_number + 100

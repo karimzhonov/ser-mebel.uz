@@ -385,3 +385,9 @@ UNFOLD = {
 
 TELEGRAM_BOT_TOKEN = os.getenv('BOT_TOKEN')
 TELEGRAM_BOT_SERVER = os.getenv('BOT_SERVER')
+
+SMS_GATEWAY_URL = os.getenv('SMS_GATEWAY_URL', 'http://185.8.212.184/smsgateway/')
+SMS_LOGIN = os.getenv('SMS_LOGIN')
+SMS_PASSWORD = os.getenv('SMS_PASSWORD')
+SMS_NICKNAME = os.getenv('SMS_NICKNAME')
+ADMIN_BASE_URL = os.getenv('ADMIN_BASE_URL', "https://ser-mebel.uz")

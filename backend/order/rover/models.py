@@ -38,7 +38,12 @@ def create_rover_folders(sender: Type[Rover], instance: Rover, created, **kwargs
 
     if not created:
         return
-    User.send_messages(ROVER_PERMISSION, "admin:rover_rover_change", {"object_id": instance.pk})
+    User.send_messages(
+        ROVER_PERMISSION,
+        "admin:rover_rover_change",
+        {"object_id": instance.pk},
+        sms_template="{xodim_ism}, Оповещение о заказе\n{url}",
+    )
 
     if instance.order.folder is None:
         return

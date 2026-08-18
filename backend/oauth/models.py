@@ -1,5 +1,4 @@
 import requests
-from django.urls import reverse_lazy
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils.translation import gettext_lazy as _
@@ -58,10 +57,16 @@ class User(AbstractBaseUser, PermissionsMixin):
         })
 
     @classmethod
-    def send_messages(cls, permission, path_name, kwargs, text='Оповещение о заказе'):
-        users = cls.objects.filter(models.Q(user_permissions__codename=permission) | models.Q(groups__permissions__codename=permission))
-        for user in users:
-            user.send_message(reverse_lazy(path_name, kwargs=kwargs), text=text)
+    def send_messages(cls, permission, path_name, kwargs, text='Оповещение о заказе', sms_template=None, sms_context=None):
+        from .services import notify_staff
+        notify_staff(
+            permission=permission,
+            path_name=path_name,
+            kwargs=kwargs,
+            telegram_text=text,
+            sms_template=sms_template,
+            sms_context=sms_context,
+        )
 
     class Meta:
         permissions = [

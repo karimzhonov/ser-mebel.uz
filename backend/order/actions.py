@@ -112,8 +112,7 @@ class OrderActions:
     )
     def go_to_assembly_action(self, request, object_id):
         obj = get_object_or_404(Order, pk=object_id)
-        obj.status = OrderStatus.ASSEMBLY
-        obj.save(update_fields=['status'])
+        obj.change_status(OrderStatus.ASSEMBLY)
         return redirect(
           reverse_lazy("admin:assembly_assembly_change", kwargs={'object_id': obj.assembly.id})
         ) if obj.assembly else redirect(

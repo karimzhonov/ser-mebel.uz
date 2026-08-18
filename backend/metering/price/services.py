@@ -1,6 +1,7 @@
 from django.db import transaction
 from filer.models.foldermodels import Folder
 
+from core.notifications import SMS_PRICE_NEEDED
 from oauth.models import CALL_CENTER_PERMISSION, User
 
 
@@ -19,6 +20,8 @@ def notify_and_create_price_folder(price) -> None:
         "admin:price_price_change",
         {"object_id": price.pk},
         text=f"{price.metering.client} mijozga narx chiqarish kerak",
+        sms_template=SMS_PRICE_NEEDED,
+        sms_context={"buyurtma_raqami": price.metering_id},
     )
 
     created_history = price.history.order_by("history_date").first()

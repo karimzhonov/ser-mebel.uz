@@ -10,6 +10,7 @@ from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 from accounting.constants import DefaultExpenseCategoryChoices
 from django.urls import reverse_lazy
+from core.sms import format_phone, absolute_url, send_bulk_sms
 
 
 class PainterType(models.Model):
@@ -54,9 +55,14 @@ def create_painter_folders(
     # )
 
     if update_fields and "type" in update_fields and instance.type:
-        instance.type.user.send_message(
-            reverse_lazy("admin:painter_painter_change", kwargs={"object_id": instance.pk})
-        )
+        url = reverse_lazy("admin:painter_painter_change", kwargs={"object_id": instance.pk})
+        instance.type.user.send_message(url)
+        phone = format_phone(instance.type.user.phone)
+        if phone:
+            text = "{xodim_ism}, Оповещение о заказе\n{url}".format(
+                xodim_ism=instance.type.user.name or "", url=absolute_url(url)
+            )
+            send_bulk_sms([{"phone": phone, "text": text}])
         instance.price = Money(
             amount=float(instance.type.price.amount) * instance.square,
             currency=instance.type.price.currency,

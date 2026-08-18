@@ -6,6 +6,7 @@ from oauth.models import User, DESIGN_PERMISSION
 from filer.models.foldermodels import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
+from core.notifications import SMS_DESIGN_ASSIGNED
 
 
 class Design(models.Model):
@@ -35,10 +36,12 @@ def create_design_type_folders(sender: Type[Design], instance: Design, created, 
     if not created: return
     DesignType.objects.create(design=instance, name='Дизайн-1')
     User.send_messages(
-        DESIGN_PERMISSION, 
-        'admin:design_design_change', 
+        DESIGN_PERMISSION,
+        'admin:design_design_change',
         {'object_id': instance.pk},
-        text=f'{instance.metering.client} mijozga dizan qilish kerak'
+        text=f'{instance.metering.client} mijozga dizan qilish kerak',
+        sms_template=SMS_DESIGN_ASSIGNED,
+        sms_context={'buyurtma_raqami': instance.metering_id},
     )
 
 

@@ -9,6 +9,7 @@ from unfold.dataclasses import ActionVariant
 from unfold.decorators import action, display
 
 from core.filters import get_date_filter
+from core.notifications import SMS_DESIGN_READY
 from core.utils.html import get_boolean_icons, get_folder_link_html
 from core.utils.messages import instance_archive
 from oauth.constants import CALL_CENTER_PERMISSION
@@ -113,6 +114,8 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
             "admin:design_design_change",
             {"object_id": obj.pk},
             text=f"{obj.metering.client} dizayni tayyor",
+            sms_template=SMS_DESIGN_READY,
+            sms_context={"mijoz_ism": str(obj.metering.client)},
         )
 
     def has_done_action_permission(self, request, object_id):

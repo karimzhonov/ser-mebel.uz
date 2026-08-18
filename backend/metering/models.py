@@ -6,6 +6,8 @@ from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 from oauth.models import User, METERING_PERMISSION
 from core.utils import create_folder
+from core.sms import format_phone
+from core.notifications import SMS_METERING_ASSIGNED
 from .constants import MeteringStatus, METERING_CHANGE_STATUS_PERMISSION
 
 
@@ -40,8 +42,16 @@ def create_metering_folders(sender: Type[Metering], instance: Metering, created,
     if not created: return
     create_folder(instance, 'Замер')
     User.send_messages(
-        METERING_PERMISSION, 
-        'admin:metering_metering_change', 
+        METERING_PERMISSION,
+        'admin:metering_metering_change',
         {'object_id': instance.pk},
-        f"Mijozga ({instance.client}) o'lcham olish uchun zayavka yaratildi. ({instance.date_time.date()} - {instance.date_time.time()})"
+        f"Mijozga ({instance.client}) o'lcham olish uchun zayavka yaratildi. ({instance.date_time.date()} - {instance.date_time.time()})",
+        sms_template=SMS_METERING_ASSIGNED,
+        sms_context={
+            'mijoz_ism': str(instance.client),
+            'mijoz_tel': format_phone(instance.client.phone) or '',
+            'manzil': instance.address or '',
+            'sana': instance.date_time.date() if instance.date_time else '',
+            'vaqt': instance.date_time.time() if instance.date_time else '',
+        },
     )
