@@ -83,7 +83,9 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
                 "client": obj.metering.client_id or "",
                 "address": obj.metering.address or "",
                 "address_link": obj.metering.address_link or "",
-                "reception_date": obj.metering.date_time.strftime("%d.%m.%Y"),
+                # reception_date is deliberately not passed: an order is created
+                # "today", not on the metering date — OrderAdmin.get_changeform_initial_data
+                # fills it in.
                 "metering": obj.metering.pk,
                 "price": (
                     f"{int(obj.metering.price.price.amount)}:{obj.metering.price.price.currency}"

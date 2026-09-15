@@ -120,6 +120,13 @@ def get_sidebar_items(request):
                         "link": reverse_lazy("admin:assembly_assembly_changelist", query={'installing_done': False}),
                         "permission": lambda request: request.user.has_perm('assembly.view_assembly'),
                         "color": "gradient-13 col-span-2"
+                    },
+                    {
+                        "title": "Заводы",
+                        "icon": "factory",
+                        "link": reverse_lazy("admin:order_factory_changelist"),
+                        "permission": lambda request: request.user.has_perm('order.view_factory'),
+                        "color": "gradient-1"
                     }
                 ],
             },

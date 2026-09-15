@@ -7,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 from djmoney.models.fields import MoneyField
 from filer.fields.folder import FilerFolderField
 from filer.models.foldermodels import Folder
+from phonenumber_field.modelfields import PhoneNumberField
 from simple_history.models import HistoricalRecords
 
 from core.utils import create_folder
@@ -19,6 +20,24 @@ from .constants import (
 )
 from .managers import OrderManager
 from .services import resolve_order_status_on_save
+
+
+class Factory(models.Model):
+    """Производственная площадка, на которой делается заказ."""
+
+    name = models.CharField(max_length=255, unique=True, verbose_name="Название")
+    address = models.CharField(max_length=255, blank=True, default="", verbose_name="Адрес")
+    # Same field type as oauth.User.phone / client.Client.phone.
+    phone = PhoneNumberField(blank=True, region="UZ", verbose_name="Телефон")
+    ordering = models.IntegerField(default=0, verbose_name="Порядковый номер")
+
+    class Meta:
+        verbose_name = "Завод"
+        verbose_name_plural = "Заводы"
+        ordering = ["ordering", "name"]
+
+    def __str__(self):
+        return self.name
 
 
 class Order(models.Model):
@@ -56,6 +75,9 @@ class Order(models.Model):
     design_type = models.ForeignKey(
         "design.DesignType", models.CASCADE, null=True, verbose_name="Дизайн"
     )
+    # PROTECT: a factory that still has orders must not be deletable out from under
+    # them. Back-filled to DEFAULT_FACTORY_NAME for pre-existing rows (migration 0023).
+    factory = models.ForeignKey(Factory, models.PROTECT, verbose_name="Завод")
     folder = FilerFolderField(
         on_delete=models.SET_NULL, related_name="order_folder", null=True, blank=True
     )
@@ -85,8 +107,14 @@ class Order(models.Model):
 
     @property
     def other_money(self):
-        """Ostatks"""
-        return self.total_price - self.lost_money
+        """Ostatks — how much of the order is still unpaid.
+
+        Delegates to the one implementation in order/admin_display.py, which returns
+        "-" instead of raising when price/lost_money is missing or the two are in
+        different currencies."""
+        from .admin_display import order_money_left_display
+
+        return order_money_left_display(self)
 
     def change_status(self, status):
         self.status = status

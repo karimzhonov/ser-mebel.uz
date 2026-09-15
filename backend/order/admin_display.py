@@ -59,6 +59,25 @@ def order_days_display(order):
     )
 
 
+def order_money_left_display(order):
+    """Mirrors OrderAdmin.show_lost_money ("Остаток денег") — how much of the order
+    is still unpaid.
+
+    Order.other_money assumes price and lost_money are both set and both in the same
+    currency. Neither is guaranteed — price and lost_money are independently nullable
+    MoneyFields with their own currency columns — and a Money minus None (or minus a
+    Money in another currency) raises. Since this runs as a list_display callable, one
+    bad row would take down the whole changelist, so both gaps return "-" instead."""
+    if order is None or order.price is None:
+        return "-"
+    total = order.total_price
+    if order.lost_money is None:
+        return total
+    if total.currency != order.lost_money.currency:
+        return "-"
+    return total - order.lost_money
+
+
 def order_for_metering(metering):
     """Return the Order linked to a Metering via the reverse OneToOne
     (Order.metering), or None. Accessing metering.order on a metering with no

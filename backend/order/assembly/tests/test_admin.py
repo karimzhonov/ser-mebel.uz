@@ -51,10 +51,14 @@ def _order_with_folder(db_client, today):
     """
     from filer.models.foldermodels import Folder
 
+    from order.constants import DEFAULT_FACTORY_NAME
+    from order.models import Factory
+
     order = Order.objects.create(
         client=db_client,
         reception_date=today,
         address="addr",
+        factory=Factory.objects.get_or_create(name=DEFAULT_FACTORY_NAME)[0],
     )
     order.folder = Folder.objects.create(name=f"order-{order.pk}-folder")
     order.save(update_fields=["folder"])

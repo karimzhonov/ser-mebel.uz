@@ -67,21 +67,28 @@ class WarningBanner(BaseComponent):
 
     @staticmethod
     def defaults():
+        # Day boundaries match OrderAdmin.show_days (order/admin.py), which colours the
+        # changelist row: overdue (days < 0) is red, the WARNING_ORDER_DAYS window
+        # (0 <= days <= 7, "due today" included) is orange, anything further out plain.
+        # The *status* conditions still differ, both pre-existing: 'danger' only counts
+        # DETAILING/ASSEMBLY/INSTALLING (an overdue CREATED order gets a red row but no
+        # banner), and success/warning don't exclude DONE/WAITING (show_days
+        # short-circuits those before it ever looks at `days`).
         return {
         'success': {
             "icon": "check",
             "label": 'До сдачи заказа осталось более 7 дней',
-            "filters": {"days__gte": config.WARNING_ORDER_DAYS}
+            "filters": {"days__gt": config.WARNING_ORDER_DAYS}
         },
         'warning': {
             "icon": "warning",
             "label": 'До сдачи заказа осталось менее 7 дней',
-            "filters": {"days__lt": config.WARNING_ORDER_DAYS, "days__gt": 0}
+            "filters": {"days__lte": config.WARNING_ORDER_DAYS, "days__gte": 0}
         },
         'danger': {
             "icon": 'close',
             "label": 'Заказ просрочен',
-            "filters": {"days__lte": 0, "status__in": [OrderStatus.DETAILING, OrderStatus.ASSEMBLY, OrderStatus.INSTALLING]}
+            "filters": {"days__lt": 0, "status__in": [OrderStatus.DETAILING, OrderStatus.ASSEMBLY, OrderStatus.INSTALLING]}
         }
     }
 

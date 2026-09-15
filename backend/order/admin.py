@@ -3,10 +3,14 @@ from typing import Any
 from constance import config
 from django.contrib import admin
 from django.http import HttpRequest
+from django.utils import timezone
 from django.utils.html import format_html
+from django.utils.text import Truncator
 from djmoney import settings as dj_setting
 from djmoney.money import Money
 from simple_history.admin import SimpleHistoryAdmin
+from unfold.admin import ModelAdmin as UnfoldModelAdmin
+from unfold.contrib.filters.admin import RelatedDropdownFilter
 from unfold.decorators import display
 
 from accounting.inlines import ExposeInline
@@ -16,11 +20,22 @@ from core.utils import get_boolean_icons, get_folder_link_html, get_tag
 from core.utils.admin import not_add_permission_in_admin
 
 from .actions import OrderActions
+from .admin_display import order_money_left_display
 from .components import *
-from .constants import ORDER_VIEW_PRICE_PERMISSION
+from .constants import DEFAULT_FACTORY_NAME, ORDER_VIEW_PRICE_PERMISSION
 from .filters import OrderStatusDropdownFilter, OrderWarningDropdownFilter
 from .forms import OrderAddForm
-from .models import Order, OrderStatus
+from .models import Factory, Order, OrderStatus
+
+
+@admin.register(Factory)
+class FactoryAdmin(UnfoldModelAdmin):
+    # Deliberately NOT core.unfold.ModelAdmin: that base hides the "Add" button on
+    # changelist/change views, and factories are a plain reference table that has to
+    # be creatable straight from its own list.
+    list_display = ["name", "address", "phone", "ordering"]
+    search_fields = ["name", "phone"]
+    ordering = ["ordering", "name"]
 
 
 @admin.register(Order)
@@ -29,7 +44,9 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
         "order_number",
         "client",
         "client_phone",
+        "factory",
         "address",
+        "show_desc",
         "show_status",
         "reception_date",
         "end_date",
@@ -39,12 +56,13 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
         "show_days",
     ]
     list_display_links = ["order_number", "client"]
-    list_select_related = ["client"]
+    list_select_related = ["client", "factory"]
     ordering = ["-order_number"]
     autocomplete_fields = ["client"]
     list_filter = [
         OrderStatusDropdownFilter,
         OrderWarningDropdownFilter,
+        ("factory", RelatedDropdownFilter),
         get_date_filter("reception_date"),
     ]
     list_filter_submit = True
@@ -53,8 +71,16 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
     class Media:
         css = {"all": ["order/css/order_admin.css"]}
 
-    def get_changeform_initial_data(self, request: HttpRequest) -> dict[str, str]:
+    def get_changeform_initial_data(self, request: HttpRequest) -> dict[str, Any]:
         initial = super().get_changeform_initial_data(request)
+        # An order is always received "today" — overriding whatever reception_date the
+        # referring page put in the query string (DesignAdmin.create_order used to pass
+        # the metering date). USE_TZ=False here, so now().date() is the local date.
+        initial["reception_date"] = timezone.now().date()
+        if "factory" not in initial:
+            default_factory = Factory.objects.filter(name=DEFAULT_FACTORY_NAME).first()
+            if default_factory:
+                initial["factory"] = default_factory.pk
         try:
             price = request.GET.get("price")
             if price:
@@ -113,7 +139,14 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
             (
                 "Заказ",
                 {
-                    "fields": ("client", "desc", "reception_date", "end_date", "folder_link"),
+                    "fields": (
+                        "client",
+                        "factory",
+                        "desc",
+                        "reception_date",
+                        "end_date",
+                        "folder_link",
+                    ),
                     "classes": ("tab-info",),
                 },
             ),
@@ -139,6 +172,7 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
                 {
                     "fields": (
                         "client",
+                        "factory",
                         "desc",
                         "reception_date",
                         "count_days",
@@ -182,20 +216,32 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
         if obj.status == OrderStatus.WAITING or obj.days is None:
             return get_tag("Ожидание даты сдачи", "secondary")
         days = obj.days - days_minus
-        if days >= 0:
-            tag = get_tag(
-                f"До сдачи заказа {days} дней",
-                "secondary" if days > config.WARNING_ORDER_DAYS else "warning",
+        # The marker spans below are what order/css/order_admin.css keys the whole
+        # changelist row off: .order-row-danger = overdue (red), .order-row-warning =
+        # deadline within WARNING_ORDER_DAYS (orange). Anything further out is plain.
+        if days < 0:
+            return format_html(
+                '<span class="order-row-danger">{}</span>',
+                get_tag(f"Заказ просрочен на {abs(days)} дней", "danger"),
             )
-            return (
-                format_html('<span class="order-row-warning">{}</span>', tag)
-                if days <= config.WARNING_ORDER_DAYS
-                else tag
+        if days <= config.WARNING_ORDER_DAYS:
+            return format_html(
+                '<span class="order-row-warning">{}</span>',
+                get_tag(f"До сдачи заказа {days} дней", "warning"),
             )
-        return format_html(
-            '<span class="order-row-warning">{}</span>',
-            get_tag(f"Заказ просрочен на {abs(days)} дней", "danger"),
-        )
+        return get_tag(f"До сдачи заказа {days} дней", "secondary")
+
+    @display(
+        description="Описание",
+    )
+    def show_desc(self, obj: Order):
+        if not obj.desc:
+            return "-"
+        text = obj.desc.strip()
+        short = Truncator(text).chars(60)
+        if short == text:
+            return text
+        return format_html('<span title="{}">{}</span>', text, short)
 
     # Filer links
     @display(
@@ -230,4 +276,6 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
 
     @display(description="Остаток денег")
     def show_lost_money(self, obj: Order):
-        return obj.other_money
+        # Shared with MeteringAdmin.order_money_left; Order.other_money itself raises
+        # on a null or foreign-currency lost_money.
+        return order_money_left_display(obj)

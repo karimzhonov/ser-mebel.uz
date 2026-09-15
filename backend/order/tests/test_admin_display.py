@@ -110,7 +110,8 @@ def test_order_for_metering_returns_linked_order(db_client, today):
 
     from metering.design.models import Design
     from metering.models import Metering
-    from order.models import Order
+    from order.constants import DEFAULT_FACTORY_NAME
+    from order.models import Factory, Order
 
     metering = Metering.objects.create(client=db_client, date_time=dt.datetime.now())
     Design.objects.create(metering=metering)
@@ -119,6 +120,7 @@ def test_order_for_metering_returns_linked_order(db_client, today):
         reception_date=today,
         address="addr",
         metering=metering,
+        factory=Factory.objects.get_or_create(name=DEFAULT_FACTORY_NAME)[0],
     )
 
     assert order_for_metering(metering) == order

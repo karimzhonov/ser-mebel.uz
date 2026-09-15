@@ -24,30 +24,27 @@ def download_inlines_excel(modeladmin, request, object_id):
             calc.count
         ])
         
-        for ic in InventoryInCalculate.objects.filter(calculate=calc).order_by('id'):
+        # Per-inventory prices (unit price and line total) are deliberately left out
+        # of the накладной — only the per-calculation "Итого" carries money.
+        inventories = InventoryInCalculate.objects.filter(
+            calculate=calc
+        ).select_related('inventory__type').order_by('id')
+        for ic in inventories:
             if ic.inventory.type.type == InventoryType.TYPE_KV:
                 ws.append([
                     ic.inventory.type.name,
                     ic.inventory.name,
-                    str(ic.inventory.price),
-                    '',
-                    str(ic.price)
                 ])
 
             elif ic.inventory.type.type == InventoryType.TYPE_COUNT:
                 ws.append([
                     ic.inventory.type.name,
                     ic.inventory.name,
-                    str(ic.inventory.price),
-                    ic.count,
-                    str(ic.price)
+                    ic.count
                 ])
 
         ws.append([
             "Итого",
-            "",
-            "",
-            "",
             str(calc.amount)
         ])
 

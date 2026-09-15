@@ -9,7 +9,13 @@ from core.utils import get_tag, get_folder_link_html
 from core.utils.html import get_boolean_icons
 from core.filters import get_date_filter
 
-from order.admin_display import order_days_display, order_for_metering, order_status_display
+from order.admin_display import (
+    order_days_display,
+    order_for_metering,
+    order_money_left_display,
+    order_status_display,
+)
+from order.constants import ORDER_VIEW_PRICE_PERMISSION
 
 from .actions import MeteringActions
 from .filters import MeteringStatusDropdownFilter
@@ -21,7 +27,10 @@ from .components import *
 
 @admin.register(Metering)
 class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
-    list_display = ['client', 'date_time', 'get_status', 'has_design', 'has_price', 'order_status', 'order_days']
+    list_display = [
+        'client', 'date_time', 'get_status', 'has_design', 'has_price',
+        'order_status', 'order_days', 'order_money_left',
+    ]
     list_display_links = ['client', 'date_time', 'get_status', 'has_design', 'has_price']
     list_filter = [
         MeteringStatusDropdownFilter,
@@ -33,6 +42,14 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
     exclude = ['status', 'folder']
     ordering = ['-date_time']
     search_fields = ["client__fio", "client__phone"]
+
+    def get_list_display(self, request):
+        list_display = list(super().get_list_display(request))
+        # The remaining-balance column is money, so it follows the same permission
+        # as the price fields on OrderAdmin.
+        if not request.user.has_perm(f'order.{ORDER_VIEW_PRICE_PERMISSION}'):
+            list_display.remove('order_money_left')
+        return list_display
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         if request.resolver_match.view_name.endswith("changelist"):
@@ -104,6 +121,12 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
     )
     def order_days(self, obj: Metering):
         return order_days_display(order_for_metering(obj))
+
+    @display(
+        description='Остаток денег'
+    )
+    def order_money_left(self, obj: Metering):
+        return order_money_left_display(order_for_metering(obj))
 
     def get_fieldsets(self, request, obj=None):
         if not obj: return super().get_fieldsets(request, obj)

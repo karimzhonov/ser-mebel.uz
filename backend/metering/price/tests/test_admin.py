@@ -21,7 +21,9 @@ class _FakeForm:
 
 
 @pytest.mark.django_db
-def test_price_save_related_null_metering_does_not_touch_other_orders(db_client, today):
+def test_price_save_related_null_metering_does_not_touch_other_orders(
+    db_client, today, default_factory
+):
     """Regression: PriceAdmin.save_related used to run
     Order.objects.filter(metering=obj.metering).update(...) unconditionally.
     When obj.metering was None, that filter matched *every* metering-less
@@ -34,6 +36,7 @@ def test_price_save_related_null_metering_does_not_touch_other_orders(db_client,
         address="addr",
         metering=None,
         price=Money(100, "USD"),
+        factory=default_factory,
     )
 
     price_without_metering = Price.objects.create(metering=None)
@@ -52,7 +55,7 @@ def test_price_save_related_null_metering_does_not_touch_other_orders(db_client,
 
 
 @pytest.mark.django_db
-def test_price_save_related_updates_own_metering_order(db_client, today):
+def test_price_save_related_updates_own_metering_order(db_client, today, default_factory):
     """Sanity check the opposite path still works: when the Price *does* have a
     metering, its linked Order price is updated."""
     from metering.design.models import Design
@@ -69,6 +72,7 @@ def test_price_save_related_updates_own_metering_order(db_client, today):
         address="addr",
         metering=metering,
         price=Money(0, "USD"),
+        factory=default_factory,
     )
 
     price = Price.objects.create(metering=metering)

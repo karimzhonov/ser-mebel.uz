@@ -5,6 +5,11 @@ ORDER_CHANGE_STATUS_PERMISSION = "change_status_order"
 ORDER_REVERSE_STATUS_PERMISSION = "reverse_status_order"
 ORDER_VIEW_PRICE_PERMISSION = "view_order_price"
 
+# Every order that existed before Factory was introduced belongs to this factory
+# (see order/migrations/0023_*, which back-fills it). Also the default pre-selected
+# on the Order add form.
+DEFAULT_FACTORY_NAME = "Ser-mebel"
+
 
 class OrderStatus(TextChoices):
     WAITING = "waiting", _("Ожидание")

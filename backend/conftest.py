@@ -61,6 +61,15 @@ def today():
     return datetime.date.today()
 
 
+@pytest.fixture
+def default_factory(db):
+    """Order.factory is a required FK — every order needs one."""
+    from order.constants import DEFAULT_FACTORY_NAME
+    from order.models import Factory
+
+    return Factory.objects.get_or_create(name=DEFAULT_FACTORY_NAME)[0]
+
+
 def make_order(
     *,
     db_client,
@@ -69,8 +78,13 @@ def make_order(
     metering=None,
     price=None,
     address="Test address",
+    factory=None,
 ):
-    from order.models import Order
+    from order.constants import DEFAULT_FACTORY_NAME
+    from order.models import Factory, Order
+
+    if factory is None:
+        factory = Factory.objects.get_or_create(name=DEFAULT_FACTORY_NAME)[0]
 
     return Order.objects.create(
         client=db_client,
@@ -79,6 +93,7 @@ def make_order(
         address=address,
         metering=metering,
         price=price,
+        factory=factory,
     )
 
 
