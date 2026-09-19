@@ -211,14 +211,20 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
         description="Дней осталось",
     )
     def show_days(self, obj: Order, days_minus=0):
+        # The marker spans below are what order/css/order_admin.css keys the whole
+        # changelist row off, in this precedence: .order-row-done = finished (green),
+        # .order-row-danger = overdue (red), .order-row-warning = deadline within
+        # WARNING_ORDER_DAYS (orange), .order-row-progress = in production with time
+        # to spare (blue). A deadline colour deliberately beats the plain "in
+        # progress" blue — every late order is also in progress. WAITING has no end
+        # date yet, so it stays uncoloured.
         if obj.status == OrderStatus.DONE:
-            return get_tag("Заказ готов", "success")
+            return format_html(
+                '<span class="order-row-done">{}</span>', get_tag("Заказ готов", "success")
+            )
         if obj.status == OrderStatus.WAITING or obj.days is None:
             return get_tag("Ожидание даты сдачи", "secondary")
         days = obj.days - days_minus
-        # The marker spans below are what order/css/order_admin.css keys the whole
-        # changelist row off: .order-row-danger = overdue (red), .order-row-warning =
-        # deadline within WARNING_ORDER_DAYS (orange). Anything further out is plain.
         if days < 0:
             return format_html(
                 '<span class="order-row-danger">{}</span>',
@@ -229,7 +235,10 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
                 '<span class="order-row-warning">{}</span>',
                 get_tag(f"До сдачи заказа {days} дней", "warning"),
             )
-        return get_tag(f"До сдачи заказа {days} дней", "secondary")
+        return format_html(
+            '<span class="order-row-progress">{}</span>',
+            get_tag(f"До сдачи заказа {days} дней", "secondary"),
+        )
 
     @display(
         description="Описание",

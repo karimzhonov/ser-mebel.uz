@@ -107,7 +107,7 @@ def test_order_days_display_within_warning_window_marks_the_row_warning(order_fa
 
 
 @pytest.mark.django_db
-def test_order_days_display_far_from_deadline_has_no_row_marker(order_factory, today):
+def test_order_days_display_far_from_deadline_marks_the_row_in_progress(order_factory, today):
     from constance import config
 
     order = order_factory(end_date=today + datetime.timedelta(days=config.WARNING_ORDER_DAYS + 10))
@@ -115,8 +115,34 @@ def test_order_days_display_far_from_deadline_has_no_row_marker(order_factory, t
 
     result = str(order_days_display(order))
 
+    assert "order-row-progress" in result
     assert "order-row-warning" not in result
     assert "order-row-danger" not in result
+
+
+@pytest.mark.django_db
+def test_order_days_display_done_marks_the_row_done(order_factory, today):
+    from order.constants import OrderStatus
+
+    order = order_factory(end_date=today + datetime.timedelta(days=3))
+    order.status = OrderStatus.DONE
+    order.save(update_fields=["status"])
+    order.refresh_from_db()
+
+    result = str(order_days_display(order))
+
+    assert "order-row-done" in result
+    assert "order-row-warning" not in result
+
+
+@pytest.mark.django_db
+def test_order_days_display_waiting_has_no_row_marker(order_factory):
+    order = order_factory(end_date=None)
+    order.refresh_from_db()
+
+    result = str(order_days_display(order))
+
+    assert "order-row" not in result
 
 
 @pytest.mark.django_db

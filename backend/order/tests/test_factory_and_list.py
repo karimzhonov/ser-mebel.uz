@@ -144,15 +144,38 @@ def test_show_days_within_warning_window_marks_the_row_warning(order_factory, to
 
 
 @pytest.mark.django_db
-def test_show_days_far_from_deadline_has_no_row_marker(order_factory, today):
+def test_show_days_far_from_deadline_marks_the_row_in_progress(order_factory, today):
     from constance import config
 
     order = order_factory(end_date=today + datetime.timedelta(days=config.WARNING_ORDER_DAYS + 10))
 
     result = str(_admin().show_days(_annotated(order)))
 
+    assert "order-row-progress" in result
     assert "order-row-warning" not in result
     assert "order-row-danger" not in result
+
+
+@pytest.mark.django_db
+def test_show_days_done_marks_the_row_done(order_factory, today):
+    order = order_factory(end_date=today + datetime.timedelta(days=3))
+    order.status = OrderStatus.DONE
+    order.save(update_fields=["status"])
+
+    result = str(_admin().show_days(_annotated(order)))
+
+    # Green wins over the orange deadline window: the order is finished.
+    assert "order-row-done" in result
+    assert "order-row-warning" not in result
+
+
+@pytest.mark.django_db
+def test_show_days_waiting_has_no_row_marker(order_factory):
+    order = order_factory(end_date=None)
+
+    result = str(_admin().show_days(_annotated(order)))
+
+    assert "order-row" not in result
 
 
 # --- Item 1: Описание column -----------------------------------------------

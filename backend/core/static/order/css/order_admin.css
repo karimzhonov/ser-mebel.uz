@@ -1,20 +1,37 @@
-/* Changelist rows coloured by delivery deadline.
+/* Changelist rows coloured by order state.
    Used by OrderAdmin (order/admin.py show_days) and MeteringAdmin
    (order/admin_display.py order_days_display): the "Дней осталось" cell carries
-   .order-row-warning when the deadline is within config.WARNING_ORDER_DAYS and
-   .order-row-danger once the order is overdue.
+   exactly one marker class, and the row takes its colour from it.
+
+     .order-row-done     — готов                                    green
+     .order-row-danger   — просрочен                                red
+     .order-row-warning  — deadline within config.WARNING_ORDER_DAYS orange
+     .order-row-progress — in production, deadline still far off    blue
+
+   Orders still waiting for a delivery date (status WAITING) carry no marker and
+   stay uncoloured.
 
    The colour goes on the CELLS, not on the <tr>: django-unfold puts its row
    striping on a per-row <tbody> (bg-base-50 / dark:bg-white/[.02]) and the cells
    paint over anything set on the row itself. !important because those are
    Tailwind utility classes. */
 
+#result_list tr:has(.order-row-progress) > td,
+#result_list tr:has(.order-row-progress) > th {
+    background-color: rgba(59, 130, 246, 0.14) !important;
+}
+
+#result_list tr:has(.order-row-done) > td,
+#result_list tr:has(.order-row-done) > th {
+    background-color: rgba(34, 197, 94, 0.14) !important;
+}
+
 #result_list tr:has(.order-row-warning) > td,
 #result_list tr:has(.order-row-warning) > th {
     background-color: rgba(249, 115, 22, 0.16) !important;
 }
 
-/* Declared last so overdue wins if a row ever carried both markers. */
+/* Declared last so overdue wins if a row ever carried more than one marker. */
 #result_list tr:has(.order-row-danger) > td,
 #result_list tr:has(.order-row-danger) > th {
     background-color: rgba(220, 38, 38, 0.16) !important;

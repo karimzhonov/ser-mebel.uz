@@ -41,7 +41,9 @@ def order_days_display(order):
     if order is None:
         return "-"
     if order.status == OrderStatus.DONE:
-        return get_tag("Заказ готов", "success")
+        return format_html(
+            '<span class="order-row-done">{}</span>', get_tag("Заказ готов", "success")
+        )
     if order.status == OrderStatus.WAITING or order.end_date is None:
         return get_tag("Ожидание даты сдачи", "secondary")
     # timezone.localdate() assumes an aware "now" and this project runs with
@@ -49,9 +51,9 @@ def order_days_display(order):
     # OrderManager's ExtractDay(end_date - Now()) computes without requiring
     # an aware datetime.
     days = (order.end_date - timezone.now().date()).days
-    # Same .order-row-danger / .order-row-warning markers OrderAdmin.show_days emits —
-    # order/css/order_admin.css colours the whole changelist row off them, so any admin
-    # that shows this column must also pull that stylesheet in via its Media class.
+    # Same row markers OrderAdmin.show_days emits — order/css/order_admin.css colours
+    # the whole changelist row off them, so any admin that shows this column must also
+    # pull that stylesheet in via its Media class.
     if days < 0:
         return format_html(
             '<span class="order-row-danger">{}</span>',
@@ -62,7 +64,10 @@ def order_days_display(order):
             '<span class="order-row-warning">{}</span>',
             get_tag(f"До сдачи заказа {days} дней", "warning"),
         )
-    return get_tag(f"До сдачи заказа {days} дней", "secondary")
+    return format_html(
+        '<span class="order-row-progress">{}</span>',
+        get_tag(f"До сдачи заказа {days} дней", "secondary"),
+    )
 
 
 def order_money_left_display(order):
