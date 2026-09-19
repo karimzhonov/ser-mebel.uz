@@ -4,11 +4,15 @@ from metering.price.models import ObjectType
 
 
 def get_sidebar_items(request):
+    # "collapsible" makes each sidebar group expand/collapse on click. Unfold renders a
+    # collapsible group closed unless it contains the active page, so the section you
+    # are currently in stays open.
     return {
         "show_all_applications": lambda request: request.user.is_superuser,
         "navigation": [
             {
                 "title": "Бухгалтерия",
+                "collapsible": True,
                 "items": [
                     {
                         "title": 'Приходы',
@@ -28,6 +32,7 @@ def get_sidebar_items(request):
             },
             {
                 "title": "Клиент база",
+                "collapsible": True,
                 "items": [
                     {
                         "title": 'Клиенти',
@@ -40,6 +45,7 @@ def get_sidebar_items(request):
             },
             {
                 "title": "Call-center база",
+                "collapsible": True,
                 "items": [
                     {
                         "title": "Call-center",
@@ -52,6 +58,7 @@ def get_sidebar_items(request):
             },
             {
                 "title": "Замер база",
+                "collapsible": True,
                 "items": [
                     {
                         "title": "Замери",
@@ -85,6 +92,7 @@ def get_sidebar_items(request):
             },
             {
                 "title": "Заказ база",
+                "collapsible": True,
                 "items": [
                     {
                         "title": "Закази",

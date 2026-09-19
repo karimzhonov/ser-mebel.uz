@@ -1,8 +1,8 @@
 from unittest.mock import patch
 
 import pytest
-from django.contrib import admin
-from django.core.exceptions import ObjectDoesNotExist
+from django.contrib import admin, messages
+from django.contrib.messages.storage.fallback import FallbackStorage
 
 from order.admin import OrderAdmin
 from order.assembly.models import Assembly
@@ -78,16 +78,23 @@ def test_go_to_assembly_action_notifies_assembly_permission_holders(
 
 
 @pytest.mark.django_db
-def test_go_to_assembly_action_without_existing_assembly_raises(
+def test_go_to_assembly_action_without_an_assembly_does_not_500(
     order_factory, today, rf, superuser
 ):
-    """Pre-existing bug, NOT introduced by the SMS feature (present since the
-    action was written — see git history of order/actions.py, commit
-    ca90207). `obj.assembly` on a reverse OneToOneField accessor raises
-    ObjectDoesNotExist when no Assembly row exists yet, rather than being
-    falsy, so `redirect(...) if obj.assembly else redirect(...)` crashes
-    instead of falling back to the order changeform redirect. This test
-    documents current behavior; it is not fixed here (out of scope).
+    """Repro for the production crash:
+
+        RelatedObjectDoesNotExist at /admin/order/order/40/go-to-assembly/
+        Order has no assembly.
+
+    Detailing only creates the Assembly row when its `square` is non-zero
+    (order/detailing/models.py), so an order detailed with square=0 reaches the
+    "Отправить в сборку" button with no Assembly at all. `obj.assembly` on a
+    reverse OneToOne raises instead of returning None, so the `if obj.assembly`
+    guard in go_to_assembly_action never ran.
+
+    The action must refuse cleanly — and, crucially, must NOT have moved the
+    order into ASSEMBLY on the way, which is what left order 40 stranded in a
+    status whose button is no longer offered.
     """
     order = order_factory(end_date=today)
     order.status = OrderStatus.WORKING
@@ -96,7 +103,18 @@ def test_go_to_assembly_action_without_existing_assembly_raises(
 
     order_admin = OrderAdmin(Order, admin.site)
     request = _admin_request(rf, superuser, order.pk)
+    # message_user() needs a message store; RequestFactory doesn't run middleware.
+    request.session = {}
+    request._messages = FallbackStorage(request)
 
     with patch("order.models.Order.send_sms"):
-        with pytest.raises(ObjectDoesNotExist):
-            order_admin.go_to_assembly_action(request, object_id=order.pk)
+        response = order_admin.go_to_assembly_action(request, object_id=order.pk)
+
+    warnings = [m for m in request._messages if m.level == messages.WARNING]
+    assert len(warnings) == 1
+    assert "деталировке" in str(warnings[0])
+
+    order.refresh_from_db()
+    assert order.status == OrderStatus.WORKING
+    assert response.status_code == 302
+    assert f"/order/order/{order.pk}/" in response.url

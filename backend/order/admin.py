@@ -269,19 +269,24 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
         description="Ровер выполнен",
     )
     def rover_done(self, obj: Order):
-        return get_boolean_icons([obj.rover.done]) if obj.rover else "-"
+        # Reverse OneToOne: attribute access raises when the row is missing, so it
+        # cannot be used as its own truth test.
+        rover = getattr(obj, "rover", None)
+        return get_boolean_icons([rover.done]) if rover else "-"
 
     @display(
         description="Моляр выполнен",
     )
     def painter_done(self, obj: Order):
-        return get_boolean_icons([obj.painter.done]) if obj.painter else "-"
+        painter = getattr(obj, "painter", None)
+        return get_boolean_icons([painter.done]) if painter else "-"
 
     @display(
         description="Сборка/Установка выполнен",
     )
     def assembly_done(self, obj: Order):
-        return get_boolean_icons([obj.assembly.done]) if obj.assembly else "-"
+        assembly = getattr(obj, "assembly", None)
+        return get_boolean_icons([assembly.done]) if assembly else "-"
 
     @display(description="Остаток денег")
     def show_lost_money(self, obj: Order):

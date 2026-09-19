@@ -1,16 +1,17 @@
 from typing import Type
+
+from constance import config
 from django.db import models
 from django.db.models.signals import post_save
 from django.dispatch import receiver
-
 from djmoney.money import Money
-from constance import config
-from filer.models import Folder
 from filer.fields.folder import FilerFolderField
+from filer.models import Folder
 from simple_history.models import HistoricalRecords
+
 from ..assembly.models import Assembly
-from ..rover.models import Rover
 from ..painter.models import Painter
+from ..rover.models import Rover
 
 
 class Detailing(models.Model):
@@ -34,6 +35,9 @@ class Detailing(models.Model):
 
 @receiver(post_save, sender=Detailing)
 def create_detailing_folders(sender: Type[Detailing], instance: Detailing, created, **kwargs):
+    # Every detailed order gets an Assembly, square=0 included: "Отправить в сборку"
+    # (order/actions.py) has no target without one, and an order pushed into the
+    # ASSEMBLY status with no Assembly row is invisible to assembly staff.
     if instance.square:
         Assembly.objects.update_or_create(
             order=instance.order,
@@ -41,6 +45,19 @@ def create_detailing_folders(sender: Type[Detailing], instance: Detailing, creat
                 "square": instance.square,
                 "price": Money(
                     amount=float(config.ASSEMBLY_PRICE_PER_SQUARE.amount) * instance.square,
+                    currency=config.ASSEMBLY_PRICE_PER_SQUARE.currency,
+                ),
+            },
+        )
+    else:
+        # get_or_create, not update_or_create: a zero square must not wipe out a
+        # square/price someone entered on the Assembly by hand.
+        Assembly.objects.get_or_create(
+            order=instance.order,
+            defaults={
+                "square": 0,
+                "price": Money(
+                    amount=0,
                     currency=config.ASSEMBLY_PRICE_PER_SQUARE.currency,
                 ),
             },

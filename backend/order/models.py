@@ -45,7 +45,7 @@ class Order(models.Model):
     # null=True only to bootstrap new rows (see save()) before a number is assigned;
     # always populated after the first save — see save() below.
     order_number = models.PositiveIntegerField(
-        unique=True, db_index=True, null=True, blank=False, verbose_name=_("Номер заказа")
+        unique=True, db_index=True, null=True, blank=False, verbose_name=_("ID")
     )
     desc = models.TextField(_("Описание"), null=True, blank=True)
     price = MoneyField(max_digits=12, null=True, verbose_name="Вся сумма")
