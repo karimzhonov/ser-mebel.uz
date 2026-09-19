@@ -85,6 +85,38 @@ def test_order_days_display_overdue(order_factory, today):
     result = str(order_days_display(order))
 
     assert "просрочен" in result
+    # Row marker, same contract as OrderAdmin.show_days — MeteringAdmin's
+    # stylesheet colours the whole row off it.
+    assert "order-row-danger" in result
+    assert "order-row-warning" not in result
+
+
+@pytest.mark.django_db
+def test_order_days_display_within_warning_window_marks_the_row_warning(order_factory, today):
+    from constance import config
+
+    order = order_factory(
+        end_date=today + datetime.timedelta(days=max(config.WARNING_ORDER_DAYS - 1, 0))
+    )
+    order.refresh_from_db()
+
+    result = str(order_days_display(order))
+
+    assert "order-row-warning" in result
+    assert "order-row-danger" not in result
+
+
+@pytest.mark.django_db
+def test_order_days_display_far_from_deadline_has_no_row_marker(order_factory, today):
+    from constance import config
+
+    order = order_factory(end_date=today + datetime.timedelta(days=config.WARNING_ORDER_DAYS + 10))
+    order.refresh_from_db()
+
+    result = str(order_days_display(order))
+
+    assert "order-row-warning" not in result
+    assert "order-row-danger" not in result
 
 
 @pytest.mark.django_db

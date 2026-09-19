@@ -13,9 +13,9 @@ from order.admin_display import (
     order_days_display,
     order_for_metering,
     order_money_left_display,
+    order_ref_display,
     order_status_display,
 )
-from order.constants import ORDER_VIEW_PRICE_PERMISSION
 
 from .actions import MeteringActions
 from .filters import MeteringStatusDropdownFilter
@@ -29,7 +29,7 @@ from .components import *
 class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
     list_display = [
         'client', 'date_time', 'get_status', 'has_design', 'has_price',
-        'order_status', 'order_days', 'order_money_left',
+        'order_number', 'order_status', 'order_days', 'order_money_left',
     ]
     list_display_links = ['client', 'date_time', 'get_status', 'has_design', 'has_price']
     list_filter = [
@@ -43,13 +43,10 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
     ordering = ['-date_time']
     search_fields = ["client__fio", "client__phone"]
 
-    def get_list_display(self, request):
-        list_display = list(super().get_list_display(request))
-        # The remaining-balance column is money, so it follows the same permission
-        # as the price fields on OrderAdmin.
-        if not request.user.has_perm(f'order.{ORDER_VIEW_PRICE_PERMISSION}'):
-            list_display.remove('order_money_left')
-        return list_display
+    class Media:
+        # Same stylesheet OrderAdmin uses — the order_days column emits the
+        # .order-row-danger / .order-row-warning markers it keys off.
+        css = {"all": ["order/css/order_admin.css"]}
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         if request.resolver_match.view_name.endswith("changelist"):
@@ -109,6 +106,12 @@ class MeteringAdmin(MeteringActions, SimpleHistoryAdmin, ModelAdmin):
             hasattr(obj, 'price') and obj.price,
             hasattr(obj, 'price') and obj.price and obj.price.done,
         ])
+
+    @display(
+        description='Номер заказа'
+    )
+    def order_number(self, obj: Metering):
+        return order_ref_display(order_for_metering(obj))
 
     @display(
         description='Статус заказа'

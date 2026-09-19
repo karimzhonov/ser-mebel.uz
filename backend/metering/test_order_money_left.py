@@ -10,7 +10,7 @@ from djmoney.money import Money
 from metering.admin import MeteringAdmin
 from metering.models import Metering
 from order.admin_display import order_money_left_display
-from order.constants import DEFAULT_FACTORY_NAME, ORDER_VIEW_PRICE_PERMISSION
+from order.constants import DEFAULT_FACTORY_NAME
 from order.models import Factory, Order
 
 
@@ -76,9 +76,9 @@ def test_money_left_without_a_price_is_a_dash(db_client):
 
 
 @pytest.mark.django_db
-def test_money_column_hidden_without_the_price_permission(rf, django_user_model):
-    from django.contrib.auth.models import Permission
-
+def test_money_and_order_number_columns_are_always_shown(rf, django_user_model):
+    """Per decision: the balance is visible to anyone who can see the metering list,
+    with no view_order_price gate, and it sits alongside the order number."""
     staff = django_user_model.objects.create_user(phone="+998900000009", password="pass12345")
     staff.is_staff = True
     staff.save()
@@ -86,12 +86,25 @@ def test_money_column_hidden_without_the_price_permission(rf, django_user_model)
     request = rf.get("/admin/metering/metering/")
     request.user = staff
 
-    assert "order_money_left" not in MeteringAdmin(Metering, admin.site).get_list_display(request)
+    list_display = MeteringAdmin(Metering, admin.site).get_list_display(request)
 
-    staff.user_permissions.add(
-        Permission.objects.get(codename=ORDER_VIEW_PRICE_PERMISSION)
-    )
-    staff = django_user_model.objects.get(pk=staff.pk)  # drop the permission cache
-    request.user = staff
+    assert "order_money_left" in list_display
+    assert "order_number" in list_display
 
-    assert "order_money_left" in MeteringAdmin(Metering, admin.site).get_list_display(request)
+
+@pytest.mark.django_db
+def test_order_number_column_links_to_the_order(db_client):
+    metering = Metering.objects.create(client=db_client, date_time=datetime.datetime.now())
+    order = _order_for(db_client, metering, price=Money(100, "USD"))
+
+    result = str(MeteringAdmin(Metering, admin.site).order_number(metering))
+
+    assert str(order.order_number) in result
+    assert f"/order/order/{order.pk}/" in result
+
+
+@pytest.mark.django_db
+def test_order_number_column_without_an_order_is_a_dash(db_client):
+    metering = Metering.objects.create(client=db_client, date_time=datetime.datetime.now())
+
+    assert MeteringAdmin(Metering, admin.site).order_number(metering) == "-"
