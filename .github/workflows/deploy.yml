@@ -87,8 +87,14 @@ jobs:
           port: ${{ secrets.SERVER_PORT || 22 }}
           envs: IMAGE_TAG,SECRET_KEY,DEBUG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_HOST,POSTGRES_PORT,BOT_TOKEN,BOT_SERVER,WEBHOOK_URL,BASE_SITE
           script: |
+            # set -e: without it the job stayed green even when every compose
+            # command failed, because the final prune still exited 0.
+            set -e
             cd /var/www/ser-mebel.uz
-            docker-compose -f docker-compose.prod.yml pull
-            docker-compose -f docker-compose.prod.yml down
-            docker-compose -f docker-compose.prod.yml up -d
+            # "docker compose" (v2 plugin), not the retired Python "docker-compose"
+            # v1 — that one is broken on Python 3.12 (distutils was removed).
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml down
+            docker compose -f docker-compose.prod.yml up -d
+            docker compose -f docker-compose.prod.yml ps
             docker image prune -f
