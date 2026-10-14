@@ -49,7 +49,7 @@ def resolve_order_status_on_save(order) -> None:
     Only demote to WAITING on creation (order._state.adding is True). Blanking
     end_date on an order that already progressed past WAITING/CREATED must not
     silently reset its status and lose that progress — so on saves of an
-    already-existing order, a missing end_date is left alone.
+    already-existing order, a missing end_date is left alone. 
     """
     if order.end_date is None:
         if order._state.adding:
