@@ -1,9 +1,11 @@
 import requests
+from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
-from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils.translation import gettext_lazy as _
 from phonenumber_field.modelfields import PhoneNumberField
+
 from core.settings import TELEGRAM_BOT_SERVER
+
 from .constants import *
 
 
@@ -51,10 +53,12 @@ class User(AbstractBaseUser, PermissionsMixin):
     def send_message(self, url = None, text = 'Оповещение о заказе'):
         url = str(url or '')
         if not self.telegram_id: return
+        # timeout: this runs synchronously inside admin requests and post_save signals.
+        # Without it an unreachable bot server hangs the whole request indefinitely.
         requests.post(f'{TELEGRAM_BOT_SERVER}/user/{self.telegram_id}/message', json={
             'text': text,
             'url': url
-        })
+        }, timeout=10)
 
     @classmethod
     def send_messages(cls, permission, path_name, kwargs, text='Оповещение о заказе', sms_template=None, sms_context=None):

@@ -4,6 +4,7 @@ import pytest
 from django.contrib.auth.models import Group, Permission
 from django.contrib.contenttypes.models import ContentType
 
+from oauth.models import User
 from oauth.services import notify_staff, staff_with_permission
 
 
@@ -231,3 +232,54 @@ def test_notify_staff_telegram_false_skips_send_message(perm):
         )
 
     mock_send.assert_not_called()
+
+
+# --- send_test_telegram_messages -------------------------------------------
+
+
+@pytest.mark.django_db
+def test_send_test_telegram_messages_counts_each_outcome():
+    from oauth.services import TEST_MESSAGE_TEXT, send_test_telegram_messages
+
+    linked = User.objects.create_user(phone="+998900000101", password="x")
+    linked.telegram_id = 111
+    linked.save(update_fields=["telegram_id"])
+
+    broken = User.objects.create_user(phone="+998900000102", password="x")
+    broken.telegram_id = 222
+    broken.save(update_fields=["telegram_id"])
+
+    unlinked = User.objects.create_user(phone="+998900000103", password="x")
+
+    def fake_send(self, url=None, text=None):
+        if self.telegram_id == 222:
+            raise RuntimeError("bot server down")
+
+    with patch("oauth.models.User.send_message", autospec=True, side_effect=fake_send) as mock:
+        sent, without_telegram, failed = send_test_telegram_messages(
+            User.objects.filter(pk__in=[linked.pk, broken.pk, unlinked.pk])
+        )
+
+    assert (sent, without_telegram, failed) == (1, 1, 1)
+    # Users with no telegram_id are counted, not called.
+    assert mock.call_count == 2
+    assert mock.call_args.kwargs["text"] == TEST_MESSAGE_TEXT
+
+
+@pytest.mark.django_db
+def test_send_test_telegram_messages_one_failure_does_not_abort_the_batch():
+    from oauth.services import send_test_telegram_messages
+
+    for i, tg in enumerate((301, 302, 303)):
+        user = User.objects.create_user(phone=f"+99890000020{i}", password="x")
+        user.telegram_id = tg
+        user.save(update_fields=["telegram_id"])
+
+    def fake_send(self, url=None, text=None):
+        if self.telegram_id == 301:
+            raise RuntimeError("bot server down")
+
+    with patch("oauth.models.User.send_message", autospec=True, side_effect=fake_send):
+        sent, _without, failed = send_test_telegram_messages(User.objects.exclude(telegram_id=None))
+
+    assert (sent, failed) == (2, 1)

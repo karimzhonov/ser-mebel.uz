@@ -10,6 +10,7 @@ from unfold.decorators import action
 from unfold.admin import ModelAdmin
 
 from .models import User
+from .services import TEST_MESSAGE_TEXT, send_test_telegram_messages
 
 
 admin.site.unregister(Group)
@@ -23,6 +24,7 @@ class AuthPermissionAdmin(ModelAdmin):
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin):
+    actions = ['send_test_message_action']
     actions_row = ['test_message']
     form = UserChangeForm
     add_form = UserCreationForm
@@ -69,8 +71,29 @@ class UserAdmin(BaseUserAdmin, ModelAdmin):
     def test_message(self, request, object_id):
         user = User.objects.filter(pk=object_id).first()
         if user:
-            user.send_message('Test notification')
+            # text=, not positional: send_message's first argument is `url`.
+            user.send_message(text=TEST_MESSAGE_TEXT)
         return redirect(reverse_lazy("admin:oauth_user_changelist"))
+
+    @admin.action(description=_('Отправить тестовое сообщение в Telegram'))
+    def send_test_message_action(self, request, queryset):
+        sent, without_telegram, failed = send_test_telegram_messages(queryset)
+
+        # Plain f-strings, not _(): gettext cannot extract from an f-string.
+        if sent:
+            self.message_user(request, f'Отправлено: {sent}.', level='success')
+        if without_telegram:
+            self.message_user(
+                request,
+                f'Без привязанного Telegram: {without_telegram}.',
+                level='warning',
+            )
+        if failed:
+            self.message_user(
+                request,
+                f'Не доставлено (бот недоступен): {failed}.',
+                level='error',
+            )
 
 
 @admin.register(Group)
