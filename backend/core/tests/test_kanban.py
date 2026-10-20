@@ -321,3 +321,56 @@ def test_assembly_manager_sees_every_order_in_the_assembly_column(
     board = order_board(user=superuser, show_price=False)
 
     assert column(board, "assembly")["count"] == 1
+
+
+@pytest.mark.django_db
+def test_painter_column_is_scoped_to_the_painter_assigned_to_the_work(
+    order_factory, today, django_user_model
+):
+    """PainterAdmin.get_queryset filters on type__user — a painter is assigned work
+    through PainterType — so the Моляр column must narrow the same way."""
+    from djmoney.money import Money
+
+    from order.painter.models import Painter, PainterType
+
+    worker = django_user_model.objects.create_user(phone="+998900000402", password="x")
+    worker.is_staff = True
+    worker.save()
+    other = django_user_model.objects.create_user(phone="+998900000403", password="x")
+
+    mine_type = PainterType.objects.create(name="Акрил", price=Money(5, "USD"), user=worker)
+    theirs_type = PainterType.objects.create(name="Эмаль", price=Money(5, "USD"), user=other)
+
+    mine = order_factory(end_date=today + datetime.timedelta(days=10))
+    mine.status = OrderStatus.WORKING
+    mine.save(update_fields=["status"])
+    Painter.objects.create(order=mine, square=3, type=mine_type)
+
+    theirs = order_factory(end_date=today + datetime.timedelta(days=10))
+    theirs.status = OrderStatus.WORKING
+    theirs.save(update_fields=["status"])
+    Painter.objects.create(order=theirs, square=3, type=theirs_type)
+
+    board = order_board(user=worker, show_price=False)
+
+    assert column(board, "painter")["count"] == 1
+    assert [c["number"] for c in column(board, "painter")["cards"]] == [mine.order_number]
+
+
+@pytest.mark.django_db
+def test_rover_column_is_not_scoped(order_factory, today, django_user_model):
+    """RoverAdmin has no per-user filter, so the Ровер column must not invent one."""
+    from order.rover.models import Rover
+
+    worker = django_user_model.objects.create_user(phone="+998900000404", password="x")
+    worker.is_staff = True
+    worker.save()
+
+    order = order_factory(end_date=today + datetime.timedelta(days=10))
+    order.status = OrderStatus.WORKING
+    order.save(update_fields=["status"])
+    Rover.objects.create(order=order, square=3)
+
+    board = order_board(user=worker, show_price=False)
+
+    assert column(board, "rover")["count"] == 1

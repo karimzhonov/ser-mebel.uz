@@ -69,9 +69,15 @@ def order_board(*, user, show_price: bool) -> list[dict]:
     its squares are non-zero), hence the explicit isnull arms. The two pairs are
     exact complements only because Rover.done / Painter.done are non-nullable.
 
-    Сборка and Установка are narrowed to the viewer's own jobs unless they hold the
-    assembly-manager permission — the same scoping AssemblyAdmin.get_queryset applies,
-    and what the previous dashboard's StatusBanner did before this board replaced it.
+    Сборка, Установка and Моляр are narrowed to the viewer's own jobs unless they
+    hold the assembly-manager permission, matching AssemblyAdmin.get_queryset and
+    PainterAdmin.get_queryset. Ровер is deliberately not narrowed: RoverAdmin has no
+    per-user scoping, so neither does its column.
+
+    Narrowing the WORKING arms this way breaks the exact-partition property for a
+    scoped viewer — an order being painted by someone else shows in no column rather
+    than in Моляр. That is intended: the alternative is showing that viewer a row the
+    matching changelist would refuse them.
     """
     from django.db.models import F, Q
     from django.urls import reverse
@@ -88,10 +94,14 @@ def order_board(*, user, show_price: bool) -> list[dict]:
 
     assembly = Q(status=OrderStatus.ASSEMBLY)
     installing = Q(status=OrderStatus.INSTALLING)
+    painter_column = Q(status=OrderStatus.WORKING) & rover_clear & painter_pending
     if not user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"):
         own_jobs = Q(assembly__user=user)
         assembly &= own_jobs
         installing &= own_jobs
+        # PainterAdmin.get_queryset scopes by the painter type's user, not by the
+        # painter row — a painter is assigned work through PainterType.
+        painter_column &= Q(painter__type__user=user)
 
     changelist = reverse("admin:order_order_changelist")
 
@@ -112,8 +122,7 @@ def order_board(*, user, show_price: bool) -> list[dict]:
                Q(status=OrderStatus.WORKING) & rover_pending,
                more_url=reverse("admin:rover_rover_changelist") + "?done=False",
                more_label="Все роверы →"),
-        Column("painter", "Моляр", "brush", WARN,
-               Q(status=OrderStatus.WORKING) & rover_clear & painter_pending,
+        Column("painter", "Моляр", "brush", WARN, painter_column,
                more_url=reverse("admin:painter_painter_changelist") + "?done=False",
                more_label="Все моляры →"),
         Column("working", "Заказ на сырьё", "monitor", WARN,
