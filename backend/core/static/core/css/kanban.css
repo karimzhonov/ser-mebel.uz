@@ -125,12 +125,17 @@ body.kanban-dashboard #content {
 
 /* ---------- board ---------- */
 
+/* The board fills the viewport down to the bottom edge. kanban.js measures where
+   the board actually starts — which moves with the header, the tab row and, on a
+   phone, the shortcut grid — and writes --k-board-height. The 72vh is the
+   no-JavaScript fallback, not the normal case. */
 .kanban-board {
     display: flex;
     gap: 12px;
     overflow-x: auto;
     padding-block: 16px 8px;
     min-width: 0;
+    height: var(--k-board-height, 72vh);
 }
 
 .kanban-board[hidden] { display: none !important; }
@@ -143,7 +148,7 @@ body.kanban-dashboard #content {
     border-radius: 8px;
     display: flex;
     flex-direction: column;
-    max-height: 72vh;
+    max-height: 100%;
 }
 
 .kanban-col-head {
@@ -188,6 +193,10 @@ body.kanban-dashboard #content {
     gap: 8px;
     padding: 10px;
     overflow-y: auto;
+    /* Takes the slack so the head stays on top and the "Ещё" footer on the bottom;
+       min-height:0 is what lets a flex child shrink enough to scroll at all. */
+    flex: 1 1 auto;
+    min-height: 0;
 }
 
 .kanban-col-empty {

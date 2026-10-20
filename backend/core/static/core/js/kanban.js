@@ -18,6 +18,36 @@
             });
         });
 
+        /* The board reaches the bottom of the window. Measuring beats a fixed vh
+           value because what sits above it changes: the header, the tab row, and on a
+           phone the shortcut grid, which wraps to more rows as it narrows. */
+        var BOTTOM_GUTTER = 16;
+        var MIN_BOARD_HEIGHT = 320;
+
+        function fitBoards() {
+            var visible = root.querySelector(".kanban-board:not([hidden])");
+            if (!visible) return;
+            var top = visible.getBoundingClientRect().top;
+            var available = window.innerHeight - top - BOTTOM_GUTTER;
+            root.style.setProperty(
+                "--k-board-height",
+                Math.max(available, MIN_BOARD_HEIGHT) + "px"
+            );
+        }
+
+        var pending = false;
+        function scheduleFit() {
+            if (pending) return;
+            pending = true;
+            window.requestAnimationFrame(function () {
+                pending = false;
+                fitBoards();
+            });
+        }
+
+        window.addEventListener("resize", scheduleFit);
+        fitBoards();
+
         function select(id) {
             tabs.forEach(function (tab) {
                 var on = tab.getAttribute("data-kanban-tab") === id;
@@ -25,6 +55,7 @@
                 var board = document.getElementById("kanban-board-" + tab.getAttribute("data-kanban-tab"));
                 if (board) board.hidden = !on;
             });
+            fitBoards();
             try {
                 localStorage.setItem("kanban-tab", id);
             } catch (e) {
