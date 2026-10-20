@@ -1,3 +1,12 @@
+/* Full-bleed dashboard. Unfold wraps #content in Tailwind's `container`, which caps
+   the width at the current breakpoint and centres it with mx-auto; on a wide screen
+   that leaves the boards squeezed between two empty gutters. The outer wrapper keeps
+   its own px-4, so the page still has a side gutter. */
+body.kanban-dashboard #content {
+    max-width: none;
+    width: 100%;
+}
+
 /* Kanban boards on the /admin/ dashboard (core/templates/index.html).
    Colours come from django-unfold's own palette variables, so the boards follow
    whatever COLORS are set in settings.UNFOLD. Only the surface/line/text tokens are

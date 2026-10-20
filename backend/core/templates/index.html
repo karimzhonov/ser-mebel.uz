@@ -4,6 +4,13 @@
 
 {% block breadcrumbs %}{% endblock %}
 
+{% comment %}
+Marks the page for kanban.css, which drops the max-width unfold puts on #content.
+Unfold only removes it for changelists with list_fullwidth, and the dashboard has no
+`cl` to switch on — so the boards would sit in a narrow centred column.
+{% endcomment %}
+{% block bodyclass %}{{ block.super }} kanban-dashboard{% endblock %}
+
 {% block title %}
     {% trans 'Dashboard' %} | {{ site_title|default:_('Django site admin') }}
 {% endblock %}
