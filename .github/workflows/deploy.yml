@@ -1,9 +1,18 @@
 name: CI/CD
 
+# master -> production stack in /var/www/ser-mebel.uz
+# test   -> staging stack in /var/www/test.ser-mebel.uz, on the SAME server.
+#
+# Everything that differs between the two lives in GitHub Environments
+# ("production" / "test"), so this file holds no per-stack values. The stacks are
+# kept apart on the host by three things: their own directory (which is also what
+# names the compose project, and where ./media, ./static and ./db-data live), the
+# STACK_PREFIX on every container name, and their own host ports.
 on:
   push:
     branches:
       - master
+      - test
 
 jobs:
   build-and-push:
@@ -50,8 +59,15 @@ jobs:
     name: Deploy to server
     needs: build-and-push
     runs-on: ubuntu-latest
+    # Picks which set of variables/secrets below resolves. master is the only
+    # branch that may reach production; every other triggering branch is staging.
+    environment: ${{ github.ref_name == 'master' && 'production' || 'test' }}
     env:
       IMAGE_TAG: ${{ needs.build-and-push.outputs.tag }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+      STACK_PREFIX: ${{ vars.STACK_PREFIX }}
+      BACK_PORT: ${{ vars.BACK_PORT }}
+      BOT_PORT: ${{ vars.BOT_PORT }}
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
       DEBUG: ${{ vars.DEBUG }}
       POSTGRES_DB: ${{ vars.POSTGRES_DB }}
@@ -67,6 +83,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Fail fast if the environment is not configured
+        run: |
+          set -e
+          test -n "$DEPLOY_PATH" || { echo "DEPLOY_PATH variable is not set for this environment"; exit 1; }
+          case "$DEPLOY_PATH" in
+            /var/www/*) ;;
+            *) echo "DEPLOY_PATH must live under /var/www: $DEPLOY_PATH"; exit 1 ;;
+          esac
+
       - name: Copy docker-compose.prod.yml to server
         uses: appleboy/scp-action@v0.1.7
         with:
@@ -75,7 +100,7 @@ jobs:
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
           source: docker-compose.prod.yml
-          target: /var/www/ser-mebel.uz
+          target: ${{ vars.DEPLOY_PATH }}
           strip_components: 0
 
       - name: Pull images & restart
@@ -85,16 +110,18 @@ jobs:
           username: ${{ vars.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
-          envs: IMAGE_TAG,SECRET_KEY,DEBUG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_HOST,POSTGRES_PORT,BOT_TOKEN,BOT_SERVER,WEBHOOK_URL,BASE_SITE
+          envs: IMAGE_TAG,DEPLOY_PATH,STACK_PREFIX,BACK_PORT,BOT_PORT,SECRET_KEY,DEBUG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_HOST,POSTGRES_PORT,BOT_TOKEN,BOT_SERVER,WEBHOOK_URL,BASE_SITE
           script: |
             # set -e: without it the job stayed green even when every compose
             # command failed, because the final prune still exited 0.
             set -e
-            cd /var/www/ser-mebel.uz
+            cd "$DEPLOY_PATH"
             # "docker compose" (v2 plugin), not the retired Python "docker-compose"
             # v1 — that one is broken on Python 3.12 (distutils was removed).
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml down
             docker compose -f docker-compose.prod.yml up -d
             docker compose -f docker-compose.prod.yml ps
+            # Untagged-only prune: the two stacks share a Docker Hub repo, so a
+            # broad prune here could pull the other stack's image out from under it.
             docker image prune -f

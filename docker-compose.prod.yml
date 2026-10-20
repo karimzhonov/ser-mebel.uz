@@ -1,11 +1,16 @@
 version: '3.3'
 
+# Used by both stacks on the same host. Production leaves STACK_PREFIX, BACK_PORT
+# and BOT_PORT unset and therefore keeps exactly the names and ports it has always
+# had (back / bot / db on 8000 and 7000); the staging stack sets them so its
+# containers and published ports don't collide. ./media, ./static and ./db-data are
+# relative, so each stack's directory already gives it its own data.
 services:
   back:
-    container_name: back
+    container_name: ${STACK_PREFIX:-}back
     image: khtkarimzhonov/api.ser-mebel.uz:${IMAGE_TAG}
     ports:
-      - "8000:8000"
+      - "${BACK_PORT:-8000}:8000"
     environment:
       - SECRET_KEY
       - DEBUG
@@ -22,10 +27,10 @@ services:
       - ./static/:/static/
 
   bot:
-    container_name: bot
+    container_name: ${STACK_PREFIX:-}bot
     image: khtkarimzhonov/bot.ser-mebel.uz:${IMAGE_TAG}
     ports:
-      - "7000:80"
+      - "${BOT_PORT:-7000}:80"
     environment:
       - DEBUG
       - BOT_TOKEN
@@ -38,7 +43,7 @@ services:
     command: sh -c "uvicorn main:app --host 0.0.0.0 --port 80 --workers 4"
 
   db:
-    container_name: db
+    container_name: ${STACK_PREFIX:-}db
     image: postgres:18
     environment:
       - POSTGRES_DB
