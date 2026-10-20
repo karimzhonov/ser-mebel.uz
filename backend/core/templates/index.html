@@ -1,15 +1,8 @@
 {% extends 'admin/index.html' %}
 
-{% load i18n static unfold %}
+{% load i18n unfold %}
 
 {% block breadcrumbs %}{% endblock %}
-
-{% comment %}
-Marks the page for kanban.css, which drops the max-width unfold puts on #content.
-Unfold only removes it for changelists with list_fullwidth, and the dashboard has no
-`cl` to switch on — so the boards would sit in a narrow centred column.
-{% endcomment %}
-{% block bodyclass %}{{ block.super }} kanban-dashboard{% endblock %}
 
 {% block title %}
     {% trans 'Dashboard' %} | {{ site_title|default:_('Django site admin') }}
@@ -18,8 +11,6 @@ Unfold only removes it for changelists with list_fullwidth, and the dashboard ha
 {% block extrahead %}
     {{ block.super }}
     <meta http-equiv="refresh" content="1800">
-    <link rel="stylesheet" href="{% static 'core/css/kanban.css' %}">
-    <script defer src="{% static 'core/js/kanban.js' %}"></script>
     {% if plausible_domain %}
         <script defer data-domain="{{ plausible_domain }}" src="https://plausible.io/js/script.js"></script>
     {% endif %}
@@ -32,47 +23,14 @@ Unfold only removes it for changelists with list_fullwidth, and the dashboard ha
 {% block content %}
     {% include "unfold/helpers/messages.html" %}
 
-    {% comment %}
-    Shortcut grid for phones. Unfold collapses its left sidebar below 768px, and this
-    admin is deliberately served inside the Telegram WebApp, so without this there is
-    no navigation at all on a phone. It replaces the one the old dashboard carried.
-    {% endcomment %}
-    <nav class="kanban-shortcuts" aria-label="{% trans 'Разделы' %}">
-        {% for group in sidebar_navigation %}
-            {% for item in group.items %}
-                {% if item.has_permission %}
-                    <a href="{{ item.link }}" class="kanban-shortcut">
-                        <span class="material-symbols-outlined {{ item.color }}">{{ item.icon }}</span>
-                        <span class="kanban-shortcut-label">{{ item.title }}</span>
-                    </a>
-                {% endif %}
-            {% endfor %}
-        {% endfor %}
-    </nav>
+    {% component "unfold/components/container.html" with class="flex flex-col gap-8" %}
+        <div class="flex flex-col gap-4 sm:flex-row justify-between">
+            {% component "unfold/components/navigation.html" with items=navigation class="overflow-x-auto" %}{% endcomponent %}
 
-    <div class="kanban" data-kanban>
-        {% if boards %}
-            <div class="kanban-tabs" role="tablist">
-                {% for board in boards %}
-                    <button type="button"
-                            class="kanban-tab"
-                            role="tab"
-                            id="kanban-tab-{{ board.id }}"
-                            data-kanban-tab="{{ board.id }}"
-                            aria-controls="kanban-board-{{ board.id }}"
-                            aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">
-                        <span class="material-symbols-outlined">{{ board.icon }}</span>
-                        {{ board.label }}
-                        <span class="kanban-tab-count">{{ board.total }}</span>
-                    </button>
-                {% endfor %}
-            </div>
-
-            {% for board in boards %}
-                {% include "core/kanban/board.html" %}
-            {% endfor %}
-        {% else %}
-            <p class="kanban-empty">{% trans "Нет досок, доступных вашей роли." %}</p>
+            {% component "dashboard_filter.html" with class="sm:ml-auto" items=filters %}{% endcomponent %}
+        </div>
+        {% if current_navigation %}
+            {% include current_navigation.html_file %}
         {% endif %}
-    </div>
+    {% endcomponent %}
 {% endblock %}
