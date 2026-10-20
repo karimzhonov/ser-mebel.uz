@@ -1,0 +1,499 @@
+/* Full-bleed dashboard. Unfold wraps #content in Tailwind's `container`, which caps
+   the width at the current breakpoint and centres it with mx-auto; on a wide screen
+   that leaves the boards squeezed between two empty gutters. The outer wrapper keeps
+   its own px-4, so the page still has a side gutter. */
+body.kanban-dashboard #content {
+    max-width: none;
+    width: 100%;
+}
+
+/* Kanban boards on the /admin/ dashboard (core/templates/index.html).
+   Colours come from django-unfold's own palette variables, so the boards follow
+   whatever COLORS are set in settings.UNFOLD. Only the surface/line/text tokens are
+   re-pointed for dark mode — unfold puts `.dark` on <html>. */
+
+.kanban {
+    --k-surface:   rgb(255 255 255);
+    --k-raised:    rgb(var(--color-base-50, 249 250 251));
+    --k-line:      rgb(var(--color-base-200, 229 231 235));
+    --k-fg:        rgb(var(--color-base-900, 17 24 39));
+    --k-fg-muted:  rgb(var(--color-base-500, 107 114 128));
+    --k-fg-subtle: rgb(var(--color-base-400, 156 163 175));
+    --k-primary:   rgb(var(--color-primary-600, 147 51 234));
+
+    --k-idle:    rgb(var(--color-base-400, 156 163 175));
+    --k-info:    rgb(59 130 246);
+    --k-warn:    rgb(234 88 12);
+    --k-ok:      rgb(22 163 74);
+    --k-danger:  rgb(220 38 38);
+
+    --k-idle-bg:   rgb(var(--color-base-400, 156 163 175) / .14);
+    --k-info-bg:   rgb(59 130 246 / .12);
+    --k-warn-bg:   rgb(234 88 12 / .12);
+    --k-ok-bg:     rgb(22 163 74 / .12);
+    --k-danger-bg: rgb(220 38 38 / .12);
+
+    --k-scroll:       rgb(var(--color-base-300, 209 213 219));
+    --k-scroll-hover: rgb(var(--color-base-400, 156 163 175));
+
+    --k-col-width: 268px;
+
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    min-width: 0;
+}
+
+.dark .kanban {
+    --k-surface:   rgb(var(--color-base-900, 17 24 39));
+    --k-raised:    rgb(var(--color-base-800, 31 41 55));
+    --k-line:      rgb(var(--color-base-700, 55 65 81));
+    --k-fg:        rgb(var(--color-base-100, 243 244 246));
+    --k-fg-muted:  rgb(var(--color-base-400, 156 163 175));
+    --k-fg-subtle: rgb(var(--color-base-500, 107 114 128));
+    --k-primary:   rgb(var(--color-primary-400, 192 132 252));
+
+    --k-idle:   rgb(var(--color-base-500, 107 114 128));
+    --k-idle-bg: rgb(var(--color-base-500, 107 114 128) / .20);
+    --k-info:   rgb(96 165 250);
+    --k-warn:   rgb(251 146 60);
+    --k-ok:     rgb(74 222 128);
+    --k-danger: rgb(248 113 113);
+
+    --k-scroll:       rgb(var(--color-base-600, 75 85 99));
+    --k-scroll-hover: rgb(var(--color-base-500, 107 114 128));
+
+    --k-info-bg:   rgb(96 165 250 / .16);
+    --k-warn-bg:   rgb(251 146 60 / .16);
+    --k-ok-bg:     rgb(74 222 128 / .16);
+    --k-danger-bg: rgb(248 113 113 / .16);
+}
+
+/* Per-column accent, selected by the data-accent the template writes out. */
+.kanban-col[data-accent="idle"]    { --k-accent: var(--k-idle); }
+.kanban-col[data-accent="info"]    { --k-accent: var(--k-info); }
+.kanban-col[data-accent="warn"]    { --k-accent: var(--k-warn); }
+.kanban-col[data-accent="ok"]      { --k-accent: var(--k-ok); }
+.kanban-col[data-accent="danger"]  { --k-accent: var(--k-danger); }
+.kanban-col[data-accent="primary"] { --k-accent: var(--k-primary); }
+
+/* ---------- tabs ---------- */
+
+.kanban-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    border-bottom: 1px solid var(--k-line);
+}
+
+.kanban-tab {
+    appearance: none;
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    color: var(--k-fg-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font: inherit;
+    font-weight: 500;
+    padding: 10px 16px;
+    margin-bottom: -1px;
+}
+
+.kanban-tab:hover { color: var(--k-fg); background: var(--k-raised); }
+.kanban-tab:focus-visible { outline: 2px solid var(--k-primary); outline-offset: 2px; }
+.kanban-tab .material-symbols-outlined { font-size: 18px; }
+
+.kanban-tab[aria-selected="true"] {
+    background: var(--k-surface);
+    border-color: var(--k-line);
+    color: var(--k-fg);
+    box-shadow: inset 0 2px 0 var(--k-primary);
+}
+
+.kanban-tab-count {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--k-fg-subtle);
+    background: var(--k-raised);
+    border-radius: 999px;
+    padding: 1px 7px;
+}
+
+/* ---------- board ---------- */
+
+.kanban-board {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-block: 16px 8px;
+    min-width: 0;
+}
+
+.kanban-board[hidden] { display: none !important; }
+
+.kanban-col {
+    flex: 0 0 var(--k-col-width);
+    min-width: 0;
+    background: var(--k-surface);
+    border: 1px solid var(--k-line);
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    max-height: 72vh;
+}
+
+.kanban-col-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px 9px;
+    border-bottom: 1px solid var(--k-line);
+    border-top: 2px solid var(--k-accent, var(--k-idle));
+    border-radius: 8px 8px 0 0;
+}
+
+.kanban-col-head .material-symbols-outlined {
+    font-size: 17px;
+    color: var(--k-accent, var(--k-idle));
+}
+
+.kanban-col-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--k-fg-muted);
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kanban-col-count {
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--k-fg);
+}
+
+.kanban-col-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    overflow-y: auto;
+}
+
+.kanban-col-empty {
+    color: var(--k-fg-subtle);
+    font-size: 12px;
+    margin: 4px 0;
+    text-align: center;
+}
+
+.kanban-col-more {
+    border-top: 1px solid var(--k-line);
+    padding: 8px 12px;
+    text-align: center;
+}
+
+.kanban-col-more a {
+    color: var(--k-primary);
+    font-size: 12px;
+    font-weight: 500;
+    text-decoration: none;
+}
+
+.kanban-col-more a:hover { text-decoration: underline; }
+
+/* Terminal columns start folded to a strip; kanban.js unfolds them on click. */
+.kanban-col.is-collapsed {
+    flex: 0 0 48px;
+    cursor: pointer;
+}
+
+.kanban-col.is-collapsed .kanban-col-body,
+.kanban-col.is-collapsed .kanban-col-more { display: none; }
+
+.kanban-col.is-collapsed .kanban-col-head {
+    flex-direction: column;
+    gap: 10px;
+    height: 100%;
+    padding: 12px 6px;
+    border-bottom: none;
+}
+
+.kanban-col.is-collapsed .kanban-col-title {
+    writing-mode: vertical-rl;
+    max-height: 190px;
+    flex: 0 1 auto;
+}
+
+/* ---------- cards ---------- */
+
+.kanban-card {
+    background: var(--k-raised);
+    border: 1px solid var(--k-line);
+    border-left: 3px solid var(--k-accent, var(--k-idle));
+    border-radius: 6px;
+    padding: 9px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    text-decoration: none;
+    color: var(--k-fg);
+}
+
+.kanban-card:hover { border-color: var(--k-primary); }
+.kanban-card:focus-visible { outline: 2px solid var(--k-primary); outline-offset: 1px; }
+
+.kanban-card-top { display: flex; align-items: center; gap: 6px; }
+.kanban-card-spacer { flex: 1; }
+.kanban-card-icon { font-size: 15px; color: var(--k-fg-subtle); }
+
+.kanban-card-no {
+    font-size: 12px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--k-primary);
+}
+
+.kanban-card-when {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--k-fg-subtle);
+    white-space: nowrap;
+}
+
+.kanban-card-client {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kanban-card-line {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11.5px;
+    color: var(--k-fg-muted);
+    min-width: 0;
+}
+
+.kanban-card-line .material-symbols-outlined {
+    font-size: 14px;
+    color: var(--k-fg-subtle);
+    flex: none;
+}
+
+.kanban-ellipsis,
+.kanban-mono {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kanban-mono { font-variant-numeric: tabular-nums; }
+
+.kanban-card-desc {
+    font-size: 11.5px;
+    color: var(--k-fg-subtle);
+    font-style: italic;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.kanban-card-foot {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px solid var(--k-line);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+}
+
+.kanban-card-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    color: var(--k-fg-subtle);
+}
+
+.kanban-card-total { color: var(--k-fg-muted); }
+.kanban-card-left { margin-left: auto; font-weight: 600; color: var(--k-warn); }
+
+.kanban-chip {
+    font-size: 10px;
+    color: var(--k-fg-muted);
+    background: var(--k-surface);
+    border: 1px solid var(--k-line);
+    border-radius: 4px;
+    padding: 1px 5px;
+    white-space: nowrap;
+}
+
+/* ---------- pills & steps ---------- */
+
+.kanban-pill {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.kanban-pill.idle   { color: var(--k-idle);   background: var(--k-idle-bg); }
+.kanban-pill.info   { color: var(--k-info);   background: var(--k-info-bg); }
+.kanban-pill.warn   { color: var(--k-warn);   background: var(--k-warn-bg); }
+.kanban-pill.ok     { color: var(--k-ok);     background: var(--k-ok-bg); }
+.kanban-pill.danger { color: var(--k-danger); background: var(--k-danger-bg); }
+
+.kanban-steps { display: flex; gap: 4px; }
+
+.kanban-step {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    border-radius: 4px;
+    padding: 1px 5px;
+    border: 1px solid var(--k-line);
+    color: var(--k-fg-subtle);
+}
+
+.kanban-step .material-symbols-outlined { font-size: 12px; }
+.kanban-step.done    { color: var(--k-ok);   background: var(--k-ok-bg); }
+.kanban-step.pending { color: var(--k-warn); background: var(--k-warn-bg); }
+
+.kanban-empty {
+    color: var(--k-fg-muted);
+    padding-block: 32px;
+    text-align: center;
+}
+
+@media (max-width: 560px) {
+    .kanban { --k-col-width: 240px; }
+    .kanban-tab { padding: 9px 12px; font-size: 13px; }
+}
+
+
+/* ---------- scrollbars ---------- */
+/* Two scrolling surfaces: the board sideways, each column's body down. Both get the
+   same thin themed bar instead of the platform default, whose arrow buttons and
+   opaque track are heavy enough to read as part of a card. The thumb is painted
+   through a transparent border with background-clip, which is what makes it look
+   inset rather than filling the full track width. */
+
+.kanban-board,
+.kanban-col-body {
+    scrollbar-width: thin;
+    scrollbar-color: var(--k-scroll) transparent;
+    /* Reserve the gutter so a column that scrolls doesn't sit narrower than one that
+       doesn't, and stop a column's scroll from chaining to the page behind it. */
+    scrollbar-gutter: stable;
+    overscroll-behavior: contain;
+}
+
+.kanban-board::-webkit-scrollbar,
+.kanban-col-body::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.kanban-board::-webkit-scrollbar-track,
+.kanban-col-body::-webkit-scrollbar-track,
+.kanban-board::-webkit-scrollbar-corner,
+.kanban-col-body::-webkit-scrollbar-corner {
+    background: transparent;
+}
+
+/* Chromium on Windows still draws stepper arrows unless they're taken away. */
+.kanban-board::-webkit-scrollbar-button,
+.kanban-col-body::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+.kanban-board::-webkit-scrollbar-thumb,
+.kanban-col-body::-webkit-scrollbar-thumb {
+    background-color: var(--k-scroll);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: 999px;
+}
+
+.kanban-board::-webkit-scrollbar-thumb:hover,
+.kanban-col-body::-webkit-scrollbar-thumb:hover {
+    background-color: var(--k-scroll-hover);
+}
+
+
+/* ---------- phone shortcut grid ---------- */
+/* Unfold hides its sidebar below 768px; this is the only navigation a phone gets.
+   The gradient-* classes come from core/sidebars.py's per-item "color". */
+
+.kanban-shortcuts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+@media (min-width: 768px) {
+    .kanban-shortcuts { display: none; }
+}
+
+.kanban-shortcut {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+    min-width: 0;
+}
+
+.kanban-shortcut .material-symbols-outlined {
+    border-radius: 999px;
+    padding: 12px;
+    font-size: 22px;
+}
+
+.kanban-shortcut-label {
+    font-size: 11px;
+    line-height: 1.25;
+    text-align: center;
+    color: rgb(var(--color-base-600, 75 85 99));
+    overflow-wrap: anywhere;
+}
+
+.dark .kanban-shortcut-label { color: rgb(var(--color-base-300, 209 213 219)); }
+
+.gradient-1  { background: linear-gradient(to right, #7c3aed, #ec4899); color: #fff; }
+.gradient-2  { background: linear-gradient(to right, #06b6d4, #3b82f6); color: #fff; }
+.gradient-3  { background: linear-gradient(to right, #22c55e, #84cc16); color: #fff; }
+.gradient-4  { background: linear-gradient(to right, #f59e0b, #ef4444); color: #fff; }
+.gradient-5  { background: linear-gradient(to right, #14b8a6, #9333ea); color: #fff; }
+.gradient-6  { background: linear-gradient(to right, #2563eb, #7c3aed); color: #fff; }
+.gradient-7  { background: linear-gradient(to right, #f43f5e, #f97316); color: #fff; }
+.gradient-8  { background: linear-gradient(to right, #10b981, #3b82f6); color: #fff; }
+.gradient-9  { background: linear-gradient(to right, #e11d48, #7e22ce); color: #fff; }
+.gradient-10 { background: linear-gradient(to right, #0ea5e9, #14b8a6); color: #fff; }
+.gradient-11 { background: linear-gradient(to right, #facc15, #f97316); color: #000; }
+.gradient-12 { background: linear-gradient(to right, #8b5cf6, #ec4899); color: #fff; }
+.gradient-13 { background: linear-gradient(to right, #64748b, #1e293b); color: #fff; }
