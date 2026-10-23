@@ -8,7 +8,7 @@ from core.kanban import DANGER, INFO, OK, PRIMARY, WARN, Column, build_board
 from .constants import MeteringStatus
 
 
-def metering_board() -> list[dict]:
+def metering_board(to_card=None) -> list[dict]:
     """Columns for the "Замеры" kanban.
 
     Дизайн and Нарх are not statuses — they are the Design and Price rows hanging off
@@ -62,7 +62,7 @@ def metering_board() -> list[dict]:
         F("date_time").desc(nulls_last=True)
     )
 
-    return build_board(queryset, columns, _metering_card)
+    return build_board(queryset, columns, to_card or _metering_card)
 
 
 def _metering_card(metering) -> dict:
@@ -83,3 +83,101 @@ def _metering_card(metering) -> dict:
         "has_price": price is not None,
         "price_done": bool(price and price.done),
     }
+
+
+# --- Write services (used by the REST API; mirror MeteringCreateForm / MeteringActions) ---
+
+
+def metering_is_editable(metering) -> bool:
+    """MeteringAdmin.has_change_permission: archived meterings are read-only."""
+    return metering.status not in MeteringStatus.archive_statuses()
+
+
+def create_metering(*, client, date_time, address=None, address_link=None, desc=None, invoice=None):
+    """Mirrors MeteringCreateForm.save: linking an invoice marks it "Замерга борилади"."""
+    from django.db import transaction
+
+    from call_center.constants import SolutionChoice
+    from core.exceptions import ServiceError
+
+    from .models import Metering
+
+    if invoice is not None:
+        if invoice.client_id != client.pk:
+            raise ServiceError("Заявка бошқа мижозга тегишли")
+        if Metering.objects.filter(invoice=invoice).exists():
+            raise ServiceError("Бу заявка учун замер аллақачон яратилган")
+
+    with transaction.atomic():
+        metering = Metering.objects.create(
+            client=client,
+            date_time=date_time,
+            address=address,
+            address_link=address_link,
+            desc=desc,
+            invoice=invoice,
+        )
+        if invoice is not None:
+            invoice.solution = SolutionChoice.go_for_measured
+            invoice.save()
+    return metering
+
+
+def _require_status(metering, allowed):
+    from core.exceptions import ServiceError
+
+    if metering.status in MeteringStatus.archive_statuses():
+        raise ServiceError("Ушбу мижозга хизмат кўрсатилган")
+    if metering.status not in allowed:
+        raise ServiceError(
+            f"Статус «{MeteringStatus(metering.status).label}» учун бу амал мумкин эмас"
+        )
+
+
+def mark_metering_dont_need(metering):
+    _require_status(
+        metering, [MeteringStatus.created, MeteringStatus.other_day, MeteringStatus.metering_done]
+    )
+    metering.status = MeteringStatus.dont_need
+    metering.save(update_fields=["status"])
+    return metering
+
+
+def mark_metering_other_day(metering, date_time=None):
+    """"Бошқа кунга ўзгартирилди" — optionally with the new date in the same step,
+    like the admin submit-line button that saves the form and the status together."""
+    _require_status(metering, [MeteringStatus.created, MeteringStatus.other_day])
+    metering.status = MeteringStatus.other_day
+    fields = ["status"]
+    if date_time is not None:
+        metering.date_time = date_time
+        fields.append("date_time")
+    metering.save(update_fields=fields)
+    return metering
+
+
+def mark_metering_done(metering):
+    _require_status(metering, [MeteringStatus.created, MeteringStatus.other_day])
+    metering.status = MeteringStatus.metering_done
+    metering.save(update_fields=["status"])
+    return metering
+
+
+def start_design(metering):
+    from core.exceptions import ServiceError
+
+    from .design.models import Design
+
+    if Design.objects.filter(metering=metering).exists():
+        raise ServiceError("Дизайн аллақачон яратилган")
+    return Design.objects.create(metering=metering)
+
+
+def start_price(metering):
+    from core.exceptions import ServiceError
+
+    from .price.models import Price
+
+    if Price.objects.filter(metering=metering).exists():
+        raise ServiceError("Нарх чиқариш аллақачон яратилган")
+    return Price.objects.create(metering=metering)

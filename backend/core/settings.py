@@ -79,6 +79,13 @@ INSTALLED_APPS = [
     'simple_history',
     'import_export',
     'corsheaders',
+
+    'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
+    'django_filters',
+    'drf_spectacular',
+    'api',
 ]
 
 MIDDLEWARE = [
@@ -382,6 +389,73 @@ UNFOLD = {
     "TABS": 'core.tabs.get_tabs'
 }
 
+
+# --- REST API (api/) used by the React frontend in ../frontend ---------------------
+from datetime import timedelta  # noqa: E402
+
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        # JWT only: the SPA sends "Authorization: Bearer ...". Session auth is left
+        # out on purpose so API writes never need a CSRF token.
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": ["api.permissions.IsStaffUser"],
+    "DEFAULT_FILTER_BACKENDS": [
+        "django_filters.rest_framework.DjangoFilterBackend",
+        "rest_framework.filters.SearchFilter",
+        "rest_framework.filters.OrderingFilter",
+    ],
+    "DEFAULT_PAGINATION_CLASS": "api.pagination.StandardPagination",
+    "PAGE_SIZE": 25,
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    "EXCEPTION_HANDLER": "api.exceptions.exception_handler",
+    "DATETIME_FORMAT": "%Y-%m-%dT%H:%M:%S",
+    "DEFAULT_THROTTLE_RATES": {"login": os.getenv("API_LOGIN_RATE", "10/min")},
+    # One nginx in front: take the client IP from the last X-Forwarded-For hop, so
+    # the login throttle can't be dodged by sending a fake X-Forwarded-For.
+    "NUM_PROXIES": int(os.getenv("API_NUM_PROXIES", 1)),
+}
+
+SIMPLE_JWT = {
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=int(os.getenv("JWT_ACCESS_MINUTES", 60))),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=int(os.getenv("JWT_REFRESH_DAYS", 14))),
+    "ROTATE_REFRESH_TOKENS": True,
+    # Old refresh tokens die on rotation; /auth/logout/ blacklists the current one.
+    "BLACKLIST_AFTER_ROTATION": True,
+    "UPDATE_LAST_LOGIN": True,
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "ser-mebel.uz API",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Docs only for staff; session auth lets an admin who is logged in to /admin/ open them.
+    "SERVE_PERMISSIONS": ["api.permissions.IsStaffUser"],
+    "SERVE_AUTHENTICATION": [
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+    ],
+}
+
+# The SPA runs on its own origin in dev (Vite, :5173). In prod serve it from the same
+# domain (nginx: / -> frontend, /api -> back) and this list can stay empty.
+CORS_ALLOWED_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173"
+    ).split(",")
+    if origin.strip()
+]
+CORS_URLS_REGEX = r"^/api/.*$"
+
+# Telegram WebApp auto-login (/api/v1/auth/telegram/). OFF by default: the initData
+# signature proves who the Telegram user is, but the bot's /start <user_id> links a
+# Telegram account to ANY user id without checking it (bot/bot/__init__.py), so the
+# link itself can't be trusted yet. Enable only after linking is authenticated
+# (e.g. the bot asks for the contact and matches the phone).
+TELEGRAM_WEBAPP_LOGIN_ENABLED = os.getenv("TELEGRAM_WEBAPP_LOGIN_ENABLED", "") == "1"
+# initData older than this is rejected (replay window).
+TELEGRAM_INIT_DATA_MAX_AGE = int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", 60 * 60))
 
 TELEGRAM_BOT_TOKEN = os.getenv('BOT_TOKEN')
 TELEGRAM_BOT_SERVER = os.getenv('BOT_SERVER')

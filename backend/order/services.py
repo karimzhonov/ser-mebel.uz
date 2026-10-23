@@ -58,7 +58,7 @@ def resolve_order_status_on_save(order) -> None:
         order.status = OrderStatus.CREATED
 
 
-def order_board(*, user, show_price: bool) -> list[dict]:
+def order_board(*, user, show_price: bool, to_card=None) -> list[dict]:
     """Columns for the "Заказы" kanban on the admin dashboard.
 
     Each order lands in exactly one column. Statuses map straight across, with one
@@ -148,7 +148,9 @@ def order_board(*, user, show_price: bool) -> list[dict]:
     )
 
     return build_board(
-        queryset, columns, lambda order: _order_card(order, show_price=show_price)
+        queryset,
+        columns,
+        to_card or (lambda order: _order_card(order, show_price=show_price)),
     )
 
 
@@ -193,3 +195,106 @@ def _order_card(order, *, show_price: bool) -> dict:
         card["total"] = order.total_price
         card["left"] = order_money_left_display(order)
     return card
+
+
+# --- Write services (used by the REST API; mirror OrderAddForm / OrderActions) ---
+
+
+def create_order(*, count_days=None, **fields):
+    """Mirrors OrderAddForm.save + OrderAdmin.get_changeform_initial_data.
+
+    - end_date = reception_date + count_days when count_days is given (else the order
+      starts WAITING, see resolve_order_status_on_save);
+    - the linked metering becomes "Сотилди", and so does its call-centre invoice;
+    - factory defaults to DEFAULT_FACTORY_NAME.
+    """
+    from datetime import timedelta
+
+    from django.db import transaction
+    from django.utils import timezone
+
+    from call_center.constants import SolutionChoice
+    from core.exceptions import ServiceError
+    from metering.constants import MeteringStatus
+
+    from .constants import DEFAULT_FACTORY_NAME
+    from .models import Factory, Order
+
+    metering = fields.get("metering")
+    design_type = fields.get("design_type")
+    if metering is not None:
+        if Order.objects.filter(metering=metering).exists():
+            raise ServiceError("Бу замер учун заказ аллақачон яратилган")
+        # Reverse OneToOne: getattr with a default swallows RelatedObjectDoesNotExist.
+        design = getattr(metering, "design", None)
+        if metering.status == MeteringStatus.dont_need:
+            raise ServiceError("Замер бекор қилинган — заказ яратиб бўлмайди")
+        if design is None or not design.done:
+            raise ServiceError("Дизайн ҳали тайёр эмас — аввал дизайнни бажаринг")
+        if design_type is None or design_type.design_id != design.pk:
+            raise ServiceError("Шу замер дизайнидан вариант танланг")
+        fields.setdefault("client", metering.client)
+
+    fields.setdefault("reception_date", timezone.now().date())
+    if fields.get("factory") is None:
+        factory = Factory.objects.filter(name=DEFAULT_FACTORY_NAME).first()
+        if factory is None:
+            raise ServiceError("Завод танланг")
+        fields["factory"] = factory
+    if count_days:
+        fields["end_date"] = fields["reception_date"] + timedelta(days=int(count_days))
+
+    with transaction.atomic():
+        if metering is not None:
+            metering.status = MeteringStatus.sold_out
+            metering.save()
+            if metering.invoice:
+                metering.invoice.solution = SolutionChoice.sold_out
+                metering.invoice.save()
+        order = Order(**fields)
+        order.save()
+    return order
+
+
+def send_order_to_detailing(order):
+    """Mirrors OrderActions.detailing_action."""
+    from core.exceptions import ServiceError
+
+    from .detailing.models import Detailing
+
+    if order.status != OrderStatus.CREATED:
+        raise ServiceError("Деталировкага фақат «Создан» статусидаги заказ юборилади")
+    from django.db import transaction
+
+    with transaction.atomic():
+        Detailing.objects.get_or_create(order=order)
+        order.change_status(OrderStatus.DETAILING)
+    return order
+
+
+def advance_order_status(order):
+    """Mirrors OrderActions.change_status: one step along progression_statuses()."""
+    from core.exceptions import ServiceError
+
+    next_status = OrderStatus.next_status(order.status)
+    if next_status is None:
+        raise ServiceError(
+            f"Невозможно изменить статус: «{OrderStatus(order.status).label}» — финальный."
+        )
+    order.change_status(next_status)
+    return order
+
+
+def send_order_to_assembly(order):
+    """Mirrors OrderActions.go_to_assembly_action. Returns the Assembly row."""
+    from core.exceptions import ServiceError
+
+    from .assembly.models import Assembly
+
+    if order.status != OrderStatus.WORKING:
+        raise ServiceError("Сборкага фақат «Заказ на сырье» статусидаги заказ юборилади")
+    assembly = Assembly.objects.filter(order=order).first()
+    if assembly is None:
+        raise ServiceError("Сборка для этого заказа не создана — укажите площадь в деталировке.")
+    order.change_status(OrderStatus.ASSEMBLY)
+    return assembly

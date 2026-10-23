@@ -8,7 +8,7 @@ from core.kanban import DANGER, INFO, OK, PRIMARY, WARN, Column, build_board
 from .constants import SolutionChoice
 
 
-def call_center_board() -> list[dict]:
+def call_center_board(to_card=None) -> list[dict]:
     """Columns for the "Call-center" kanban.
 
     One column per SolutionChoice, plus Янги for invoices nobody has answered yet
@@ -52,7 +52,7 @@ def call_center_board() -> list[dict]:
 
     queryset = Invoice.objects.select_related("client").order_by("-create_date")
 
-    return build_board(queryset, columns, _invoice_card)
+    return build_board(queryset, columns, to_card or _invoice_card)
 
 
 def _invoice_card(invoice) -> dict:
@@ -64,3 +64,57 @@ def _invoice_card(invoice) -> dict:
         "desc": (invoice.desc or "").strip(),
         "when": invoice.create_date,
     }
+
+
+# --- Write services (used by the REST API; mirror InvoiceAdmin / InvoiceActions) ---
+
+# Answers after which the invoice is closed for editing (InvoiceAdmin.has_change_permission).
+CLOSED_SOLUTIONS = [
+    SolutionChoice.sold_out,
+    SolutionChoice.go_for_measured,
+    SolutionChoice.price_problem,
+    SolutionChoice.dont_need,
+    SolutionChoice.declined,
+]
+# Answers after which the client has been served and no other answer is accepted
+# (InvoiceActions.get_unfold_action).
+SERVED_SOLUTIONS = [SolutionChoice.sold_out, SolutionChoice.go_for_measured]
+
+
+def invoice_is_editable(invoice) -> bool:
+    return invoice.solution not in CLOSED_SOLUTIONS
+
+
+def create_invoice(*, fio: str, phone, desc: str | None = None):
+    """Mirrors InvoiceCreateForm.save: the client is looked up by phone, created if new."""
+    from django.db import transaction
+
+    from client.models import Client
+
+    from .models import Invoice
+
+    with transaction.atomic():
+        client, _ = Client.objects.get_or_create(phone=phone, defaults={"fio": fio})
+        return Invoice.objects.create(client=client, desc=desc)
+
+
+def set_invoice_solution(invoice, solution: int):
+    """Record the call-centre answer for an invoice.
+
+    "Замерга борилади" is not accepted here: it is set by creating the metering
+    (metering.services.create_metering), exactly as the admin button redirects to the
+    metering form. "Сотилди" is set only by creating an order.
+    """
+    from core.exceptions import ServiceError
+
+    solution = SolutionChoice(solution)
+    if invoice.solution in SERVED_SOLUTIONS:
+        raise ServiceError(f"Мижозга ({invoice.client.fio}) хизмат кўрсатилган")
+    if solution == SolutionChoice.go_for_measured:
+        raise ServiceError("Замер яратинг — код ответа автоматик ўзгаради")
+    if solution == SolutionChoice.sold_out:
+        raise ServiceError("«Сотилди» заказ яратилганда автоматик қўйилади")
+
+    invoice.solution = solution
+    invoice.save()
+    return invoice
