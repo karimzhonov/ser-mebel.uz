@@ -77,7 +77,6 @@ jobs:
       STACK_PREFIX: ${{ vars.STACK_PREFIX }}
       BACK_PORT: ${{ vars.BACK_PORT }}
       BOT_PORT: ${{ vars.BOT_PORT }}
-      FRONT_PORT: ${{ vars.FRONT_PORT }}
       SECRET_KEY: ${{ secrets.SECRET_KEY }}
       DEBUG: ${{ vars.DEBUG }}
       POSTGRES_DB: ${{ vars.POSTGRES_DB }}
@@ -120,7 +119,7 @@ jobs:
           username: ${{ vars.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           port: ${{ secrets.SERVER_PORT || 22 }}
-          envs: IMAGE_TAG,DEPLOY_PATH,STACK_PREFIX,BACK_PORT,BOT_PORT,FRONT_PORT,SECRET_KEY,DEBUG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_HOST,POSTGRES_PORT,BOT_TOKEN,BOT_SERVER,WEBHOOK_URL,BASE_SITE
+          envs: IMAGE_TAG,DEPLOY_PATH,STACK_PREFIX,BACK_PORT,BOT_PORT,SECRET_KEY,DEBUG,POSTGRES_DB,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_HOST,POSTGRES_PORT,BOT_TOKEN,BOT_SERVER,WEBHOOK_URL,BASE_SITE
           script: |
             # set -e: without it the job stayed green even when every compose
             # command failed, because the final prune still exited 0.

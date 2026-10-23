@@ -3,7 +3,6 @@ from django.contrib.auth import get_user_model
 from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -14,6 +13,7 @@ from oauth.services import verify_telegram_init_data
 
 from ..permissions import is_staff
 from ..serializers.users import MeSerializer
+from ..throttles import LoginRateThrottle
 
 User = get_user_model()
 
@@ -36,8 +36,7 @@ class StaffTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 class LoginView(TokenObtainPairView):
     serializer_class = StaffTokenObtainPairSerializer
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "login"
+    throttle_classes = [LoginRateThrottle]
 
 
 class LogoutView(APIView):
@@ -72,8 +71,7 @@ class TelegramLoginView(APIView):
     permission_classes = [AllowAny]
     authentication_classes = []
     serializer_class = TelegramLoginSerializer
-    throttle_classes = [ScopedRateThrottle]
-    throttle_scope = "login"
+    throttle_classes = [LoginRateThrottle]
 
     def post(self, request):
         if not settings.TELEGRAM_WEBAPP_LOGIN_ENABLED:

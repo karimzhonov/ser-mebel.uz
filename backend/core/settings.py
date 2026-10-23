@@ -411,9 +411,6 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "api.exceptions.exception_handler",
     "DATETIME_FORMAT": "%Y-%m-%dT%H:%M:%S",
     "DEFAULT_THROTTLE_RATES": {"login": os.getenv("API_LOGIN_RATE", "10/min")},
-    # One nginx in front: take the client IP from the last X-Forwarded-For hop, so
-    # the login throttle can't be dodged by sending a fake X-Forwarded-For.
-    "NUM_PROXIES": int(os.getenv("API_NUM_PROXIES", 1)),
 }
 
 SIMPLE_JWT = {

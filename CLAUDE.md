@@ -37,7 +37,7 @@ Two-service project. Full findings: `docs/ARCHITECTURE_ANALYSIS.md` — read it 
 
 Dev: `docker-compose.yml` — `back` (Django via `runserver.sh`, port 8000) + `db` (Postgres 18) + `front` (Vite, port 5173). Bot is **not** in dev compose — run it separately (`python runbot.py` for polling, from `bot/`) when working on it locally.
 
-Prod: `docker-compose.prod.yml` — `front` (nginx: SPA + /media + /static, proxies /api /admin /filer to back; port `FRONT_PORT`, default 3000 — the server nginx sends the whole domain here), `back` (uvicorn ASGI, port 8000), `bot` (uvicorn/FastAPI, port 7000→80), `db` (Postgres 18). CI builds 3 images (api/front/bot). Server-side steps: `docs/DEPLOY.md`. Both `back` and `bot` need their `POSTGRES_*` env vars in sync (`backend/.env` and `bot/.env` respectively) since they connect to the same database independently.
+Prod: `docker-compose.prod.yml` — `front` (nginx) publishes `BACK_PORT` (8000) so the server nginx needs no changes; it serves the SPA + /media + /static and proxies /api, /admin, /filer (and `/?telegram_id=`) to `back`, which is no longer published. `bot` (port 7000→80), `db` (Postgres 18). CI builds 3 images (api/front/bot). Details: `docs/DEPLOY.md`. Both `back` and `bot` need their `POSTGRES_*` env vars in sync since they connect to the same database independently.
 
 ## Orchestration rules (subagent pipeline)
 

@@ -131,3 +131,21 @@ def test_logout_blacklists_refresh_token(make_staff):
     )
     resp = APIClient().post("/api/v1/auth/refresh/", {"refresh": tokens["refresh"]}, format="json")
     assert resp.status_code == 401
+
+
+def test_login_throttle_is_per_client_ip(db, monkeypatch):
+    from django.core.cache import cache
+
+    from api.throttles import LoginRateThrottle
+
+    cache.clear()
+    monkeypatch.setattr(LoginRateThrottle, "THROTTLE_RATES", {"login": "2/min"})
+    body = {"phone": "+998900000000", "password": "wrong"}
+    client = APIClient()
+    for _ in range(2):
+        client.post("/api/v1/auth/login/", body, format="json", HTTP_X_REAL_IP="1.1.1.1")
+    blocked = client.post("/api/v1/auth/login/", body, format="json", HTTP_X_REAL_IP="1.1.1.1")
+    other = client.post("/api/v1/auth/login/", body, format="json", HTTP_X_REAL_IP="2.2.2.2")
+    assert blocked.status_code == 429
+    assert other.status_code != 429
+    cache.clear()

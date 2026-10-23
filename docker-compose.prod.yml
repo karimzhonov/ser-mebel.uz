@@ -1,20 +1,22 @@
 version: '3.3'
 
-# Used by both stacks on the same host. Production leaves STACK_PREFIX, BACK_PORT,
-# BOT_PORT and FRONT_PORT unset and therefore keeps the names and ports it has always
-# had (back / bot / db on 8000 and 7000, front on 3000); the staging stack sets them so
-# its containers and published ports don't collide. ./media, ./static and ./db-data are
-# relative, so each stack's directory already gives it its own data.
+# Used by both stacks on the same host. Production leaves STACK_PREFIX, BACK_PORT
+# and BOT_PORT unset and therefore keeps exactly the names and ports it has always
+# had (8000 and 7000); the staging stack sets them so its containers and published
+# ports don't collide. ./media, ./static and ./db-data are relative, so each stack's
+# directory already gives it its own data.
 #
-# Entry point for the site is "front" (nginx): it serves the React SPA plus /media and
-# /static from disk, and proxies /api, /admin, /filer to "back". The server's own
-# nginx should send the whole domain to FRONT_PORT (see docs/DEPLOY.md).
+# BACK_PORT (8000) is now published by "front" (nginx), not by "back": the server's
+# nginx keeps sending the domain to :8000 exactly as before — no server changes — and
+# "front" serves the React SPA + /media + /static and proxies /api, /admin, /filer to
+# "back" over the compose network. "back" itself is no longer published.
 services:
   back:
     container_name: ${STACK_PREFIX:-}back
     image: khtkarimzhonov/api.ser-mebel.uz:${IMAGE_TAG}
-    ports:
-      - "${BACK_PORT:-8000}:8000"
+    # Not published: reached only through "front" (http://back:8000 on the network).
+    expose:
+      - "8000"
     environment:
       - SECRET_KEY
       - DEBUG
@@ -33,9 +35,6 @@ services:
       # Telegram WebApp auto-login. Keep unset/0 until the bot's /start linking is
       # authenticated — see backend/CLAUDE.md.
       - TELEGRAM_WEBAPP_LOGIN_ENABLED
-      # Requests reach Django through two nginx hops (server nginx -> front), so the
-      # client IP is the 2nd entry from the right in X-Forwarded-For.
-      - API_NUM_PROXIES=2
     command: sh prodserver.sh
     volumes:
       - ./media/:/media/
@@ -45,14 +44,13 @@ services:
     container_name: ${STACK_PREFIX:-}front
     image: khtkarimzhonov/front.ser-mebel.uz:${IMAGE_TAG}
     ports:
-      - "${FRONT_PORT:-3000}:80"
+      - "${BACK_PORT:-8000}:80"
     volumes:
       # Read-only: written by "back" (uploads, collectstatic), served here by nginx.
       - ./media/:/media/:ro
       - ./static/:/static/:ro
     depends_on:
       - back
-    restart: unless-stopped
 
   bot:
     container_name: ${STACK_PREFIX:-}bot
