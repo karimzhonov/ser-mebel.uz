@@ -7,3 +7,4 @@ dist
 
 # The root .gitignore (Python template) ignores lib/ — src/lib is our code.
 !/src/lib/
+public/pdfjs

@@ -344,6 +344,7 @@ export interface HistoryEntry {
 
 export interface FolderFile {
   id: number;
+  download_name: string | null;
   name: string;
   url: string;
   size: number;

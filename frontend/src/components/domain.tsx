@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   Area,
@@ -26,7 +26,7 @@ import {
 import { toast } from "sonner";
 import { api, errorMessage } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
-import type { Deadline, Folder, Message, Tone } from "@/api/types";
+import type { Deadline, Folder, FolderFile, Message, Tone } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/cn";
 import { dateTime, fileSize, phone, relative } from "@/lib/format";
@@ -179,6 +179,21 @@ export function ShareBars({ rows }: { rows: { label: string; value: number; disp
 
 /* --------------------------------------------------------- File browser */
 
+/** Files saved before the upload fix may have no extension ("pdf (3)") and don't open
+ * in the browser; the API then sends `download_name` (".pdf" added from the file's own
+ * bytes) and the file is downloaded under that name instead of opened. */
+// PDF.js is ~400 KB: loaded only when someone opens a PDF.
+const PdfViewer = lazy(() => import("./PdfViewer"));
+
+function isPdf(f: FolderFile) {
+  return [f.name, f.download_name ?? ""].some((n) => /\.pdf$/i.test(n)) || f.mime_type === "application/pdf";
+}
+
+function fileLinkProps(f: FolderFile) {
+  if (f.download_name) return { download: f.download_name };
+  return { target: "_blank", rel: "noreferrer" };
+}
+
 export function FolderButton({ folderId, label = "Fayllar" }: { folderId: number | null | undefined; label?: string }) {
   const [open, setOpen] = useState(false);
   if (!folderId) return null;
@@ -212,6 +227,7 @@ export function FolderBrowser({
   const { data, isLoading, refetch } = useGet<Folder>(`/folders/${folderId}/`);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [pdf, setPdf] = useState<FolderFile | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
 
@@ -322,12 +338,32 @@ export function FolderBrowser({
                 <img src={f.thumbnail || f.url} alt={f.name} loading="lazy" className="h-full w-full object-cover" />
               </button>
             ) : (
-              <a href={f.url} target="_blank" rel="noreferrer" className="flex aspect-[4/3] items-center justify-center bg-slate-50 dark:bg-slate-800/60">
-                <FileText className="h-10 w-10 text-slate-400" />
-              </a>
+              isPdf(f) ? (
+                <button
+                  onClick={() => setPdf(f)}
+                  className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1 bg-rose-50/60 dark:bg-rose-500/5"
+                >
+                  <FileText className="h-10 w-10 text-rose-500" />
+                  <span className="text-[11px] font-semibold text-rose-600">PDF</span>
+                </button>
+              ) : (
+                <a href={f.url} {...fileLinkProps(f)} className="flex aspect-[4/3] items-center justify-center bg-slate-50 dark:bg-slate-800/60">
+                  <FileText className="h-10 w-10 text-slate-400" />
+                </a>
+              )
             )}
             <div className="flex items-center justify-between gap-1 p-2">
-              <a href={f.url} target="_blank" rel="noreferrer" className="min-w-0">
+              <a
+                href={f.url}
+                {...fileLinkProps(f)}
+                onClick={(e) => {
+                  if (isPdf(f)) {
+                    e.preventDefault();
+                    setPdf(f);
+                  }
+                }}
+                className="min-w-0"
+              >
                 <div className="truncate text-xs font-medium">{f.name}</div>
                 <div className="muted text-[11px]">{fileSize(f.size)} · {relative(f.uploaded_at)}</div>
               </a>
@@ -350,6 +386,11 @@ export function FolderBrowser({
 
       <FolderChat folderId={data.id} />
 
+      {pdf && (
+        <Suspense fallback={<div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/90"><Spinner className="h-8 w-8 text-white" /></div>}>
+          <PdfViewer url={pdf.url} name={pdf.name} downloadName={pdf.download_name} onClose={() => setPdf(null)} />
+        </Suspense>
+      )}
       {preview && (
         <div className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center bg-black/80 p-4" onClick={() => setPreview(null)}>
           <img src={preview} className="max-h-full max-w-full rounded-xl" alt="" />
