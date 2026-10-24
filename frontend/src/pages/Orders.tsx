@@ -18,6 +18,7 @@ import type {
   Factory,
   HistoryEntry,
   Metering,
+  Money,
   MoneyRecord,
   Order,
   OrderDetail,
@@ -29,6 +30,7 @@ import {
   BackLink,
   DeadlinePill,
   FolderButton,
+  MoneyLeft,
   OrderStatusBadge,
   PhoneLink,
   ROW_TONE,
@@ -58,7 +60,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { date, dateTime, money, num, phone, todayISO } from "@/lib/format";
+import { date, dateTime, leftPercent, money, num, phone, todayISO } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 
 /* ------------------------------------------------------------------ List */
@@ -181,7 +183,7 @@ export function OrdersPage() {
             ...(showMoney
               ? [
                   { key: "total", header: "Jami", cell: (r: Order) => <span className="tabular-nums">{money(r.total_price)}</span> },
-                  { key: "left", header: "Qoldiq", cell: (r: Order) => <span className="font-medium tabular-nums">{money(r.money_left)}</span> },
+                  { key: "left", header: "Qoldiq", cell: (r: Order) => <MoneyLeft left={r.money_left} total={r.total_price} /> },
                 ]
               : []),
           ]}
@@ -194,7 +196,7 @@ export function OrdersPage() {
               <div className="muted text-sm">{r.address}</div>
               <div className="flex items-center justify-between">
                 <DeadlinePill deadline={r.deadline} />
-                {showMoney && <span className="text-sm font-medium">{money(r.money_left)}</span>}
+                {showMoney && <MoneyLeft className="text-sm" left={r.money_left} total={r.total_price} />}
               </div>
             </div>
           )}
@@ -321,9 +323,10 @@ export function OrderDetailPage() {
                   items={[
                     ["Summa", money(o.price)],
                     ["Olingan", money(o.lost_money)],
-                    ["Qoldiq", <span className="text-base font-semibold">{money(o.money_left)}</span>],
+                    ["Qoldiq", <MoneyLeft className="text-base" left={o.money_left} total={o.total_price} />],
                   ]}
                 />
+                <PaidBar left={o.money_left} total={o.total_price} />
               </div>
             </Card>
           )}
@@ -400,6 +403,23 @@ export function OrderDetailPage() {
 
 // Assembly work starts after detailing (backend: order/assembly/services.py).
 const BEFORE_ASSEMBLY = ["waiting", "created", "detailing"];
+
+function PaidBar({ left, total }: { left?: Money | null; total?: Money | null }) {
+  const pct = leftPercent(left, total);
+  if (pct === null) return null;
+  const paid = 100 - pct;
+  return (
+    <div className="mt-1">
+      <div className="mb-1 flex justify-between text-xs">
+        <span className="muted">To'langan {paid}%</span>
+        <span className="muted">Qoldiq {pct}%</span>
+      </div>
+      <div className="h-2.5 overflow-hidden rounded-full bg-rose-100 dark:bg-rose-500/20">
+        <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${paid}%` }} />
+      </div>
+    </div>
+  );
+}
 
 const FLOW = ["waiting", "created", "detailing", "working", "assembly", "installing", "done"];
 

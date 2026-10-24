@@ -5,12 +5,12 @@ import { useGet } from "@/api/hooks";
 import type { Board } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
-import { DeadlinePill } from "@/components/domain";
+import { DeadlinePill, MoneyLeft } from "@/components/domain";
 import { OverviewPanel } from "@/components/Overview";
 import { useUrlState } from "@/lib/useUrlState";
 import { Badge, Check, Empty, PageHeader, PageLoader, Segmented, TONES } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { dateTime, money, phone } from "@/lib/format";
+import { dateTime, phone } from "@/lib/format";
 
 const LIST_URL: Record<Board["id"], (col: string) => string> = {
   orders: () => "/orders",
@@ -154,7 +154,12 @@ function OrderCard({ card }: { card: any }) {
         <span className="muted flex items-center gap-1">
           <Factory className="h-3 w-3" /> {card.factory}
         </span>
-        {card.left && <span className="font-medium tabular-nums">Qoldiq {money(card.left)}</span>}
+        {card.left && (
+          <span className="flex items-center gap-1">
+            <span className="muted">Qoldiq</span>
+            <MoneyLeft left={card.left} total={card.total} />
+          </span>
+        )}
       </div>
     </>
   );

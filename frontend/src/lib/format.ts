@@ -67,3 +67,10 @@ export function todayISO() {
   const d = new Date();
   return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 }
+
+/** Remaining amount as a share of the order total, 0–100 (null when not comparable:
+ * no total, zero total or different currencies). Overpaid orders count as 0%. */
+export function leftPercent(left: Money | null | undefined, total: Money | null | undefined) {
+  if (!left || !total || !total.amount || left.currency !== total.currency) return null;
+  return Math.min(100, Math.max(0, Math.round((left.amount / total.amount) * 100)));
+}
