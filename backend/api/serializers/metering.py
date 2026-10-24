@@ -12,11 +12,27 @@ from metering.price.models import (
     ObjectType,
     Price,
 )
-from metering.services import metering_is_editable
+from metering.services import ASSIGNABLE_STATUSES, metering_is_editable
 from oauth.constants import METERING_PERMISSION
 
 from ..fields import MoneyField
-from .common import ClientShortSerializer, OrderSummarySerializer, order_of
+from .common import (
+    ClientShortSerializer,
+    OrderSummarySerializer,
+    UserShortSerializer,
+    order_of,
+)
+
+
+def _user(user):
+    return UserShortSerializer(user).data if user is not None else None
+
+
+def can_assign_tasks(user) -> bool:
+    """The metering staff (who press "Замер выполнен") or whoever may edit meterings."""
+    return user.has_perm(f"oauth.{METERING_PERMISSION}") or user.has_perm(
+        "metering.change_metering"
+    )
 
 
 def _order_summary(metering, context):
@@ -66,11 +82,20 @@ class MeteringSerializer(serializers.ModelSerializer):
 
     def get_design(self, obj):
         design = getattr(obj, "design", None)
-        return {"id": design.pk, "done": design.done, "confirm": design.confirm} if design else None
+        if design is None:
+            return None
+        return {
+            "id": design.pk,
+            "done": design.done,
+            "confirm": design.confirm,
+            "user": _user(design.user),
+        }
 
     def get_price(self, obj):
         price = getattr(obj, "price", None)
-        return {"id": price.pk, "done": price.done} if price else None
+        if price is None:
+            return None
+        return {"id": price.pk, "done": price.done, "user": _user(price.user)}
 
     def get_order(self, obj):
         return _order_summary(obj, self.context)
@@ -100,6 +125,13 @@ class MeteringDetailSerializer(MeteringSerializer):
             and status in [S.created, S.other_day],
             "create_design": user.has_perm("design.add_design") and not hasattr(obj, "design"),
             "create_price": user.has_perm("price.add_price") and not hasattr(obj, "price"),
+            # "Назначить исполнителей": after the metering, while a task is still open.
+            "assign": can_assign_tasks(user)
+            and status in ASSIGNABLE_STATUSES
+            and not (
+                getattr(getattr(obj, "design", None), "done", False)
+                and getattr(getattr(obj, "price", None), "done", False)
+            ),
         }
 
 
@@ -139,13 +171,24 @@ class DesignTypeSerializer(serializers.ModelSerializer):
 
 class DesignSerializer(serializers.ModelSerializer):
     metering = MeteringShortSerializer(read_only=True)
+    user_detail = UserShortSerializer(source="user", read_only=True)
     order = serializers.SerializerMethodField()
     types = DesignTypeSerializer(source="designtype_set", many=True, read_only=True)
     actions = serializers.SerializerMethodField()
 
     class Meta:
         model = Design
-        fields = ["id", "metering", "created_at", "done", "confirm", "types", "order", "actions"]
+        fields = [
+            "id",
+            "metering",
+            "created_at",
+            "done",
+            "confirm",
+            "user_detail",
+            "types",
+            "order",
+            "actions",
+        ]
         read_only_fields = fields
 
     def get_order(self, obj):
@@ -225,12 +268,23 @@ class CalculationInputSerializer(serializers.Serializer):
 
 class PriceSerializer(serializers.ModelSerializer):
     metering = MeteringShortSerializer(read_only=True)
+    user_detail = UserShortSerializer(source="user", read_only=True)
     price = MoneyField(read_only=True)
     order = serializers.SerializerMethodField()
 
     class Meta:
         model = Price
-        fields = ["id", "metering", "price", "done", "desc", "created_at", "folder", "order"]
+        fields = [
+            "id",
+            "metering",
+            "price",
+            "done",
+            "desc",
+            "created_at",
+            "folder",
+            "user_detail",
+            "order",
+        ]
         read_only_fields = ["metering", "price", "done", "created_at", "folder"]
 
     def get_order(self, obj):
@@ -261,3 +315,8 @@ class PriceDetailSerializer(PriceSerializer):
             and user.has_perms(["price.add_calculate", "price.change_calculate"]),
             "done": can_change and not obj.done,
         }
+
+
+class AssignTasksSerializer(serializers.Serializer):
+    designer = serializers.IntegerField(required=False, allow_null=True)
+    pricer = serializers.IntegerField(required=False, allow_null=True)

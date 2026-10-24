@@ -22,6 +22,15 @@ class Price(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создание")
     done = models.BooleanField(default=False, verbose_name="Выполнено")
+    # Who calculates it; the task is sent to this person only when set.
+    user = models.ForeignKey(
+        "oauth.User",
+        models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="price_tasks",
+        verbose_name="Ответственный за расчёт",
+    )
 
     desc = models.TextField(blank=True, null=True, verbose_name="Описание")
 

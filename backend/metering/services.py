@@ -27,33 +27,78 @@ def metering_board(to_card=None) -> list[dict]:
     measured = Q(status=MeteringStatus.metering_done)
 
     columns = [
-        Column("created", "Заявка олинди", "add", INFO,
-               Q(status=MeteringStatus.created), more_url=by_status(MeteringStatus.created)),
-        Column("other_day", "Бошқа кунга", "warning", WARN,
-               Q(status=MeteringStatus.other_day), more_url=by_status(MeteringStatus.other_day)),
-        Column("measured", "Замерга борилди", "straighten", INFO,
-               measured & Q(design__isnull=True),
-               more_url=by_status(MeteringStatus.metering_done),
-               more_label="Все замеры →"),
+        Column(
+            "created",
+            "Заявка олинди",
+            "add",
+            INFO,
+            Q(status=MeteringStatus.created),
+            more_url=by_status(MeteringStatus.created),
+        ),
+        Column(
+            "other_day",
+            "Бошқа кунга",
+            "warning",
+            WARN,
+            Q(status=MeteringStatus.other_day),
+            more_url=by_status(MeteringStatus.other_day),
+        ),
+        Column(
+            "measured",
+            "Замерга борилди",
+            "straighten",
+            INFO,
+            measured & Q(design__isnull=True),
+            more_url=by_status(MeteringStatus.metering_done),
+            more_label="Все замеры →",
+        ),
         # Дизайн and Нарх link to their own lists, which select a different set than
         # the column counts — so they get a label instead of an "Ещё N" the link
         # would not match.
-        Column("design", "Дизайн", "brush", PRIMARY,
-               measured & Q(design__isnull=False, design__done=False),
-               more_url=reverse("admin:design_design_changelist") + "?done=False",
-               more_label="Все дизайны →"),
-        Column("price", "Нарх чиқариш", "attach_money", PRIMARY,
-               measured & Q(design__done=True),
-               more_url=reverse("admin:price_price_changelist") + "?done=False",
-               more_label="Все расчёты →"),
-        Column("done", "Бажарилди", "check", OK,
-               Q(status=MeteringStatus.done), more_url=by_status(MeteringStatus.done)),
-        Column("sold_out", "Сотилди", "done_all", OK,
-               Q(status=MeteringStatus.sold_out), collapsed=True,
-               more_url=by_status(MeteringStatus.sold_out)),
-        Column("dont_need", "Отмен болди", "close", DANGER,
-               Q(status=MeteringStatus.dont_need), collapsed=True,
-               more_url=by_status(MeteringStatus.dont_need)),
+        Column(
+            "design",
+            "Дизайн",
+            "brush",
+            PRIMARY,
+            measured & Q(design__isnull=False, design__done=False),
+            more_url=reverse("admin:design_design_changelist") + "?done=False",
+            more_label="Все дизайны →",
+        ),
+        Column(
+            "price",
+            "Нарх чиқариш",
+            "attach_money",
+            PRIMARY,
+            measured & Q(design__done=True),
+            more_url=reverse("admin:price_price_changelist") + "?done=False",
+            more_label="Все расчёты →",
+        ),
+        Column(
+            "done",
+            "Бажарилди",
+            "check",
+            OK,
+            Q(status=MeteringStatus.done),
+            more_url=by_status(MeteringStatus.done),
+        ),
+        Column(
+            "sold_out",
+            "Сотилди",
+            "done_all",
+            OK,
+            Q(status=MeteringStatus.sold_out),
+            collapsed=True,
+            more_url=by_status(MeteringStatus.sold_out),
+        ),
+        Column(
+            "dont_need",
+            "Отмен болди",
+            "close",
+            DANGER,
+            Q(status=MeteringStatus.dont_need),
+            collapsed=True,
+            more_url=by_status(MeteringStatus.dont_need),
+        ),
     ]
 
     # date_time is nullable and Postgres sorts NULLs first on DESC — pin them last so
@@ -144,7 +189,7 @@ def mark_metering_dont_need(metering):
 
 
 def mark_metering_other_day(metering, date_time=None):
-    """"Бошқа кунга ўзгартирилди" — optionally with the new date in the same step,
+    """ "Бошқа кунга ўзгартирилди" — optionally with the new date in the same step,
     like the admin submit-line button that saves the form and the status together."""
     _require_status(metering, [MeteringStatus.created, MeteringStatus.other_day])
     metering.status = MeteringStatus.other_day
@@ -181,3 +226,100 @@ def start_price(metering):
     if Price.objects.filter(metering=metering).exists():
         raise ServiceError("Нарх чиқариш аллақачон яратилган")
     return Price.objects.create(metering=metering)
+
+
+# --- Assigning the design / price tasks after the metering --------------------------
+
+ASSIGNABLE_STATUSES = [MeteringStatus.metering_done, MeteringStatus.done]
+
+
+def designers():
+    """Who may be picked to draw the design: design staff who can also open the
+    design page the Telegram link points to."""
+    from oauth.constants import DESIGN_PERMISSION
+    from oauth.services import users_with_perm
+
+    can_open = users_with_perm("design", "view_design").values("pk")
+    return (
+        users_with_perm("oauth", DESIGN_PERMISSION)
+        .filter(pk__in=can_open)
+        .order_by("name", "phone")
+    )
+
+
+def pricers():
+    """Who may be picked to calculate the price: users who can edit price calculations
+    (and open them)."""
+    from oauth.services import users_with_perm
+
+    can_open = users_with_perm("price", "view_price").values("pk")
+    return (
+        users_with_perm("price", "change_price").filter(pk__in=can_open).order_by("name", "phone")
+    )
+
+
+def assign_metering_tasks(metering, *, designer=None, pricer=None) -> dict:
+    """After "Замер выполнен": give the design and/or the price task to one person each.
+
+    Owner's rule: the metering staff hand these tasks out themselves, so this creates
+    the Design / Price rows without design.add_design / price.add_price.
+
+    A task that doesn't exist yet is created for that person; an existing unfinished
+    task is handed over to the new person. Only the chosen people are notified, and only
+    after the whole change is committed — a refused or failed request sends nothing.
+    Returns {"design": "created"|"reassigned"|None, "price": ...}.
+    """
+    from django.db import IntegrityError, transaction
+
+    from core.exceptions import ServiceError
+
+    from .design.models import Design
+    from .design.services import notify_design_task
+    from .models import Metering
+    from .price.models import Price
+    from .price.services import notify_price_task
+
+    if designer is None and pricer is None:
+        raise ServiceError("Выберите дизайнера и/или ответственного за расчёт цены")
+    if designer is not None and not designers().filter(pk=designer.pk).exists():
+        raise ServiceError("Этот сотрудник не может делать дизайн")
+    if pricer is not None and not pricers().filter(pk=pricer.pk).exists():
+        raise ServiceError("Этот сотрудник не может рассчитывать цену")
+
+    result = {"design": None, "price": None}
+    try:
+        with transaction.atomic():
+            # Serialises concurrent assigns of the same metering.
+            locked = Metering.objects.select_for_update().get(pk=metering.pk)
+            if locked.status not in ASSIGNABLE_STATUSES:
+                raise ServiceError("Исполнителей назначают после «Замер выполнен»")
+            design = Design.objects.filter(metering=locked).first()
+            price = Price.objects.filter(metering=locked).first()
+            # Every refusal before any write.
+            if designer is not None and design is not None and design.done:
+                raise ServiceError("Дизайн уже выполнен — переназначить нельзя")
+            if pricer is not None and price is not None and price.done:
+                raise ServiceError("Цена уже рассчитана — переназначить нельзя")
+
+            if designer is not None:
+                if design is None:
+                    # post_save notifies the designer once this commits.
+                    Design.objects.create(metering=locked, user=designer)
+                    result["design"] = "created"
+                elif design.user_id != designer.pk:
+                    design.user = designer
+                    design.save(update_fields=["user"])
+                    notify_design_task(design)  # deferred to on_commit
+                    result["design"] = "reassigned"
+            if pricer is not None:
+                if price is None:
+                    Price.objects.create(metering=locked, user=pricer)
+                    result["price"] = "created"
+                elif price.user_id != pricer.pk:
+                    price.user = pricer
+                    price.save(update_fields=["user"])
+                    notify_price_task(price)
+                    result["price"] = "reassigned"
+    except IntegrityError:
+        raise ServiceError("Задачи уже назначаются — обновите страницу")
+    return result

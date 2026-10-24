@@ -116,3 +116,34 @@ def verify_telegram_init_data(init_data: str, bot_token: str, max_age: int | Non
     if not isinstance(user, dict) or "id" not in user:
         return None
     return user
+
+
+def users_with_perm(app_label: str, codename: str):
+    """Active users holding app_label.codename directly or through a group, plus
+    superusers (they hold every permission)."""
+    from .models import User
+
+    perm = models.Q(
+        user_permissions__codename=codename,
+        user_permissions__content_type__app_label=app_label,
+    ) | models.Q(
+        groups__permissions__codename=codename,
+        groups__permissions__content_type__app_label=app_label,
+    )
+    return User.objects.filter(is_active=True).filter(perm | models.Q(is_superuser=True)).distinct()
+
+
+def notify_user(user, *, url, telegram_text, sms_template=None, sms_context=None) -> None:
+    """Telegram + SMS to ONE person (the assigned executor), not to a whole role.
+    A failed send is logged, never raised: the task itself is already saved."""
+    try:
+        user.send_message(url, text=telegram_text)
+    except Exception:
+        logger.exception("Telegram notification failed for user %s", user.pk)
+    if sms_template:
+        phone = format_phone(user.phone)
+        if phone:
+            text = sms_template.format(
+                xodim_ism=user.name or "", url=absolute_url(url), **(sms_context or {})
+            )
+            send_bulk_sms([{"phone": phone, "text": text}])

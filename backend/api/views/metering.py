@@ -1,3 +1,4 @@
+from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Prefetch
 from django.shortcuts import get_object_or_404
@@ -17,18 +18,23 @@ from metering.price.excel import download_inlines_excel
 from metering.price.models import Calculate, Inventory, InventoryType, ObjectType, Price
 from metering.price.services import delete_calculation, mark_price_done, save_calculation
 from metering.services import (
+    assign_metering_tasks,
     create_metering,
+    designers,
     mark_metering_done,
     mark_metering_dont_need,
     mark_metering_other_day,
     metering_is_editable,
+    pricers,
     start_design,
     start_price,
 )
 from oauth.constants import METERING_PERMISSION
 
 from ..permissions import ModelPermissions, require_perm
+from ..serializers.common import UserShortSerializer
 from ..serializers.metering import (
+    AssignTasksSerializer,
     CalculationInputSerializer,
     DesignSerializer,
     DesignTypeSerializer,
@@ -42,6 +48,7 @@ from ..serializers.metering import (
     OtherDaySerializer,
     PriceDetailSerializer,
     PriceSerializer,
+    can_assign_tasks,
 )
 from ..utils import apply_period, csv_values, int_param, timeseries
 
@@ -52,6 +59,16 @@ def _bool_param(value):
     if value in ("false", "False", "0"):
         return False
     return None
+
+
+def _assignee_filter(qs, request):
+    """?mine=1 — tasks assigned to me; ?user=<id> — tasks of one executor."""
+    if _bool_param(request.query_params.get("mine")):
+        qs = qs.filter(user=request.user)
+    user = int_param(request.query_params, "user")
+    if user is not None:
+        qs = qs.filter(user_id=user)
+    return qs
 
 
 class MeteringViewSet(viewsets.ModelViewSet):
@@ -69,7 +86,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
         return MeteringSerializer
 
     def base_queryset(self):
-        qs = Metering.objects.select_related("client", "design", "price", "order")
+        qs = Metering.objects.select_related("client", "design__user", "price__user", "order")
         return apply_period(qs, "create_date", self.request.query_params)
 
     def get_queryset(self):
@@ -140,6 +157,35 @@ class MeteringViewSet(viewsets.ModelViewSet):
         start_design(metering)
         return self._detail(metering)
 
+    @action(detail=False, methods=["get"])
+    def assignees(self, request):
+        """Who can be picked in "Назначить исполнителей"."""
+        if not can_assign_tasks(request.user):
+            raise PermissionDenied("Недостаточно прав для этого действия.")
+        return Response(
+            {
+                "designers": UserShortSerializer(designers(), many=True).data,
+                "pricers": UserShortSerializer(pricers(), many=True).data,
+            }
+        )
+
+    @action(detail=True, methods=["post"], serializer_class=AssignTasksSerializer)
+    def assign(self, request, pk=None):
+        """Give the design and/or price task to one person each; they get it in Telegram."""
+        if not can_assign_tasks(request.user):
+            raise PermissionDenied("Недостаточно прав для этого действия.")
+        metering = self.get_object()
+        serializer = AssignTasksSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        ids = serializer.validated_data
+        User = get_user_model()
+        designer = get_object_or_404(User, pk=ids["designer"]) if ids.get("designer") else None
+        pricer = get_object_or_404(User, pk=ids["pricer"]) if ids.get("pricer") else None
+        result = assign_metering_tasks(metering, designer=designer, pricer=pricer)
+        response = self._detail(metering)
+        response.data["assigned"] = result
+        return response
+
     @action(detail=True, methods=["post"], url_path="create-price")
     def create_price(self, request, pk=None):
         require_perm(request.user, "price.add_price")
@@ -176,10 +222,11 @@ class DesignViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        qs = Design.objects.select_related("metering__client", "metering__order").prefetch_related(
-            "designtype_set"
-        )
+        qs = Design.objects.select_related(
+            "metering__client", "metering__order", "user"
+        ).prefetch_related("designtype_set")
         params = self.request.query_params
+        qs = _assignee_filter(qs, self.request)
         for field in ("done", "confirm"):
             value = _bool_param(params.get(field))
             if value is not None:
@@ -231,8 +278,9 @@ class PriceViewSet(viewsets.ModelViewSet):
         return PriceSerializer
 
     def get_queryset(self):
-        qs = Price.objects.select_related("metering__client", "metering__order")
+        qs = Price.objects.select_related("metering__client", "metering__order", "user")
         params = self.request.query_params
+        qs = _assignee_filter(qs, self.request)
         done = _bool_param(params.get("done"))
         if done is not None:
             qs = qs.filter(done=done)

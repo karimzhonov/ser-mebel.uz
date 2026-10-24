@@ -14,6 +14,12 @@ class Design(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='Дата создание')
     done = models.BooleanField(default=False, verbose_name='Выполнено')
     confirm = models.BooleanField(default=False, verbose_name='Подтверждено')
+    # Who draws it. Set when the metering staff assign the task; the design task is
+    # then sent to this person only (see create_design_type_folders below).
+    user = models.ForeignKey(
+        'oauth.User', models.SET_NULL, null=True, blank=True,
+        related_name='design_tasks', verbose_name='Дизайнер',
+    )
 
     history = HistoricalRecords()
 
@@ -35,14 +41,9 @@ class DesignType(models.Model):
 def create_design_type_folders(sender: Type[Design], instance: Design, created, **kwargs):
     if not created: return
     DesignType.objects.create(design=instance, name='Дизайн-1')
-    User.send_messages(
-        DESIGN_PERMISSION,
-        'admin:design_design_change',
-        {'object_id': instance.pk},
-        text=f'{instance.metering.client} mijozga dizan qilish kerak',
-        sms_template=SMS_DESIGN_ASSIGNED,
-        sms_context={'buyurtma_raqami': instance.metering_id},
-    )
+    from .services import notify_design_task
+
+    notify_design_task(instance)
 
 
 @receiver(post_save, sender=DesignType)

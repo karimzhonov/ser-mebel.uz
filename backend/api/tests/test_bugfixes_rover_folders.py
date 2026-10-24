@@ -2,7 +2,6 @@
 painting must start only after the rover is done. Plus the folder-name hardening in
 core/utils/filer.py."""
 
-
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 from djmoney.money import Money
