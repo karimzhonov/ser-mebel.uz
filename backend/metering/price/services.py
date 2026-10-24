@@ -15,14 +15,7 @@ def notify_and_create_price_folder(price) -> None:
     if price.metering is None:
         return
 
-    User.send_messages(
-        CALL_CENTER_PERMISSION,
-        "admin:price_price_change",
-        {"object_id": price.pk},
-        text=f"{price.metering.client} mijozga narx chiqarish kerak",
-        sms_template=SMS_PRICE_NEEDED,
-        sms_context={"buyurtma_raqami": price.metering_id},
-    )
+    notify_price_task(price)
 
     created_history = price.history.order_by("history_date").first()
     created_user = created_history.history_user if created_history else None
@@ -99,9 +92,7 @@ def save_calculation(*, price, object_type, name: str, count: float, items: list
         for type_id, inv_type in inv_types.items():
             item = by_type.get(type_id)
             inventory_id = item.get("inventory") if item else None
-            InventoryInCalculate.objects.filter(
-                calculate=calc, inventory__type_id=type_id
-            ).delete()
+            InventoryInCalculate.objects.filter(calculate=calc, inventory__type_id=type_id).delete()
             if not inventory_id:
                 continue
             inventory = Inventory.objects.filter(pk=inventory_id, type_id=type_id).first()
@@ -142,3 +133,39 @@ def mark_price_done(price):
     price.done = True
     price.save()
     return price
+
+
+def notify_price_task(price) -> None:
+    """Price task: only the assigned person when there is one, otherwise (old admin flow)
+    the call-centre staff. Sent after the transaction commits."""
+    # robust: a failing send is logged and never turns a saved change into a 500.
+    transaction.on_commit(lambda: _send_price_task(price), robust=True)
+
+
+def _send_price_task(price) -> None:
+    import logging
+
+    from oauth.services import notify_user
+
+    text = f"{price.metering.client} mijozga narx chiqarish kerak"
+    context = {"buyurtma_raqami": price.metering_id}
+    if price.user_id:
+        notify_user(
+            price.user,
+            url=f"/prices/{price.pk}",
+            telegram_text=text,
+            sms_template=SMS_PRICE_NEEDED,
+            sms_context=context,
+        )
+        return
+    try:
+        User.send_messages(
+            CALL_CENTER_PERMISSION,
+            "admin:price_price_change",
+            {"object_id": price.pk},
+            text=text,
+            sms_template=SMS_PRICE_NEEDED,
+            sms_context=context,
+        )
+    except Exception:
+        logging.getLogger(__name__).exception("Price task broadcast failed (%s)", price.pk)

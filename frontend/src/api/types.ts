@@ -108,12 +108,12 @@ export interface Metering {
   create_date: string;
   invoice: number | null;
   folder: number | null;
-  design: { id: number; done: boolean; confirm: boolean } | null;
-  price: { id: number; done: boolean } | null;
+  design: { id: number; done: boolean; confirm: boolean; user: UserShort | null } | null;
+  price: { id: number; done: boolean; user: UserShort | null } | null;
   order: OrderSummary | null;
   is_editable: boolean;
   actions?: Record<
-    "edit" | "dont_need" | "other_day" | "metering_done" | "create_design" | "create_price",
+    "edit" | "dont_need" | "other_day" | "metering_done" | "create_design" | "create_price" | "assign",
     boolean
   >;
 }
@@ -131,6 +131,7 @@ export interface Design {
   created_at: string;
   done: boolean;
   confirm: boolean;
+  user_detail: UserShort | null;
   types: DesignType[];
   order: OrderSummary | null;
   actions: { done: boolean; add_type: boolean; create_order: boolean };
@@ -186,6 +187,7 @@ export interface Price {
   desc: string | null;
   created_at: string;
   folder: number | null;
+  user_detail: UserShort | null;
   order: OrderSummary | null;
   calculations?: Calculation[];
   actions?: { edit: boolean; done: boolean };

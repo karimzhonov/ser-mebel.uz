@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, FileSpreadsheet, Pencil, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, FileSpreadsheet, Pencil, Plus, Trash2, UserCheck } from "lucide-react";
 import { toast } from "sonner";
 import { api, downloadFile, errorMessage } from "@/api/client";
 import { useAction, useAll, useGet, useList } from "@/api/hooks";
@@ -27,14 +27,15 @@ import {
   Segmented,
   Select,
   Textarea,
+  Chip,
 } from "@/components/ui";
-import { date, money, num } from "@/lib/format";
+import { date, money, num, phone } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 
 export function PricesPage() {
   const navigate = useNavigate();
   const { can } = useAuth();
-  const { state, page, set } = useUrlState({ search: "", done: "false", has_metering: "", date_from: "", date_to: "" });
+  const { state, page, set } = useUrlState({ search: "", done: "false", has_metering: "", mine: "", date_from: "", date_to: "" });
   const { data, isFetching } = useList<Price>("prices", { ...state, page });
   const [creating, setCreating] = useState(false);
   const [desc, setDesc] = useState("");
@@ -77,6 +78,9 @@ export function PricesPage() {
               { value: "false", label: "Без замера" },
             ]}
           />
+          <Chip active={state.mine === "1"} onClick={() => set({ mine: state.mine === "1" ? "" : "1" })}>
+            <UserCheck className="h-3.5 w-3.5" /> Мои задачи
+          </Chip>
           <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} />
           <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
         </div>
@@ -87,6 +91,7 @@ export function PricesPage() {
           onRowClick={(r) => navigate(`/prices/${r.id}`)}
           columns={[
             { key: "client", header: "Замер", cell: (r) => <span className="font-medium">{r.metering?.client.fio ?? r.desc ?? `Расчёт #${r.id}`}</span> },
+            { key: "user", header: "Ответственный", cell: (r) => (r.user_detail ? r.user_detail.name || phone(r.user_detail.phone) : <span className="muted">—</span>) },
             { key: "price", header: "Сумма", cell: (r) => <span className="font-semibold tabular-nums">{money(r.price)}</span> },
             { key: "done", header: "Статус", cell: (r) => <Check ok={r.done} label={r.done ? "Выполнен" : "В работе"} /> },
             {
@@ -151,7 +156,12 @@ export function PriceDetailPage() {
       <PageHeader
         back={<BackLink to="/prices">Нарх чиқариш</BackLink>}
         title={title}
-        subtitle={p.done ? <Badge tone="ok">Выполнен</Badge> : <Badge tone="warn">В работе</Badge>}
+        subtitle={
+          <span className="flex flex-wrap items-center gap-2">
+            {p.done ? <Badge tone="ok">Выполнен</Badge> : <Badge tone="warn">В работе</Badge>}
+            {p.user_detail && <span>Ответственный: {p.user_detail.name || phone(p.user_detail.phone)}</span>}
+          </span>
+        }
         actions={
           <>
             <FolderButton folderId={p.metering?.folder} label="Файлы замера" />

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, FolderOpen, Package, Pencil, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, FolderOpen, Package, Pencil, Plus, Trash2, UserCheck } from "lucide-react";
 import { api } from "@/api/client";
 import { useAction, useGet, useList } from "@/api/hooks";
 import type { Design, DesignType } from "@/api/types";
@@ -25,13 +25,14 @@ import {
   Pagination,
   SearchInput,
   Segmented,
+  Chip,
 } from "@/components/ui";
-import { date, dateTime } from "@/lib/format";
+import { date, dateTime, phone } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 
 export function DesignsPage() {
   const navigate = useNavigate();
-  const { state, page, set } = useUrlState({ search: "", confirm: "false", date_from: "", date_to: "" });
+  const { state, page, set } = useUrlState({ search: "", confirm: "false", mine: "", date_from: "", date_to: "" });
   const { data, isFetching } = useList<Design>("designs", { ...state, page });
   return (
     <div>
@@ -47,6 +48,9 @@ export function DesignsPage() {
               { value: "", label: "Все" },
             ]}
           />
+          <Chip active={state.mine === "1"} onClick={() => set({ mine: state.mine === "1" ? "" : "1" })}>
+            <UserCheck className="h-3.5 w-3.5" /> Мои задачи
+          </Chip>
           <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="Клиент или телефон" />
           <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
         </div>
@@ -57,6 +61,7 @@ export function DesignsPage() {
           onRowClick={(r) => navigate(`/designs/${r.id}`)}
           columns={[
             { key: "client", header: "Клиент", cell: (r) => <span className="font-medium">{r.metering.client.fio}</span> },
+            { key: "user", header: "Дизайнер", cell: (r) => (r.user_detail ? r.user_detail.name || phone(r.user_detail.phone) : <span className="muted">—</span>) },
             { key: "variants", header: "Варианты", cell: (r) => r.types.map((t) => t.name).join(", ") || "—" },
             { key: "state", header: "Состояние", cell: (r) => <div className="flex gap-1"><Check ok={r.done} label="Готов" /><Check ok={r.confirm} label="Заказ" /></div> },
             {
@@ -119,6 +124,7 @@ export function DesignDetailPage() {
           <span className="flex gap-2">
             {d.done ? <Badge tone="ok">Выполнен</Badge> : <Badge tone="warn">В работе</Badge>}
             {d.confirm && <Badge tone="primary">Заказ оформлен</Badge>}
+            {d.user_detail && <span>Дизайнер: {d.user_detail.name || phone(d.user_detail.phone)}</span>}
           </span>
         }
         actions={

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Brush, Calculator, CalendarClock, CheckCircle2, Plus, XCircle } from "lucide-react";
+import { Brush, Calculator, CalendarClock, CheckCircle2, Plus, Send, UserPlus, XCircle } from "lucide-react";
+import { toast } from "sonner";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useGet, useList, useMeta } from "@/api/hooks";
-import type { Metering, StatusStats } from "@/api/types";
+import type { Metering, StatusStats, UserShort } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import {
   AddressLink,
@@ -29,12 +30,14 @@ import {
   Modal,
   PageHeader,
   PageLoader,
+  Select,
   Pagination,
   SearchInput,
   Segmented,
   Textarea,
 } from "@/components/ui";
-import { dateTime, money, toLocalInput } from "@/lib/format";
+import { cn } from "@/lib/cn";
+import { dateTime, money, phone, toLocalInput } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 
 const ACTIVE = "created,other_day,metering_done";
@@ -234,6 +237,7 @@ export function MeteringDetailPage() {
   const navigate = useNavigate();
   const { data: m, isLoading } = useGet<Metering>(`/meterings/${id}/`);
   const [otherDay, setOtherDay] = useState(false);
+  const [assign, setAssign] = useState(false);
   const [confirm, setConfirm] = useState<null | "dont_need" | "metering_done">(null);
   const [form, setForm] = useState({ date_time: "", desc: "" });
   useEffect(() => {
@@ -265,6 +269,11 @@ export function MeteringDetailPage() {
             {a.other_day && (
               <Button variant="outline" icon={<CalendarClock className="h-4 w-4" />} onClick={() => setOtherDay(true)}>
                 Другой день
+              </Button>
+            )}
+            {a.assign && (
+              <Button icon={<UserPlus className="h-4 w-4" />} onClick={() => setAssign(true)}>
+                Назначить исполнителей
               </Button>
             )}
             {a.metering_done && (
@@ -316,9 +325,14 @@ export function MeteringDetailPage() {
               <Step
                 done={!!m.design?.done}
                 label="Дизайн"
+                hint={m.design ? assigneeLabel(m.design.user) : undefined}
                 action={
                   m.design ? (
                     <Link to={`/designs/${m.design.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Открыть</Link>
+                  ) : a.assign ? (
+                    <Button size="sm" variant="outline" icon={<UserPlus className="h-3.5 w-3.5" />} onClick={() => setAssign(true)}>
+                      Назначить
+                    </Button>
                   ) : a.create_design ? (
                     <Button size="sm" variant="outline" icon={<Brush className="h-3.5 w-3.5" />} loading={run.isPending} onClick={() => run.mutate("create-design")}>
                       Начать
@@ -329,9 +343,14 @@ export function MeteringDetailPage() {
               <Step
                 done={!!m.price?.done}
                 label="Расчёт цены"
+                hint={m.price ? assigneeLabel(m.price.user) : undefined}
                 action={
                   m.price ? (
                     <Link to={`/prices/${m.price.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Открыть</Link>
+                  ) : a.assign ? (
+                    <Button size="sm" variant="outline" icon={<UserPlus className="h-3.5 w-3.5" />} onClick={() => setAssign(true)}>
+                      Назначить
+                    </Button>
                   ) : a.create_price ? (
                     <Button size="sm" variant="outline" icon={<Calculator className="h-3.5 w-3.5" />} loading={run.isPending} onClick={() => run.mutate("create-price")}>
                       Начать
@@ -383,14 +402,23 @@ export function MeteringDetailPage() {
         variant={confirm === "dont_need" ? "danger" : "success"}
         loading={run.isPending}
         onConfirm={() =>
-          run.mutate(confirm === "dont_need" ? "dont-need" : "metering-done", { onSettled: () => setConfirm(null) })
+          run.mutate(confirm === "dont_need" ? "dont-need" : "metering-done", {
+            onSettled: () => setConfirm(null),
+            // Next step after measuring: hand the design / price tasks out.
+            onSuccess: () => confirm === "metering_done" && setAssign(true),
+          })
         }
       />
+      {assign && <AssignTasksModal metering={m} onClose={() => setAssign(false)} />}
     </div>
   );
 }
 
-function Step({ done, label, action }: { done: boolean; label: string; action?: React.ReactNode }) {
+function assigneeLabel(user: UserShort | null) {
+  return user ? `Исполнитель: ${user.name || phone(user.phone)}` : "Исполнитель не назначен";
+}
+
+function Step({ done, label, action, hint }: { done: boolean; label: string; action?: ReactNode; hint?: string }) {
   return (
     <li className="flex items-center justify-between gap-3">
       <span className="flex items-center gap-2">
@@ -403,9 +431,101 @@ function Step({ done, label, action }: { done: boolean; label: string; action?: 
         >
           {done && "✓"}
         </span>
-        <span className={done ? "font-medium" : ""}>{label}</span>
+        <span>
+          <span className={done ? "font-medium" : ""}>{label}</span>
+          {hint && <span className="muted block text-xs">{hint}</span>}
+        </span>
       </span>
       {action}
     </li>
+  );
+}
+
+function AssignTasksModal({ metering, onClose }: { metering: Metering; onClose: () => void }) {
+  const { data: people, isLoading } = useGet<{ designers: UserShort[]; pricers: UserShort[] }>("/meterings/assignees/");
+  const designDone = !!metering.design?.done;
+  const priceDone = !!metering.price?.done;
+  const [design, setDesign] = useState({ on: !designDone, user: metering.design?.user ? String(metering.design.user.id) : "" });
+  const [price, setPrice] = useState({ on: !priceDone, user: metering.price?.user ? String(metering.price.user.id) : "" });
+
+  const body = {
+    designer: design.on && design.user ? Number(design.user) : null,
+    pricer: price.on && price.user ? Number(price.user) : null,
+  };
+  const missing = (design.on && !design.user) || (price.on && !price.user);
+  const nothing = !body.designer && !body.pricer;
+  const save = useAction(
+    () => api.post(`/meterings/${metering.id}/assign/`, body).then((r) => r.data.assigned as Record<string, string | null>),
+    {
+      invalidate: ["meterings", "designs", "prices", "dashboard"],
+      onSuccess: (assigned) => {
+        const sent = Object.values(assigned).filter(Boolean).length;
+        if (sent) toast.success(sent > 1 ? "Задачи отправлены исполнителям" : "Задача отправлена исполнителю");
+        else toast.info("Изменений нет — эти сотрудники уже назначены");
+        onClose();
+      },
+    },
+  );
+
+  const row = (
+    title: string,
+    icon: ReactNode,
+    state: { on: boolean; user: string },
+    set: (s: { on: boolean; user: string }) => void,
+    options: UserShort[] | undefined,
+    done: boolean,
+  ) => (
+    <div className={cn("rounded-2xl border p-4 transition", state.on ? "border-brand-300 bg-brand-50/40 dark:border-brand-600 dark:bg-brand-500/5" : "border-slate-200 dark:border-slate-700")}>
+      <label className="flex cursor-pointer items-center gap-3">
+        <input
+          type="checkbox"
+          className="h-4 w-4 accent-brand-700"
+          checked={state.on}
+          disabled={done}
+          onChange={(e) => set({ ...state, on: e.target.checked })}
+        />
+        <span className="flex items-center gap-2 font-medium">{icon}{title}</span>
+        {done && <span className="muted ml-auto text-xs">уже выполнено</span>}
+      </label>
+      {state.on && !done && (
+        <Select className="mt-3" value={state.user} onChange={(e) => set({ ...state, user: e.target.value })}>
+          <option value="">— выберите сотрудника —</option>
+          {options?.map((u) => (
+            <option key={u.id} value={u.id}>{u.name || phone(u.phone)}</option>
+          ))}
+        </Select>
+      )}
+      {state.on && !done && options && !options.length && (
+        <p className="mt-2 text-xs text-amber-600">Нет сотрудников с нужными правами</p>
+      )}
+    </div>
+  );
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Назначить исполнителей"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Позже</Button>
+          <Button icon={<Send className="h-4 w-4" />} loading={save.isPending} disabled={missing || nothing} onClick={() => save.mutate()}>
+            Отправить задачи
+          </Button>
+        </>
+      }
+    >
+      {isLoading ? (
+        <PageLoader />
+      ) : (
+        <div className="space-y-3">
+          <p className="muted text-sm">
+            Выберите, кто рисует дизайн и кто рассчитывает цену. Задачу в Telegram получат только выбранные сотрудники.
+          </p>
+          {row("Дизайн чизиш", <Brush className="h-4 w-4 text-brand-600" />, design, setDesign, people?.designers, designDone)}
+          {row("Нарх чиқариш", <Calculator className="h-4 w-4 text-brand-600" />, price, setPrice, people?.pricers, priceDone)}
+        </div>
+      )}
+    </Modal>
   );
 }
