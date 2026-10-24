@@ -18,7 +18,7 @@ import type { Tone } from "@/api/types";
 type Variant = "primary" | "secondary" | "ghost" | "danger" | "success" | "outline";
 const VARIANTS: Record<Variant, string> = {
   primary:
-    "bg-brand-600 text-white hover:bg-brand-700 shadow-sm shadow-brand-600/20 focus-visible:ring-brand-500/30",
+    "bg-brand-800 text-white hover:bg-brand-900 shadow-sm shadow-brand-900/20 focus-visible:ring-brand-500/30 dark:bg-accent-200 dark:text-brand-900 dark:hover:bg-accent-300",
   secondary:
     "bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700",
   outline:

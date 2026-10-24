@@ -70,7 +70,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
 
     def base_queryset(self):
         qs = Metering.objects.select_related("client", "design", "price", "order")
-        return apply_period(qs, "create_date", self.request.query_params.get("period"))
+        return apply_period(qs, "create_date", self.request.query_params)
 
     def get_queryset(self):
         qs = self.base_queryset()
@@ -161,7 +161,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
                 "by_status": [
                     {"key": value, "count": counts.get(value, 0)} for value in MeteringStatus.values
                 ],
-                "timeline": timeseries(qs, "create_date", request.query_params.get("period")),
+                "timeline": timeseries(qs, "create_date", request.query_params),
             }
         )
 
@@ -184,7 +184,7 @@ class DesignViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
             value = _bool_param(params.get(field))
             if value is not None:
                 qs = qs.filter(**{field: value})
-        return apply_period(qs, "created_at", params.get("period"))
+        return apply_period(qs, "created_at", params)
 
     @action(detail=True, methods=["post"])
     def done(self, request, pk=None):
@@ -239,7 +239,7 @@ class PriceViewSet(viewsets.ModelViewSet):
         has_metering = _bool_param(params.get("has_metering"))
         if has_metering is not None:
             qs = qs.filter(metering__isnull=not has_metering)
-        return apply_period(qs, "created_at", params.get("period"))
+        return apply_period(qs, "created_at", params)
 
     def _detail(self, price):
         price = self.get_queryset().get(pk=price.pk)

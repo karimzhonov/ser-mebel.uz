@@ -1,10 +1,13 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronRight, Clock, Factory, MapPin, Phone } from "lucide-react";
+import { ChevronRight, Clock, Columns3, Factory, LayoutGrid, MapPin, Phone } from "lucide-react";
 import { useGet } from "@/api/hooks";
 import type { Board } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
+import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
 import { DeadlinePill } from "@/components/domain";
+import { OverviewPanel } from "@/components/Overview";
+import { useUrlState } from "@/lib/useUrlState";
 import { Badge, Check, Empty, PageHeader, PageLoader, Segmented, TONES } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { dateTime, money, phone } from "@/lib/format";
@@ -17,34 +20,58 @@ const LIST_URL: Record<Board["id"], (col: string) => string> = {
 
 export default function DashboardPage() {
   const { user } = useAuth();
-  const { data, isLoading } = useGet<{ boards: Board[] }>("/dashboard/boards/");
-  const [active, setActive] = useState<string | null>(null);
-
-  if (isLoading || !data) return <PageLoader />;
-  const boards = data.boards;
-  const board = boards.find((b) => b.id === active) ?? boards[0];
+  const { state, set } = useUrlState({ tab: "overview", date_from: monthStartISO(), date_to: iso(new Date()) });
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Доброе утро" : hour < 18 ? "Добрый день" : "Добрый вечер";
 
   return (
     <div>
-      <PageHeader title={`${greet}${user?.name ? ", " + user.name : ""}`} subtitle="Вся работа — на одной доске" />
-      {!board ? (
-        <Empty title="Нет доступных досок" text="Обратитесь к администратору за правами." />
-      ) : (
-        <>
-          {boards.length > 1 && (
-            <Segmented
-              className="mb-4"
-              value={board.id}
-              onChange={setActive}
-              options={boards.map((b) => ({ value: b.id, label: b.label, count: b.total }))}
+      <PageHeader
+        title={`${greet}${user?.name ? ", " + user.name : ""}`}
+        subtitle="Все процессы производства — на одном экране"
+        actions={
+          state.tab === "overview" && (
+            <DateRangeFilter
+              from={state.date_from}
+              to={state.date_to}
+              onChange={(date_from, date_to) => set({ date_from, date_to })}
             />
-          )}
-          <KanbanBoard board={board} />
-        </>
-      )}
+          )
+        }
+      />
+      <Segmented
+        className="mb-4"
+        value={state.tab}
+        onChange={(tab) => set({ tab })}
+        options={[
+          { value: "overview", label: <span className="flex items-center gap-1.5"><LayoutGrid className="h-4 w-4" /> Обзор</span> },
+          { value: "board", label: <span className="flex items-center gap-1.5"><Columns3 className="h-4 w-4" /> Доска</span> },
+        ]}
+      />
+      {state.tab === "board" ? <Boards /> : <OverviewPanel from={state.date_from} to={state.date_to} />}
     </div>
+  );
+}
+
+function Boards() {
+  const { data, isLoading } = useGet<{ boards: Board[] }>("/dashboard/boards/");
+  const [active, setActive] = useState<string | null>(null);
+  if (isLoading || !data) return <PageLoader />;
+  const boards = data.boards;
+  const board = boards.find((b) => b.id === active) ?? boards[0];
+  if (!board) return <Empty title="Нет доступных досок" text="Обратитесь к администратору за правами." />;
+  return (
+    <>
+      {boards.length > 1 && (
+        <Segmented
+          className="mb-4"
+          value={board.id}
+          onChange={setActive}
+          options={boards.map((b) => ({ value: b.id, label: b.label, count: b.total }))}
+        />
+      )}
+      <KanbanBoard board={board} />
+    </>
   );
 }
 

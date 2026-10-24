@@ -25,7 +25,7 @@ Reality today: business logic lives in `post_save` signal handlers (folder creat
 - Custom user model: `oauth.User` (phone-based, `AbstractBaseUser`). Its schema is mirrored by hand in `bot/db/models/oauth.py` — **any change to `oauth.User`'s fields must be reflected there too.** Flag this in your output; don't silently change one side.
 - Never edit an already-applied/committed migration file. Create a new one.
 - No model in this codebase uses `db_index=True` — if you add a field that's heavily filtered/searched (like `Order.status`/`Metering.status` today), add the index; don't just copy the existing lack of one.
-- `ConvertedCostManager` (`core/djmoney.py`) hits `cbu.uz` synchronously on `get_queryset()` for money fields — don't chain more managers/annotations onto models that use it without knowing this cost exists.
+- `ConvertedCostManager` (`core/djmoney.py`) annotates `converted_<field>` on every queryset using the USD rate from constance `USD_CURRENCY` (no external HTTP call any more — the cbu.uz lookup is commented out). It reads `?currency=` from the current request via a class attribute set by `ConvertedCostMiddleware`.
 
 ## Admin list views (legacy — don't add new admin code)
 

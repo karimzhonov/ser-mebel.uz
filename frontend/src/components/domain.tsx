@@ -129,8 +129,8 @@ export function TimelineChart({
         <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: -16 }}>
           <defs>
             <linearGradient id="fillBrand" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgb(147 51 234)" stopOpacity={0.28} />
-              <stop offset="100%" stopColor="rgb(147 51 234)" stopOpacity={0} />
+              <stop offset="0%" stopColor="#1f747d" stopOpacity={0.28} />
+              <stop offset="100%" stopColor="#1f747d" stopOpacity={0} />
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="currentColor" className="text-slate-200 dark:text-slate-800" vertical={false} />
@@ -150,7 +150,7 @@ export function TimelineChart({
             labelFormatter={(d: string) => d}
             contentStyle={{ borderRadius: 12, border: "1px solid rgb(226 232 240)", fontSize: 12 }}
           />
-          <Area type="monotone" dataKey="value" stroke="rgb(147 51 234)" strokeWidth={2} fill="url(#fillBrand)" />
+          <Area type="monotone" dataKey="value" stroke="#1f747d" strokeWidth={2} fill="url(#fillBrand)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>

@@ -7,7 +7,7 @@ import { useAction, useAll, useGet, useList } from "@/api/hooks";
 import type { Calculation, InventoryType, ObjectType, Price } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { BackLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink } from "@/components/domain";
-import { PeriodFilter } from "@/components/PeriodFilter";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import {
   Badge,
   Button,
@@ -34,7 +34,7 @@ import { useUrlState } from "@/lib/useUrlState";
 export function PricesPage() {
   const navigate = useNavigate();
   const { can } = useAuth();
-  const { state, page, set } = useUrlState({ search: "", done: "false", has_metering: "", period: "" });
+  const { state, page, set } = useUrlState({ search: "", done: "false", has_metering: "", date_from: "", date_to: "" });
   const { data, isFetching } = useList<Price>("prices", { ...state, page });
   const [creating, setCreating] = useState(false);
   const [desc, setDesc] = useState("");
@@ -78,7 +78,7 @@ export function PricesPage() {
             ]}
           />
           <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} />
-          <PeriodFilter value={state.period} onChange={(v) => set({ period: v })} />
+          <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
         </div>
         <DataTable
           rows={data?.results}

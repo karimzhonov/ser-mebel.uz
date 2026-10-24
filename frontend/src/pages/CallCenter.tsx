@@ -6,7 +6,7 @@ import { useAction, useGet, useList, useMeta } from "@/api/hooks";
 import type { Invoice, StatusStats } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { PhoneLink, SolutionBadge, TimelineChart } from "@/components/domain";
-import { PeriodFilter } from "@/components/PeriodFilter";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import {
   Button,
   Card,
@@ -30,14 +30,14 @@ import { MeteringCreateModal } from "./Meterings";
 export default function CallCenterPage() {
   const { can } = useAuth();
   const { data: meta } = useMeta();
-  const { state, page, set } = useUrlState({ search: "", solution: "", period: "" });
+  const { state, page, set } = useUrlState({ search: "", solution: "", date_from: "", date_to: "" });
   const [creating, setCreating] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const openId = searchParams.get("open");
 
-  const params = { search: state.search, solution: state.solution, period: state.period, page };
+  const params = { search: state.search, solution: state.solution, date_from: state.date_from, date_to: state.date_to, page };
   const { data, isFetching } = useList<Invoice>("invoices", params);
-  const { data: stats } = useGet<StatusStats>("/invoices/stats/", { search: state.search, period: state.period });
+  const { data: stats } = useGet<StatusStats>("/invoices/stats/", { search: state.search, date_from: state.date_from, date_to: state.date_to });
 
   const counts = Object.fromEntries((stats?.by_solution ?? []).map((s) => [s.key, s.count]));
   const selected = state.solution.split(",").filter(Boolean);
@@ -76,7 +76,7 @@ export default function CallCenterPage() {
         <Card padded={false}>
           <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row dark:border-slate-800">
             <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="ФИО, телефон, описание" />
-            <PeriodFilter value={state.period} onChange={(v) => set({ period: v })} />
+            <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
           </div>
           <DataTable
             rows={data?.results}

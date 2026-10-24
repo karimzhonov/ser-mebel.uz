@@ -14,7 +14,7 @@ from ..serializers.accounting import (
     IncomeCategorySerializer,
     IncomeSerializer,
 )
-from ..utils import apply_period, date_param, int_param, timeseries
+from ..utils import apply_period, int_param, timeseries
 
 
 class _SuperuserEditsMixin:
@@ -70,13 +70,7 @@ class _MoneyViewSet(_SuperuserEditsMixin, viewsets.ModelViewSet):
             value = int_param(params, name)
             if value is not None:
                 qs = qs.filter(**{f"{name}_id": value})
-        date_from = date_param(params, "date_from")
-        if date_from:
-            qs = qs.filter(created_at__date__gte=date_from)
-        date_to = date_param(params, "date_to")
-        if date_to:
-            qs = qs.filter(created_at__date__lte=date_to)
-        return apply_period(qs, "created_at", params.get("period"))
+        return apply_period(qs, "created_at", params)
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
@@ -109,7 +103,7 @@ class _MoneyViewSet(_SuperuserEditsMixin, viewsets.ModelViewSet):
                 "timeline": timeseries(
                     qs,
                     "created_at",
-                    request.query_params.get("period"),
+                    request.query_params,
                     value=Sum("converted_cost"),
                 ),
             }

@@ -6,7 +6,7 @@ import { useAction, useGet, useList } from "@/api/hooks";
 import type { Design, DesignType } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, BackLink, DeadlinePill, FolderButton, FolderModal, OrderStatusBadge, PhoneLink } from "@/components/domain";
-import { PeriodFilter } from "@/components/PeriodFilter";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import {
   Badge,
   Button,
@@ -31,7 +31,7 @@ import { useUrlState } from "@/lib/useUrlState";
 
 export function DesignsPage() {
   const navigate = useNavigate();
-  const { state, page, set } = useUrlState({ search: "", confirm: "false", period: "" });
+  const { state, page, set } = useUrlState({ search: "", confirm: "false", date_from: "", date_to: "" });
   const { data, isFetching } = useList<Design>("designs", { ...state, page });
   return (
     <div>
@@ -48,7 +48,7 @@ export function DesignsPage() {
             ]}
           />
           <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="Клиент или телефон" />
-          <PeriodFilter value={state.period} onChange={(v) => set({ period: v })} />
+          <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
         </div>
         <DataTable
           rows={data?.results}

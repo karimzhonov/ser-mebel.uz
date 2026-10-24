@@ -22,10 +22,10 @@ import {
   Download,
   Users,
   UserCog,
-  Wrench,
   X,
   BookOpen,
 } from "lucide-react";
+import logoWide from "@/assets/logo-wide.png";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/cn";
 import { phone } from "@/lib/format";
@@ -117,34 +117,28 @@ export function AppLayout() {
 
   const sidebar = (
     <div className="flex h-full flex-col">
-      <div className="flex h-16 items-center gap-2.5 px-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-brand-500 to-brand-700 text-white shadow-lg shadow-brand-600/30">
-          <Wrench className="h-5 w-5" />
-        </div>
-        <div>
-          <div className="text-sm font-semibold text-slate-900 dark:text-white">Ser Mebel</div>
-          <div className="muted text-[11px]">CRM панель</div>
-        </div>
-      </div>
+      <NavLink to="/" className="block px-5 pb-3 pt-5" title="SerMebel">
+        <img src={logoWide} alt="SerMebel" className="h-auto w-full max-w-[200px]" />
+      </NavLink>
       <nav className="scrollbar-thin flex-1 space-y-5 overflow-y-auto px-3 pb-4">
         {sections.map((section) => (
           <NavSection key={section.title || "main"} title={section.title} items={section.items} />
         ))}
       </nav>
-      <div className="border-t border-slate-200/70 p-3 dark:border-slate-800">
+      <div className="border-t border-white/10 p-3">
         <div className="flex items-center gap-3 rounded-xl px-2 py-2">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 dark:bg-brand-500/20 dark:text-brand-200">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-200 text-sm font-semibold text-brand-900">
             {(user?.name || "?").slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{user?.name || "Без имени"}</div>
-            <div className="muted truncate text-xs">{phone(user?.phone)}</div>
+            <div className="truncate text-sm font-medium text-white">{user?.name || "Без имени"}</div>
+            <div className="truncate text-xs text-accent-200/60">{phone(user?.phone)}</div>
           </div>
         </div>
         <div className="mt-1 grid grid-cols-3 gap-1">
           <button
             onClick={() => setDark(!dark)}
-            className="flex items-center justify-center rounded-lg py-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="flex items-center justify-center rounded-lg py-2 text-accent-200/70 hover:bg-white/10 hover:text-accent-200"
             title="Тема"
           >
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
@@ -154,8 +148,8 @@ export function AppLayout() {
             target="_blank"
             rel="noreferrer"
             className={cn(
-              "flex items-center justify-center rounded-lg py-2 hover:bg-slate-100 dark:hover:bg-slate-800",
-              user?.telegram_id ? "text-sky-500" : "text-slate-500",
+              "flex items-center justify-center rounded-lg py-2 hover:bg-white/10",
+              user?.telegram_id ? "text-sky-300" : "text-accent-200/70",
             )}
             title={user?.telegram_id ? "Telegram привязан" : "Связать Telegram"}
           >
@@ -163,7 +157,7 @@ export function AppLayout() {
           </a>
           <button
             onClick={logout}
-            className="flex items-center justify-center rounded-lg py-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600 dark:hover:bg-rose-500/10"
+            className="flex items-center justify-center rounded-lg py-2 text-accent-200/70 hover:bg-rose-500/20 hover:text-rose-200"
             title="Выйти"
           >
             <LogOut className="h-4 w-4" />
@@ -175,15 +169,15 @@ export function AppLayout() {
 
   return (
     <div className="min-h-screen">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-slate-200/70 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 lg:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 bg-brand-900 lg:block">
         {sidebar}
       </aside>
 
       {open && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 animate-fade-in bg-slate-950/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-72 bg-white shadow-pop dark:bg-slate-900">
-            <button className="absolute right-3 top-4 rounded-lg p-2 text-slate-500" onClick={() => setOpen(false)}>
+          <aside className="absolute inset-y-0 left-0 w-72 bg-brand-900 shadow-pop">
+            <button className="absolute right-3 top-4 rounded-lg p-2 text-accent-200" onClick={() => setOpen(false)}>
               <X className="h-5 w-5" />
             </button>
             {sidebar}
@@ -191,11 +185,11 @@ export function AppLayout() {
         </div>
       )}
 
-      <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-slate-200/70 bg-white/80 px-4 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 lg:hidden">
-        <button onClick={() => setOpen(true)} className="-ml-1 rounded-lg p-2 text-slate-600 dark:text-slate-300">
+      <header className="sticky top-0 z-20 flex h-14 items-center gap-3 bg-brand-900 px-4 lg:hidden">
+        <button onClick={() => setOpen(true)} className="-ml-1 rounded-lg p-2 text-accent-200">
           <Menu className="h-5 w-5" />
         </button>
-        <span className="text-sm font-semibold">Ser Mebel</span>
+        <img src={logoWide} alt="SerMebel" className="h-8 w-auto" />
       </header>
 
       <main className="px-4 pb-24 pt-5 sm:px-6 lg:ml-64 lg:px-8 lg:pb-10 lg:pt-8">
@@ -213,7 +207,7 @@ export function AppLayout() {
             className={({ isActive }) =>
               cn(
                 "flex flex-col items-center gap-0.5 py-2 text-[11px] font-medium",
-                isActive ? "text-brand-600 dark:text-brand-400" : "text-slate-500",
+                isActive ? "text-brand-800 dark:text-accent-200" : "text-slate-500",
               )
             }
           >
@@ -233,7 +227,7 @@ function NavSection({ title, items }: { title: string; items: NavItem[] }) {
       {title && (
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="mb-1 flex w-full items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400"
+          className="mb-1 flex w-full items-center justify-between px-3 text-[11px] font-semibold uppercase tracking-wider text-accent-200/50"
         >
           {title}
           <ChevronDown className={cn("h-3.5 w-3.5 transition", collapsed && "-rotate-90")} />
@@ -250,8 +244,8 @@ function NavSection({ title, items }: { title: string; items: NavItem[] }) {
                   cn(
                     "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition",
                     isActive
-                      ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-200"
-                      : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-slate-100",
+                      ? "bg-accent-200 text-brand-900 shadow-sm"
+                      : "text-white/75 hover:bg-white/10 hover:text-white",
                   )
                 }
               >

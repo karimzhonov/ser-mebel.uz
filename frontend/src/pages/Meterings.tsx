@@ -15,7 +15,7 @@ import {
   PhoneLink,
   TimelineChart,
 } from "@/components/domain";
-import { PeriodFilter } from "@/components/PeriodFilter";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import {
   Button,
   Card,
@@ -44,10 +44,10 @@ export function MeteringsPage() {
   const navigate = useNavigate();
   const { can } = useAuth();
   const { data: meta } = useMeta();
-  const { state, page, set } = useUrlState({ search: "", status: ACTIVE, period: "" });
+  const { state, page, set } = useUrlState({ search: "", status: ACTIVE, date_from: "", date_to: "" });
   const [creating, setCreating] = useState(false);
   const { data, isFetching } = useList<Metering>("meterings", { ...state, page });
-  const { data: stats } = useGet<StatusStats>("/meterings/stats/", { search: state.search, period: state.period });
+  const { data: stats } = useGet<StatusStats>("/meterings/stats/", { search: state.search, date_from: state.date_from, date_to: state.date_to });
   const counts = Object.fromEntries((stats?.by_status ?? []).map((s) => [s.key, s.count]));
   const selected = state.status.split(",").filter(Boolean);
   const tab = state.status === ACTIVE ? "active" : state.status === ARCHIVE ? "archive" : state.status ? "custom" : "all";
@@ -99,7 +99,7 @@ export function MeteringsPage() {
         <Card padded={false}>
           <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row dark:border-slate-800">
             <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="Клиент, телефон, адрес" />
-            <PeriodFilter value={state.period} onChange={(v) => set({ period: v })} />
+            <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
           </div>
           <DataTable
             rows={data?.results}

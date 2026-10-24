@@ -6,7 +6,7 @@ import { useAction, useAll, useGet, useList, useMeta } from "@/api/hooks";
 import type { Category, MoneyRecord, MoneyStats, Order } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { ShareBars, TimelineChart } from "@/components/domain";
-import { PeriodFilter } from "@/components/PeriodFilter";
+import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
 import {
   Button,
   Card,
@@ -38,7 +38,7 @@ function Ledger({ kind }: { kind: "income" | "expense" }) {
   const resource = kind === "income" ? "incomes" : "expenses";
   const catResource = kind === "income" ? "income-categories" : "expense-categories";
   const app = `accounting.${kind}`;
-  const { state, page, set } = useUrlState({ search: "", period: "month", currency: "USD", category: "", date_from: "", date_to: "" });
+  const { state, page, set } = useUrlState({ search: "", currency: "USD", category: "", date_from: monthStartISO(), date_to: iso(new Date()) });
   const { data, isFetching } = useList<MoneyRecord>(resource, { ...state, page });
   const { data: stats } = useGet<MoneyStats>(`/${resource}/stats/`, { ...state });
   const { data: categories } = useAll<Category>(catResource);
@@ -85,13 +85,8 @@ function Ledger({ kind }: { kind: "income" | "expense" }) {
         }
       />
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <PeriodFilter value={state.period} onChange={(v) => set({ period: v })} />
+        <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
         <Segmented value={state.currency} onChange={(v) => set({ currency: v })} options={(meta?.currencies ?? ["USD", "UZS"]).map((c) => ({ value: c, label: c }))} />
-        <div className="flex items-center gap-2">
-          <Input type="date" className="w-40" value={state.date_from} onChange={(e) => set({ date_from: e.target.value })} />
-          <span className="muted">—</span>
-          <Input type="date" className="w-40" value={state.date_to} onChange={(e) => set({ date_to: e.target.value })} />
-        </div>
       </div>
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
         <StatTile label={`${title}: итого`} value={money({ amount: stats?.total ?? 0, currency: cur })} hint={`${stats?.count ?? 0} записей`} tone={kind === "income" ? "ok" : "danger"} />

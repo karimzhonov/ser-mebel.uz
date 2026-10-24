@@ -123,7 +123,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         warning = params.get("warning")
         if warning:
             qs = warning_filter(qs, warning)
-        return apply_period(qs, "reception_date", params.get("period"))
+        return apply_period(qs, "reception_date", params)
 
     def get_queryset(self):
         qs = self.base_queryset()
@@ -258,7 +258,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     {"key": key, "count": warning_filter(qs, key).count()}
                     for key in ("success", "warning", "danger")
                 ],
-                "timeline": timeseries(qs, "reception_date", request.query_params.get("period")),
+                "timeline": timeseries(qs, "reception_date", request.query_params),
             }
         )
 
@@ -284,7 +284,7 @@ class _ProductionViewSet(
             value = _bool_param(params.get(field))
             if value is not None:
                 qs = qs.filter(**{field: value})
-        return apply_period(qs, "created_at", params.get("period"))
+        return apply_period(qs, "created_at", params)
 
     def _respond(self, obj):
         obj = self.get_queryset().get(pk=obj.pk)

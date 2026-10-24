@@ -14,18 +14,18 @@ import {
   SolutionBadge,
   TimelineChart,
 } from "@/components/domain";
-import { PeriodFilter } from "@/components/PeriodFilter";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Button, Card, DataTable, Empty, Field, Input, Modal, PageHeader, PageLoader, Pagination, SearchInput } from "@/components/ui";
 import { date, dateTime } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 
 export function ClientsPage() {
   const navigate = useNavigate();
-  const { state, page, set } = useUrlState({ search: "", period: "", ordering: "" });
+  const { state, page, set } = useUrlState({ search: "", date_from: "", date_to: "", ordering: "" });
   const { data, isFetching } = useList<Client>("clients", { ...state, page });
   const { data: stats } = useGet<{ total: number; top: Client[]; timeline: { date: string; value: number }[] }>(
     "/clients/stats/",
-    { search: state.search, period: state.period },
+    { search: state.search, date_from: state.date_from, date_to: state.date_to },
   );
 
   return (
@@ -35,7 +35,7 @@ export function ClientsPage() {
         <Card padded={false}>
           <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row dark:border-slate-800">
             <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="ФИО или телефон" />
-            <PeriodFilter value={state.period} onChange={(v) => set({ period: v })} />
+            <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
           </div>
           <DataTable
             rows={data?.results}

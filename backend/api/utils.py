@@ -49,23 +49,54 @@ def today():
     return timezone.now().date()
 
 
-def apply_period(queryset, field: str, period: str | None):
-    """?period=week|month|year — same windows as the admin "Дата" filter."""
+def date_range(params) -> tuple[date | None, date | None]:
+    """?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD (both inclusive, either may be omitted)."""
+    start, end = date_param(params, "date_from"), date_param(params, "date_to")
+    if start and end and start > end:
+        raise ValidationError({"date_from": "Бошланғич сана охиргисидан кейин бўлмаслиги керак."})
+    return start, end
+
+
+def _is_datetime(queryset, field: str) -> bool:
+    return isinstance(queryset.model._meta.get_field(field), DateTimeField)
+
+
+def apply_period(queryset, field: str, params):
+    """Filter `field` by ?date_from / ?date_to (inclusive days). The older
+    ?period=week|month|year windows are still understood."""
+    start, end = date_range(params)
+    lookup = f"{field}__date" if _is_datetime(queryset, field) else field
+    if start:
+        queryset = queryset.filter(**{f"{lookup}__gte": start})
+    if end:
+        queryset = queryset.filter(**{f"{lookup}__lte": end})
+    period = params.get("period")
     if period in DashboardFilterChoices.values:
-        return queryset.filter(**DashboardFilterChoices.filters(period, field))
+        queryset = queryset.filter(**DashboardFilterChoices.filters(period, field))
     return queryset
+
+
+def monthly_buckets(params) -> bool:
+    """Charts group by month for long ranges (> ~3 months or no start), else by day."""
+    if params.get("period") == "year":
+        return True
+    if params.get("period") in ("week", "month"):
+        return False
+    start, end = date_range(params)
+    if start is None:
+        return True
+    return ((end or today()) - start).days > 92
 
 
 def csv_values(value: str | None) -> list[str]:
     return [v for v in (value or "").split(",") if v != ""]
 
 
-def timeseries(queryset, field: str, period: str | None, value=None):
-    """[{date, value}] grouped per day, or per month for the yearly view — the data
-    behind the admin line charts."""
-    if period == "year":
+def timeseries(queryset, field: str, params, value=None):
+    """[{date, value}] grouped per day, or per month for long ranges (monthly_buckets)."""
+    if monthly_buckets(params):
         bucket = TruncMonth(field)
-    elif isinstance(queryset.model._meta.get_field(field), DateTimeField):
+    elif _is_datetime(queryset, field):
         bucket = TruncDate(field)
     else:  # already a plain date (e.g. Order.reception_date)
         bucket = F(field)
@@ -117,8 +148,7 @@ def warning_filter(queryset, warning: str):
     if warning == "warning":
         return qs.filter(end_date__gte=t, end_date__lte=t + timedelta(days=warning_order_days()))
     if warning == "danger":
-        return qs.filter(
-            end_date__lt=t,
-            status__in=[OrderStatus.DETAILING, OrderStatus.ASSEMBLY, OrderStatus.INSTALLING],
-        )
+        # Every unfinished order past its end date. (The admin banner only counted
+        # DETAILING/ASSEMBLY/INSTALLING, which hid overdue CREATED/WORKING orders.)
+        return qs.exclude(status=OrderStatus.WAITING).filter(end_date__lt=t)
     return queryset

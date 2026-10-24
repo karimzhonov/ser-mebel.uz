@@ -6,7 +6,7 @@ import { useAction, useAll, useGet, useList, useMeta } from "@/api/hooks";
 import type { PainterType, ProductionItem, UserShort } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink, ROW_TONE } from "@/components/domain";
-import { PeriodFilter } from "@/components/PeriodFilter";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import {
   Button,
   Card,
@@ -47,11 +47,11 @@ export default function ProductionPage() {
 function ProductionList({ kind }: { kind: Kind }) {
   const cfg = CONFIG[kind];
   const { can } = useAuth();
-  const { state, page, set } = useUrlState({ search: "", [cfg.doneField]: "false", period: "", user: "" } as Record<string, string>);
+  const { state, page, set } = useUrlState({ search: "", [cfg.doneField]: "false", date_from: "", date_to: "", user: "" } as Record<string, string>);
   const [searchParams, setSearchParams] = useSearchParams();
   const openId = searchParams.get("open");
   const { data, isFetching } = useList<ProductionItem>(cfg.resource, { ...state, page });
-  const { data: stats } = useGet<Record<string, number>>(`/${cfg.resource}/stats/`, { search: state.search, period: state.period });
+  const { data: stats } = useGet<Record<string, number>>(`/${cfg.resource}/stats/`, { search: state.search, date_from: state.date_from, date_to: state.date_to });
   const isManager = can("assembly.manager");
   const { data: assemblers } = useGet<UserShort[]>(kind === "assembly" && isManager ? "/assemblies/assemblers/" : null);
   const [types, setTypes] = useState(false);
@@ -95,7 +95,7 @@ function ProductionList({ kind }: { kind: Kind }) {
               ))}
             </Select>
           )}
-          <PeriodFilter value={state.period} onChange={(v) => set({ period: v })} />
+          <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
         </div>
         <DataTable
           rows={data?.results}

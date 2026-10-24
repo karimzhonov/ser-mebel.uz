@@ -397,3 +397,36 @@ export interface StaffUser {
   groups: number[];
   last_login: string | null;
 }
+
+export interface Overview {
+  range: { from: string | null; to: string | null };
+  monthly: boolean;
+  funnel: {
+    steps: { key: string; label: string; count: number; conversion: number | null }[];
+    total_conversion: number | null;
+    cancelled: number | null;
+  } | null;
+  orders: {
+    by_status: { key: string; count: number }[];
+    active: number;
+    overdue: number;
+    due_soon: number;
+    new: number;
+    done: number;
+    deadlines: { id: number; number: number; client: string; status: string; end_date: string; deadline: Deadline }[];
+    factories: { name: string; count: number }[];
+  } | null;
+  money: { contracts: Money[]; paid: Money[]; debt: Money[]; debtors: number } | null;
+  accounting: { currency: string; income: number | null; expense: number | null; profit: number | null } | null;
+  production: {
+    stages: { key: string; label: string; count: number; square: number; link: string }[];
+    assemblers: { user: UserShort | null; count: number; square: number }[] | null;
+  } | null;
+  meterings: {
+    missed: number;
+    today: number;
+    upcoming: { id: number; client: string; phone: string; address: string; when: string }[];
+  } | null;
+  call_center: { unanswered: number; callback: number } | null;
+  timeline: { series: string[]; points: Record<string, number | string>[] };
+}

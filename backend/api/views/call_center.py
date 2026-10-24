@@ -42,7 +42,7 @@ class ClientViewSet(
 
     def get_queryset(self):
         qs = Client.objects.annotate(orders_count=Count("order", distinct=True))
-        return apply_period(qs, "created_at", self.request.query_params.get("period"))
+        return apply_period(qs, "created_at", self.request.query_params)
 
     @action(detail=True, methods=["get"])
     def related(self, request, pk=None):
@@ -77,7 +77,7 @@ class ClientViewSet(
             {
                 "total": qs.count(),
                 "top": ClientSerializer(top, many=True).data,
-                "timeline": timeseries(qs, "created_at", request.query_params.get("period")),
+                "timeline": timeseries(qs, "created_at", request.query_params),
             }
         )
 
@@ -92,7 +92,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
     def base_queryset(self):
         qs = Invoice.objects.select_related("client", "metering")
-        return apply_period(qs, "create_date", self.request.query_params.get("period"))
+        return apply_period(qs, "create_date", self.request.query_params)
 
     def get_queryset(self):
         qs = self.base_queryset()
@@ -143,6 +143,6 @@ class InvoiceViewSet(viewsets.ModelViewSet):
                 "total": qs.count(),
                 "by_solution": [{"key": "new", "count": counts.get(None, 0)}]
                 + [{"key": str(v), "count": counts.get(v, 0)} for v in SolutionChoice.values],
-                "timeline": timeseries(qs, "create_date", request.query_params.get("period")),
+                "timeline": timeseries(qs, "create_date", request.query_params),
             }
         )

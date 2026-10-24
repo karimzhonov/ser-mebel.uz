@@ -34,7 +34,7 @@ import {
   ROW_TONE,
   TimelineChart,
 } from "@/components/domain";
-import { PeriodFilter } from "@/components/PeriodFilter";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import {
   Button,
   Card,
@@ -68,11 +68,11 @@ export function OrdersPage() {
   const { can } = useAuth();
   const { data: meta } = useMeta();
   const { data: factories } = useAll<Factory>("factories");
-  const { state, page, set } = useUrlState({ search: "", status: "", warning: "", factory: "", period: "" });
+  const { state, page, set } = useUrlState({ search: "", status: "", warning: "", factory: "", date_from: "", date_to: "" });
   const { data, isFetching } = useList<Order>("orders", { ...state, page });
   const { data: stats } = useGet<StatusStats>("/orders/stats/", {
     search: state.search,
-    period: state.period,
+    date_from: state.date_from, date_to: state.date_to,
     factory: state.factory,
   });
   const counts = Object.fromEntries((stats?.by_status ?? []).map((s) => [s.key, s.count]));
@@ -153,7 +153,7 @@ export function OrdersPage() {
               <option key={f.id} value={f.id}>{f.name}</option>
             ))}
           </Select>
-          <PeriodFilter value={state.period} onChange={(v) => set({ period: v })} />
+          <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
         </div>
         <DataTable
           rows={data?.results}

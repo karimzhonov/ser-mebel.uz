@@ -7,6 +7,7 @@ from .views import accounting, call_center, metering, orders, users
 from .views.auth import LoginView, LogoutView, MeView, TelegramLoginView
 from .views.dashboard import BoardsView, MetaView
 from .views.files import FileView, FolderMessagesView, FolderView
+from .views.overview import OverviewView
 
 router = DefaultRouter()
 router.register("clients", call_center.ClientViewSet, basename="client")
@@ -40,6 +41,7 @@ v1 = [
     path("auth/me/", MeView.as_view(), name="api-me"),
     path("meta/", MetaView.as_view(), name="api-meta"),
     path("dashboard/boards/", BoardsView.as_view(), name="api-boards"),
+    path("dashboard/overview/", OverviewView.as_view(), name="api-overview"),
     path("folders/<int:folder_id>/", FolderView.as_view(), name="api-folder"),
     path(
         "folders/<int:folder_id>/messages/",
