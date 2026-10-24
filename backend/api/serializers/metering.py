@@ -15,6 +15,7 @@ from metering.price.models import (
 from metering.services import ASSIGNABLE_STATUSES, metering_is_editable
 from oauth.constants import METERING_PERMISSION
 
+from .. import i18n as uz
 from ..fields import MoneyField
 from .common import (
     ClientShortSerializer,
@@ -78,7 +79,7 @@ class MeteringSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
     def get_status_label(self, obj):
-        return MeteringStatus(obj.status).label
+        return uz.metering_status(obj.status)
 
     def get_design(self, obj):
         design = getattr(obj, "design", None)
@@ -210,7 +211,10 @@ class DesignSerializer(serializers.ModelSerializer):
 
 
 class ObjectTypeSerializer(serializers.ModelSerializer):
-    count_label = serializers.CharField(source="get_count_name_display", read_only=True)
+    count_label = serializers.SerializerMethodField()
+
+    def get_count_label(self, obj):
+        return uz.COUNT_NAME.get(obj.count_name, obj.get_count_name_display())
 
     class Meta:
         model = ObjectType
@@ -226,7 +230,11 @@ class InventorySerializer(serializers.ModelSerializer):
 
 
 class InventoryTypeSerializer(serializers.ModelSerializer):
-    type_label = serializers.CharField(source="get_type_display", read_only=True)
+    type_label = serializers.SerializerMethodField()
+
+    def get_type_label(self, obj):
+        return uz.INVENTORY_KIND.get(obj.type, obj.get_type_display())
+
     inventories = InventorySerializer(source="inventory_set", many=True, read_only=True)
 
     class Meta:

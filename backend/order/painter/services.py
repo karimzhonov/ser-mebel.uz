@@ -21,7 +21,7 @@ def waiting_for_rover(painter) -> bool:
 
 def _ensure_rover_finished(painter):
     if waiting_for_rover(painter):
-        raise ServiceError("Ровер ҳали тугамаган — моляр иши ровердан кейин бошланади")
+        raise ServiceError("Rover hali tugamagan — molyar ishi roverdan keyin boshlanadi")
 
 
 def assign_painter_type(painter, painter_type):
@@ -34,7 +34,7 @@ def assign_painter_type(painter, painter_type):
     _ensure_rover_finished(painter)
     if painter_type is not None and painter_type.user_id is None:
         # The post_save signal notifies painter_type.user and would crash without one.
-        raise ServiceError("Бу турга маляр бириктирилмаган — аввал маляр танланг")
+        raise ServiceError("Bu turga molyar biriktirilmagan — avval molyarni tanlang")
     painter.type = painter_type
     with transaction.atomic():
         painter.save(update_fields=["type"])
@@ -44,7 +44,7 @@ def assign_painter_type(painter, painter_type):
 
 def mark_painter_done(painter):
     if painter.done:
-        raise ServiceError("Моляр иши аллақачон бажарилган")
+        raise ServiceError("Molyar ishi allaqachon bajarilgan")
     _ensure_rover_finished(painter)
     painter.done = True
     painter.save()

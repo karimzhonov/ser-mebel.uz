@@ -34,7 +34,7 @@ export default function LoginPage() {
         <div className="relative text-center">
           <img src={logoWide} alt="SerMebel" className="mx-auto w-64 max-w-full sm:w-80 lg:w-[420px]" />
           <p className="mt-6 hidden text-sm tracking-wide text-accent-200/70 lg:block">
-            Мебель на заказ · система управления производством
+            Buyurtma asosida mebel · ishlab chiqarishni boshqarish tizimi
           </p>
         </div>
       </div>
@@ -42,16 +42,16 @@ export default function LoginPage() {
       <div className="flex flex-1 items-center justify-center px-4 py-10">
         <form onSubmit={submit} className="w-full max-w-sm space-y-5">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Вход в панель</h1>
-            <p className="muted mt-1 text-sm">Используйте телефон и пароль сотрудника</p>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">Panelga kirish</h1>
+            <p className="muted mt-1 text-sm">Xodim telefoni va parolidan foydalaning</p>
           </div>
-          <Field label="Телефон">
+          <Field label="Telefon">
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input className="pl-9" inputMode="tel" autoComplete="username" value={phone} onChange={(e) => setPhone(e.target.value)} />
             </div>
           </Field>
-          <Field label="Пароль">
+          <Field label="Parol">
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input className="pl-9" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
@@ -61,7 +61,7 @@ export default function LoginPage() {
             <p className="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{error}</p>
           )}
           <Button type="submit" size="lg" className="w-full" loading={loading}>
-            Войти
+            Kirish
           </Button>
         </form>
       </div>

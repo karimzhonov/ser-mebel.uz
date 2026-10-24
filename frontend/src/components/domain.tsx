@@ -46,7 +46,7 @@ export function MeteringStatusBadge({ status, label }: { status: string; label?:
 
 export function SolutionBadge({ solution, label }: { solution: number | null; label?: string | null }) {
   const { data: meta } = useMeta();
-  if (solution === null || solution === undefined) return <Badge tone="primary">Янги</Badge>;
+  if (solution === null || solution === undefined) return <Badge tone="primary">Yangi</Badge>;
   const item = meta?.solutions.find((s) => s.value === solution);
   return <Badge tone={item?.tone ?? "idle"}>{label ?? item?.label ?? solution}</Badge>;
 }
@@ -102,7 +102,7 @@ export function AddressLink({ address, link }: { address: string | null | undefi
           rel="noreferrer"
           onClick={(e) => e.stopPropagation()}
           className="ml-1 text-brand-700 hover:underline dark:text-brand-300"
-          title="Открыть карту"
+          title="Xaritani ochish"
         >
           <ExternalLink className="h-3.5 w-3.5" />
         </a>
@@ -122,7 +122,7 @@ export function TimelineChart({
   height?: number;
   valueFormatter?: (v: number) => string;
 }) {
-  if (!data?.length) return <Empty title="Нет данных за период" />;
+  if (!data?.length) return <Empty title="Davr uchun ma'lumot yo'q" />;
   return (
     <div style={{ height }}>
       <ResponsiveContainer width="100%" height="100%">
@@ -159,7 +159,7 @@ export function TimelineChart({
 
 export function ShareBars({ rows }: { rows: { label: string; value: number; display: string; tone?: Tone }[] }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
-  if (!rows.length) return <Empty title="Нет данных" />;
+  if (!rows.length) return <Empty title="Ma'lumot yo'q" />;
   return (
     <ul className="space-y-3">
       {rows.map((r) => (
@@ -179,7 +179,7 @@ export function ShareBars({ rows }: { rows: { label: string; value: number; disp
 
 /* --------------------------------------------------------- File browser */
 
-export function FolderButton({ folderId, label = "Файлы" }: { folderId: number | null | undefined; label?: string }) {
+export function FolderButton({ folderId, label = "Fayllar" }: { folderId: number | null | undefined; label?: string }) {
   const [open, setOpen] = useState(false);
   if (!folderId) return null;
   return (
@@ -195,7 +195,7 @@ export function FolderButton({ folderId, label = "Файлы" }: { folderId: num
 export function FolderModal({ folderId, onClose }: { folderId: number; onClose: () => void }) {
   const [current, setCurrent] = useState(folderId);
   return (
-    <Modal open onClose={onClose} title="Файлы" size="xl">
+    <Modal open onClose={onClose} title="Fayllar" size="xl">
       <FolderBrowser folderId={current} onNavigate={setCurrent} />
     </Modal>
   );
@@ -222,7 +222,7 @@ export function FolderBrowser({
     setUploading(true);
     try {
       await api.post(`/folders/${folderId}/`, form);
-      toast.success(`Загружено: ${files.length}`);
+      toast.success(`Yuklandi: ${files.length}`);
       refetch();
     } catch (e) {
       toast.error(errorMessage(e));
@@ -233,7 +233,7 @@ export function FolderBrowser({
   }
 
   const removeFile = useAction((id: number) => api.delete(`/files/${id}/`), {
-    success: "Файл удалён",
+    success: "Fayl o'chirildi",
     invalidate: [`/folders/${folderId}/`],
   });
 
@@ -272,14 +272,14 @@ export function FolderBrowser({
         <div className="flex gap-2">
           {can("filer.add_folder") && (
             <Button size="sm" variant="outline" icon={<FolderPlus className="h-4 w-4" />} onClick={() => setNewFolder("")}>
-              Папка
+              Papka
             </Button>
           )}
           {can("filer.add_file") && (
             <>
               <input ref={inputRef} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
               <Button size="sm" icon={<Upload className="h-4 w-4" />} loading={uploading} onClick={() => inputRef.current?.click()}>
-                Загрузить
+                Yuklash
               </Button>
             </>
           )}
@@ -288,9 +288,9 @@ export function FolderBrowser({
 
       {newFolder !== null && (
         <div className="flex gap-2">
-          <Input autoFocus placeholder="Название папки" value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onKeyDown={(e) => e.key === "Enter" && createFolder()} />
-          <Button onClick={createFolder}>Создать</Button>
-          <Button variant="ghost" onClick={() => setNewFolder(null)}>Отмена</Button>
+          <Input autoFocus placeholder="Papka nomi" value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onKeyDown={(e) => e.key === "Enter" && createFolder()} />
+          <Button onClick={createFolder}>Yaratish</Button>
+          <Button variant="ghost" onClick={() => setNewFolder(null)}>Bekor qilish</Button>
         </div>
       )}
 
@@ -311,7 +311,7 @@ export function FolderBrowser({
             <FolderIcon className="h-8 w-8 shrink-0 fill-amber-200 text-amber-500" />
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">{f.name}</div>
-              <div className="muted text-xs">{f.file_count} файлов</div>
+              <div className="muted text-xs">{f.file_count} ta fayl</div>
             </div>
           </button>
         ))}
@@ -333,9 +333,9 @@ export function FolderBrowser({
               </a>
               {can("filer.delete_file") && (
                 <IconButton
-                  label="Удалить"
+                  label="O'chirish"
                   className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                  onClick={() => confirm(`Удалить «${f.name}»?`) && removeFile.mutate(f.id)}
+                  onClick={() => confirm(`«${f.name}» o'chirilsinmi?`) && removeFile.mutate(f.id)}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </IconButton>
@@ -345,7 +345,7 @@ export function FolderBrowser({
         ))}
       </div>
       {!data.folders.length && !data.files.length && (
-        <Empty title="Папка пуста" text={can("filer.add_file") ? "Перетащите файлы сюда или нажмите «Загрузить»." : undefined} />
+        <Empty title="Papka bo'sh" text={can("filer.add_file") ? "Fayllarni shu yerga tashlang yoki «Yuklash» tugmasini bosing." : undefined} />
       )}
 
       <FolderChat folderId={data.id} />
@@ -369,10 +369,10 @@ function FolderChat({ folderId }: { folderId: number }) {
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-slate-700">
       <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5 text-sm font-medium dark:border-slate-800">
-        <MessageSquare className="h-4 w-4 text-slate-400" /> Обсуждение
+        <MessageSquare className="h-4 w-4 text-slate-400" /> Muhokama
       </div>
       <div className="max-h-64 space-y-3 overflow-y-auto px-4 py-3">
-        {!data?.length && <p className="muted text-sm">Сообщений пока нет.</p>}
+        {!data?.length && <p className="muted text-sm">Hozircha xabarlar yo'q.</p>}
         {data?.map((m) => (
           <div key={m.id} className="text-sm">
             <div className="flex items-baseline gap-2">
@@ -387,7 +387,7 @@ function FolderChat({ folderId }: { folderId: number }) {
         <Textarea
           rows={1}
           className="min-h-[40px]"
-          placeholder="Написать сообщение…"
+          placeholder="Xabar yozing…"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

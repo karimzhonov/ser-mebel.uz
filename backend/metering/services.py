@@ -149,9 +149,9 @@ def create_metering(*, client, date_time, address=None, address_link=None, desc=
 
     if invoice is not None:
         if invoice.client_id != client.pk:
-            raise ServiceError("Заявка бошқа мижозга тегишли")
+            raise ServiceError("Ariza boshqa mijozga tegishli")
         if Metering.objects.filter(invoice=invoice).exists():
-            raise ServiceError("Бу заявка учун замер аллақачон яратилган")
+            raise ServiceError("Bu ariza uchun o'lchov allaqachon yaratilgan")
 
     with transaction.atomic():
         metering = Metering.objects.create(
@@ -169,13 +169,14 @@ def create_metering(*, client, date_time, address=None, address_link=None, desc=
 
 
 def _require_status(metering, allowed):
+    from core.i18n import metering_status as metering_status_uz
     from core.exceptions import ServiceError
 
     if metering.status in MeteringStatus.archive_statuses():
-        raise ServiceError("Ушбу мижозга хизмат кўрсатилган")
+        raise ServiceError("Ushbu mijozga xizmat ko'rsatilgan")
     if metering.status not in allowed:
         raise ServiceError(
-            f"Статус «{MeteringStatus(metering.status).label}» учун бу амал мумкин эмас"
+            f"«{metering_status_uz(metering.status)}» holatida bu amalni bajarib bo'lmaydi"
         )
 
 
@@ -214,7 +215,7 @@ def start_design(metering):
     from .design.models import Design
 
     if Design.objects.filter(metering=metering).exists():
-        raise ServiceError("Дизайн аллақачон яратилган")
+        raise ServiceError("Dizayn allaqachon yaratilgan")
     return Design.objects.create(metering=metering)
 
 
@@ -224,7 +225,7 @@ def start_price(metering):
     from .price.models import Price
 
     if Price.objects.filter(metering=metering).exists():
-        raise ServiceError("Нарх чиқариш аллақачон яратилган")
+        raise ServiceError("Narx hisoblash allaqachon yaratilgan")
     return Price.objects.create(metering=metering)
 
 
@@ -280,11 +281,11 @@ def assign_metering_tasks(metering, *, designer=None, pricer=None) -> dict:
     from .price.services import notify_price_task
 
     if designer is None and pricer is None:
-        raise ServiceError("Выберите дизайнера и/или ответственного за расчёт цены")
+        raise ServiceError("Dizayner va/yoki narx hisoblovchini tanlang")
     if designer is not None and not designers().filter(pk=designer.pk).exists():
-        raise ServiceError("Этот сотрудник не может делать дизайн")
+        raise ServiceError("Bu xodim dizayn qila olmaydi")
     if pricer is not None and not pricers().filter(pk=pricer.pk).exists():
-        raise ServiceError("Этот сотрудник не может рассчитывать цену")
+        raise ServiceError("Bu xodim narx hisoblay olmaydi")
 
     result = {"design": None, "price": None}
     try:
@@ -292,14 +293,14 @@ def assign_metering_tasks(metering, *, designer=None, pricer=None) -> dict:
             # Serialises concurrent assigns of the same metering.
             locked = Metering.objects.select_for_update().get(pk=metering.pk)
             if locked.status not in ASSIGNABLE_STATUSES:
-                raise ServiceError("Исполнителей назначают после «Замер выполнен»")
+                raise ServiceError("Ijrochilar «O'lchov bajarildi»dan keyin tayinlanadi")
             design = Design.objects.filter(metering=locked).first()
             price = Price.objects.filter(metering=locked).first()
             # Every refusal before any write.
             if designer is not None and design is not None and design.done:
-                raise ServiceError("Дизайн уже выполнен — переназначить нельзя")
+                raise ServiceError("Dizayn allaqachon bajarilgan — qayta tayinlab bo'lmaydi")
             if pricer is not None and price is not None and price.done:
-                raise ServiceError("Цена уже рассчитана — переназначить нельзя")
+                raise ServiceError("Narx allaqachon hisoblangan — qayta tayinlab bo'lmaydi")
 
             if designer is not None:
                 if design is None:
@@ -321,5 +322,5 @@ def assign_metering_tasks(metering, *, designer=None, pricer=None) -> dict:
                     notify_price_task(price)
                     result["price"] = "reassigned"
     except IntegrityError:
-        raise ServiceError("Задачи уже назначаются — обновите страницу")
+        raise ServiceError("Vazifalar hozir tayinlanmoqda — sahifani yangilang")
     return result

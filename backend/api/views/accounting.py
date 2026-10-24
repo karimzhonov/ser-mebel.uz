@@ -24,7 +24,7 @@ class _SuperuserEditsMixin:
     def check_object_permissions(self, request, obj):
         super().check_object_permissions(request, obj)
         if request.method in ("PATCH", "PUT", "DELETE") and not request.user.is_superuser:
-            raise PermissionDenied("Таҳрирлаш фақат администратор учун.")
+            raise PermissionDenied("Tahrirlash faqat administrator uchun.")
 
 
 class _CategoryViewSet(_SuperuserEditsMixin, viewsets.ModelViewSet):

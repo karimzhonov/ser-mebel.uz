@@ -49,7 +49,7 @@ def resolve_order_status_on_save(order) -> None:
     Only demote to WAITING on creation (order._state.adding is True). Blanking
     end_date on an order that already progressed past WAITING/CREATED must not
     silently reset its status and lose that progress — so on saves of an
-    already-existing order, a missing end_date is left alone. 
+    already-existing order, a missing end_date is left alone.
     """
     if order.end_date is None:
         if order._state.adding:
@@ -109,35 +109,87 @@ def order_board(*, user, show_price: bool, to_card=None) -> list[dict]:
         return f"{changelist}?status={status}"
 
     columns = [
-        Column("waiting", "Ожидание", "hourglass_empty", IDLE,
-               Q(status=OrderStatus.WAITING), more_url=by_status(OrderStatus.WAITING)),
-        Column("created", "Создан", "add", INFO,
-               Q(status=OrderStatus.CREATED), more_url=by_status(OrderStatus.CREATED)),
-        Column("detailing", "Деталировка", "book", INFO,
-               Q(status=OrderStatus.DETAILING), more_url=by_status(OrderStatus.DETAILING)),
+        Column(
+            "waiting",
+            "Ожидание",
+            "hourglass_empty",
+            IDLE,
+            Q(status=OrderStatus.WAITING),
+            more_url=by_status(OrderStatus.WAITING),
+        ),
+        Column(
+            "created",
+            "Создан",
+            "add",
+            INFO,
+            Q(status=OrderStatus.CREATED),
+            more_url=by_status(OrderStatus.CREATED),
+        ),
+        Column(
+            "detailing",
+            "Деталировка",
+            "book",
+            INFO,
+            Q(status=OrderStatus.DETAILING),
+            more_url=by_status(OrderStatus.DETAILING),
+        ),
         # The three WORKING columns link to the matching production list rather than to
         # the order changelist, which has no filter for "rover still open" — hence the
         # explicit labels instead of a row count the link would not match.
-        Column("rover", "Ровер", "design_services", WARN,
-               Q(status=OrderStatus.WORKING) & rover_pending,
-               more_url=reverse("admin:rover_rover_changelist") + "?done=False",
-               more_label="Все роверы →"),
-        Column("painter", "Моляр", "brush", WARN, painter_column,
-               more_url=reverse("admin:painter_painter_changelist") + "?done=False",
-               more_label="Все моляры →"),
-        Column("working", "Заказ на сырьё", "monitor", WARN,
-               Q(status=OrderStatus.WORKING) & rover_clear & painter_clear,
-               more_url=by_status(OrderStatus.WORKING),
-               more_label="Все в работе →"),
-        Column("assembly", "Сборка", "bolt", WARN, assembly,
-               more_url=by_status(OrderStatus.ASSEMBLY),
-               more_label="Все на сборке →"),
-        Column("installing", "Установка", "build", WARN, installing,
-               more_url=by_status(OrderStatus.INSTALLING),
-               more_label="Все на установке →"),
-        Column("done", "Готов", "check", OK,
-               Q(status=OrderStatus.DONE), collapsed=True,
-               more_url=by_status(OrderStatus.DONE)),
+        Column(
+            "rover",
+            "Ровер",
+            "design_services",
+            WARN,
+            Q(status=OrderStatus.WORKING) & rover_pending,
+            more_url=reverse("admin:rover_rover_changelist") + "?done=False",
+            more_label="Все роверы →",
+        ),
+        Column(
+            "painter",
+            "Моляр",
+            "brush",
+            WARN,
+            painter_column,
+            more_url=reverse("admin:painter_painter_changelist") + "?done=False",
+            more_label="Все моляры →",
+        ),
+        Column(
+            "working",
+            "Заказ на сырьё",
+            "monitor",
+            WARN,
+            Q(status=OrderStatus.WORKING) & rover_clear & painter_clear,
+            more_url=by_status(OrderStatus.WORKING),
+            more_label="Все в работе →",
+        ),
+        Column(
+            "assembly",
+            "Сборка",
+            "bolt",
+            WARN,
+            assembly,
+            more_url=by_status(OrderStatus.ASSEMBLY),
+            more_label="Все на сборке →",
+        ),
+        Column(
+            "installing",
+            "Установка",
+            "build",
+            WARN,
+            installing,
+            more_url=by_status(OrderStatus.INSTALLING),
+            more_label="Все на установке →",
+        ),
+        Column(
+            "done",
+            "Готов",
+            "check",
+            OK,
+            Q(status=OrderStatus.DONE),
+            collapsed=True,
+            more_url=by_status(OrderStatus.DONE),
+        ),
     ]
 
     # order_number is nullable only while a row is being bootstrapped (see
@@ -224,22 +276,22 @@ def create_order(*, count_days=None, **fields):
     design_type = fields.get("design_type")
     if metering is not None:
         if Order.objects.filter(metering=metering).exists():
-            raise ServiceError("Бу замер учун заказ аллақачон яратилган")
+            raise ServiceError("Bu o'lchov uchun buyurtma allaqachon yaratilgan")
         # Reverse OneToOne: getattr with a default swallows RelatedObjectDoesNotExist.
         design = getattr(metering, "design", None)
         if metering.status == MeteringStatus.dont_need:
-            raise ServiceError("Замер бекор қилинган — заказ яратиб бўлмайди")
+            raise ServiceError("O'lchov bekor qilingan — buyurtma yaratib bo'lmaydi")
         if design is None or not design.done:
-            raise ServiceError("Дизайн ҳали тайёр эмас — аввал дизайнни бажаринг")
+            raise ServiceError("Dizayn hali tayyor emas — avval dizaynni bajaring")
         if design_type is None or design_type.design_id != design.pk:
-            raise ServiceError("Шу замер дизайнидан вариант танланг")
+            raise ServiceError("Shu o'lchov dizaynidan variant tanlang")
         fields.setdefault("client", metering.client)
 
     fields.setdefault("reception_date", timezone.now().date())
     if fields.get("factory") is None:
         factory = Factory.objects.filter(name=DEFAULT_FACTORY_NAME).first()
         if factory is None:
-            raise ServiceError("Завод танланг")
+            raise ServiceError("Zavodni tanlang")
         fields["factory"] = factory
     if count_days:
         fields["end_date"] = fields["reception_date"] + timedelta(days=int(count_days))
@@ -263,7 +315,7 @@ def send_order_to_detailing(order):
     from .detailing.models import Detailing
 
     if order.status != OrderStatus.CREATED:
-        raise ServiceError("Деталировкага фақат «Создан» статусидаги заказ юборилади")
+        raise ServiceError("Detalirovkaga faqat «Yaratildi» holatidagi buyurtma yuboriladi")
     from django.db import transaction
 
     with transaction.atomic():
@@ -274,12 +326,13 @@ def send_order_to_detailing(order):
 
 def advance_order_status(order):
     """Mirrors OrderActions.change_status: one step along progression_statuses()."""
+    from core.i18n import order_status as order_status_uz
     from core.exceptions import ServiceError
 
     next_status = OrderStatus.next_status(order.status)
     if next_status is None:
         raise ServiceError(
-            f"Невозможно изменить статус: «{OrderStatus(order.status).label}» — финальный."
+            f"Holatni o'zgartirib bo'lmaydi: «{order_status_uz(order.status)}» — yakuniy holat."
         )
     order.change_status(next_status)
     return order
@@ -292,9 +345,11 @@ def send_order_to_assembly(order):
     from .assembly.models import Assembly
 
     if order.status != OrderStatus.WORKING:
-        raise ServiceError("Сборкага фақат «Заказ на сырье» статусидаги заказ юборилади")
+        raise ServiceError("Yig'ishga faqat «Xomashyo buyurtmasi» holatidagi buyurtma yuboriladi")
     assembly = Assembly.objects.filter(order=order).first()
     if assembly is None:
-        raise ServiceError("Сборка для этого заказа не создана — укажите площадь в деталировке.")
+        raise ServiceError(
+            "Bu buyurtma uchun yig'ish yaratilmagan — detalirovkada maydonni ko'rsating."
+        )
     order.change_status(OrderStatus.ASSEMBLY)
     return assembly

@@ -25,59 +25,59 @@ export default function UsersPage() {
       if (!form!.password) delete body.password;
       return form!.id ? api.patch(`/users/${form!.id}/`, body) : api.post("/users/", body);
     },
-    { success: "Сохранено", invalidate: ["users"], onSuccess: () => setForm(null) },
+    { success: "Saqlandi", invalidate: ["users"], onSuccess: () => setForm(null) },
   );
   const test = useAction((id: number) => api.post(`/users/${id}/test-message/`).then((r) => r.data), {
     onSuccess: (r: any) =>
-      r.sent ? toast.success("Тестовое сообщение отправлено") : r.without_telegram ? toast.warning("Telegram не привязан") : toast.error("Бот недоступен"),
+      r.sent ? toast.success("Test xabari yuborildi") : r.without_telegram ? toast.warning("Telegram ulanmagan") : toast.error("Bot ishlamayapti"),
   });
 
-  if (!user?.is_superuser) return <Empty title="Доступно только администратору" />;
+  if (!user?.is_superuser) return <Empty title="Faqat administrator uchun" />;
   const groupName = (id: number) => groups?.find((g) => g.id === id)?.name ?? id;
 
   return (
     <div>
       <PageHeader
-        title="Сотрудники"
-        subtitle="Детальные права по-прежнему настраиваются в /admin/"
+        title="Xodimlar"
+        subtitle="Batafsil huquqlar avvalgidek /admin/ da sozlanadi"
         actions={
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => (setErrors({}), setForm({ phone: "+998", name: "", password: "", is_active: true, is_staff: true, groups: [] }))}>
-            Сотрудник
+            Xodim
           </Button>
         }
       />
       <Card padded={false}>
         <div className="border-b border-slate-100 p-4 dark:border-slate-800">
-          <SearchInput value={state.search} onChange={(v) => set({ search: v })} placeholder="Имя или телефон" />
+          <SearchInput value={state.search} onChange={(v) => set({ search: v })} placeholder="Ism yoki telefon" />
         </div>
         <DataTable
           rows={data?.results}
           loading={isFetching}
           rowKey={(r) => r.id}
           columns={[
-            { key: "name", header: "Имя", cell: (r) => <span className="font-medium">{r.name || "—"}</span> },
-            { key: "phone", header: "Телефон", cell: (r) => <PhoneLink value={r.phone} /> },
-            { key: "groups", header: "Группы", cell: (r) => <div className="flex flex-wrap gap-1">{r.groups.map((g) => <Badge key={g} dot={false}>{groupName(g)}</Badge>)}</div> },
+            { key: "name", header: "Ism", cell: (r) => <span className="font-medium">{r.name || "—"}</span> },
+            { key: "phone", header: "Telefon", cell: (r) => <PhoneLink value={r.phone} /> },
+            { key: "groups", header: "Guruhlar", cell: (r) => <div className="flex flex-wrap gap-1">{r.groups.map((g) => <Badge key={g} dot={false}>{groupName(g)}</Badge>)}</div> },
             {
               key: "flags",
-              header: "Статус",
+              header: "Holat",
               cell: (r) => (
                 <div className="flex flex-wrap gap-1">
-                  {r.is_superuser && <Badge tone="primary">Админ</Badge>}
-                  {r.is_active ? <Badge tone="ok">Активен</Badge> : <Badge tone="danger">Отключён</Badge>}
+                  {r.is_superuser && <Badge tone="primary">Admin</Badge>}
+                  {r.is_active ? <Badge tone="ok">Faol</Badge> : <Badge tone="danger">O'chirilgan</Badge>}
                   {r.telegram_id && <Badge tone="info">Telegram</Badge>}
                 </div>
               ),
             },
-            { key: "login", header: "Последний вход", cell: (r) => <span className="muted">{dateTime(r.last_login)}</span>, hideOnMobile: true },
+            { key: "login", header: "Oxirgi kirish", cell: (r) => <span className="muted">{dateTime(r.last_login)}</span>, hideOnMobile: true },
             {
               key: "x",
               header: "",
               cell: (r) => (
                 <div className="flex justify-end gap-1">
-                  <IconButton label="Тестовое сообщение" onClick={() => test.mutate(r.id)}><Send className="h-4 w-4" /></IconButton>
+                  <IconButton label="Test xabari" onClick={() => test.mutate(r.id)}><Send className="h-4 w-4" /></IconButton>
                   <IconButton
-                    label="Изменить"
+                    label="Tahrirlash"
                     onClick={() => (setErrors({}), setForm({ id: r.id, phone: r.phone, name: r.name ?? "", password: "", is_active: r.is_active, is_staff: r.is_staff, groups: r.groups }))}
                   >
                     <Pencil className="h-4 w-4" />
@@ -92,21 +92,21 @@ export default function UsersPage() {
       <Modal
         open={!!form}
         onClose={() => setForm(null)}
-        title={form?.id ? "Изменить сотрудника" : "Новый сотрудник"}
-        footer={<Button loading={save.isPending} onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>Сохранить</Button>}
+        title={form?.id ? "Xodimni tahrirlash" : "Yangi xodim"}
+        footer={<Button loading={save.isPending} onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>Saqlash</Button>}
       >
         {form && (
           <div className="space-y-4">
-            <Field label="Телефон" error={errors.phone}><Input inputMode="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
-            <Field label="Имя" error={errors.name}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
-            <Field label={form.id ? "Новый пароль (необязательно)" : "Пароль"} error={errors.password}>
+            <Field label="Telefon" error={errors.phone}><Input inputMode="tel" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} /></Field>
+            <Field label="Ism" error={errors.name}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
+            <Field label={form.id ? "Yangi parol (ixtiyoriy)" : "Parol"} error={errors.password}>
               <Input type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
             </Field>
             <div className="flex gap-4 text-sm">
-              <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} /> Активен</label>
-              <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_staff} onChange={(e) => setForm({ ...form, is_staff: e.target.checked })} /> Доступ к панели</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} /> Faol</label>
+              <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_staff} onChange={(e) => setForm({ ...form, is_staff: e.target.checked })} /> Panelga kirish huquqi</label>
             </div>
-            <Field label="Группы">
+            <Field label="Guruhlar">
               <div className="flex flex-wrap gap-2">
                 {groups?.map((g) => {
                   const on = form.groups.includes(g.id);

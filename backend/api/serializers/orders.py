@@ -13,6 +13,7 @@ from order.models import Factory, Order
 from order.painter.models import Painter, PainterType
 from order.rover.models import Rover
 
+from .. import i18n as uz
 from ..fields import MoneyField
 from ..utils import order_deadline
 from .common import ClientShortSerializer, UserShortSerializer, can_view_price, money_left
@@ -68,7 +69,7 @@ class OrderSerializer(serializers.ModelSerializer):
         return data
 
     def get_status_label(self, obj):
-        return OrderStatus(obj.status).label
+        return uz.order_status(obj.status)
 
     def get_deadline(self, obj):
         return order_deadline(obj)
@@ -152,7 +153,7 @@ class OrderDetailSerializer(OrderSerializer):
             "next_status": user.has_perm(f"order.{ORDER_CHANGE_STATUS_PERMISSION}")
             and OrderStatus.next_status(obj.status) is not None,
             "next_status_label": (
-                OrderStatus.next_status(obj.status).label
+                uz.order_status(OrderStatus.next_status(obj.status))
                 if OrderStatus.next_status(obj.status)
                 else None
             ),
@@ -190,7 +191,7 @@ class OrderCreateSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if not attrs.get("metering") and not attrs.get("client_phone"):
-            raise serializers.ValidationError({"client_phone": "Мижоз телефонини киритинг."})
+            raise serializers.ValidationError({"client_phone": "Mijoz telefonini kiriting."})
         return attrs
 
 
@@ -219,7 +220,7 @@ class OrderUpdateSerializer(serializers.ModelSerializer):
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
-            raise serializers.ValidationError("Бундай рақамли заказ бор.")
+            raise serializers.ValidationError("Bunday raqamli buyurtma bor.")
         return value
 
 

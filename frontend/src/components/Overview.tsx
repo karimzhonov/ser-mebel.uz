@@ -30,9 +30,9 @@ import { DeadlinePill } from "./domain";
 import { Card, Empty, PageLoader, TONES } from "./ui";
 
 const SERIES: Record<string, { label: string; color: string }> = {
-  invoices: { label: "Заявки", color: "#f59684" },
-  meterings: { label: "Замеры", color: "#6fb4ba" },
-  orders: { label: "Заказы", color: "#1f747d" },
+  invoices: { label: "Arizalar", color: "#f59684" },
+  meterings: { label: "O'lchovlar", color: "#6fb4ba" },
+  orders: { label: "Buyurtmalar", color: "#1f747d" },
 };
 
 function moneyList(items: Money[] | undefined) {
@@ -46,7 +46,7 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
   if (isLoading || !data) return <PageLoader />;
   const { funnel, orders, money: cash, accounting, production, meterings, call_center } = data;
   const count = (key: string) => funnel?.steps.find((s) => s.key === key)?.count;
-  const range = from || to ? "за период" : "за всё время";
+  const range = from || to ? "davr uchun" : "butun davr";
 
   return (
     <div className="space-y-4">
@@ -57,9 +57,9 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
             to="/call-center"
             icon={<PhoneCall className="h-5 w-5" />}
             tone="primary"
-            label={`Заявки ${range}`}
+            label={`Arizalar ${range}`}
             value={count("invoices")}
-            hint={call_center ? `без ответа: ${call_center.unanswered}` : undefined}
+            hint={call_center ? `javobsiz: ${call_center.unanswered}` : undefined}
             alert={!!call_center?.unanswered}
           />
         )}
@@ -68,9 +68,9 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
             to="/meterings"
             icon={<Ruler className="h-5 w-5" />}
             tone="info"
-            label={`Замеры ${range}`}
+            label={`O'lchovlar ${range}`}
             value={count("meterings")}
-            hint={meterings ? `сегодня: ${meterings.today} · пропущено: ${meterings.missed}` : undefined}
+            hint={meterings ? `bugun: ${meterings.today} · o'tkazib yuborilgan: ${meterings.missed}` : undefined}
             alert={!!meterings?.missed}
           />
         )}
@@ -80,17 +80,17 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
               to="/orders"
               icon={<Package className="h-5 w-5" />}
               tone="ok"
-              label={`Новые заказы ${range}`}
+              label={`Yangi buyurtmalar ${range}`}
               value={orders.new}
-              hint={`сдано: ${orders.done}`}
+              hint={`topshirildi: ${orders.done}`}
             />
             <Kpi
               to="/orders?warning=danger"
               icon={<AlertTriangle className="h-5 w-5" />}
               tone={orders.overdue ? "danger" : "idle"}
-              label="В работе сейчас"
+              label="Hozir ishda"
               value={orders.active}
-              hint={`просрочено: ${orders.overdue} · скоро: ${orders.due_soon}`}
+              hint={`kechikkan: ${orders.overdue} · yaqin: ${orders.due_soon}`}
               alert={!!orders.overdue}
             />
           </>
@@ -100,9 +100,9 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
             to="/orders"
             icon={<Banknote className="h-5 w-5" />}
             tone="warn"
-            label="Долг клиентов"
+            label="Mijozlar qarzi"
             value={moneyList(cash.debt)}
-            hint={`${cash.debtors} заказов не оплачены`}
+            hint={`${cash.debtors} ta buyurtma to'lanmagan`}
             small
           />
         )}
@@ -111,9 +111,9 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
             to="/accounting/income"
             icon={<TrendingUp className="h-5 w-5" />}
             tone={accounting.profit >= 0 ? "ok" : "danger"}
-            label={`Прибыль ${range}`}
+            label={`Foyda ${range}`}
             value={money({ amount: accounting.profit, currency: accounting.currency })}
-            hint={`приход ${money({ amount: accounting.income ?? 0, currency: accounting.currency })}`}
+            hint={`kirim ${money({ amount: accounting.income ?? 0, currency: accounting.currency })}`}
             small
           />
         )}
@@ -124,23 +124,23 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
         {funnel && (
           <Card
             className="xl:col-span-3"
-            title="Воронка продаж"
+            title="Sotuv voronkasi"
             actions={
               funnel.total_conversion !== null && (
                 <span className="text-sm">
-                  Замер → заказ: <b className="text-brand-700 dark:text-accent-200">{funnel.total_conversion}%</b>
+                  O'lchov → buyurtma: <b className="text-brand-700 dark:text-accent-200">{funnel.total_conversion}%</b>
                 </span>
               )
             }
           >
             <Funnel steps={funnel.steps} />
             {!!funnel.cancelled && (
-              <p className="muted mt-3 text-xs">Отменено замеров за период: {funnel.cancelled}</p>
+              <p className="muted mt-3 text-xs">Davr ichida bekor qilingan o'lchovlar: {funnel.cancelled}</p>
             )}
           </Card>
         )}
         {orders && (
-          <Card className={funnel ? "xl:col-span-2" : "xl:col-span-5"} title="Заказы по этапам" padded={false}>
+          <Card className={funnel ? "xl:col-span-2" : "xl:col-span-5"} title="Bosqichlar bo'yicha buyurtmalar" padded={false}>
             <OrderPipeline byStatus={orders.by_status} />
           </Card>
         )}
@@ -149,27 +149,27 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
       {/* Chart + money */}
       <div className="grid gap-4 xl:grid-cols-3">
         {data.timeline.series.length > 0 && (
-          <Card className={cash || accounting ? "xl:col-span-2" : "xl:col-span-3"} title={`Динамика ${data.monthly ? "по месяцам" : "по дням"}`}>
+          <Card className={cash || accounting ? "xl:col-span-2" : "xl:col-span-3"} title={`Dinamika ${data.monthly ? "oylar bo'yicha" : "kunlar bo'yicha"}`}>
             <MultiChart series={data.timeline.series} points={data.timeline.points} monthly={data.monthly} />
           </Card>
         )}
         {(cash || accounting) && (
-          <Card title="Деньги">
+          <Card title="Pul">
             <dl className="space-y-4">
               {cash && (
                 <>
-                  <MoneyRow label={`Сумма договоров ${range}`} value={moneyList(cash.contracts)} />
-                  <MoneyRow label={`Получено по ним`} value={moneyList(cash.paid)} />
-                  <MoneyRow label="Долг клиентов (все активные)" value={moneyList(cash.debt)} tone="warn" />
+                  <MoneyRow label={`Shartnomalar summasi ${range}`} value={moneyList(cash.contracts)} />
+                  <MoneyRow label={`Ular bo'yicha olingan`} value={moneyList(cash.paid)} />
+                  <MoneyRow label="Mijozlar qarzi (barcha faol)" value={moneyList(cash.debt)} tone="warn" />
                 </>
               )}
               {accounting && (
                 <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-4 dark:border-slate-800">
                   {accounting.income !== null && (
-                    <MoneyRow label="Приход" value={money({ amount: accounting.income, currency: accounting.currency })} tone="ok" />
+                    <MoneyRow label="Kirim" value={money({ amount: accounting.income, currency: accounting.currency })} tone="ok" />
                   )}
                   {accounting.expense !== null && (
-                    <MoneyRow label="Расход" value={money({ amount: accounting.expense, currency: accounting.currency })} tone="danger" />
+                    <MoneyRow label="Chiqim" value={money({ amount: accounting.expense, currency: accounting.currency })} tone="danger" />
                   )}
                 </div>
               )}
@@ -181,7 +181,7 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
       {/* Production */}
       {production && (
         <div className="grid gap-4 xl:grid-cols-3">
-          <Card className={production.assemblers ? "xl:col-span-2" : "xl:col-span-3"} title="Производство — очередь сейчас">
+          <Card className={production.assemblers ? "xl:col-span-2" : "xl:col-span-3"} title="Ishlab chiqarish — hozirgi navbat">
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
               {production.stages.map((s) => (
                 <Link
@@ -191,23 +191,23 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
                 >
                   <div className="muted text-xs font-medium">{s.label}</div>
                   <div className="mt-1 text-2xl font-semibold tabular-nums text-slate-900 dark:text-white">{s.count}</div>
-                  <div className="muted text-xs tabular-nums">{num(s.square)} м²</div>
+                  <div className="muted text-xs tabular-nums">{num(s.square)} m²</div>
                 </Link>
               ))}
             </div>
           </Card>
           {production.assemblers && (
-            <Card title="Загрузка сборщиков" padded={false}>
-              {!production.assemblers.length && <Empty title="Нет активных сборок" />}
+            <Card title="Yig'uvchilar yuklamasi" padded={false}>
+              {!production.assemblers.length && <Empty title="Faol yig'ishlar yo'q" />}
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                 {production.assemblers.map((a, i) => (
                   <li key={i} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm">
                     <span className="flex items-center gap-2 truncate">
                       <Hammer className="h-4 w-4 shrink-0 text-slate-400" />
-                      {a.user ? a.user.name || phone(a.user.phone) : <span className="muted">Не назначен</span>}
+                      {a.user ? a.user.name || phone(a.user.phone) : <span className="muted">Tayinlanmagan</span>}
                     </span>
                     <span className="whitespace-nowrap tabular-nums">
-                      <b>{a.count}</b> <span className="muted">· {num(a.square)} м²</span>
+                      <b>{a.count}</b> <span className="muted">· {num(a.square)} m²</span>
                     </span>
                   </li>
                 ))}
@@ -220,8 +220,8 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
       {/* Lists */}
       <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
         {orders && (
-          <Card title="Ближайшие сроки сдачи" padded={false} actions={<MoreLink to="/orders" />}>
-            {!orders.deadlines.length && <Empty title="Нет заказов со сроком" />}
+          <Card title="Yaqin topshirish muddatlari" padded={false} actions={<MoreLink to="/orders" />}>
+            {!orders.deadlines.length && <Empty title="Muddatli buyurtmalar yo'q" />}
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {orders.deadlines.map((o) => (
                 <li key={o.id}>
@@ -237,8 +237,8 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
           </Card>
         )}
         {meterings && (
-          <Card title="Ближайшие замеры" padded={false} actions={<MoreLink to="/meterings" />}>
-            {!meterings.upcoming.length && <Empty title="Замеров не запланировано" />}
+          <Card title="Yaqin o'lchovlar" padded={false} actions={<MoreLink to="/meterings" />}>
+            {!meterings.upcoming.length && <Empty title="Rejalashtirilgan o'lchov yo'q" />}
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {meterings.upcoming.map((m) => (
                 <li key={m.id}>
@@ -257,7 +257,7 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
           </Card>
         )}
         {orders && orders.factories.length > 0 && (
-          <Card title="Загрузка заводов" padded={false}>
+          <Card title="Zavodlar yuklamasi" padded={false}>
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {orders.factories.map((f) => {
                 const max = Math.max(...orders.factories.map((x) => x.count), 1);
@@ -384,7 +384,7 @@ function MultiChart({
   points: Record<string, number | string>[];
   monthly: boolean;
 }) {
-  if (!points.length) return <Empty title="Нет данных за период" />;
+  if (!points.length) return <Empty title="Davr uchun ma'lumot yo'q" />;
   const fmt = (d: string) => {
     if (!d) return "";
     const [y, m, day] = d.split("-");
@@ -432,7 +432,7 @@ function MoneyRow({ label, value, tone }: { label: string; value: string; tone?:
 function MoreLink({ to }: { to: string }) {
   return (
     <Link to={to} className="flex items-center gap-1 text-xs font-medium text-brand-700 hover:underline dark:text-accent-200">
-      Все <ArrowRight className="h-3.5 w-3.5" />
+      Barchasi <ArrowRight className="h-3.5 w-3.5" />
     </Link>
   );
 }

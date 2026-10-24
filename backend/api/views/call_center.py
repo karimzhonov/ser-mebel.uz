@@ -118,7 +118,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         if not invoice_is_editable(serializer.instance):
-            raise PermissionDenied("Заявка ёпилган — таҳрирлаб бўлмайди.")
+            raise PermissionDenied("Ariza yopilgan — tahrirlab bo'lmaydi.")
         serializer.save()
 
     @action(detail=True, methods=["post"], serializer_class=InvoiceSolutionSerializer)

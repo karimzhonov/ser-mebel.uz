@@ -79,7 +79,7 @@ class OverviewView(APIView):
         steps = []
         if user.has_perm("call_center.view_invoice"):
             invoices = apply_period(Invoice.objects.all(), "create_date", params)
-            steps.append({"key": "invoices", "label": "Заявки", "count": invoices.count()})
+            steps.append({"key": "invoices", "label": "Arizalar", "count": invoices.count()})
         if user.has_perm("metering.view_metering"):
             # One cohort: the meterings created in the period, followed to the order.
             m = apply_period(Metering.objects.all(), "create_date", params)
@@ -96,18 +96,20 @@ class OverviewView(APIView):
                 # create_date), so no conversion is computed into this step.
                 {
                     "key": "meterings",
-                    "label": "Замеры назначены",
+                    "label": "O'lchovlar belgilandi",
                     "count": agg["total"],
                     "cohort": True,
                 },
-                {"key": "measured", "label": "Замер выполнен", "count": agg["measured"]},
+                {"key": "measured", "label": "O'lchov bajarildi", "count": agg["measured"]},
             ]
             # Same permissions as the Дизайн / Нарх list pages.
             if user.has_perm("design.view_design"):
-                steps.append({"key": "design", "label": "Дизайн готов", "count": agg["design"]})
+                steps.append({"key": "design", "label": "Dizayn tayyor", "count": agg["design"]})
             if user.has_perm("price.view_price"):
-                steps.append({"key": "price", "label": "Цена рассчитана", "count": agg["price"]})
-            steps.append({"key": "sold", "label": "Заказ оформлен", "count": agg["sold"]})
+                steps.append({"key": "price", "label": "Narx hisoblandi", "count": agg["price"]})
+            steps.append(
+                {"key": "sold", "label": "Buyurtma rasmiylashtirildi", "count": agg["sold"]}
+            )
             cancelled = agg["cancelled"]
         else:
             cancelled = None
@@ -288,17 +290,17 @@ class OverviewView(APIView):
         if user.has_perm("detailing.view_detailing"):
             stage(
                 "detailing",
-                "Деталировка",
+                "Detalirovka",
                 Detailing.objects.filter(done=False),
                 "/production/detailing",
             )
         if user.has_perm("rover.view_rover"):
-            stage("rover", "Ровер", Rover.objects.filter(done=False), "/production/rover")
+            stage("rover", "Rover", Rover.objects.filter(done=False), "/production/rover")
         if user.has_perm("painter.view_painter"):
             painters = ready_for_painter(Painter.objects.filter(done=False))
             if not manager:
                 painters = painters.filter(type__user=user)
-            stage("painter", "Моляр", painters, "/production/painter")
+            stage("painter", "Molyar", painters, "/production/painter")
         workload = None
         if user.has_perm("assembly.view_assembly"):
             assemblies = ready_for_assembly(Assembly.objects.all())
@@ -306,13 +308,13 @@ class OverviewView(APIView):
                 assemblies = assemblies.filter(user=user)
             stage(
                 "assembly",
-                "Сборка",
+                "Yig'ish",
                 assemblies.filter(done=False),
                 "/production/assembly",
             )
             stage(
                 "installing",
-                "Установка",
+                "O'rnatish",
                 assemblies.filter(done=True, installing_done=False),
                 "/production/assembly",
             )

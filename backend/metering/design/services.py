@@ -10,7 +10,7 @@ def mark_design_done(design):
     from oauth.models import User
 
     if design.done:
-        raise ServiceError("Дизайн аллақачон бажарилган")
+        raise ServiceError("Dizayn allaqachon bajarilgan")
     design.done = True
     design.save()
     User.send_messages(

@@ -35,7 +35,7 @@ def assemblers():
 def mark_assembly_done(assembly):
     """Mirrors AssemblyAdmin.done_action: the order moves to "Установка"."""
     if assembly.done:
-        raise ServiceError("Сборка аллақачон бажарилган")
+        raise ServiceError("Yig'ish allaqachon bajarilgan")
     _ensure_past_detailing(assembly)
     with transaction.atomic():
         assembly.done = True
@@ -48,9 +48,9 @@ def mark_assembly_done(assembly):
 def mark_installing_done(assembly):
     """Mirrors AssemblyAdmin.installing_done_action: the order is finished."""
     if not assembly.done:
-        raise ServiceError("Аввал сборкани бажаринг")
+        raise ServiceError("Avval yig'ishni bajaring")
     if assembly.installing_done:
-        raise ServiceError("Установка аллақачон бажарилган")
+        raise ServiceError("O'rnatish allaqachon bajarilgan")
     with transaction.atomic():
         assembly.installing_done = True
         assembly.save(update_fields=["installing_done"])

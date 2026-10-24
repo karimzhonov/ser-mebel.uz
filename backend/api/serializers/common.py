@@ -3,8 +3,9 @@ from rest_framework import serializers
 
 from client.models import Client
 from oauth.models import User
-from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
+from order.constants import ORDER_VIEW_PRICE_PERMISSION
 
+from .. import i18n as uz
 from ..fields import MoneyField
 from ..utils import order_deadline
 
@@ -41,7 +42,7 @@ class OrderSummarySerializer(serializers.Serializer):
     money_left = serializers.SerializerMethodField()
 
     def get_status_label(self, order):
-        return OrderStatus(order.status).label
+        return uz.order_status(order.status)
 
     def get_deadline(self, order):
         return order_deadline(order)

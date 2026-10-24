@@ -23,13 +23,13 @@ class StaffTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     default_error_messages = {
         **TokenObtainPairSerializer.default_error_messages,
-        "no_active_account": "Телефон ёки парол нотўғри.",
+        "no_active_account": "Telefon yoki parol noto'g'ri.",
     }
 
     def validate(self, attrs):
         data = super().validate(attrs)
         if not is_staff(self.user):
-            raise serializers.ValidationError({"detail": "Нет доступа к панели."})
+            raise serializers.ValidationError({"detail": "Panelga kirish huquqi yo'q."})
         data["user"] = MeSerializer(self.user).data
         return data
 
@@ -76,7 +76,7 @@ class TelegramLoginView(APIView):
     def post(self, request):
         if not settings.TELEGRAM_WEBAPP_LOGIN_ENABLED:
             return Response(
-                {"detail": "Telegram орқали кириш ўчирилган."},
+                {"detail": "Telegram orqali kirish o'chirilgan."},
                 status=status.HTTP_404_NOT_FOUND,
             )
         serializer = TelegramLoginSerializer(data=request.data)
@@ -88,7 +88,7 @@ class TelegramLoginView(APIView):
         )
         if tg_user is None:
             return Response(
-                {"detail": "Telegram маълумотлари тасдиқланмади."},
+                {"detail": "Telegram ma'lumotlari tasdiqlanmadi."},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
         users = list(User.objects.filter(telegram_id=tg_user["id"])[:2])
@@ -96,7 +96,7 @@ class TelegramLoginView(APIView):
         user = users[0] if len(users) == 1 else None
         if user is None or not is_staff(user) or user.is_superuser:
             return Response(
-                {"detail": "Telegram профилингиз панелга уланмаган."},
+                {"detail": "Telegram profilingiz panelga ulanmagan."},
                 status=status.HTTP_403_FORBIDDEN,
             )
         return Response({**_tokens_for(user), "user": MeSerializer(user).data})
