@@ -89,9 +89,15 @@ api.interceptors.response.use(
 /** Human-readable message out of a DRF error response. */
 export function errorMessage(error: unknown): string {
   const err = error as AxiosError<any>;
+  const status = err?.response?.status;
   const data = err?.response?.data;
+  // Gateway / server error pages are HTML — never show that markup to staff.
+  if (status === 502 || status === 503 || status === 504)
+    return `Сервер не ответил (${status}). Обновите страницу и проверьте, сохранилось ли действие, прежде чем повторять.`;
+  if (status && status >= 500) return `Ошибка на сервере (${status}). Сообщите администратору.`;
   if (!data) return err?.message || "Ошибка сети";
-  if (typeof data === "string") return data.slice(0, 200);
+  if (typeof data === "string")
+    return data.trimStart().startsWith("<") ? `Ошибка (${status ?? "сеть"})` : data.slice(0, 200);
   if (data.detail) return String(data.detail);
   const first = Object.entries(data)[0];
   if (first) {
