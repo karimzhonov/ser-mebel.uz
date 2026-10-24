@@ -1,0 +1,18 @@
+<a class="kanban-card" href="{{ card.url }}">
+    <div class="kanban-card-top">
+        <span class="kanban-card-no">№{{ card.number }}</span>
+        <span class="kanban-card-spacer"></span>
+        <span class="kanban-card-when">{{ card.when|date:"d.m.Y · H:i" }}</span>
+    </div>
+
+    <div class="kanban-card-client">{{ card.client }}</div>
+
+    <div class="kanban-card-line">
+        <span class="material-symbols-outlined">call</span>
+        <span class="kanban-mono">{{ card.phone }}</span>
+    </div>
+
+    {% if card.desc %}
+        <p class="kanban-card-desc">{{ card.desc }}</p>
+    {% endif %}
+</a>

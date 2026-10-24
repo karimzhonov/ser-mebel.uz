@@ -46,6 +46,15 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build & push frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: khtkarimzhonov/front.ser-mebel.uz:${{ steps.vars.outputs.tag }}
+          cache-from: type=gha,scope=front
+          cache-to: type=gha,mode=max,scope=front
+
       - name: Build & push bot image
         uses: docker/build-push-action@v6
         with:

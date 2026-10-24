@@ -1,99 +1,63 @@
-from urllib.parse import urlparse, parse_qs
+"""The /admin/ landing page.
+
+It is three kanban boards and nothing else: Заказы, Замеры, Call-center. A board is
+built only for a user who may view that model, so someone with call-centre access
+alone lands on a single-tab page rather than an empty one.
+"""
+
 from django.http.request import HttpRequest
-from .constants import DashboardFilterChoices
 
-def get_navigation(tab):
-    navigation = [
-        {
-            "title": "Дашбоард",
-            "link": '/admin/',
-            "html_file": 'dashboard.html',
-            "icon": "home",
-            "permission": None
-        },
-        {
-            "title": "Клиенты",
-            "link": '/admin/?tab=client',
-            "html_file": 'client/dashboard.html',
-            "icon": "people",
-            "permission": "client.view_client",
-        },
-        {
-            "title": "Call-center",
-            "link": '/admin/?tab=call_center',
-            "html_file": 'call_center/dashboard.html',
-            "icon": "phone",
-            "permission": "call_center.view_invoice",
-        },
-        {
-            "title": "Замер",
-            "link": '/admin/?tab=metering',
-            "html_file": 'metering/dashboard.html',
-            "icon": "design_services",
-            "permission": "metering.view_metering",
-        },
-        {
-            "title": "Заказ",
-            "link": '/admin/?tab=order',
-            "html_file": 'order/dashboard.html',
-            "icon": "box",
-            "permission": "order.view_order",
-        },
-        {
-            "title": "Бухгалтерия",
-            "link": '/admin/?tab=accounting',
-            "html_file": 'accounting/dashboard.html',
-            "icon": "finance_mode",
-            "permission": "accounting.view_expense",
-        },
-        {
-            "title": "Очеред заказов",
-            "link": '/admin/?tab=order_wait_list',
-            "html_file": 'order/order_wait_list.html',
-            "icon": "box",
-            "permission": "order.wait_list_order",
-        }
-    ]
-    
-    for nav in navigation:
-        if ''.join(parse_qs(urlparse(nav['link']).query).get('tab', [])) == tab:
-            nav['active'] = True
-            return nav, navigation
-    return None, navigation
-
-
-def get_filters(filter):
-    filters = [
-        {
-            "title": "Все",
-            "slug": '',
-        }
-    ]
-
-    for choice in DashboardFilterChoices.choices:
-        filters.append({
-            "title": choice[1],
-            "slug": choice[0],
-        })
-
-    for fil in filters:
-        if fil['slug'] == filter:
-            fil['active'] = True
-            return filters
-    return filters
+from order.constants import ORDER_VIEW_PRICE_PERMISSION
 
 
 def dashboard_callback(request: HttpRequest, context):
-    request.GET._mutable = True
-    tab = ''.join(request.GET.pop('tab', []))
-    date = ''.join(request.GET.get('date', []))
-    nav, navigation = get_navigation(tab)
-    filters = get_filters(date)
-    context.update(
-        tab=tab,
-        navigation=filter(lambda n: True if not n["permission"] else request.user.has_perm(n['permission']), navigation),
-        current_navigation=nav,
-        filters=filters
-    )
-    return context
+    from call_center.models import Invoice
+    from call_center.services import call_center_board
+    from metering.models import Metering
+    from metering.services import metering_board
+    from order.models import Order
+    from order.services import order_board
 
+    boards = []
+
+    if request.user.has_perm("order.view_order"):
+        boards.append(
+            {
+                "id": "orders",
+                "label": "Заказы",
+                "icon": "box",
+                "total": Order.objects.count(),
+                "card_template": "core/kanban/card_order.html",
+                "columns": order_board(
+                    user=request.user,
+                    show_price=request.user.has_perm(f"order.{ORDER_VIEW_PRICE_PERMISSION}"),
+                ),
+            }
+        )
+
+    if request.user.has_perm("metering.view_metering"):
+        boards.append(
+            {
+                "id": "meterings",
+                "label": "Замеры",
+                "icon": "straighten",
+                "total": Metering.objects.count(),
+                "card_template": "core/kanban/card_metering.html",
+                "columns": metering_board(),
+            }
+        )
+
+    if request.user.has_perm("call_center.view_invoice"):
+        boards.append(
+            {
+                "id": "callcenter",
+                "label": "Call-center",
+                "icon": "phone",
+                "total": Invoice.objects.count(),
+                "card_template": "core/kanban/card_invoice.html",
+                "columns": call_center_board(),
+            }
+        )
+
+    context.update(boards=boards)
+    return context

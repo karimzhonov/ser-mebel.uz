@@ -25,6 +25,7 @@ urlpatterns = [
     path("", telegram_admin_login, name="twa-admin-login"),
     path('admin/', admin.site.urls),
     path('filer/', include('filer.urls')),
+    path('api/', include('api.urls')),
 ]
 
 

@@ -1,10 +1,20 @@
 # ser-mebel.uz
 
+## ⚠️ Working scope (project owner's rule — overrides anything below)
+
+- **Work only in `backend/` and `frontend/`.** The product is now: Django REST API (`backend/api/` + `<app>/services.py` + models) → React SPA (`frontend/`).
+- **Forget the Django admin.** Do not add features, fixes, actions, components, sidebars or templates for the admin (`*/admin.py`, `actions.py`, `components.py`, `forms.py` used only by admin, `core/unfold.py`, `core/sidebars.py`, `core/tabs.py`, `core/views.py` dashboard, admin templates/static). It stays mounted at `/admin/` only as a legacy fallback — don't delete it unless asked, but don't build on it or use it as the reference for new behavior.
+- Every new feature = model/service in `backend/` + endpoint in `backend/api/` + UI in `frontend/`. Business rules live in `<app>/services.py` (source of truth); the API calls them.
+- Don't touch `bot/` unless the owner explicitly asks. If an API/model change would affect the bot contract (`oauth.User` schema, `telegram_id`, `send_message`), stop and flag it instead of editing the bot.
+- **Git: always work on the `test` branch.** Don't create feature branches; commit straight to `test` (check `git branch --show-current` first, switch to `test` if needed). Pushing `test` auto-deploys to staging (`.github/workflows/deploy.yml`), so push only when the owner asks. `master` = production — never commit or push to it without an explicit request.
+- Frontend: React 18 + TypeScript + Vite + Tailwind + TanStack Query; UI text in Russian like the rest of the panel; check permissions with `useAuth().can(...)` and always enforce the same rule server-side.
+
 Two-service project. Full findings: `docs/ARCHITECTURE_ANALYSIS.md` — read it before any cross-cutting work.
 
 ## Services
 
-- `backend/` — Django 5.2 admin-only app (django-unfold theme). No DRF, no public API. See `backend/CLAUDE.md`.
+- `backend/` — Django 5.2: django-unfold admin + DRF REST API (`backend/api/`, JWT). See `backend/CLAUDE.md`.
+- `frontend/` — React 18 + Vite + TypeScript + Tailwind SPA on top of that API (same features as the admin). See `frontend/README.md`. Node 22; `npm run dev` proxies `/api` to :8000.
 - `bot/` — aiogram 3.22 Telegram bot wrapped in FastAPI (webhook mode in prod). See `bot/CLAUDE.md`.
 
 ## How the services actually talk to each other
@@ -25,14 +35,15 @@ Two-service project. Full findings: `docs/ARCHITECTURE_ANALYSIS.md` — read it 
 
 ## Running both services
 
-Dev: `docker-compose.yml` — `back` (Django via `runserver.sh`, port 8000) + `db` (Postgres 18). Bot is **not** in dev compose — run it separately (`python runbot.py` for polling, from `bot/`) when working on it locally.
+Dev: `docker-compose.yml` — `back` (Django via `runserver.sh`, port 8000) + `db` (Postgres 18) + `front` (Vite, port 5173). Bot is **not** in dev compose — run it separately (`python runbot.py` for polling, from `bot/`) when working on it locally.
 
-Prod: `docker-compose.prod.yml` — `back` (uvicorn ASGI, port 8000), `bot` (uvicorn/FastAPI, port 7000→80), `db` (Postgres 18). Both `back` and `bot` need their `POSTGRES_*` env vars in sync (`backend/.env` and `bot/.env` respectively) since they connect to the same database independently.
+Prod: `docker-compose.prod.yml` — `front` (nginx) publishes `BACK_PORT` (8000) so the server nginx needs no changes; it serves the SPA + /media + /static and proxies /api, /admin, /filer (and `/?telegram_id=`) to `back`, which is no longer published. `bot` (port 7000→80), `db` (Postgres 18). CI builds 3 images (api/front/bot). Details: `docs/DEPLOY.md`. Both `back` and `bot` need their `POSTGRES_*` env vars in sync since they connect to the same database independently.
 
 ## Orchestration rules (subagent pipeline)
 
 Pipeline: **architect → (django-dev and/or bot-dev, per scope) → tester → reviewer → fix loop (max 3) → done.**
 
+- Per the working-scope rule above: tasks are backend (API/services/models) and/or frontend. `bot-dev` is only used when the owner explicitly asks for bot work. Frontend changes must pass `npm run build` (typecheck + build) before review.
 - Task touches only Django → `django-dev` only.
 - Task touches only the bot → `bot-dev` only.
 - Task touches both services OR the `oauth.User` contract (schema, the `/start` flow, `send_message`/`/user/{chat_id}/message`) → both dev agents + `integration-guard` runs after coding, before `reviewer`.
