@@ -55,7 +55,7 @@ export default function App() {
         <Route path="users" element={<UsersPage />} />
         <Route path="files/:id" element={<FolderPage />} />
         <Route path="login" element={<Navigate to="/" replace />} />
-        <Route path="*" element={<Empty title="Страница не найдена" />} />
+        <Route path="*" element={<Empty title="Sahifa topilmadi" />} />
       </Route>
     </Routes>
   );

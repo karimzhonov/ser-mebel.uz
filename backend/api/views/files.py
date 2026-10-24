@@ -140,7 +140,7 @@ class FolderView(APIView):
             require_perm(request.user, "filer.add_folder")
             name = (request.data.get("name") or "").strip()
             if not name:
-                return Response({"detail": "Папка номини киритинг."}, status=400)
+                return Response({"detail": "Papka nomini kiriting."}, status=400)
             child, _ = Folder.objects.get_or_create(
                 name=name, parent=folder, defaults={"owner": request.user}
             )
@@ -151,7 +151,7 @@ class FolderView(APIView):
             ext = os.path.splitext(upload.name)[1].lower()
             if ext not in ALLOWED_UPLOAD_EXTENSIONS:
                 return Response(
-                    {"detail": f"«{upload.name}»: бундай файл турини юклаб бўлмайди."},
+                    {"detail": f"«{upload.name}»: bunday turdagi faylni yuklab bo'lmaydi."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
         created = []

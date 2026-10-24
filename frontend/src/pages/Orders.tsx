@@ -83,12 +83,12 @@ export function OrdersPage() {
   return (
     <div>
       <PageHeader
-        title="Заказы"
-        subtitle={`Всего: ${stats?.total ?? "…"}`}
+        title="Buyurtmalar"
+        subtitle={`Jami: ${stats?.total ?? "…"}`}
         actions={
           can("order.add_order") && (
             <Button icon={<Plus className="h-4 w-4" />} onClick={() => navigate("/orders/new")}>
-              Новый заказ
+              Yangi buyurtma
             </Button>
           )
         }
@@ -96,7 +96,7 @@ export function OrdersPage() {
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <StatTile
-          label="Просрочены"
+          label="Kechikkan"
           value={warn.danger ?? "…"}
           tone="danger"
           icon={<AlertTriangle className="h-5 w-5" />}
@@ -104,7 +104,7 @@ export function OrdersPage() {
           onClick={() => set({ warning: state.warning === "danger" ? "" : "danger" })}
         />
         <StatTile
-          label={`Меньше ${meta?.warning_order_days ?? 7} дней`}
+          label={`${meta?.warning_order_days ?? 7} kundan kam`}
           value={warn.warning ?? "…"}
           tone="warn"
           icon={<Clock className="h-5 w-5" />}
@@ -112,7 +112,7 @@ export function OrdersPage() {
           onClick={() => set({ warning: state.warning === "warning" ? "" : "warning" })}
         />
         <StatTile
-          label="В срок"
+          label="Muddatida"
           value={warn.success ?? "…"}
           tone="ok"
           icon={<CheckCircle2 className="h-5 w-5" />}
@@ -123,7 +123,7 @@ export function OrdersPage() {
 
       <div className="mb-4 flex flex-wrap gap-2">
         <Chip active={!selected.length} onClick={() => set({ status: "" })}>
-          Все · {stats?.total ?? "…"}
+          Barchasi · {stats?.total ?? "…"}
         </Chip>
         {meta?.order_statuses.map((s) => (
           <Chip
@@ -146,9 +146,9 @@ export function OrdersPage() {
 
       <Card padded={false}>
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row dark:border-slate-800">
-          <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="№, клиент, телефон, адрес" />
+          <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="№, mijoz, telefon, manzil" />
           <Select className="lg:w-48" value={state.factory} onChange={(e) => set({ factory: e.target.value })}>
-            <option value="">Все заводы</option>
+            <option value="">Barcha zavodlar</option>
             {factories?.map((f) => (
               <option key={f.id} value={f.id}>{f.name}</option>
             ))}
@@ -165,7 +165,7 @@ export function OrdersPage() {
             { key: "n", header: "№", cell: (r) => <span className="font-semibold">{r.order_number}</span> },
             {
               key: "client",
-              header: "Клиент",
+              header: "Mijoz",
               cell: (r) => (
                 <div>
                   <div className="font-medium">{r.client?.fio ?? "—"}</div>
@@ -173,15 +173,15 @@ export function OrdersPage() {
                 </div>
               ),
             },
-            { key: "factory", header: "Завод", cell: (r) => r.factory.name, hideOnMobile: true },
-            { key: "address", header: "Адрес", cell: (r) => <span className="line-clamp-1 max-w-[200px]">{r.address}</span>, hideOnMobile: true },
-            { key: "status", header: "Статус", cell: (r) => <OrderStatusBadge status={r.status} label={r.status_label} /> },
-            { key: "dates", header: "Приём / сдача", cell: (r) => <span className="whitespace-nowrap text-xs">{date(r.reception_date)}<br />{date(r.end_date)}</span> },
-            { key: "deadline", header: "Срок", cell: (r) => <DeadlinePill deadline={r.deadline} /> },
+            { key: "factory", header: "Zavod", cell: (r) => r.factory.name, hideOnMobile: true },
+            { key: "address", header: "Manzil", cell: (r) => <span className="line-clamp-1 max-w-[200px]">{r.address}</span>, hideOnMobile: true },
+            { key: "status", header: "Holat", cell: (r) => <OrderStatusBadge status={r.status} label={r.status_label} /> },
+            { key: "dates", header: "Qabul / topshirish", cell: (r) => <span className="whitespace-nowrap text-xs">{date(r.reception_date)}<br />{date(r.end_date)}</span> },
+            { key: "deadline", header: "Muddat", cell: (r) => <DeadlinePill deadline={r.deadline} /> },
             ...(showMoney
               ? [
-                  { key: "total", header: "Итого", cell: (r: Order) => <span className="tabular-nums">{money(r.total_price)}</span> },
-                  { key: "left", header: "Остаток", cell: (r: Order) => <span className="font-medium tabular-nums">{money(r.money_left)}</span> },
+                  { key: "total", header: "Jami", cell: (r: Order) => <span className="tabular-nums">{money(r.total_price)}</span> },
+                  { key: "left", header: "Qoldiq", cell: (r: Order) => <span className="font-medium tabular-nums">{money(r.money_left)}</span> },
                 ]
               : []),
           ]}
@@ -201,7 +201,7 @@ export function OrdersPage() {
         />
         <Pagination page={page} count={data?.count ?? 0} onPage={(p) => set({ page: p })} />
       </Card>
-      <Card title="Заказы по дате приёма" className="mt-4">
+      <Card title="Qabul sanasi bo'yicha buyurtmalar" className="mt-4">
         <TimelineChart data={stats?.timeline} height={200} />
       </Card>
     </div>
@@ -223,7 +223,7 @@ export function OrderDetailPage() {
   const run = useAction(
     (path: string) => api.post(`/orders/${id}/${path}/`).then((r) => r.data),
     {
-      success: "Готово",
+      success: "Tayyor",
       invalidate: inv,
       onSuccess: (data: any) => {
         setConfirm(null);
@@ -236,16 +236,16 @@ export function OrderDetailPage() {
   const a = o.actions;
   const p = o.production;
   const CONFIRM_TEXT = {
-    detailing: ["Отправить в деталировку?", "Сотрудники деталировки получат уведомление."],
-    "next-status": [`Перевести в «${a.next_status_label}»?`, "Ответственные получат SMS/Telegram уведомление."],
-    "go-to-assembly": ["Отправить в сборку?", "Заказ перейдёт в статус «Сборка»."],
+    detailing: ["Detalirovkaga yuborilsinmi?", "Detalirovka xodimlariga xabar boradi."],
+    "next-status": [`«${a.next_status_label}» holatiga o'tkazilsinmi?`, "Mas'ullarga SMS/Telegram xabari boradi."],
+    "go-to-assembly": ["Yig'ishga yuborilsinmi?", "Buyurtma «Yig'ish» holatiga o'tadi."],
   } as const;
 
   return (
     <div>
       <PageHeader
-        back={<BackLink to="/orders">Заказы</BackLink>}
-        title={`Заказ №${o.order_number}`}
+        back={<BackLink to="/orders">Buyurtmalar</BackLink>}
+        title={`Buyurtma №${o.order_number}`}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
             <OrderStatusBadge status={o.status} label={o.status_label} />
@@ -257,17 +257,17 @@ export function OrderDetailPage() {
             <FolderButton folderId={o.folder} />
             {a.edit && (
               <Button variant="outline" icon={<Pencil className="h-4 w-4" />} onClick={() => setEditing(true)}>
-                Изменить
+                Tahrirlash
               </Button>
             )}
             {a.detailing && (
               <Button variant="success" icon={<BookOpen className="h-4 w-4" />} onClick={() => setConfirm("detailing")}>
-                В деталировку
+                Detalirovkaga
               </Button>
             )}
             {a.go_to_assembly && (
               <Button variant="success" icon={<Hammer className="h-4 w-4" />} onClick={() => setConfirm("go-to-assembly")}>
-                В сборку
+                Yig'ishga
               </Button>
             )}
             {a.next_status && !a.detailing && !a.go_to_assembly && (
@@ -286,42 +286,42 @@ export function OrderDetailPage() {
         value={tab}
         onChange={setTab}
         options={[
-          { value: "info", label: "Информация" },
-          { value: "production", label: "Производство" },
-          ...(can("accounting.view_expense") ? [{ value: "expenses", label: "Расходы" }] : []),
-          { value: "history", label: "История" },
+          { value: "info", label: "Ma'lumot" },
+          { value: "production", label: "Ishlab chiqarish" },
+          ...(can("accounting.view_expense") ? [{ value: "expenses", label: "Chiqimlar" }] : []),
+          { value: "history", label: "Tarix" },
         ]}
       />
 
       {tab === "info" && (
         <div className="grid gap-4 lg:grid-cols-3">
-          <Card title="Заказ" className="lg:col-span-2">
+          <Card title="Buyurtma" className="lg:col-span-2">
             <KV
               items={[
-                ["Клиент", o.client ? <Link className="text-brand-700 hover:underline dark:text-brand-300" to={`/clients/${encodeURIComponent(o.client.phone)}`}>{o.client.fio}</Link> : "—"],
-                ["Телефон", <PhoneLink value={o.client?.phone} />],
-                ["Адрес", <AddressLink address={o.address} link={o.address_link} />],
-                ["Завод", o.factory.name],
-                ["Дата приёма", date(o.reception_date)],
-                ["Дата сдачи", date(o.end_date, "не указана")],
-                ["Дизайн", o.design_type?.name ?? "—"],
-                ["Замер", o.metering ? <Link className="text-brand-700 hover:underline" to={`/meterings/${o.metering}`}>Открыть →</Link> : "—"],
+                ["Mijoz", o.client ? <Link className="text-brand-700 hover:underline dark:text-brand-300" to={`/clients/${encodeURIComponent(o.client.phone)}`}>{o.client.fio}</Link> : "—"],
+                ["Telefon", <PhoneLink value={o.client?.phone} />],
+                ["Manzil", <AddressLink address={o.address} link={o.address_link} />],
+                ["Zavod", o.factory.name],
+                ["Qabul sanasi", date(o.reception_date)],
+                ["Topshirish sanasi", date(o.end_date, "ko'rsatilmagan")],
+                ["Dizayn", o.design_type?.name ?? "—"],
+                ["O'lchov", o.metering ? <Link className="text-brand-700 hover:underline" to={`/meterings/${o.metering}`}>Ochish →</Link> : "—"],
               ]}
             />
             {o.desc && <p className="mt-4 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800/50">{o.desc}</p>}
           </Card>
           {"price" in o && (
-            <Card title="Оплата">
+            <Card title="To'lov">
               <div className="space-y-3">
                 <div>
-                  <div className="muted text-xs">Итого (со скидкой {num(o.discount)}%)</div>
+                  <div className="muted text-xs">Jami ({num(o.discount)}% chegirma bilan)</div>
                   <div className="text-2xl font-semibold tabular-nums">{money(o.total_price)}</div>
                 </div>
                 <KV
                   items={[
-                    ["Сумма", money(o.price)],
-                    ["Получено", money(o.lost_money)],
-                    ["Остаток", <span className="text-base font-semibold">{money(o.money_left)}</span>],
+                    ["Summa", money(o.price)],
+                    ["Olingan", money(o.lost_money)],
+                    ["Qoldiq", <span className="text-base font-semibold">{money(o.money_left)}</span>],
                   ]}
                 />
               </div>
@@ -333,47 +333,50 @@ export function OrderDetailPage() {
       {tab === "production" && (
         <div className="grid gap-4 md:grid-cols-2">
           <ProdCard
-            title="Деталировка"
+            title="Detalirovka"
             to={p.detailing ? `/production/detailing?open=${p.detailing.id}` : undefined}
             folder={p.detailing?.folder}
             rows={p.detailing && [
-              ["Площадь", num(p.detailing.square)],
-              ["Площадь покраски", num(p.detailing.painter_square)],
-              ["Площадь ровера", num(p.detailing.rover_square)],
-              ["Выполнено", <Check ok={p.detailing.done} />],
+              ["Maydon", num(p.detailing.square)],
+              ["Bo'yash maydoni", num(p.detailing.painter_square)],
+              ["Rover maydoni", num(p.detailing.rover_square)],
+              ["Bajarildi", <Check ok={p.detailing.done} />],
             ]}
           />
           <ProdCard
-            title="Ровер"
+            title="Rover"
             to={p.rover ? `/production/rover?open=${p.rover.id}` : undefined}
             folder={p.rover?.folder}
             rows={p.rover && [
-              ["Площадь", num(p.rover.square)],
-              ...(p.rover.price ? ([["Цена", money(p.rover.price)]] as [string, string][]) : []),
-              ["Выполнено", <Check ok={p.rover.done} />],
+              ["Maydon", num(p.rover.square)],
+              ...(p.rover.price ? ([["Narx", money(p.rover.price)]] as [string, string][]) : []),
+              ["Bajarildi", <Check ok={p.rover.done} />],
             ]}
           />
           <ProdCard
-            title="Моляр"
+            title="Molyar"
             to={p.painter ? `/production/painter?open=${p.painter.id}` : undefined}
             folder={p.painter?.folder}
             rows={p.painter && [
-              ["Тип", p.painter.waiting_rover ? <span className="text-amber-600">ждёт окончания ровера</span> : p.painter.type ?? "не назначен"],
-              ["Площадь", num(p.painter.square)],
-              ...(p.painter.price ? ([["Цена", money(p.painter.price)]] as [string, string][]) : []),
-              ["Выполнено", <Check ok={p.painter.done} />],
+              ["Tur", p.painter.waiting_rover ? <span className="text-amber-600">rover tugashini kutmoqda</span> : p.painter.type ?? "tayinlanmagan"],
+              ["Maydon", num(p.painter.square)],
+              ...(p.painter.price ? ([["Narx", money(p.painter.price)]] as [string, string][]) : []),
+              ["Bajarildi", <Check ok={p.painter.done} />],
             ]}
           />
           <ProdCard
-            title="Сборка / Установка"
-            to={p.assembly ? `/production/assembly?open=${p.assembly.id}` : undefined}
+            title="Yig'ish / O'rnatish"
+            to={p.assembly && !BEFORE_ASSEMBLY.includes(o.status) ? `/production/assembly?open=${p.assembly.id}` : undefined}
             folder={p.assembly?.folder}
             rows={p.assembly && [
-              ["Сборщик", p.assembly.user ? p.assembly.user.name || phone(p.assembly.user.phone) : "не назначен"],
-              ["Площадь", num(p.assembly.square)],
-              ...(p.assembly.price ? ([["Цена", money(p.assembly.price)]] as [string, string][]) : []),
-              ["Сборка", <Check ok={p.assembly.done} />],
-              ["Установка", <Check ok={p.assembly.installing_done} />],
+              ["Yig'uvchi", p.assembly.user ? p.assembly.user.name || phone(p.assembly.user.phone) : "tayinlanmagan"],
+              ["Maydon", num(p.assembly.square)],
+              ...(p.assembly.price ? ([["Narx", money(p.assembly.price)]] as [string, string][]) : []),
+              ...(BEFORE_ASSEMBLY.includes(o.status)
+                ? ([["Navbat", <span className="text-amber-600">detalirovkadan keyin</span>]] as [string, JSX.Element][])
+                : []),
+              ["Yig'ish", <Check ok={p.assembly.done} />],
+              ["O'rnatish", <Check ok={p.assembly.installing_done} />],
             ]}
           />
         </div>
@@ -394,6 +397,9 @@ export function OrderDetailPage() {
     </div>
   );
 }
+
+// Assembly work starts after detailing (backend: order/assembly/services.py).
+const BEFORE_ASSEMBLY = ["waiting", "created", "detailing"];
 
 const FLOW = ["waiting", "created", "detailing", "working", "assembly", "installing", "done"];
 
@@ -453,14 +459,14 @@ function ProdCard({
             <FolderButton folderId={folder} />
             {to && (
               <Link to={to} className="text-sm text-brand-700 hover:underline dark:text-brand-300">
-                Открыть →
+                Ochish →
               </Link>
             )}
           </>
         )
       }
     >
-      {rows ? <KV items={rows} /> : <p className="muted text-sm">Ещё не создано</p>}
+      {rows ? <KV items={rows} /> : <p className="muted text-sm">Hali yaratilmagan</p>}
     </Card>
   );
 }
@@ -471,7 +477,7 @@ function OrderExpenses({ orderId, canAdd }: { orderId: number; canAdd: boolean }
   const { data: categories } = useAll<Category>("expense-categories", {}, canAdd);
   const [form, setForm] = useState<{ category: string; desc: string; cost: { amount: number | string; currency: string } } | null>(null);
   const add = useAction(() => api.post(`/orders/${orderId}/expenses/`, { ...form, category: Number(form?.category) }), {
-    success: "Расход добавлен",
+    success: "Chiqim qo'shildi",
     invalidate: ["expenses"],
     onSuccess: () => {
       setForm(null);
@@ -484,12 +490,12 @@ function OrderExpenses({ orderId, canAdd }: { orderId: number; canAdd: boolean }
   }, {});
   return (
     <Card
-      title="Расходы по заказу"
+      title="Buyurtma bo'yicha chiqimlar"
       padded={false}
       actions={
         canAdd && (
           <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ category: "", desc: "", cost: { amount: "", currency: meta?.default_currency ?? "USD" } })}>
-            Расход
+            Chiqim
           </Button>
         )
       }
@@ -497,39 +503,39 @@ function OrderExpenses({ orderId, canAdd }: { orderId: number; canAdd: boolean }
       <DataTable
         rows={data}
         rowKey={(r) => r.id}
-        empty={<Empty title="Расходов нет" />}
+        empty={<Empty title="Chiqimlar yo'q" />}
         columns={[
-          { key: "cat", header: "Категория", cell: (r) => r.category_name },
-          { key: "desc", header: "Описание", cell: (r) => r.desc || "—" },
-          { key: "cost", header: "Сумма", cell: (r) => <span className="font-medium tabular-nums">{money(r.cost)}</span> },
-          { key: "who", header: "Кто", cell: (r) => r.user_detail?.name || phone(r.user_detail?.phone) },
-          { key: "when", header: "Дата", cell: (r) => <span className="muted">{date(r.created_at)}</span> },
+          { key: "cat", header: "Kategoriya", cell: (r) => r.category_name },
+          { key: "desc", header: "Tavsif", cell: (r) => r.desc || "—" },
+          { key: "cost", header: "Summa", cell: (r) => <span className="font-medium tabular-nums">{money(r.cost)}</span> },
+          { key: "who", header: "Kim", cell: (r) => r.user_detail?.name || phone(r.user_detail?.phone) },
+          { key: "when", header: "Sana", cell: (r) => <span className="muted">{date(r.created_at)}</span> },
         ]}
       />
       {Object.keys(total).length > 0 && (
         <div className="border-t border-slate-100 px-5 py-3 text-right text-sm dark:border-slate-800">
-          Итого: {Object.entries(total).map(([c, v]) => <b key={c} className="ml-2">{money({ amount: v, currency: c })}</b>)}
+          Jami: {Object.entries(total).map(([c, v]) => <b key={c} className="ml-2">{money({ amount: v, currency: c })}</b>)}
         </div>
       )}
       <Modal
         open={!!form}
         onClose={() => setForm(null)}
-        title="Новый расход"
+        title="Yangi chiqim"
         size="sm"
-        footer={<Button loading={add.isPending} disabled={!form?.category} onClick={() => add.mutate()}>Добавить</Button>}
+        footer={<Button loading={add.isPending} disabled={!form?.category} onClick={() => add.mutate()}>Qo'shish</Button>}
       >
         {form && (
           <div className="space-y-4">
-            <Field label="Категория">
+            <Field label="Kategoriya">
               <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                <option value="">— выберите —</option>
+                <option value="">— tanlang —</option>
                 {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </Field>
-            <Field label="Сумма">
+            <Field label="Summa">
               <MoneyInput value={form.cost} currencies={meta?.currencies} onChange={(cost) => setForm({ ...form, cost })} />
             </Field>
-            <Field label="Описание">
+            <Field label="Tavsif">
               <Textarea value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} />
             </Field>
           </div>
@@ -543,15 +549,15 @@ function OrderHistory({ orderId }: { orderId: number }) {
   const { data } = useGet<HistoryEntry[]>(`/orders/${orderId}/history/`);
   if (!data) return <PageLoader />;
   return (
-    <Card title="История изменений">
-      {!data.length && <Empty title="Нет записей" />}
+    <Card title="O'zgarishlar tarixi">
+      {!data.length && <Empty title="Yozuvlar yo'q" />}
       <ol className="relative space-y-5 border-l border-slate-200 pl-5 dark:border-slate-800">
         {data.map((h, i) => (
           <li key={i} className="relative">
             <span className={cn("absolute -left-[27px] top-1 h-3 w-3 rounded-full ring-4 ring-white dark:ring-slate-900", h.type === "created" ? "bg-emerald-500" : "bg-brand-500")} />
             <div className="text-sm">
-              <span className="font-medium">{h.user ? h.user.name || phone(h.user.phone) : "Система"}</span>
-              <span className="muted"> · {h.type === "created" ? "создал заказ" : "изменил"} · {dateTime(h.date)}</span>
+              <span className="font-medium">{h.user ? h.user.name || phone(h.user.phone) : "Tizim"}</span>
+              <span className="muted"> · {h.type === "created" ? "buyurtma yaratdi" : "o'zgartirdi"} · {dateTime(h.date)}</span>
             </div>
             {h.changes.length > 0 && (
               <ul className="mt-1.5 space-y-1 text-sm">
@@ -595,48 +601,48 @@ function OrderEditModal({ order, onClose }: { order: OrderDetail; onClose: () =>
         end_date: form.end_date || null,
         ...(canPrice ? { price: form.price, lost_money: form.lost_money, discount: Number(form.discount || 0) } : {}),
       }),
-    { success: "Заказ сохранён", invalidate: ["orders", "dashboard"], onSuccess: onClose },
+    { success: "Buyurtma saqlandi", invalidate: ["orders", "dashboard"], onSuccess: onClose },
   );
   return (
     <Modal
       open
       onClose={onClose}
-      title={`Изменить заказ №${order.order_number}`}
+      title={`Buyurtma №${order.order_number} ni tahrirlash`}
       size="lg"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose}>Отмена</Button>
-          <Button loading={save.isPending} onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>Сохранить</Button>
+          <Button variant="ghost" onClick={onClose}>Bekor qilish</Button>
+          <Button loading={save.isPending} onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>Saqlash</Button>
         </>
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Номер заказа" error={errors.order_number}>
+        <Field label="Buyurtma raqami" error={errors.order_number}>
           <Input type="number" value={form.order_number} onChange={(e) => setForm({ ...form, order_number: e.target.value })} />
         </Field>
-        <Field label="Завод" error={errors.factory}>
+        <Field label="Zavod" error={errors.factory}>
           <Select value={form.factory} onChange={(e) => setForm({ ...form, factory: e.target.value })}>
             {factories?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </Select>
         </Field>
-        <Field label="Дата приёма" error={errors.reception_date}>
+        <Field label="Qabul sanasi" error={errors.reception_date}>
           <Input type="date" value={form.reception_date} onChange={(e) => setForm({ ...form, reception_date: e.target.value })} />
         </Field>
-        <Field label="Дата сдачи" error={errors.end_date} hint="Заказ выходит из «Ожидания», когда указана дата сдачи">
+        <Field label="Topshirish sanasi" error={errors.end_date} hint="Topshirish sanasi ko'rsatilgach, buyurtma «Kutilmoqda» holatidan chiqadi">
           <Input type="date" value={form.end_date} onChange={(e) => setForm({ ...form, end_date: e.target.value })} />
         </Field>
-        <Field label="Описание" className="sm:col-span-2">
+        <Field label="Tavsif" className="sm:col-span-2">
           <Textarea value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} />
         </Field>
         {canPrice && (
           <>
-            <Field label="Вся сумма" error={errors.price}>
+            <Field label="Umumiy summa" error={errors.price}>
               <MoneyInput value={form.price} currencies={meta?.currencies} onChange={(price) => setForm({ ...form, price })} />
             </Field>
-            <Field label="Полученная сумма" error={errors.lost_money}>
+            <Field label="Olingan summa" error={errors.lost_money}>
               <MoneyInput value={form.lost_money} currencies={meta?.currencies} onChange={(lost_money) => setForm({ ...form, lost_money })} />
             </Field>
-            <Field label="Скидка, %" error={errors.discount}>
+            <Field label="Chegirma, %" error={errors.discount}>
               <Input type="number" value={form.discount} onChange={(e) => setForm({ ...form, discount: e.target.value })} />
             </Field>
           </>
@@ -717,7 +723,7 @@ export function OrderCreatePage() {
         })
         .then((r) => r.data),
     {
-      success: "Заказ создан",
+      success: "Buyurtma yaratildi",
       invalidate: ["orders", "meterings", "designs", "invoices", "dashboard"],
       onSuccess: (o) => navigate(`/orders/${o.id}`, { replace: true }),
     },
@@ -728,80 +734,80 @@ export function OrderCreatePage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader back={<BackLink to={design ? `/designs/${design.id}` : "/orders"}>Назад</BackLink>} title="Новый заказ" subtitle={metering ? `По замеру клиента ${metering.client.fio}` : "Заказ без замера"} />
+      <PageHeader back={<BackLink to={design ? `/designs/${design.id}` : "/orders"}>Orqaga</BackLink>} title="Yangi buyurtma" subtitle={metering ? `Mijoz ${metering.client.fio} o'lchovi bo'yicha` : "O'lchovsiz buyurtma"} />
       <div className="space-y-4">
-        <Card title="Клиент">
+        <Card title="Mijoz">
           {metering ? (
-            <KV items={[["Клиент", metering.client.fio], ["Телефон", <PhoneLink value={metering.client.phone} />]]} />
+            <KV items={[["Mijoz", metering.client.fio], ["Telefon", <PhoneLink value={metering.client.phone} />]]} />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Телефон" error={errors.client_phone}>
+              <Field label="Telefon" error={errors.client_phone}>
                 <Input inputMode="tel" value={form.client_phone} onChange={upd("client_phone")} />
               </Field>
-              <Field label="ФИО (если новый клиент)" error={errors.client_fio}>
+              <Field label="F.I.Sh. (agar yangi mijoz bo'lsa)" error={errors.client_fio}>
                 <Input value={form.client_fio} onChange={upd("client_fio")} />
               </Field>
             </div>
           )}
         </Card>
-        <Card title="Заказ">
+        <Card title="Buyurtma">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Завод" error={errors.factory}>
+            <Field label="Zavod" error={errors.factory}>
               <Select value={form.factory} onChange={upd("factory")}>
                 {factories?.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
               </Select>
             </Field>
             {design && (
-              <Field label="Вариант дизайна" error={errors.design_type}>
+              <Field label="Dizayn varianti" error={errors.design_type}>
                 <Select value={form.design_type} onChange={upd("design_type")}>
                   {design.types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </Select>
               </Field>
             )}
-            <Field label="Дата приёма" error={errors.reception_date}>
+            <Field label="Qabul sanasi" error={errors.reception_date}>
               <Input type="date" value={form.reception_date} onChange={upd("reception_date")} />
             </Field>
             <Field
-              label="Срок, дней"
+              label="Muddat, kun"
               error={errors.count_days}
-              hint={endDate ? `Сдача: ${date(endDate)}` : "Без срока заказ будет в «Ожидании»"}
+              hint={endDate ? `Topshirish: ${date(endDate)}` : "Muddat ko'rsatilmasa, buyurtma «Kutilmoqda» holatida bo'ladi"}
             >
               <Input type="number" min={1} max={365} value={form.count_days} onChange={upd("count_days")} />
             </Field>
-            <Field label="Описание" className="sm:col-span-2">
+            <Field label="Tavsif" className="sm:col-span-2">
               <Textarea value={form.desc} onChange={upd("desc")} />
             </Field>
           </div>
         </Card>
-        <Card title="Адрес">
+        <Card title="Manzil">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Адрес" error={errors.address}>
+            <Field label="Manzil" error={errors.address}>
               <Input value={form.address} onChange={upd("address")} />
             </Field>
-            <Field label="Ссылка на карту" error={errors.address_link}>
+            <Field label="Xarita havolasi" error={errors.address_link}>
               <Input type="url" value={form.address_link} onChange={upd("address_link")} />
             </Field>
           </div>
         </Card>
         {canPrice && (
-          <Card title="Цена">
+          <Card title="Narx">
             <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="Вся сумма" error={errors.price}>
+              <Field label="Umumiy summa" error={errors.price}>
                 <MoneyInput value={form.price} currencies={meta?.currencies} onChange={(price) => setForm({ ...form, price })} />
               </Field>
-              <Field label="Получено" error={errors.lost_money}>
+              <Field label="Olingan" error={errors.lost_money}>
                 <MoneyInput value={form.lost_money} currencies={meta?.currencies} onChange={(lost_money) => setForm({ ...form, lost_money })} />
               </Field>
-              <Field label="Скидка, %" error={errors.discount}>
+              <Field label="Chegirma, %" error={errors.discount}>
                 <Input type="number" value={form.discount} onChange={upd("discount")} />
               </Field>
             </div>
           </Card>
         )}
         <div className="flex justify-end gap-2">
-          <Button variant="ghost" onClick={() => navigate(-1)}>Отмена</Button>
+          <Button variant="ghost" onClick={() => navigate(-1)}>Bekor qilish</Button>
           <Button size="lg" loading={create.isPending} onClick={() => create.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>
-            Создать заказ
+            Buyurtma yaratish
           </Button>
         </div>
       </div>

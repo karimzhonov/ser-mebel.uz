@@ -40,7 +40,7 @@ export function PricesPage() {
   const [creating, setCreating] = useState(false);
   const [desc, setDesc] = useState("");
   const create = useAction(() => api.post<Price>("/prices/", { desc }).then((r) => r.data), {
-    success: "Расчёт создан",
+    success: "Hisob-kitob yaratildi",
     invalidate: ["prices"],
     onSuccess: (p) => navigate(`/prices/${p.id}`),
   });
@@ -48,12 +48,12 @@ export function PricesPage() {
   return (
     <div>
       <PageHeader
-        title="Нарх чиқариш"
-        subtitle="Расчёт стоимости по замерам"
+        title="Narx hisoblash"
+        subtitle="O'lchovlar bo'yicha narx hisob-kitobi"
         actions={
           can("price.add_price") && (
             <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>
-              Расчёт без замера
+              O'lchovsiz hisob-kitob
             </Button>
           )
         }
@@ -64,22 +64,22 @@ export function PricesPage() {
             value={state.done}
             onChange={(v) => set({ done: v })}
             options={[
-              { value: "false", label: "Активные" },
-              { value: "true", label: "Архив" },
-              { value: "", label: "Все" },
+              { value: "false", label: "Faol" },
+              { value: "true", label: "Arxiv" },
+              { value: "", label: "Barchasi" },
             ]}
           />
           <Segmented
             value={state.has_metering}
             onChange={(v) => set({ has_metering: v })}
             options={[
-              { value: "", label: "Все" },
-              { value: "true", label: "С замером" },
-              { value: "false", label: "Без замера" },
+              { value: "", label: "Barchasi" },
+              { value: "true", label: "O'lchovli" },
+              { value: "false", label: "O'lchovsiz" },
             ]}
           />
           <Chip active={state.mine === "1"} onClick={() => set({ mine: state.mine === "1" ? "" : "1" })}>
-            <UserCheck className="h-3.5 w-3.5" /> Мои задачи
+            <UserCheck className="h-3.5 w-3.5" /> Mening vazifalarim
           </Chip>
           <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} />
           <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
@@ -90,16 +90,16 @@ export function PricesPage() {
           rowKey={(r) => r.id}
           onRowClick={(r) => navigate(`/prices/${r.id}`)}
           columns={[
-            { key: "client", header: "Замер", cell: (r) => <span className="font-medium">{r.metering?.client.fio ?? r.desc ?? `Расчёт #${r.id}`}</span> },
-            { key: "user", header: "Ответственный", cell: (r) => (r.user_detail ? r.user_detail.name || phone(r.user_detail.phone) : <span className="muted">—</span>) },
-            { key: "price", header: "Сумма", cell: (r) => <span className="font-semibold tabular-nums">{money(r.price)}</span> },
-            { key: "done", header: "Статус", cell: (r) => <Check ok={r.done} label={r.done ? "Выполнен" : "В работе"} /> },
+            { key: "client", header: "O'lchov", cell: (r) => <span className="font-medium">{r.metering?.client.fio ?? r.desc ?? `Hisob-kitob #${r.id}`}</span> },
+            { key: "user", header: "Mas'ul", cell: (r) => (r.user_detail ? r.user_detail.name || phone(r.user_detail.phone) : <span className="muted">—</span>) },
+            { key: "price", header: "Summa", cell: (r) => <span className="font-semibold tabular-nums">{money(r.price)}</span> },
+            { key: "done", header: "Holat", cell: (r) => <Check ok={r.done} label={r.done ? "Bajarildi" : "Ishda"} /> },
             {
               key: "order",
-              header: "Заказ",
+              header: "Buyurtma",
               cell: (r) => (r.order ? <span className="flex items-center gap-2">№{r.order.order_number} <DeadlinePill deadline={r.order.deadline} /></span> : <span className="muted">—</span>),
             },
-            { key: "created", header: "Создан", cell: (r) => <span className="muted">{date(r.created_at)}</span> },
+            { key: "created", header: "Yaratilgan", cell: (r) => <span className="muted">{date(r.created_at)}</span> },
           ]}
         />
         <Pagination page={page} count={data?.count ?? 0} onPage={(p) => set({ page: p })} />
@@ -107,11 +107,11 @@ export function PricesPage() {
       <Modal
         open={creating}
         onClose={() => setCreating(false)}
-        title="Расчёт без замера"
+        title="O'lchovsiz hisob-kitob"
         size="sm"
-        footer={<Button loading={create.isPending} onClick={() => create.mutate()}>Создать</Button>}
+        footer={<Button loading={create.isPending} onClick={() => create.mutate()}>Yaratish</Button>}
       >
-        <Field label="Описание" hint="Например, имя клиента или объект">
+        <Field label="Tavsif" hint="Masalan, mijoz ismi yoki obyekt">
           <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} />
         </Field>
       </Modal>
@@ -130,16 +130,16 @@ export function PriceDetailPage() {
 
   const inv = ["prices", "meterings", "orders"];
   const done = useAction(() => api.post(`/prices/${id}/done/`), {
-    success: "Расчёт выполнен",
+    success: "Hisob-kitob bajarildi",
     invalidate: inv,
     onSuccess: () => setConfirmDone(false),
   });
   const remove = useAction((calcId: number) => api.delete(`/prices/${id}/calculations/${calcId}/`), {
-    success: "Удалено",
+    success: "O'chirildi",
     invalidate: inv,
   });
   const saveDesc = useAction(() => api.patch(`/prices/${id}/`, { desc: descDraft }), {
-    success: "Сохранено",
+    success: "Saqlandi",
     invalidate: inv,
     onSuccess: () => setDescDraft(null),
   });
@@ -148,24 +148,24 @@ export function PriceDetailPage() {
   const currentTab = tab || String(objects[0]?.id ?? "");
   const currentObject = objects.find((o) => String(o.id) === currentTab);
   const calcs = (p.calculations ?? []).filter((c) => String(c.obj) === currentTab);
-  const title = p.metering?.client.fio ?? p.desc ?? `Расчёт #${p.id}`;
+  const title = p.metering?.client.fio ?? p.desc ?? `Hisob-kitob #${p.id}`;
   const canEdit = !!p.actions?.edit;
 
   return (
     <div>
       <PageHeader
-        back={<BackLink to="/prices">Нарх чиқариш</BackLink>}
+        back={<BackLink to="/prices">Narx hisoblash</BackLink>}
         title={title}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
-            {p.done ? <Badge tone="ok">Выполнен</Badge> : <Badge tone="warn">В работе</Badge>}
-            {p.user_detail && <span>Ответственный: {p.user_detail.name || phone(p.user_detail.phone)}</span>}
+            {p.done ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="warn">Ishda</Badge>}
+            {p.user_detail && <span>Mas'ul: {p.user_detail.name || phone(p.user_detail.phone)}</span>}
           </span>
         }
         actions={
           <>
-            <FolderButton folderId={p.metering?.folder} label="Файлы замера" />
-            <FolderButton folderId={p.folder} label="Файлы расчёта" />
+            <FolderButton folderId={p.metering?.folder} label="O'lchov fayllari" />
+            <FolderButton folderId={p.folder} label="Hisob-kitob fayllari" />
             <Button
               variant="outline"
               icon={<FileSpreadsheet className="h-4 w-4" />}
@@ -175,7 +175,7 @@ export function PriceDetailPage() {
             </Button>
             {p.actions?.done && (
               <Button variant="success" icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setConfirmDone(true)}>
-                Выполнить
+                Bajarish
               </Button>
             )}
           </>
@@ -195,7 +195,7 @@ export function PriceDetailPage() {
           />
           {!calcs.length && (
             <Card>
-              <Empty title={`Нет расчётов: ${currentObject?.name ?? ""}`} />
+              <Empty title={`Hisob-kitoblar yo'q: ${currentObject?.name ?? ""}`} />
             </Card>
           )}
           {calcs.map((c) => (
@@ -207,10 +207,10 @@ export function PriceDetailPage() {
                   <span className="text-sm font-semibold tabular-nums">{money(c.amount)}</span>
                   {canEdit && currentObject && (
                     <>
-                      <IconButton label="Изменить" onClick={() => setEditing({ calc: c, objectType: currentObject })}>
+                      <IconButton label="Tahrirlash" onClick={() => setEditing({ calc: c, objectType: currentObject })}>
                         <Pencil className="h-4 w-4" />
                       </IconButton>
-                      <IconButton label="Удалить" onClick={() => confirm(`Удалить «${c.name}»?`) && remove.mutate(c.id)}>
+                      <IconButton label="O'chirish" onClick={() => confirm(`«${c.name}» o'chirilsinmi?`) && remove.mutate(c.id)}>
                         <Trash2 className="h-4 w-4" />
                       </IconButton>
                     </>
@@ -238,19 +238,19 @@ export function PriceDetailPage() {
           ))}
           {canEdit && currentObject && (
             <Button variant="outline" className="w-full" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing({ objectType: currentObject })}>
-              Добавить расчёт: {currentObject.name}
+              Hisob-kitob qo'shish: {currentObject.name}
             </Button>
           )}
         </div>
 
         <div className="space-y-4">
           <Card>
-            <div className="muted text-xs font-medium uppercase tracking-wide">Итого</div>
+            <div className="muted text-xs font-medium uppercase tracking-wide">Jami</div>
             <div className="mt-1 text-3xl font-semibold tabular-nums text-slate-900 dark:text-white">{money(p.price, "$0")}</div>
-            <div className="muted mt-1 text-xs">Сумма переносится в заказ этого замера</div>
+            <div className="muted mt-1 text-xs">Summa shu o'lchovning buyurtmasiga o'tadi</div>
           </Card>
           {p.metering && (
-            <Card title="Замер">
+            <Card title="O'lchov">
               <div className="space-y-1 text-sm">
                 <Link to={`/meterings/${p.metering.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">
                   {p.metering.client.fio}
@@ -261,14 +261,14 @@ export function PriceDetailPage() {
             </Card>
           )}
           {p.order && (
-            <Card title={`Заказ №${p.order.order_number}`}>
+            <Card title={`Buyurtma №${p.order.order_number}`}>
               <div className="flex flex-wrap gap-2">
                 <OrderStatusBadge status={p.order.status} label={p.order.status_label} />
                 <DeadlinePill deadline={p.order.deadline} />
               </div>
             </Card>
           )}
-          <Card title="Описание">
+          <Card title="Tavsif">
             <Textarea
               disabled={!canEdit}
               value={descDraft ?? p.desc ?? ""}
@@ -276,7 +276,7 @@ export function PriceDetailPage() {
             />
             {descDraft !== null && (
               <Button className="mt-3" size="sm" loading={saveDesc.isPending} onClick={() => saveDesc.mutate()}>
-                Сохранить
+                Saqlash
               </Button>
             )}
           </Card>
@@ -294,8 +294,8 @@ export function PriceDetailPage() {
       <Confirm
         open={confirmDone}
         onClose={() => setConfirmDone(false)}
-        title="Завершить расчёт?"
-        text="Расчёт уйдёт в архив."
+        title="Hisob-kitob yakunlansinmi?"
+        text="Hisob-kitob arxivga o'tadi."
         variant="success"
         loading={done.isPending}
         onConfirm={() => done.mutate()}
@@ -353,7 +353,7 @@ function CalculationEditor({
         ? api.patch(`/prices/${priceId}/calculations/${calc.id}/`, body)
         : api.post(`/prices/${priceId}/calculations/`, body);
     },
-    { success: "Расчёт сохранён", invalidate: ["prices", "meterings", "orders"], onSuccess: onClose },
+    { success: "Hisob-kitob saqlandi", invalidate: ["prices", "meterings", "orders"], onSuccess: onClose },
   );
 
   return (
@@ -361,22 +361,22 @@ function CalculationEditor({
       open
       onClose={onClose}
       size="lg"
-      title={`${calc ? "Изменить" : "Новый"} расчёт · ${objectType.name}`}
+      title={`${calc ? "Hisob-kitobni tahrirlash" : "Yangi hisob-kitob"} · ${objectType.name}`}
       footer={
         <div className="flex w-full items-center justify-between gap-3">
           <div className="text-sm">
-            Итого: <b className="text-lg tabular-nums">{money({ amount: total, currency: "USD" })}</b>
+            Jami: <b className="text-lg tabular-nums">{money({ amount: total, currency: "USD" })}</b>
           </div>
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={onClose}>Отмена</Button>
-            <Button loading={save.isPending} disabled={!name.trim()} onClick={() => save.mutate()}>Сохранить</Button>
+            <Button variant="ghost" onClick={onClose}>Bekor qilish</Button>
+            <Button loading={save.isPending} disabled={!name.trim()} onClick={() => save.mutate()}>Saqlash</Button>
           </div>
         </div>
       }
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Название">
-          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Кухня 1" />
+        <Field label="Nomi">
+          <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Oshxona 1" />
         </Field>
         <Field label={objectType.count_label}>
           <Input type="number" inputMode="decimal" value={count} onChange={(e) => setCount(e.target.value)} />
@@ -392,7 +392,7 @@ function CalculationEditor({
             <div key={t.id} className="grid items-end gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700 sm:grid-cols-[1fr_120px_110px]">
               <Field label={t.name}>
                 <Select value={line.inventory} onChange={(e) => setLines({ ...lines, [t.id]: { ...line, inventory: e.target.value } })}>
-                  <option value="">— не выбрано —</option>
+                  <option value="">— tanlanmagan —</option>
                   {t.inventories.map((i) => (
                     <option key={i.id} value={i.id}>
                       {i.name} — {money(i.price)}
@@ -401,7 +401,7 @@ function CalculationEditor({
                 </Select>
               </Field>
               {t.type === 2 ? (
-                <Field label="Кол-во">
+                <Field label="Soni">
                   <Input type="number" inputMode="decimal" value={line.count} onChange={(e) => setLines({ ...lines, [t.id]: { ...line, count: e.target.value } })} />
                 </Field>
               ) : (
@@ -413,7 +413,7 @@ function CalculationEditor({
             </div>
           );
         })}
-        {types && !types.length && <Empty title="Для этого объекта нет типов товаров" text="Добавьте их в разделе «Товары»." />}
+        {types && !types.length && <Empty title="Bu obyekt uchun mahsulot turlari yo'q" text="Ularni «Mahsulotlar» bo'limida qo'shing." />}
       </div>
     </Modal>
   );

@@ -95,3 +95,27 @@ def test_rover_done_notifies_painting_ready(admin_api, rover_and_painter, monkey
     rover, painter, _ = rover_and_painter
     admin_api.post(f"/api/v1/rovers/{rover.pk}/done/")
     assert calls and calls[0][0][0] == "assembly.manager"
+
+
+# --- assembly list starts after detailing ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "status,visible",
+    [
+        ("waiting", False),
+        ("created", False),
+        ("detailing", False),
+        ("working", True),
+        ("assembly", True),
+        ("installing", True),
+    ],
+)
+def test_assembly_list_only_after_detailing(admin_api, order_factory, status, visible):
+    from order.assembly.models import Assembly
+    from order.models import Order
+
+    order = order_factory()
+    Order.objects.filter(pk=order.pk).update(status=status)
+    Assembly.objects.create(order=order, square=1)
+    assert admin_api.get("/api/v1/assemblies/").data["count"] == (1 if visible else 0)

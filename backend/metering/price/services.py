@@ -74,13 +74,13 @@ def save_calculation(*, price, object_type, name: str, count: float, items: list
     for item in items or []:
         type_id = int(item["inventory_type"])
         if type_id in by_type:
-            raise ServiceError("Ҳар бир тур учун битта товар танланади")
+            raise ServiceError("Har bir tur uchun bitta mahsulot tanlanadi")
         by_type[type_id] = item
 
     inv_types = {t.pk: t for t in InventoryType.objects.filter(obj=object_type)}
     unknown = set(by_type) - set(inv_types)
     if unknown:
-        raise ServiceError("Товар тури бу объектга тегишли эмас")
+        raise ServiceError("Mahsulot turi bu obyektga tegishli emas")
 
     with transaction.atomic():
         calc = calculation or Calculate(price=price, obj=object_type)
@@ -97,7 +97,7 @@ def save_calculation(*, price, object_type, name: str, count: float, items: list
                 continue
             inventory = Inventory.objects.filter(pk=inventory_id, type_id=type_id).first()
             if inventory is None:
-                raise ServiceError(f"«{inv_type.name}» учун товар топилмади")
+                raise ServiceError(f"«{inv_type.name}» uchun mahsulot topilmadi")
             if inv_type.type == InventoryType.TYPE_KV:
                 line_count = float(count or 0)
             else:
@@ -129,7 +129,7 @@ def mark_price_done(price):
     from core.exceptions import ServiceError
 
     if price.done:
-        raise ServiceError("Нарх аллақачон чиқарилган")
+        raise ServiceError("Narx allaqachon hisoblangan")
     price.done = True
     price.save()
     return price

@@ -7,6 +7,7 @@ from call_center.services import invoice_is_editable
 from client.models import Client
 from metering.models import Metering
 
+from .. import i18n as uz
 from .common import ClientShortSerializer
 
 
@@ -42,7 +43,7 @@ class InvoiceSerializer(serializers.ModelSerializer):
         read_only_fields = ["create_date", "update_date", "solution"]
 
     def get_solution_label(self, obj):
-        return SolutionChoice(obj.solution).label if obj.solution is not None else None
+        return uz.solution(obj.solution)
 
     def get_is_editable(self, obj):
         return invoice_is_editable(obj)

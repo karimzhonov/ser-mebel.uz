@@ -30,11 +30,11 @@ export function ClientsPage() {
 
   return (
     <div>
-      <PageHeader title="Клиенты" subtitle={`Всего: ${stats?.total ?? "…"}`} />
+      <PageHeader title="Mijozlar" subtitle={`Jami: ${stats?.total ?? "…"}`} />
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <Card padded={false}>
           <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row dark:border-slate-800">
-            <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="ФИО или телефон" />
+            <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="F.I.Sh. yoki telefon" />
             <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
           </div>
           <DataTable
@@ -43,19 +43,19 @@ export function ClientsPage() {
             rowKey={(r) => r.phone}
             onRowClick={(r) => navigate(`/clients/${encodeURIComponent(r.phone)}`)}
             columns={[
-              { key: "fio", header: "ФИО", cell: (r) => <span className="font-medium">{r.fio}</span> },
-              { key: "phone", header: "Телефон", cell: (r) => <PhoneLink value={r.phone} /> },
-              { key: "orders", header: "Заказов", cell: (r) => r.orders_count ?? 0 },
-              { key: "created", header: "Добавлен", cell: (r) => <span className="muted">{date(r.created_at)}</span> },
+              { key: "fio", header: "F.I.Sh.", cell: (r) => <span className="font-medium">{r.fio}</span> },
+              { key: "phone", header: "Telefon", cell: (r) => <PhoneLink value={r.phone} /> },
+              { key: "orders", header: "Buyurtmalar", cell: (r) => r.orders_count ?? 0 },
+              { key: "created", header: "Qo'shilgan", cell: (r) => <span className="muted">{date(r.created_at)}</span> },
             ]}
           />
           <Pagination page={page} count={data?.count ?? 0} onPage={(p) => set({ page: p })} />
         </Card>
         <div className="space-y-4">
-          <Card title="Новые клиенты">
+          <Card title="Yangi mijozlar">
             <TimelineChart data={stats?.timeline} height={180} />
           </Card>
-          <Card title="Топ по заказам" padded={false}>
+          <Card title="Buyurtmalar bo'yicha top" padded={false}>
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {stats?.top.map((c) => (
                 <li key={c.phone}>
@@ -84,7 +84,7 @@ export function ClientDetailPage() {
   const [editing, setEditing] = useState(false);
   const [fio, setFio] = useState("");
   const save = useAction(() => api.patch(`/clients/${encodeURIComponent(phone)}/`, { fio }), {
-    success: "Сохранено",
+    success: "Saqlandi",
     invalidate: ["clients"],
     onSuccess: () => setEditing(false),
   });
@@ -93,20 +93,20 @@ export function ClientDetailPage() {
   return (
     <div>
       <PageHeader
-        back={<BackLink to="/clients">Клиенты</BackLink>}
+        back={<BackLink to="/clients">Mijozlar</BackLink>}
         title={client.fio}
         subtitle={<PhoneLink value={client.phone} />}
         actions={
           can("client.change_client") && (
             <Button variant="outline" icon={<Pencil className="h-4 w-4" />} onClick={() => (setFio(client.fio), setEditing(true))}>
-              Изменить
+              Tahrirlash
             </Button>
           )
         }
       />
       <div className="grid gap-4 lg:grid-cols-3">
-        <Card title={`Заказы · ${related?.orders.length ?? 0}`} padded={false}>
-          {!related?.orders.length && <Empty title="Нет заказов" />}
+        <Card title={`Buyurtmalar · ${related?.orders.length ?? 0}`} padded={false}>
+          {!related?.orders.length && <Empty title="Buyurtmalar yo'q" />}
           {related?.orders.map((o) => (
             <button key={o.id} onClick={() => navigate(`/orders/${o.id}`)} className="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-5 py-3 text-left text-sm last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50">
               <div>
@@ -120,24 +120,24 @@ export function ClientDetailPage() {
             </button>
           ))}
         </Card>
-        <Card title={`Замеры · ${related?.meterings.length ?? 0}`} padded={false}>
-          {!related?.meterings.length && <Empty title="Нет замеров" />}
+        <Card title={`O'lchovlar · ${related?.meterings.length ?? 0}`} padded={false}>
+          {!related?.meterings.length && <Empty title="O'lchovlar yo'q" />}
           {related?.meterings.map((m) => (
             <button key={m.id} onClick={() => navigate(`/meterings/${m.id}`)} className="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-5 py-3 text-left text-sm last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50">
               <div>
-                <div className="font-medium">{m.address || "Без адреса"}</div>
+                <div className="font-medium">{m.address || "Manzilsiz"}</div>
                 <div className="muted text-xs">{dateTime(m.date_time)}</div>
               </div>
               <MeteringStatusBadge status={m.status} label={m.status_label} />
             </button>
           ))}
         </Card>
-        <Card title={`Заявки · ${related?.invoices.length ?? 0}`} padded={false}>
-          {!related?.invoices.length && <Empty title="Нет заявок" />}
+        <Card title={`Arizalar · ${related?.invoices.length ?? 0}`} padded={false}>
+          {!related?.invoices.length && <Empty title="Arizalar yo'q" />}
           {related?.invoices.map((i) => (
             <button key={i.id} onClick={() => navigate(`/call-center?open=${i.id}`)} className="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-5 py-3 text-left text-sm last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50">
               <div className="min-w-0">
-                <div className="truncate font-medium">{i.desc || `Заявка #${i.id}`}</div>
+                <div className="truncate font-medium">{i.desc || `Ariza #${i.id}`}</div>
                 <div className="muted text-xs">{dateTime(i.create_date)}</div>
               </div>
               <SolutionBadge solution={i.solution} label={i.solution_label} />
@@ -148,11 +148,11 @@ export function ClientDetailPage() {
       <Modal
         open={editing}
         onClose={() => setEditing(false)}
-        title="Изменить клиента"
+        title="Mijozni tahrirlash"
         size="sm"
-        footer={<Button loading={save.isPending} onClick={() => save.mutate()}>Сохранить</Button>}
+        footer={<Button loading={save.isPending} onClick={() => save.mutate()}>Saqlash</Button>}
       >
-        <Field label="ФИО">
+        <Field label="F.I.Sh.">
           <Input value={fio} onChange={(e) => setFio(e.target.value)} />
         </Field>
       </Modal>

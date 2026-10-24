@@ -24,24 +24,24 @@ function presets(): { label: string; from: string; to: string }[] {
   const m = t.getMonth();
   const q = Math.floor(m / 3) * 3;
   return [
-    { label: "Сегодня", from: iso(t), to: iso(t) },
-    { label: "Вчера", from: iso(addDays(t, -1)), to: iso(addDays(t, -1)) },
-    { label: "7 дней", from: iso(addDays(t, -6)), to: iso(t) },
-    { label: "30 дней", from: iso(addDays(t, -29)), to: iso(t) },
-    { label: "Этот месяц", from: iso(new Date(y, m, 1)), to: iso(t) },
-    { label: "Прошлый месяц", from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) },
-    { label: "Квартал", from: iso(new Date(y, q, 1)), to: iso(t) },
-    { label: "Этот год", from: iso(new Date(y, 0, 1)), to: iso(t) },
-    { label: "Всё время", from: "", to: "" },
+    { label: "Bugun", from: iso(t), to: iso(t) },
+    { label: "Kecha", from: iso(addDays(t, -1)), to: iso(addDays(t, -1)) },
+    { label: "7 kun", from: iso(addDays(t, -6)), to: iso(t) },
+    { label: "30 kun", from: iso(addDays(t, -29)), to: iso(t) },
+    { label: "Shu oy", from: iso(new Date(y, m, 1)), to: iso(t) },
+    { label: "O'tgan oy", from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 0)) },
+    { label: "Chorak", from: iso(new Date(y, q, 1)), to: iso(t) },
+    { label: "Shu yil", from: iso(new Date(y, 0, 1)), to: iso(t) },
+    { label: "Butun davr", from: "", to: "" },
   ];
 }
 
 export function rangeLabel(from: string, to: string) {
-  if (!from && !to) return "Всё время";
+  if (!from && !to) return "Butun davr";
   const match = presets().find((p) => p.from === from && p.to === to);
   if (match) return match.label;
   if (from && to) return from === to ? fmtDate(from) : `${fmtDate(from)} — ${fmtDate(to)}`;
-  return from ? `с ${fmtDate(from)}` : `по ${fmtDate(to)}`;
+  return from ? `${fmtDate(from)} dan` : `${fmtDate(to)} gacha`;
 }
 
 /** "From — to" period picker with quick presets. Values are YYYY-MM-DD or "". */
@@ -98,7 +98,7 @@ export function DateRangeFilter({
         {active && (
           <button
             type="button"
-            title="Показать за всё время"
+            title="Butun davr uchun ko'rsatish"
             onClick={() => onChange("", "")}
             className="input flex h-10 w-10 items-center justify-center rounded-l-none border-l-0 border-brand-300 p-0 text-slate-400 hover:text-slate-700 dark:border-brand-600"
           >
@@ -131,21 +131,21 @@ export function DateRangeFilter({
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3">
             <label>
-              <span className="label">С даты</span>
+              <span className="label">Sanadan</span>
               <Input type="date" value={draft.from} max={draft.to || undefined} onChange={(e) => setDraft({ ...draft, from: e.target.value })} />
             </label>
             <label>
-              <span className="label">По дату</span>
+              <span className="label">Sanagacha</span>
               <Input type="date" value={draft.to} min={draft.from || undefined} onChange={(e) => setDraft({ ...draft, to: e.target.value })} />
             </label>
           </div>
-          {invalid && <p className="mt-2 text-xs text-rose-600">Начальная дата позже конечной</p>}
+          {invalid && <p className="mt-2 text-xs text-rose-600">Boshlanish sanasi tugash sanasidan keyin</p>}
           <div className="mt-4 flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-              Отмена
+              Bekor qilish
             </Button>
             <Button size="sm" disabled={invalid} onClick={() => apply(draft.from, draft.to)}>
-              Применить
+              Qo'llash
             </Button>
           </div>
         </div>

@@ -10,7 +10,7 @@ from ..constants import OrderStatus
 def mark_detailing_done(detailing):
     """Mirrors DetailingAdmin.done_action: the order moves to "Заказ на сырье"."""
     if detailing.done:
-        raise ServiceError("Деталировка аллақачон бажарилган")
+        raise ServiceError("Detalirovka allaqachon bajarilgan")
     with transaction.atomic():
         detailing.done = True
         detailing.save(update_fields=["done"])

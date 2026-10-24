@@ -286,7 +286,7 @@ export function MoneyInput({
 export function SearchInput({
   value,
   onChange,
-  placeholder = "Поиск…",
+  placeholder = "Qidiruv…",
   className,
 }: {
   value: string;
@@ -367,7 +367,7 @@ export function Modal({
       >
         <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800">
           <h2 className="text-base font-semibold text-slate-900 dark:text-white">{title}</h2>
-          <IconButton label="Закрыть" onClick={onClose}>
+          <IconButton label="Yopish" onClick={onClose}>
             <X className="h-5 w-5" />
           </IconButton>
         </header>
@@ -389,7 +389,7 @@ export function Confirm({
   onConfirm,
   title,
   text,
-  confirmLabel = "Подтвердить",
+  confirmLabel = "Tasdiqlash",
   variant = "primary",
   loading,
 }: {
@@ -411,7 +411,7 @@ export function Confirm({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>
-            Отмена
+            Bekor qilish
           </Button>
           <Button variant={variant} onClick={onConfirm} loading={loading}>
             {confirmLabel}
@@ -442,7 +442,7 @@ export function Skeleton({ className }: { className?: string }) {
   return <div className={cn("animate-pulse rounded-lg bg-slate-200/70 dark:bg-slate-800", className)} />;
 }
 
-export function Empty({ title = "Пусто", text, icon }: { title?: string; text?: ReactNode; icon?: ReactNode }) {
+export function Empty({ title = "Bo'sh", text, icon }: { title?: string; text?: ReactNode; icon?: ReactNode }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-6 py-14 text-center">
       <div className="mb-1 rounded-2xl bg-slate-100 p-3 text-slate-400 dark:bg-slate-800">
@@ -565,16 +565,16 @@ export function Pagination({
   return (
     <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-4 py-3 text-sm dark:border-slate-800">
       <span className="muted">
-        {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, count)} из {count}
+        {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, count)} / {count}
       </span>
       <div className="flex items-center gap-1">
-        <IconButton label="Назад" disabled={page <= 1} onClick={() => onPage(page - 1)} className="disabled:opacity-40">
+        <IconButton label="Orqaga" disabled={page <= 1} onClick={() => onPage(page - 1)} className="disabled:opacity-40">
           <ChevronLeft className="h-4 w-4" />
         </IconButton>
         <span className="px-2 tabular-nums">
           {page} / {pages}
         </span>
-        <IconButton label="Вперёд" disabled={page >= pages} onClick={() => onPage(page + 1)} className="disabled:opacity-40">
+        <IconButton label="Oldinga" disabled={page >= pages} onClick={() => onPage(page + 1)} className="disabled:opacity-40">
           <ChevronRight className="h-4 w-4" />
         </IconButton>
       </div>
@@ -657,7 +657,7 @@ export function DataTable<T>({
         ))}
       </div>
     );
-  if (!rows?.length) return <>{empty ?? <Empty title="Ничего не найдено" />}</>;
+  if (!rows?.length) return <>{empty ?? <Empty title="Hech narsa topilmadi" />}</>;
   return (
     <>
       <div className={cn("hidden overflow-x-auto md:block", loading && "opacity-60")}>

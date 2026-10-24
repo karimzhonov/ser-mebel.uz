@@ -55,22 +55,22 @@ function Ledger({ kind }: { kind: "income" | "expense" }) {
         cost: form!.cost,
         ...(kind === "expense" && form!.order ? { order: Number(form!.order) } : {}),
       }),
-    { success: "Сохранено", invalidate: [resource], onSuccess: () => setForm(null) },
+    { success: "Saqlandi", invalidate: [resource], onSuccess: () => setForm(null) },
   );
-  const remove = useAction((id: number) => api.delete(`/${resource}/${id}/`), { success: "Удалено", invalidate: [resource] });
-  const title = kind === "income" ? "Приходы" : "Расходы";
+  const remove = useAction((id: number) => api.delete(`/${resource}/${id}/`), { success: "O'chirildi", invalidate: [resource] });
+  const title = kind === "income" ? "Kirimlar" : "Chiqimlar";
   const cur = stats?.currency ?? state.currency;
 
   return (
     <div>
       <PageHeader
         title={title}
-        subtitle={user?.is_superuser ? "Все записи" : "Ваши записи"}
+        subtitle={user?.is_superuser ? "Barcha yozuvlar" : "Sizning yozuvlaringiz"}
         actions={
           <>
             {can(`accounting.view_${kind}category`) && (
               <Button variant="outline" icon={<Settings2 className="h-4 w-4" />} onClick={() => setManageCats(true)}>
-                Категории
+                Kategoriyalar
               </Button>
             )}
             {can(`accounting.add_${kind}`) && (
@@ -78,7 +78,7 @@ function Ledger({ kind }: { kind: "income" | "expense" }) {
                 icon={<Plus className="h-4 w-4" />}
                 onClick={() => (setErrors({}), setForm({ category: "", desc: "", order: "", cost: { amount: "", currency: meta?.default_currency ?? "USD" } }))}
               >
-                {kind === "income" ? "Приход" : "Расход"}
+                {kind === "income" ? "Kirim" : "Chiqim"}
               </Button>
             )}
           </>
@@ -89,8 +89,8 @@ function Ledger({ kind }: { kind: "income" | "expense" }) {
         <Segmented value={state.currency} onChange={(v) => set({ currency: v })} options={(meta?.currencies ?? ["USD", "UZS"]).map((c) => ({ value: c, label: c }))} />
       </div>
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
-        <StatTile label={`${title}: итого`} value={money({ amount: stats?.total ?? 0, currency: cur })} hint={`${stats?.count ?? 0} записей`} tone={kind === "income" ? "ok" : "danger"} />
-        <Card title="По категориям" className="lg:row-span-2">
+        <StatTile label={`${title}: jami`} value={money({ amount: stats?.total ?? 0, currency: cur })} hint={`${stats?.count ?? 0} ta yozuv`} tone={kind === "income" ? "ok" : "danger"} />
+        <Card title="Kategoriyalar bo'yicha" className="lg:row-span-2">
           <ShareBars
             rows={(stats?.by_category ?? []).map((c) => ({
               label: c.label,
@@ -99,15 +99,15 @@ function Ledger({ kind }: { kind: "income" | "expense" }) {
             }))}
           />
         </Card>
-        <Card title="Динамика" className="lg:col-span-1">
+        <Card title="Dinamika" className="lg:col-span-1">
           <TimelineChart data={stats?.timeline} height={160} valueFormatter={(v) => money({ amount: v, currency: cur })} />
         </Card>
       </div>
       <Card padded={false}>
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row dark:border-slate-800">
-          <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="Описание или категория" />
+          <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="Tavsif yoki kategoriya" />
           <Select className="sm:w-56" value={state.category} onChange={(e) => set({ category: e.target.value })}>
-            <option value="">Все категории</option>
+            <option value="">Barcha kategoriyalar</option>
             {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </Select>
         </div>
@@ -116,20 +116,20 @@ function Ledger({ kind }: { kind: "income" | "expense" }) {
           loading={isFetching}
           rowKey={(r) => r.id}
           columns={[
-            { key: "cat", header: "Категория", cell: (r) => <span className="font-medium">{r.category_name}</span> },
-            { key: "desc", header: "Описание", cell: (r) => <span className="line-clamp-1 max-w-xs">{r.desc || "—"}</span> },
+            { key: "cat", header: "Kategoriya", cell: (r) => <span className="font-medium">{r.category_name}</span> },
+            { key: "desc", header: "Tavsif", cell: (r) => <span className="line-clamp-1 max-w-xs">{r.desc || "—"}</span> },
             ...(kind === "expense"
-              ? [{ key: "order", header: "Заказ", cell: (r: MoneyRecord) => (r.order_detail ? `№${r.order_detail.order_number}` : "—") }]
+              ? [{ key: "order", header: "Buyurtma", cell: (r: MoneyRecord) => (r.order_detail ? `№${r.order_detail.order_number}` : "—") }]
               : []),
-            { key: "cost", header: "Сумма", cell: (r) => <span className="font-semibold tabular-nums">{money(r.cost)}</span> },
-            { key: "who", header: "Кто", cell: (r) => r.user_detail?.name || phone(r.user_detail?.phone), hideOnMobile: true },
-            { key: "date", header: "Дата", cell: (r) => <span className="muted">{date(r.created_at)}</span> },
+            { key: "cost", header: "Summa", cell: (r) => <span className="font-semibold tabular-nums">{money(r.cost)}</span> },
+            { key: "who", header: "Kim", cell: (r) => r.user_detail?.name || phone(r.user_detail?.phone), hideOnMobile: true },
+            { key: "date", header: "Sana", cell: (r) => <span className="muted">{date(r.created_at)}</span> },
             ...(user?.is_superuser
               ? [{
                   key: "x",
                   header: "",
                   cell: (r: MoneyRecord) => (
-                    <IconButton label="Удалить" onClick={() => confirm("Удалить запись?") && remove.mutate(r.id)}>
+                    <IconButton label="O'chirish" onClick={() => confirm("Yozuv o'chirilsinmi?") && remove.mutate(r.id)}>
                       <Trash2 className="h-4 w-4" />
                     </IconButton>
                   ),
@@ -144,30 +144,30 @@ function Ledger({ kind }: { kind: "income" | "expense" }) {
       <Modal
         open={!!form}
         onClose={() => setForm(null)}
-        title={kind === "income" ? "Новый приход" : "Новый расход"}
+        title={kind === "income" ? "Yangi kirim" : "Yangi chiqim"}
         size="sm"
-        footer={<Button loading={add.isPending} disabled={!form?.category} onClick={() => add.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>Сохранить</Button>}
+        footer={<Button loading={add.isPending} disabled={!form?.category} onClick={() => add.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>Saqlash</Button>}
       >
         {form && (
           <div className="space-y-4">
-            <Field label="Категория" error={errors.category}>
+            <Field label="Kategoriya" error={errors.category}>
               <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                <option value="">— выберите —</option>
+                <option value="">— tanlang —</option>
                 {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
             </Field>
-            <Field label="Сумма" error={errors.cost}>
+            <Field label="Summa" error={errors.cost}>
               <MoneyInput value={form.cost} currencies={meta?.currencies} onChange={(cost) => setForm({ ...form, cost })} />
             </Field>
             {kind === "expense" && (
-              <Field label="Заказ (необязательно)" error={errors.order || errors.non_field_errors}>
+              <Field label="Buyurtma (ixtiyoriy)" error={errors.order || errors.non_field_errors}>
                 <Select value={form.order} onChange={(e) => setForm({ ...form, order: e.target.value })}>
                   <option value="">—</option>
                   {orders?.results.map((o) => <option key={o.id} value={o.id}>№{o.order_number} · {o.client?.fio}</option>)}
                 </Select>
               </Field>
             )}
-            <Field label="Описание" error={errors.desc}>
+            <Field label="Tavsif" error={errors.desc}>
               <Textarea value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} />
             </Field>
           </div>
@@ -182,16 +182,16 @@ function CategoriesModal({ resource, canAdd, onClose }: { resource: string; canA
   const { user } = useAuth();
   const { data } = useAll<Category>(resource);
   const [name, setName] = useState("");
-  const add = useAction(() => api.post(`/${resource}/`, { name }), { success: "Добавлено", invalidate: [resource], onSuccess: () => setName("") });
-  const remove = useAction((id: number) => api.delete(`/${resource}/${id}/`), { success: "Удалено", invalidate: [resource] });
+  const add = useAction(() => api.post(`/${resource}/`, { name }), { success: "Qo'shildi", invalidate: [resource], onSuccess: () => setName("") });
+  const remove = useAction((id: number) => api.delete(`/${resource}/${id}/`), { success: "O'chirildi", invalidate: [resource] });
   return (
-    <Modal open onClose={onClose} title="Категории" size="sm">
+    <Modal open onClose={onClose} title="Kategoriyalar" size="sm">
       <ul className="divide-y divide-slate-100 dark:divide-slate-800">
         {data?.map((c) => (
           <li key={c.id} className="flex items-center justify-between py-2 text-sm">
             {c.name}
             {user?.is_superuser && (
-              <IconButton label="Удалить" onClick={() => confirm(`Удалить «${c.name}»?`) && remove.mutate(c.id)}>
+              <IconButton label="O'chirish" onClick={() => confirm(`«${c.name}» o'chirilsinmi?`) && remove.mutate(c.id)}>
                 <Trash2 className="h-4 w-4" />
               </IconButton>
             )}
@@ -200,8 +200,8 @@ function CategoriesModal({ resource, canAdd, onClose }: { resource: string; canA
       </ul>
       {canAdd && (
         <div className="mt-3 flex gap-2">
-          <Input placeholder="Новая категория" value={name} onChange={(e) => setName(e.target.value)} />
-          <Button disabled={!name.trim()} loading={add.isPending} onClick={() => add.mutate()}>Добавить</Button>
+          <Input placeholder="Yangi kategoriya" value={name} onChange={(e) => setName(e.target.value)} />
+          <Button disabled={!name.trim()} loading={add.isPending} onClick={() => add.mutate()}>Qo'shish</Button>
         </div>
       )}
     </Modal>

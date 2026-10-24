@@ -115,7 +115,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
             client = Client.objects.filter(phone=phone).first()
             if client is None:
                 if not fio:
-                    raise ServiceError("Янги мижоз учун ФИО киритинг")
+                    raise ServiceError("Yangi mijoz uchun F.I.Sh. kiriting")
                 client = Client.objects.create(phone=phone, fio=fio)
             metering = create_metering(client=client, invoice=invoice, **data)
         return self._detail(metering, status.HTTP_201_CREATED)
@@ -123,7 +123,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         metering = self.get_object()
         if not metering_is_editable(metering):
-            raise PermissionDenied("Архивдаги замерни таҳрирлаб бўлмайди.")
+            raise PermissionDenied("Arxivdagi o'lchovni tahrirlab bo'lmaydi.")
         kwargs["partial"] = True
         super().update(request, *args, **kwargs)
         return self._detail(metering)
@@ -161,7 +161,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
     def assignees(self, request):
         """Who can be picked in "Назначить исполнителей"."""
         if not can_assign_tasks(request.user):
-            raise PermissionDenied("Недостаточно прав для этого действия.")
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
         return Response(
             {
                 "designers": UserShortSerializer(designers(), many=True).data,
@@ -173,7 +173,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
     def assign(self, request, pk=None):
         """Give the design and/or price task to one person each; they get it in Telegram."""
         if not can_assign_tasks(request.user):
-            raise PermissionDenied("Недостаточно прав для этого действия.")
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
         metering = self.get_object()
         serializer = AssignTasksSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -261,7 +261,7 @@ class DesignTypeViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, views
         from order.models import Order
 
         if Order.objects.filter(design_type=instance).exists():
-            raise ServiceError("Бу вариант заказда ишлатилган — ўчириб бўлмайди")
+            raise ServiceError("Bu variant buyurtmada ishlatilgan — o'chirib bo'lmaydi")
         instance.delete()
 
 

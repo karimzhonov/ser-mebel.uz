@@ -10,7 +10,12 @@ from client.models import Client
 from core.exceptions import ServiceError
 from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
 from order.assembly.models import Assembly
-from order.assembly.services import assemblers, mark_assembly_done, mark_installing_done
+from order.assembly.services import (
+    assemblers,
+    mark_assembly_done,
+    mark_installing_done,
+    ready_for_assembly,
+)
 from order.constants import ORDER_CHANGE_STATUS_PERMISSION, OrderStatus
 from order.detailing.models import Detailing
 from order.detailing.services import mark_detailing_done
@@ -94,7 +99,7 @@ class FactoryViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         if Order.objects.filter(factory=instance).exists():
-            raise ServiceError("Заводда заказлар бор — ўчириб бўлмайди")
+            raise ServiceError("Zavodda buyurtmalar bor — o'chirib bo'lmaydi")
         instance.delete()
 
 
@@ -173,7 +178,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 client = Client.objects.filter(phone=phone).first()
                 if client is None:
                     if not fio:
-                        raise ServiceError("Янги мижоз учун ФИО киритинг")
+                        raise ServiceError("Yangi mijoz uchun F.I.Sh. kiriting")
                     client = Client.objects.create(phone=phone, fio=fio)
                 data["client"] = client
             order = create_order(**data)
@@ -185,7 +190,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not can_view_price(request):
             for field in ("price", "lost_money", "discount"):
                 if field in data:
-                    raise PermissionDenied("Нархни ўзгартиришга рухсат йўқ.")
+                    raise PermissionDenied("Narxni o'zgartirishga ruxsat yo'q.")
         serializer = OrderUpdateSerializer(order, data=data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -358,10 +363,10 @@ class PainterViewSet(_ProductionViewSet):
         painter = self.get_object()
         type_id = request.data.get("type")
         if type_id not in (None, "") and not str(type_id).isdigit():
-            raise ServiceError("Моляр тури топилмади")
+            raise ServiceError("Molyar turi topilmadi")
         painter_type = PainterType.objects.filter(pk=type_id).first() if type_id else None
         if type_id and painter_type is None:
-            raise ServiceError("Моляр тури топилмади")
+            raise ServiceError("Bo'yash turi topilmadi")
         assign_painter_type(painter, painter_type)
         return self._respond(painter)
 
@@ -376,7 +381,8 @@ class AssemblyViewSet(_ProductionViewSet):
     done_fields = ("done", "installing_done")
 
     def get_queryset(self):
-        qs = Assembly.objects.select_related("order__client", "user")
+        # Only orders past detailing ("Заказ на сырье" and later) are assembly work.
+        qs = ready_for_assembly(Assembly.objects.select_related("order__client", "user"))
         # AssemblyAdmin.get_queryset: an assembler sees only their own jobs.
         if not self.request.user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"):
             qs = qs.filter(user=self.request.user)
@@ -391,9 +397,9 @@ class AssemblyViewSet(_ProductionViewSet):
         assembly = self.get_object()
         user_id = request.data.get("user")
         if user_id not in (None, "") and not str(user_id).isdigit():
-            raise ServiceError("Нотўғри фойдаланувчи")
+            raise ServiceError("Noto'g'ri foydalanuvchi")
         if user_id and not assemblers().filter(pk=user_id).exists():
-            raise ServiceError("Бу фойдаланувчи сборщик эмас")
+            raise ServiceError("Bu foydalanuvchi yig'uvchi emas")
         assembly.user_id = user_id or None
         assembly.save(update_fields=["user"])
         return self._respond(assembly)

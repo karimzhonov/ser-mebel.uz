@@ -22,13 +22,13 @@ export default function DashboardPage() {
   const { user } = useAuth();
   const { state, set } = useUrlState({ tab: "overview", date_from: monthStartISO(), date_to: iso(new Date()) });
   const hour = new Date().getHours();
-  const greet = hour < 12 ? "Доброе утро" : hour < 18 ? "Добрый день" : "Добрый вечер";
+  const greet = hour < 12 ? "Xayrli tong" : hour < 18 ? "Xayrli kun" : "Xayrli kech";
 
   return (
     <div>
       <PageHeader
         title={`${greet}${user?.name ? ", " + user.name : ""}`}
-        subtitle="Все процессы производства — на одном экране"
+        subtitle="Ishlab chiqarishning barcha jarayonlari — bitta ekranda"
         actions={
           state.tab === "overview" && (
             <DateRangeFilter
@@ -44,8 +44,8 @@ export default function DashboardPage() {
         value={state.tab}
         onChange={(tab) => set({ tab })}
         options={[
-          { value: "overview", label: <span className="flex items-center gap-1.5"><LayoutGrid className="h-4 w-4" /> Обзор</span> },
-          { value: "board", label: <span className="flex items-center gap-1.5"><Columns3 className="h-4 w-4" /> Доска</span> },
+          { value: "overview", label: <span className="flex items-center gap-1.5"><LayoutGrid className="h-4 w-4" /> Umumiy ko'rinish</span> },
+          { value: "board", label: <span className="flex items-center gap-1.5"><Columns3 className="h-4 w-4" /> Doska</span> },
         ]}
       />
       {state.tab === "board" ? <Boards /> : <OverviewPanel from={state.date_from} to={state.date_to} />}
@@ -59,7 +59,7 @@ function Boards() {
   if (isLoading || !data) return <PageLoader />;
   const boards = data.boards;
   const board = boards.find((b) => b.id === active) ?? boards[0];
-  if (!board) return <Empty title="Нет доступных досок" text="Обратитесь к администратору за правами." />;
+  if (!board) return <Empty title="Mavjud doskalar yo'q" text="Huquq olish uchun administratorga murojaat qiling." />;
   return (
     <>
       {boards.length > 1 && (
@@ -109,7 +109,7 @@ function KanbanBoard({ board }: { board: Board }) {
               </span>
             </header>
             <div className="scrollbar-thin flex max-h-[calc(100vh-260px)] flex-col gap-2 overflow-y-auto px-2 pb-2">
-              {!col.cards.length && <p className="muted px-2 py-6 text-center text-xs">Пусто</p>}
+              {!col.cards.length && <p className="muted px-2 py-6 text-center text-xs">Bo'sh</p>}
               {col.cards.map((card: any) => (
                 <button
                   key={card.id}
@@ -126,7 +126,7 @@ function KanbanBoard({ board }: { board: Board }) {
                   to={LIST_URL[board.id](col.key)}
                   className="flex items-center justify-center gap-1 rounded-xl py-2 text-xs font-medium text-brand-700 hover:bg-white dark:text-brand-300 dark:hover:bg-slate-800"
                 >
-                  Ещё {col.more} <ChevronRight className="h-3.5 w-3.5" />
+                  Yana {col.more} <ChevronRight className="h-3.5 w-3.5" />
                 </Link>
               )}
             </div>
@@ -154,7 +154,7 @@ function OrderCard({ card }: { card: any }) {
         <span className="muted flex items-center gap-1">
           <Factory className="h-3 w-3" /> {card.factory}
         </span>
-        {card.left && <span className="font-medium tabular-nums">Ост. {money(card.left)}</span>}
+        {card.left && <span className="font-medium tabular-nums">Qoldiq {money(card.left)}</span>}
       </div>
     </>
   );
@@ -178,8 +178,8 @@ function MeteringCard({ card }: { card: any }) {
             <Clock className="h-3 w-3" /> {dateTime(card.when)}
           </Badge>
         )}
-        {card.has_design && <Check ok={card.design_done} label="Дизайн" />}
-        {card.has_price && <Check ok={card.price_done} label="Нарх" />}
+        {card.has_design && <Check ok={card.design_done} label="Dizayn" />}
+        {card.has_price && <Check ok={card.price_done} label="Narx" />}
       </div>
     </>
   );

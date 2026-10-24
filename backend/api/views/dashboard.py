@@ -8,6 +8,7 @@ from metering.constants import MeteringStatus
 from metering.price.models import InventoryType, ObjectType
 from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
 
+from .. import i18n as uz
 from ..serializers.common import money_left
 from ..utils import order_deadline
 
@@ -37,7 +38,7 @@ class MetaView(APIView):
                 "order_statuses": [
                     {
                         "value": s.value,
-                        "label": s.label,
+                        "label": uz.order_status(s.value),
                         "tone": _tone(OrderStatus.get_sev(s)),
                         "icon": OrderStatus.icon(s),
                     }
@@ -46,7 +47,7 @@ class MetaView(APIView):
                 "metering_statuses": [
                     {
                         "value": s.value,
-                        "label": s.label,
+                        "label": uz.metering_status(s.value),
                         "tone": _tone(MeteringStatus.variant(s)),
                         "icon": MeteringStatus.icon(s),
                         "archive": s in MeteringStatus.archive_statuses(),
@@ -56,17 +57,19 @@ class MetaView(APIView):
                 "solutions": [
                     {
                         "value": s.value,
-                        "label": s.label,
+                        "label": uz.solution(s.value),
                         "tone": _tone(SolutionChoice.variant(s)),
                         "icon": SolutionChoice.icon(s),
                     }
                     for s in SolutionChoice
                 ],
                 "inventory_type_kinds": [
-                    {"value": v, "label": label} for v, label in InventoryType.TYPES
+                    {"value": v, "label": uz.INVENTORY_KIND.get(v, label)}
+                    for v, label in InventoryType.TYPES
                 ],
                 "count_names": [
-                    {"value": v, "label": label} for v, label in ObjectType.COUNT_NAMES
+                    {"value": v, "label": uz.COUNT_NAME.get(v, label)}
+                    for v, label in ObjectType.COUNT_NAMES
                 ],
                 "currencies": [code for code, _ in dj_settings.CURRENCY_CHOICES],
                 "default_currency": dj_settings.DEFAULT_CURRENCY,
@@ -121,10 +124,15 @@ def _invoice_card(invoice):
     }
 
 
-def _strip(columns):
-    """Drop the admin-only link fields from core.kanban.build_board output."""
+def _strip(columns, board):
+    """Drop the admin-only link fields from core.kanban.build_board output and give
+    the columns their Uzbek titles (the board definitions are shared with the admin)."""
     keep = ("key", "title", "icon", "accent", "collapsed", "count", "cards", "more")
-    return [{k: column[k] for k in keep} for column in columns]
+    titles = uz.BOARD_COLUMN.get(board, {})
+    return [
+        {**{k: column[k] for k in keep}, "title": titles.get(column["key"], column["title"])}
+        for column in columns
+    ]
 
 
 class BoardsView(APIView):
@@ -146,14 +154,15 @@ class BoardsView(APIView):
             boards.append(
                 {
                     "id": "orders",
-                    "label": "Заказы",
+                    "label": uz.BOARD_LABEL["orders"],
                     "total": Order.objects.count(),
                     "columns": _strip(
                         order_board(
                             user=user,
                             show_price=show_price,
                             to_card=lambda o: _order_card(o, show_price),
-                        )
+                        ),
+                        "orders",
                     ),
                 }
             )
@@ -161,18 +170,18 @@ class BoardsView(APIView):
             boards.append(
                 {
                     "id": "meterings",
-                    "label": "Замеры",
+                    "label": uz.BOARD_LABEL["meterings"],
                     "total": Metering.objects.count(),
-                    "columns": _strip(metering_board(to_card=_metering_card)),
+                    "columns": _strip(metering_board(to_card=_metering_card), "meterings"),
                 }
             )
         if user.has_perm("call_center.view_invoice"):
             boards.append(
                 {
                     "id": "callcenter",
-                    "label": "Call-center",
+                    "label": uz.BOARD_LABEL["callcenter"],
                     "total": Invoice.objects.count(),
-                    "columns": _strip(call_center_board(to_card=_invoice_card)),
+                    "columns": _strip(call_center_board(to_card=_invoice_card), "callcenter"),
                 }
             )
         return Response({"boards": boards})

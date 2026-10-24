@@ -93,11 +93,11 @@ export function errorMessage(error: unknown): string {
   const data = err?.response?.data;
   // Gateway / server error pages are HTML — never show that markup to staff.
   if (status === 502 || status === 503 || status === 504)
-    return `Сервер не ответил (${status}). Обновите страницу и проверьте, сохранилось ли действие, прежде чем повторять.`;
-  if (status && status >= 500) return `Ошибка на сервере (${status}). Сообщите администратору.`;
-  if (!data) return err?.message || "Ошибка сети";
+    return `Server javob bermadi (${status}). Qayta urinishdan oldin sahifani yangilang va amal saqlanganini tekshiring.`;
+  if (status && status >= 500) return `Serverda xatolik (${status}). Administratorga xabar bering.`;
+  if (!data) return err?.message || "Tarmoq xatosi";
   if (typeof data === "string")
-    return data.trimStart().startsWith("<") ? `Ошибка (${status ?? "сеть"})` : data.slice(0, 200);
+    return data.trimStart().startsWith("<") ? `Xatolik (${status ?? "tarmoq"})` : data.slice(0, 200);
   if (data.detail) return String(data.detail);
   const first = Object.entries(data)[0];
   if (first) {
@@ -105,7 +105,7 @@ export function errorMessage(error: unknown): string {
     const text = Array.isArray(value) ? value.join(" ") : typeof value === "object" ? JSON.stringify(value) : String(value);
     return field === "non_field_errors" ? text : `${field}: ${text}`;
   }
-  return "Ошибка";
+  return "Xatolik";
 }
 
 /** Field → message map for forms. */

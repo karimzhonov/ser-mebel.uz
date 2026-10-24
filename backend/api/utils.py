@@ -18,7 +18,7 @@ def int_param(params, name: str):
     try:
         return int(value)
     except (TypeError, ValueError):
-        raise ValidationError({name: "Нотўғри қиймат."})
+        raise ValidationError({name: "Noto'g'ri qiymat."})
 
 
 def date_param(params, name: str):
@@ -28,7 +28,7 @@ def date_param(params, name: str):
     try:
         return date.fromisoformat(value)
     except ValueError:
-        raise ValidationError({name: "Сана YYYY-MM-DD форматида бўлиши керак."})
+        raise ValidationError({name: "Sana YYYY-MM-DD formatida bo'lishi kerak."})
 
 
 _warning_days = {"value": None, "at": 0.0}
@@ -53,7 +53,9 @@ def date_range(params) -> tuple[date | None, date | None]:
     """?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD (both inclusive, either may be omitted)."""
     start, end = date_param(params, "date_from"), date_param(params, "date_to")
     if start and end and start > end:
-        raise ValidationError({"date_from": "Бошланғич сана охиргисидан кейин бўлмаслиги керак."})
+        raise ValidationError(
+            {"date_from": "Boshlanish sanasi tugash sanasidan keyin bo'lmasligi kerak."}
+        )
     return start, end
 
 
@@ -125,15 +127,15 @@ def order_deadline(order) -> dict:
     from order.constants import OrderStatus
 
     if order.status == OrderStatus.DONE:
-        return {"days": None, "level": "ok", "text": "Заказ готов"}
+        return {"days": None, "level": "ok", "text": "Buyurtma tayyor"}
     if order.status == OrderStatus.WAITING or order.end_date is None:
-        return {"days": None, "level": "idle", "text": "Ожидание даты сдачи"}
+        return {"days": None, "level": "idle", "text": "Topshirish sanasi kutilmoqda"}
     days = (order.end_date - today()).days
     if days < 0:
-        return {"days": days, "level": "danger", "text": f"Просрочен на {abs(days)} дн."}
+        return {"days": days, "level": "danger", "text": f"{abs(days)} kun kechikdi"}
     if days <= warning_order_days():
-        return {"days": days, "level": "warn", "text": f"{days} дн. до сдачи"}
-    return {"days": days, "level": "info", "text": f"{days} дн. до сдачи"}
+        return {"days": days, "level": "warn", "text": f"Topshirishga {days} kun"}
+    return {"days": days, "level": "info", "text": f"Topshirishga {days} kun"}
 
 
 def warning_filter(queryset, warning: str):

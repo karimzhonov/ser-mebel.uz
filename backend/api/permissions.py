@@ -20,7 +20,7 @@ def is_staff(user) -> bool:
 
 
 class IsStaffUser(BasePermission):
-    message = "Нет доступа к панели."
+    message = "Panelga kirish huquqi yo'q."
 
     def has_permission(self, request, view):
         return is_staff(request.user)
@@ -59,4 +59,4 @@ class ModelPermissions(DjangoModelPermissions):
 
 def require_perm(user, *perms: str) -> None:
     if not user.has_perms(perms):
-        raise PermissionDenied("Недостаточно прав для этого действия.")
+        raise PermissionDenied("Bu amal uchun huquq yetarli emas.")

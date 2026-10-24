@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 def mark_rover_done(rover):
     if rover.done:
-        raise ServiceError("Ровер аллақачон бажарилган")
+        raise ServiceError("Rover allaqachon bajarilgan")
     rover.done = True
     rover.save()
     notify_painting_ready(rover.order)
@@ -26,7 +26,7 @@ def notify_painting_ready(order):
     painter = Painter.objects.filter(order=order, done=False).select_related("type__user").first()
     if painter is None:
         return
-    text = f"Заказ №{order.order_number}: ровер тайёр — моляр ишини бошлаш мумкин"
+    text = f"Buyurtma №{order.order_number}: rover tayyor — molyar ishini boshlash mumkin"
     try:
         from oauth.models import User
 

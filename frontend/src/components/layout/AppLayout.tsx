@@ -42,54 +42,54 @@ interface NavItem {
 const NAV: { title: string; items: NavItem[] }[] = [
   {
     title: "",
-    items: [{ to: "/", label: "Главная", icon: LayoutDashboard }],
+    items: [{ to: "/", label: "Bosh sahifa", icon: LayoutDashboard }],
   },
   {
-    title: "Продажи",
+    title: "Sotuv",
     items: [
       { to: "/call-center", label: "Call-center", icon: PhoneCall, perm: "call_center.view_invoice" },
-      { to: "/clients", label: "Клиенты", icon: Users, perm: "client.view_client" },
+      { to: "/clients", label: "Mijozlar", icon: Users, perm: "client.view_client" },
     ],
   },
   {
-    title: "Замер",
+    title: "O'lchov",
     items: [
-      { to: "/meterings", label: "Замеры", icon: Ruler, perm: "metering.view_metering" },
-      { to: "/designs", label: "Дизайн", icon: Brush, perm: "design.view_design" },
-      { to: "/prices", label: "Нарх чиқариш", icon: Calculator, perm: "price.view_price" },
-      { to: "/catalog", label: "Товары", icon: Boxes, perm: "price.view_inventorytype" },
+      { to: "/meterings", label: "O'lchovlar", icon: Ruler, perm: "metering.view_metering" },
+      { to: "/designs", label: "Dizayn", icon: Brush, perm: "design.view_design" },
+      { to: "/prices", label: "Narx hisoblash", icon: Calculator, perm: "price.view_price" },
+      { to: "/catalog", label: "Mahsulotlar", icon: Boxes, perm: "price.view_inventorytype" },
     ],
   },
   {
-    title: "Заказы",
+    title: "Buyurtmalar",
     items: [
-      { to: "/orders", label: "Заказы", icon: Package, perm: "order.view_order" },
-      { to: "/production/detailing", label: "Деталировка", icon: BookOpen, perm: "detailing.view_detailing" },
-      { to: "/production/rover", label: "Ровер", icon: Settings2, perm: "rover.view_rover" },
-      { to: "/production/painter", label: "Моляр", icon: Paintbrush, perm: "painter.view_painter" },
-      { to: "/production/assembly", label: "Сборка / Установка", icon: Hammer, perm: "assembly.view_assembly" },
-      { to: "/factories", label: "Заводы", icon: Factory, perm: "order.view_factory" },
+      { to: "/orders", label: "Buyurtmalar", icon: Package, perm: "order.view_order" },
+      { to: "/production/detailing", label: "Detalirovka", icon: BookOpen, perm: "detailing.view_detailing" },
+      { to: "/production/rover", label: "Rover", icon: Settings2, perm: "rover.view_rover" },
+      { to: "/production/painter", label: "Molyar", icon: Paintbrush, perm: "painter.view_painter" },
+      { to: "/production/assembly", label: "Yig'ish / O'rnatish", icon: Hammer, perm: "assembly.view_assembly" },
+      { to: "/factories", label: "Zavodlar", icon: Factory, perm: "order.view_factory" },
     ],
   },
   {
-    title: "Бухгалтерия",
+    title: "Buxgalteriya",
     items: [
-      { to: "/accounting/income", label: "Приходы", icon: Download, perm: "accounting.view_income" },
-      { to: "/accounting/expense", label: "Расходы", icon: Upload, perm: "accounting.view_expense" },
+      { to: "/accounting/income", label: "Kirimlar", icon: Download, perm: "accounting.view_income" },
+      { to: "/accounting/expense", label: "Chiqimlar", icon: Upload, perm: "accounting.view_expense" },
     ],
   },
   {
-    title: "Система",
-    items: [{ to: "/users", label: "Сотрудники", icon: UserCog, superuser: true }],
+    title: "Tizim",
+    items: [{ to: "/users", label: "Xodimlar", icon: UserCog, superuser: true }],
   },
 ];
 
 // Bottom tab bar on phones: the four places staff open most.
 const MOBILE_TABS: NavItem[] = [
-  { to: "/", label: "Главная", icon: LayoutDashboard },
-  { to: "/orders", label: "Заказы", icon: Package, perm: "order.view_order" },
-  { to: "/meterings", label: "Замеры", icon: Ruler, perm: "metering.view_metering" },
-  { to: "/call-center", label: "Звонки", icon: PhoneCall, perm: "call_center.view_invoice" },
+  { to: "/", label: "Bosh sahifa", icon: LayoutDashboard },
+  { to: "/orders", label: "Buyurtmalar", icon: Package, perm: "order.view_order" },
+  { to: "/meterings", label: "O'lchovlar", icon: Ruler, perm: "metering.view_metering" },
+  { to: "/call-center", label: "Qo'ng'iroqlar", icon: PhoneCall, perm: "call_center.view_invoice" },
 ];
 
 function useTheme() {
@@ -131,7 +131,7 @@ export function AppLayout() {
             {(user?.name || "?").slice(0, 1).toUpperCase()}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium text-white">{user?.name || "Без имени"}</div>
+            <div className="truncate text-sm font-medium text-white">{user?.name || "Ismsiz"}</div>
             <div className="truncate text-xs text-accent-200/60">{phone(user?.phone)}</div>
           </div>
         </div>
@@ -139,7 +139,7 @@ export function AppLayout() {
           <button
             onClick={() => setDark(!dark)}
             className="flex items-center justify-center rounded-lg py-2 text-accent-200/70 hover:bg-white/10 hover:text-accent-200"
-            title="Тема"
+            title="Mavzu"
           >
             {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
           </button>
@@ -151,14 +151,14 @@ export function AppLayout() {
               "flex items-center justify-center rounded-lg py-2 hover:bg-white/10",
               user?.telegram_id ? "text-sky-300" : "text-accent-200/70",
             )}
-            title={user?.telegram_id ? "Telegram привязан" : "Связать Telegram"}
+            title={user?.telegram_id ? "Telegram ulangan" : "Telegramni ulash"}
           >
             <Send className="h-4 w-4" />
           </a>
           <button
             onClick={logout}
             className="flex items-center justify-center rounded-lg py-2 text-accent-200/70 hover:bg-rose-500/20 hover:text-rose-200"
-            title="Выйти"
+            title="Chiqish"
           >
             <LogOut className="h-4 w-4" />
           </button>

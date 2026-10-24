@@ -7,7 +7,7 @@ export default function FolderPage() {
   const navigate = useNavigate();
   return (
     <div>
-      <PageHeader title="Файлы" />
+      <PageHeader title="Fayllar" />
       <Card>
         <FolderBrowser folderId={Number(id)} onNavigate={(next) => navigate(`/files/${next}`)} />
       </Card>

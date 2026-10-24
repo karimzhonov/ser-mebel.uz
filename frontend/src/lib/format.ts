@@ -4,7 +4,7 @@ const nf = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 });
 
 export function money(m: Money | null | undefined, fallback = "—") {
   if (!m || m.amount === null || m.amount === undefined) return fallback;
-  const symbol = m.currency === "USD" ? "$" : m.currency === "UZS" ? " сўм" : ` ${m.currency}`;
+  const symbol = m.currency === "USD" ? "$" : m.currency === "UZS" ? " so'm" : ` ${m.currency}`;
   return m.currency === "USD" ? `${symbol}${nf.format(m.amount)}` : `${nf.format(m.amount)}${symbol}`;
 }
 
@@ -35,10 +35,10 @@ export function dateTime(value: string | null | undefined, fallback = "—") {
 export function relative(value: string | null | undefined) {
   if (!value) return "";
   const diff = (Date.now() - toDate(value).getTime()) / 1000;
-  if (diff < 60) return "только что";
-  if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
-  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} дн назад`;
+  if (diff < 60) return "hozirgina";
+  if (diff < 3600) return `${Math.floor(diff / 60)} daqiqa oldin`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)} soat oldin`;
+  if (diff < 86400 * 7) return `${Math.floor(diff / 86400)} kun oldin`;
   return date(value);
 }
 
@@ -51,8 +51,8 @@ export function phone(value: string | null | undefined) {
 }
 
 export function fileSize(bytes: number) {
-  if (!bytes) return "0 Б";
-  const units = ["Б", "КБ", "МБ", "ГБ"];
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
   const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return `${(bytes / 1024 ** i).toFixed(i ? 1 : 0)} ${units[i]}`;
 }

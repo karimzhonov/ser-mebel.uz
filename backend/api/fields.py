@@ -12,8 +12,8 @@ class MoneyField(serializers.Field):
     """
 
     default_error_messages = {
-        "invalid": "Нотўғри сумма.",
-        "currency": "Валюта нотўғри.",
+        "invalid": "Summa noto'g'ri.",
+        "currency": "Valyuta noto'g'ri.",
     }
 
     def to_representation(self, value):
