@@ -186,7 +186,7 @@ export function DesignDetailPage() {
           <Card title="Замер">
             <KV
               items={[
-                ["Клиент", can("metering.view_metering") ? <Link className="text-brand-700 hover:underline dark:text-brand-300" to={`/meterings/${m.id}`}>{m.client.fio}</Link> : m.client.fio],
+                ["Клиент", <Link className="text-brand-700 hover:underline dark:text-brand-300" to={`/meterings/${m.id}`}>{m.client.fio}</Link>],
                 ["Телефон", <PhoneLink value={m.client.phone} />],
                 ["Адрес", <AddressLink address={m.address} link={m.address_link} />],
                 ["Дата замера", dateTime(m.date_time)],

@@ -116,7 +116,6 @@ export function PricesPage() {
 
 export function PriceDetailPage() {
   const { id } = useParams();
-  const { can } = useAuth();
   const { data: p, isLoading } = useGet<Price>(`/prices/${id}/`);
   const { data: objects } = useAll<ObjectType>("object-types");
   const [tab, setTab] = useState<string>("");
@@ -243,13 +242,9 @@ export function PriceDetailPage() {
           {p.metering && (
             <Card title="Замер">
               <div className="space-y-1 text-sm">
-                {can("metering.view_metering") ? (
-                  <Link to={`/meterings/${p.metering.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">
-                    {p.metering.client.fio}
-                  </Link>
-                ) : (
-                  <div className="font-medium">{p.metering.client.fio}</div>
-                )}
+                <Link to={`/meterings/${p.metering.id}`} className="font-medium text-brand-700 hover:underline dark:text-brand-300">
+                  {p.metering.client.fio}
+                </Link>
                 <div><PhoneLink value={p.metering.client.phone} /></div>
                 <div className="muted">{p.metering.address}</div>
               </div>

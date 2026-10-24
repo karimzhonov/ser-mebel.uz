@@ -191,7 +191,7 @@ function InvoiceModal({ id, onClose }: { id: number; onClose: () => void }) {
             ["Создана", dateTime(invoice.create_date)],
             ["Изменена", dateTime(invoice.update_date)],
             ["Код ответа", <SolutionBadge solution={invoice.solution} label={invoice.solution_label} />],
-            ...(invoice.metering_id && can("metering.view_metering")
+            ...(invoice.metering_id
               ? ([["Замер", <Link className="text-brand-700 hover:underline" to={`/meterings/${invoice.metering_id}`}>Открыть замер →</Link>]] as [string, JSX.Element][])
               : []),
           ]}

@@ -305,7 +305,7 @@ export function OrderDetailPage() {
                 ["Дата приёма", date(o.reception_date)],
                 ["Дата сдачи", date(o.end_date, "не указана")],
                 ["Дизайн", o.design_type?.name ?? "—"],
-                ["Замер", o.metering && can("metering.view_metering") ? <Link className="text-brand-700 hover:underline" to={`/meterings/${o.metering}`}>Открыть →</Link> : "—"],
+                ["Замер", o.metering ? <Link className="text-brand-700 hover:underline" to={`/meterings/${o.metering}`}>Открыть →</Link> : "—"],
               ]}
             />
             {o.desc && <p className="mt-4 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800/50">{o.desc}</p>}
