@@ -27,7 +27,6 @@ import { toast } from "sonner";
 import { api, errorMessage } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
 import type { Deadline, Folder, Message, Tone } from "@/api/types";
-import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/cn";
 import { dateTime, fileSize, phone, relative } from "@/lib/format";
 import { Badge, Button, Empty, IconButton, Input, Modal, Spinner, Textarea } from "./ui";
@@ -208,8 +207,7 @@ export function FolderBrowser({
   folderId: number;
   onNavigate: (id: number) => void;
 }) {
-  const { can } = useAuth();
-  const { data, isLoading, refetch } = useGet<Folder>(`/folders/${folderId}/`);
+  const { data, isLoading, error, refetch } = useGet<Folder>(`/folders/${folderId}/`);
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -248,6 +246,7 @@ export function FolderBrowser({
     }
   }
 
+  if (error) return <Empty title="Нет доступа к этой папке" text="Папка доступна тем, кто работает с этим замером, заказом или этапом." />;
   if (isLoading || !data) return <div className="py-10 text-center"><Spinner /></div>;
 
   return (
@@ -270,12 +269,12 @@ export function FolderBrowser({
           ))}
         </nav>
         <div className="flex gap-2">
-          {can("filer.add_folder") && (
+          {data.rights.create_folder && (
             <Button size="sm" variant="outline" icon={<FolderPlus className="h-4 w-4" />} onClick={() => setNewFolder("")}>
               Папка
             </Button>
           )}
-          {can("filer.add_file") && (
+          {data.rights.upload && (
             <>
               <input ref={inputRef} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
               <Button size="sm" icon={<Upload className="h-4 w-4" />} loading={uploading} onClick={() => inputRef.current?.click()}>
@@ -299,7 +298,7 @@ export function FolderBrowser({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          if (can("filer.add_file")) upload(e.dataTransfer.files);
+          if (data.rights.upload) upload(e.dataTransfer.files);
         }}
       >
         {data.folders.map((f) => (
@@ -331,7 +330,7 @@ export function FolderBrowser({
                 <div className="truncate text-xs font-medium">{f.name}</div>
                 <div className="muted text-[11px]">{fileSize(f.size)} · {relative(f.uploaded_at)}</div>
               </a>
-              {can("filer.delete_file") && (
+              {f.can_delete && (
                 <IconButton
                   label="Удалить"
                   className="h-7 w-7 opacity-0 group-hover:opacity-100"
@@ -345,10 +344,10 @@ export function FolderBrowser({
         ))}
       </div>
       {!data.folders.length && !data.files.length && (
-        <Empty title="Папка пуста" text={can("filer.add_file") ? "Перетащите файлы сюда или нажмите «Загрузить»." : undefined} />
+        <Empty title="Папка пуста" text={data.rights.upload ? "Перетащите файлы сюда или нажмите «Загрузить»." : undefined} />
       )}
 
-      <FolderChat folderId={data.id} />
+      <FolderChat folderId={data.id} canComment={data.rights.comment} />
 
       {preview && (
         <div className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center bg-black/80 p-4" onClick={() => setPreview(null)}>
@@ -359,7 +358,7 @@ export function FolderBrowser({
   );
 }
 
-function FolderChat({ folderId }: { folderId: number }) {
+function FolderChat({ folderId, canComment }: { folderId: number; canComment: boolean }) {
   const { data, refetch } = useGet<Message[]>(`/folders/${folderId}/messages/`);
   const [text, setText] = useState("");
   const send = useAction(
@@ -383,6 +382,7 @@ function FolderChat({ folderId }: { folderId: number }) {
           </div>
         ))}
       </div>
+      {canComment && (
       <div className="flex gap-2 border-t border-slate-100 p-3 dark:border-slate-800">
         <Textarea
           rows={1}
@@ -399,6 +399,7 @@ function FolderChat({ folderId }: { folderId: number }) {
         />
         <Button icon={<Send className="h-4 w-4" />} disabled={!text.trim()} loading={send.isPending} onClick={() => send.mutate()} />
       </div>
+      )}
     </div>
   );
 }

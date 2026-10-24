@@ -305,7 +305,7 @@ export function OrderDetailPage() {
                 ["Дата приёма", date(o.reception_date)],
                 ["Дата сдачи", date(o.end_date, "не указана")],
                 ["Дизайн", o.design_type?.name ?? "—"],
-                ["Замер", o.metering ? <Link className="text-brand-700 hover:underline" to={`/meterings/${o.metering}`}>Открыть →</Link> : "—"],
+                ["Замер", o.metering && can("metering.view_metering") ? <Link className="text-brand-700 hover:underline" to={`/meterings/${o.metering}`}>Открыть →</Link> : "—"],
               ]}
             />
             {o.desc && <p className="mt-4 whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-sm dark:bg-slate-800/50">{o.desc}</p>}
@@ -358,7 +358,7 @@ export function OrderDetailPage() {
             to={p.painter ? `/production/painter?open=${p.painter.id}` : undefined}
             folder={p.painter?.folder}
             rows={p.painter && [
-              ["Тип", p.painter.type ?? "не назначен"],
+              ["Тип", p.painter.waiting_rover ? <span className="text-amber-600">ждёт окончания ровера</span> : p.painter.type ?? "не назначен"],
               ["Площадь", num(p.painter.square)],
               ...(p.painter.price ? ([["Цена", money(p.painter.price)]] as [string, string][]) : []),
               ["Выполнено", <Check ok={p.painter.done} />],

@@ -41,25 +41,25 @@ def create_folder(instance, global_folder_name, folder_name = None):
     created_history = instance.history.order_by('history_date').first()
     created_user = created_history.history_user if created_history else None
 
+    # Look folders up by name AND parent. By name alone, a same-named folder that a
+    # user created anywhere else would be picked up (hijacking the new object's whole
+    # tree) or would make get_or_create raise MultipleObjectsReturned.
     global_folder, _ = Folder.objects.get_or_create(
         name=global_folder_name,
+        parent=None,
         defaults={'owner': created_user}
     )
 
     global_folder_pk, _ = Folder.objects.get_or_create(
         name=f'{global_folder_name}-{instance.pk}',
-        defaults={
-            "parent": global_folder,
-            "owner": created_user
-        }
+        parent=global_folder,
+        defaults={"owner": created_user}
     )
     if folder_name:
         folder, _ = Folder.objects.get_or_create(
             name=folder_name,
-            defaults={
-                "parent": global_folder_pk,
-                "owner": created_user
-            }
+            parent=global_folder_pk,
+            defaults={"owner": created_user}
         )
     else:
         folder = global_folder_pk

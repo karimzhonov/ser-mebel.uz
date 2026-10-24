@@ -242,7 +242,7 @@ export interface OrderDetail extends Order {
       folder: number | null;
     } | null;
     rover: ProductionRow | null;
-    painter: (ProductionRow & { type: string | null }) | null;
+    painter: (ProductionRow & { type: string | null; waiting_rover: boolean }) | null;
     assembly: (ProductionRow & { installing_done: boolean; user: UserShort | null }) | null;
   };
   actions: {
@@ -342,6 +342,7 @@ export interface HistoryEntry {
 
 export interface FolderFile {
   id: number;
+  can_delete: boolean;
   name: string;
   url: string;
   size: number;
@@ -359,6 +360,7 @@ export interface Folder {
   breadcrumbs: { id: number; name: string }[];
   folders: { id: number; name: string; file_count: number }[];
   files: FolderFile[];
+  rights: { view: boolean; upload: boolean; create_folder: boolean; comment: boolean; delete_any: boolean };
 }
 
 export interface Message {

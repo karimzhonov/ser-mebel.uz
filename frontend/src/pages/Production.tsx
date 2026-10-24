@@ -165,6 +165,7 @@ function ProductionModal({
   assemblers?: UserShort[];
   onClose: () => void;
 }) {
+  const { can } = useAuth();
   const cfg = CONFIG[kind];
   const { data: item } = useGet<ProductionItem>(`/${cfg.resource}/${id}/`);
   const { data: painterTypes } = useAll<PainterType>("painter-types", {}, kind === "painter");
@@ -209,7 +210,7 @@ function ProductionModal({
             ["Телефон", <PhoneLink value={o.client?.phone} />],
             ["Адрес", <AddressLink address={o.address} link={o.address_link} />],
             ["Дата сдачи", date(o.end_date, "не указана")],
-            ["Заказ", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Открыть заказ →</Link>],
+            ...(can("order.view_order") ? ([["Заказ", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Открыть заказ →</Link>]] as [string, JSX.Element][]) : []),
             ...(kind !== "detailing" ? ([["Площадь", num(item.square)], ["Цена", money(item.price)]] as [string, string][]) : []),
           ]}
         />
