@@ -116,3 +116,14 @@ def test_overdue_card_matches_danger_list(admin_api, order_factory):
     data = admin_api.get("/api/v1/dashboard/overview/").data
     listed = admin_api.get("/api/v1/orders/?warning=danger").data["count"]
     assert data["orders"]["overdue"] == listed == 1
+
+
+def test_board_order_card_has_total_for_left_percent(admin_api, order_factory):
+    order_factory(price=Money(1000, "USD"), end_date=date.today())
+    from order.models import Order
+
+    Order.objects.update(lost_money=Money(400, "USD"))
+    boards = admin_api.get("/api/v1/dashboard/boards/").data["boards"]
+    cards = [c for col in boards[0]["columns"] for c in col["cards"]]
+    assert cards[0]["total"] == {"amount": 1000.0, "currency": "USD"}
+    assert cards[0]["left"] == {"amount": 600.0, "currency": "USD"}  # 60% left

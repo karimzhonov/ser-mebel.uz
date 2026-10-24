@@ -26,11 +26,11 @@ import {
 import { toast } from "sonner";
 import { api, errorMessage } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
-import type { Deadline, Folder, FolderFile, Message, Tone } from "@/api/types";
+import type { Deadline, Folder, FolderFile, Message, Money, Tone } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/cn";
-import { dateTime, fileSize, phone, relative } from "@/lib/format";
-import { Badge, Button, Empty, IconButton, Input, Modal, Spinner, Textarea } from "./ui";
+import { dateTime, fileSize, leftPercent, money, phone, relative } from "@/lib/format";
+import { Badge, Button, Empty, IconButton, Input, Modal, Spinner, Textarea, TONES } from "./ui";
 
 export function OrderStatusBadge({ status, label }: { status: string; label?: string }) {
   const { data: meta } = useMeta();
@@ -49,6 +49,23 @@ export function SolutionBadge({ solution, label }: { solution: number | null; la
   if (solution === null || solution === undefined) return <Badge tone="primary">Yangi</Badge>;
   const item = meta?.solutions.find((s) => s.value === solution);
   return <Badge tone={item?.tone ?? "idle"}>{label ?? item?.label ?? solution}</Badge>;
+}
+
+/** "Qoldiq": the unpaid amount and its share of the order total ("$130 · 57%").
+ * Green when paid off, amber up to half left, red when more than half is unpaid. */
+export function MoneyLeft({ left, total, className }: { left: Money | null | undefined; total: Money | null | undefined; className?: string }) {
+  const pct = leftPercent(left, total);
+  const tone: Tone = pct === null ? "idle" : pct === 0 ? "ok" : pct <= 50 ? "warn" : "danger";
+  return (
+    <span className={cn("inline-flex items-center gap-1.5 whitespace-nowrap", className)}>
+      <span className="font-medium tabular-nums">{money(left)}</span>
+      {pct !== null && (
+        <span className={cn("rounded-md px-1.5 text-[11px] font-semibold tabular-nums", TONES[tone].badge)}>
+          {pct === 0 ? "to'langan" : `${pct}%`}
+        </span>
+      )}
+    </span>
+  );
 }
 
 export function DeadlinePill({ deadline }: { deadline: Deadline }) {

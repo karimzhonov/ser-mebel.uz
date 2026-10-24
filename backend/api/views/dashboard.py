@@ -9,6 +9,7 @@ from metering.price.models import InventoryType, ObjectType
 from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
 
 from .. import i18n as uz
+from ..fields import MoneyField
 from ..serializers.common import money_left
 from ..utils import order_deadline
 
@@ -94,6 +95,7 @@ def _order_card(order, show_price):
     }
     if show_price and order.price is not None:
         card["left"] = money_left(order)
+        card["total"] = MoneyField().to_representation(order.total_price)  # for "left %"
     return card
 
 
