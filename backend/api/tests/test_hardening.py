@@ -87,3 +87,113 @@ def test_painter_type_without_painter_refused(admin_api, order_factory):
     ptype = PainterType.objects.create(name="Глянец", price=Money(5, "USD"))
     resp = admin_api.patch(f"/api/v1/painters/{painter.pk}/", {"type": ptype.pk}, format="json")
     assert resp.status_code == 400
+
+
+# --- uploads without an extension ("pdf (3)" from phones) ---------------------------
+
+
+@pytest.fixture
+def order_folder(db_client, default_factory):
+    from filer.models import Folder
+
+    from conftest import make_order
+
+    order = make_order(db_client=db_client)
+    order.folder = Folder.objects.create(name=f"Заказ-{order.pk}")
+    order.save(update_fields=["folder"])
+    return order.folder
+
+
+def test_pdf_without_extension_gets_client_name_and_pdf(
+    admin_api, order_folder, tmp_path, settings
+):
+    settings.MEDIA_ROOT = str(tmp_path)
+    upload = SimpleUploadedFile("pdf (3)", b"%PDF-1.7 ...", content_type="application/octet-stream")
+    resp = admin_api.post(
+        f"/api/v1/folders/{order_folder.pk}/", {"file": upload}, format="multipart"
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data[0]["name"] == "Test Client.pdf"
+    assert resp.data[0]["url"].endswith(".pdf")
+
+
+def test_meaningful_name_kept_and_extension_added(admin_api, order_folder, tmp_path, settings):
+    settings.MEDIA_ROOT = str(tmp_path)
+    upload = SimpleUploadedFile("Oshxona loyihasi", b"%PDF-1.4", content_type="application/pdf")
+    resp = admin_api.post(
+        f"/api/v1/folders/{order_folder.pk}/", {"file": upload}, format="multipart"
+    )
+    assert resp.data[0]["name"] == "Oshxona loyihasi.pdf"
+
+
+def test_named_pdf_unchanged_and_unknown_type_refused(admin_api, order_folder, tmp_path, settings):
+    settings.MEDIA_ROOT = str(tmp_path)
+    ok = SimpleUploadedFile("Shartnoma.PDF", b"%PDF-1.4", content_type="application/pdf")
+    resp = admin_api.post(f"/api/v1/folders/{order_folder.pk}/", {"file": ok}, format="multipart")
+    assert resp.status_code == 201, resp.data
+    assert resp.data[0]["name"] == "Shartnoma.PDF"
+    junk = SimpleUploadedFile(
+        "noma'lum", b"\x00\x01binary", content_type="application/octet-stream"
+    )
+    resp = admin_api.post(f"/api/v1/folders/{order_folder.pk}/", {"file": junk}, format="multipart")
+    assert resp.status_code == 400 and "aniqlab bo'lmadi" in resp.data["detail"]
+
+
+@pytest.mark.parametrize(
+    "name,content,ctype",
+    [
+        ("virus.exe", b"MZ\x90\x00", "text/plain"),  # real bad extension, whatever the type
+        ("page", b"<html><script>x</script>", "application/pdf"),  # claims PDF, isn't
+        ("pic", b"<svg onload=x>", "image/png"),  # claims PNG, isn't
+        ("notes.html", b"%PDF-1.4", "application/pdf"),  # .html never, even with PDF bytes
+    ],
+)
+def test_spoofed_or_dangerous_uploads_refused(
+    admin_api, order_folder, tmp_path, settings, name, content, ctype
+):
+    settings.MEDIA_ROOT = str(tmp_path)
+    upload = SimpleUploadedFile(name, content, content_type=ctype)
+    resp = admin_api.post(
+        f"/api/v1/folders/{order_folder.pk}/", {"file": upload}, format="multipart"
+    )
+    assert resp.status_code == 400, resp.data
+
+
+def test_dotted_name_without_real_extension_and_control_chars(
+    admin_api, order_folder, tmp_path, settings
+):
+    settings.MEDIA_ROOT = str(tmp_path)
+    upload = SimpleUploadedFile(
+        "scan 2024.05\r\n", b"%PDF-1.4", content_type="application/octet-stream"
+    )
+    resp = admin_api.post(
+        f"/api/v1/folders/{order_folder.pk}/", {"file": upload}, format="multipart"
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data[0]["name"] == "scan 2024.05.pdf"
+
+
+def test_old_extensionless_file_gets_download_name(admin_api, order_folder, tmp_path, settings):
+    from filer.models import File
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    File.objects.create(
+        folder=order_folder,
+        original_filename="pdf (3)",
+        file=SimpleUploadedFile("pdf (3)", b"%PDF-1.4 old"),
+    )
+    files = admin_api.get(f"/api/v1/folders/{order_folder.pk}/").data["files"]
+    assert files[0]["name"] == "pdf (3)"  # data untouched
+    assert files[0]["download_name"] == "pdf (3).pdf"
+
+
+def test_dotted_client_name_pdf_accepted(admin_api, order_folder, tmp_path, settings):
+    settings.MEDIA_ROOT = str(tmp_path)
+    upload = SimpleUploadedFile(
+        "Karimov.Smeta", b"%PDF-1.4", content_type="application/octet-stream"
+    )
+    resp = admin_api.post(
+        f"/api/v1/folders/{order_folder.pk}/", {"file": upload}, format="multipart"
+    )
+    assert resp.status_code == 201, resp.data
+    assert resp.data[0]["name"] == "Karimov.Smeta.pdf"

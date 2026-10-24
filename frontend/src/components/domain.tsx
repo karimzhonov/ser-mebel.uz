@@ -26,7 +26,7 @@ import {
 import { toast } from "sonner";
 import { api, errorMessage } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
-import type { Deadline, Folder, Message, Tone } from "@/api/types";
+import type { Deadline, Folder, FolderFile, Message, Tone } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/cn";
 import { dateTime, fileSize, phone, relative } from "@/lib/format";
@@ -179,6 +179,14 @@ export function ShareBars({ rows }: { rows: { label: string; value: number; disp
 
 /* --------------------------------------------------------- File browser */
 
+/** Files saved before the upload fix may have no extension ("pdf (3)") and don't open
+ * in the browser; the API then sends `download_name` (".pdf" added from the file's own
+ * bytes) and the file is downloaded under that name instead of opened. */
+function fileLinkProps(f: FolderFile) {
+  if (f.download_name) return { download: f.download_name };
+  return { target: "_blank", rel: "noreferrer" };
+}
+
 export function FolderButton({ folderId, label = "Fayllar" }: { folderId: number | null | undefined; label?: string }) {
   const [open, setOpen] = useState(false);
   if (!folderId) return null;
@@ -322,12 +330,12 @@ export function FolderBrowser({
                 <img src={f.thumbnail || f.url} alt={f.name} loading="lazy" className="h-full w-full object-cover" />
               </button>
             ) : (
-              <a href={f.url} target="_blank" rel="noreferrer" className="flex aspect-[4/3] items-center justify-center bg-slate-50 dark:bg-slate-800/60">
+              <a href={f.url} {...fileLinkProps(f)} className="flex aspect-[4/3] items-center justify-center bg-slate-50 dark:bg-slate-800/60">
                 <FileText className="h-10 w-10 text-slate-400" />
               </a>
             )}
             <div className="flex items-center justify-between gap-1 p-2">
-              <a href={f.url} target="_blank" rel="noreferrer" className="min-w-0">
+              <a href={f.url} {...fileLinkProps(f)} className="min-w-0">
                 <div className="truncate text-xs font-medium">{f.name}</div>
                 <div className="muted text-[11px]">{fileSize(f.size)} · {relative(f.uploaded_at)}</div>
               </a>
