@@ -358,7 +358,7 @@ export function OrderDetailPage() {
             to={p.painter ? `/production/painter?open=${p.painter.id}` : undefined}
             folder={p.painter?.folder}
             rows={p.painter && [
-              ["Тип", p.painter.type ?? "не назначен"],
+              ["Тип", p.painter.waiting_rover ? <span className="text-amber-600">ждёт окончания ровера</span> : p.painter.type ?? "не назначен"],
               ["Площадь", num(p.painter.square)],
               ...(p.painter.price ? ([["Цена", money(p.painter.price)]] as [string, string][]) : []),
               ["Выполнено", <Check ok={p.painter.done} />],

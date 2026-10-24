@@ -28,6 +28,7 @@ from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
 from order.detailing.models import Detailing
 from order.models import Order
 from order.painter.models import Painter
+from order.painter.services import ready_for_painter
 from order.rover.models import Rover
 
 from ..serializers.common import UserShortSerializer, money_left
@@ -293,7 +294,7 @@ class OverviewView(APIView):
         if user.has_perm("rover.view_rover"):
             stage("rover", "Ровер", Rover.objects.filter(done=False), "/production/rover")
         if user.has_perm("painter.view_painter"):
-            painters = Painter.objects.filter(done=False)
+            painters = ready_for_painter(Painter.objects.filter(done=False))
             if not manager:
                 painters = painters.filter(type__user=user)
             stage("painter", "Моляр", painters, "/production/painter")

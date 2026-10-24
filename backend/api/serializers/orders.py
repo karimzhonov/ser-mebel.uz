@@ -130,6 +130,7 @@ class OrderDetailSerializer(OrderSerializer):
             "painter": _production_row(
                 painter,
                 type=painter.type.name if painter and painter.type else None,
+                waiting_rover=bool(rover and not rover.done),
                 price=money(painter.price) if painter and show_price else None,
             ),
             "assembly": _production_row(

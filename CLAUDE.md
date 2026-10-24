@@ -7,6 +7,7 @@
 - Every new feature = model/service in `backend/` + endpoint in `backend/api/` + UI in `frontend/`. Business rules live in `<app>/services.py` (source of truth); the API calls them.
 - Don't touch `bot/` unless the owner explicitly asks. If an API/model change would affect the bot contract (`oauth.User` schema, `telegram_id`, `send_message`), stop and flag it instead of editing the bot.
 - **Git: always work on the `test` branch.** Don't create feature branches; commit straight to `test` (check `git branch --show-current` first, switch to `test` if needed). Pushing `test` auto-deploys to staging (`.github/workflows/deploy.yml`), so push only when the owner asks. `master` = production — never commit or push to it without an explicit request.
+- **Release flow (owner's rule):** every change goes `test` branch → staging **https://test.ser-mebel.uz** (admin: https://test.ser-mebel.uz/admin/) → owner checks it there → owner merges `test` into `master` via a GitHub PR → production https://ser-mebel.uz. Never skip staging; never deploy to production yourself. When reporting a finished change, say what to check on test.ser-mebel.uz.
 - Frontend: React 18 + TypeScript + Vite + Tailwind + TanStack Query; UI text in Russian like the rest of the panel; check permissions with `useAuth().can(...)` and always enforce the same rule server-side.
 
 Two-service project. Full findings: `docs/ARCHITECTURE_ANALYSIS.md` — read it before any cross-cutting work.

@@ -242,7 +242,7 @@ export interface OrderDetail extends Order {
       folder: number | null;
     } | null;
     rover: ProductionRow | null;
-    painter: (ProductionRow & { type: string | null }) | null;
+    painter: (ProductionRow & { type: string | null; waiting_rover: boolean }) | null;
     assembly: (ProductionRow & { installing_done: boolean; user: UserShort | null }) | null;
   };
   actions: {

@@ -16,7 +16,7 @@ from order.detailing.models import Detailing
 from order.detailing.services import mark_detailing_done
 from order.models import Factory, Order
 from order.painter.models import Painter, PainterType
-from order.painter.services import assign_painter_type, mark_painter_done
+from order.painter.services import assign_painter_type, mark_painter_done, ready_for_painter
 from order.rover.models import Rover
 from order.rover.services import mark_rover_done
 from order.services import (
@@ -346,8 +346,9 @@ class PainterViewSet(_ProductionViewSet):
     serializer_class = PainterSerializer
 
     def get_queryset(self):
-        qs = Painter.objects.select_related("order__client", "type")
-        # PainterAdmin.get_queryset: a painter sees only work assigned through their type.
+        # Only orders whose rover is finished (or that have none): painting comes after milling.
+        qs = ready_for_painter(Painter.objects.select_related("order__client", "type"))
+        # A painter sees only work assigned through their type.
         if not self.request.user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"):
             qs = qs.filter(type__user=self.request.user)
         return self.filter_common(qs)
