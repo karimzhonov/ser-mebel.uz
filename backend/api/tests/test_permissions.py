@@ -39,11 +39,13 @@ def test_action_needs_the_admin_permission(api, order_factory, today):
 
 def test_assembler_sees_only_own_jobs(api, make_staff, order_factory):
     from order.assembly.models import Assembly
+    from order.models import Order
 
     mine = api("assembly.view_assembly")
     other = make_staff()
     Assembly.objects.create(order=order_factory(), square=1, user=mine.user)
     Assembly.objects.create(order=order_factory(), square=1, user=other)
+    Order.objects.update(status="working")  # assembly work starts after detailing
     resp = mine.get("/api/v1/assemblies/")
     assert resp.data["count"] == 1
 

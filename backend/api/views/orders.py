@@ -10,7 +10,12 @@ from client.models import Client
 from core.exceptions import ServiceError
 from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
 from order.assembly.models import Assembly
-from order.assembly.services import assemblers, mark_assembly_done, mark_installing_done
+from order.assembly.services import (
+    assemblers,
+    mark_assembly_done,
+    mark_installing_done,
+    ready_for_assembly,
+)
 from order.constants import ORDER_CHANGE_STATUS_PERMISSION, OrderStatus
 from order.detailing.models import Detailing
 from order.detailing.services import mark_detailing_done
@@ -376,7 +381,8 @@ class AssemblyViewSet(_ProductionViewSet):
     done_fields = ("done", "installing_done")
 
     def get_queryset(self):
-        qs = Assembly.objects.select_related("order__client", "user")
+        # Only orders past detailing ("Заказ на сырье" and later) are assembly work.
+        qs = ready_for_assembly(Assembly.objects.select_related("order__client", "user"))
         # AssemblyAdmin.get_queryset: an assembler sees only their own jobs.
         if not self.request.user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"):
             qs = qs.filter(user=self.request.user)

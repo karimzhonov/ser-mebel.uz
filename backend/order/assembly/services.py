@@ -7,6 +7,20 @@ from oauth.constants import ASSEMBLY_PERMISSION
 
 from ..constants import OrderStatus
 
+# Assembly work starts once detailing is finished: the order is in "Заказ на сырье"
+# or later. Orders still waiting / created / in detailing are not assembly tasks yet.
+NOT_YET_ASSEMBLY = [OrderStatus.WAITING, OrderStatus.CREATED, OrderStatus.DETAILING]
+
+
+def ready_for_assembly(queryset):
+    """Assembly rows whose order has passed detailing."""
+    return queryset.exclude(order__status__in=NOT_YET_ASSEMBLY)
+
+
+def _ensure_past_detailing(assembly):
+    if assembly.order.status in NOT_YET_ASSEMBLY:
+        raise ServiceError("Detalirovka hali tugamagan — yig'ish undan keyin boshlanadi")
+
 
 def assemblers():
     """Users who may be picked as "Сборщик" (AssemblyForm's queryset)."""
@@ -22,6 +36,7 @@ def mark_assembly_done(assembly):
     """Mirrors AssemblyAdmin.done_action: the order moves to "Установка"."""
     if assembly.done:
         raise ServiceError("Сборка аллақачон бажарилган")
+    _ensure_past_detailing(assembly)
     with transaction.atomic():
         assembly.done = True
         assembly.save(update_fields=["done"])

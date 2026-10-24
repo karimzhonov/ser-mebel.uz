@@ -24,6 +24,7 @@ from metering.constants import MeteringStatus
 from metering.models import Metering
 from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
 from order.assembly.models import Assembly
+from order.assembly.services import ready_for_assembly
 from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
 from order.detailing.models import Detailing
 from order.models import Order
@@ -300,7 +301,7 @@ class OverviewView(APIView):
             stage("painter", "Моляр", painters, "/production/painter")
         workload = None
         if user.has_perm("assembly.view_assembly"):
-            assemblies = Assembly.objects.all()
+            assemblies = ready_for_assembly(Assembly.objects.all())
             if not manager:
                 assemblies = assemblies.filter(user=user)
             stage(
@@ -317,7 +318,7 @@ class OverviewView(APIView):
             )
             if manager:
                 rows = (
-                    Assembly.objects.filter(installing_done=False)
+                    ready_for_assembly(Assembly.objects.filter(installing_done=False))
                     .order_by()
                     .values("user")
                     .annotate(count=Count("pk"), square=Sum("square"))
