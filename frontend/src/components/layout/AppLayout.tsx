@@ -33,6 +33,11 @@ import {
   Gift,
   ShieldCheck,
   SlidersHorizontal,
+  Clock as ClockIcon,
+  ListChecks,
+  Trophy,
+  IdCard,
+  CalendarDays,
 } from "lucide-react";
 import logoWide from "@/assets/logo-wide.png";
 import { useAuth } from "@/auth/AuthContext";
@@ -96,6 +101,18 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { to: "/finance/settings", label: "Sozlamalar", icon: SlidersHorizontal, perm: "oauth.view_telegrammember" },
       { to: "/accounting/income", label: "Eski kirimlar", icon: Download, perm: "accounting.view_income" },
       { to: "/accounting/expense", label: "Eski chiqimlar", icon: Upload, perm: "accounting.view_expense" },
+    ],
+  },
+  {
+    // HR = the davomat (attendance) bot moved onto the site (hr/services.py).
+    title: "HR",
+    items: [
+      { to: "/hr", label: "Davomat", icon: ClockIcon, perm: "hr.view_attendance" },
+      { to: "/hr/journal", label: "Davomat jurnali", icon: ListChecks, perm: "hr.view_attendance" },
+      { to: "/hr/rating", label: "Reyting", icon: Trophy, perm: "hr.view_attendance" },
+      { to: "/hr/employees", label: "Xodimlar", icon: IdCard, perm: "hr.view_employee" },
+      { to: "/hr/calendar", label: "Bayram va ta'tillar", icon: CalendarDays, perm: "hr.view_holiday" },
+      { to: "/hr/settings", label: "Davomat sozlamalari", icon: Settings2, perm: "hr.view_workgroup" },
     ],
   },
   {

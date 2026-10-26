@@ -180,4 +180,9 @@ def run_due(at=None):
         _safe("orders", hourly_orders, 9 <= h <= 21)
     once("cleanup", cleanup)
     _safe("replay", replay_updates)
+    # davomat (HR) keeps its own once-per-day markers; it only shares the process
+    from hr.jobs import tick as hr_tick
+
+    if hr_tick():
+        ran.append("hr")
     return ran

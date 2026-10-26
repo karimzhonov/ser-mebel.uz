@@ -88,23 +88,23 @@ def test_site_linking_start_is_not_handled(tg, members):
     assert Bot(200).text("/start 15") is False
 
 
-def test_group_chats_are_ignored(tg, members):
+def test_group_chats_never_reach_finance(tg, members):
+    """Group messages belong to davomat (HR); an unwatched group gets no reply."""
     from accounting.telegram.router import handle_update
 
-    assert (
-        handle_update(
-            {
-                "update_id": 99999,
-                "message": {
-                    "message_id": 1,
-                    "from": {"id": 200},
-                    "chat": {"id": -5, "type": "group"},
-                    "text": "x",
-                },
-            }
-        )
-        is False
+    handle_update(
+        {
+            "update_id": 99999,
+            "message": {
+                "message_id": 1,
+                "date": 0,
+                "from": {"id": 200, "first_name": "Ali"},
+                "chat": {"id": -5, "type": "group"},
+                "text": "350000 furnitura 406",
+            },
+        }
     )
+    assert tg.calls == [] and not Operation.objects.exists()
 
 
 def test_duplicate_update_is_handled_once(tg, members):

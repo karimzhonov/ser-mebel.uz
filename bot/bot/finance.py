@@ -1,4 +1,7 @@
-"""Finance (Moliya) bot: forwards private messages and button presses to the backend.
+"""Finance (Moliya) + davomat (HR) bot: forwards updates to the backend.
+
+Private messages, button presses, work-group messages (video-note attendance reports)
+and group membership changes go to the backend.
 
 The whole finance logic lives in the backend (backend/accounting/telegram/), which
 answers through the Bot API with the same BOT_TOKEN. This router only forwards the raw
@@ -18,7 +21,7 @@ import re
 import aiohttp
 from aiogram import F, Router
 from aiogram.dispatcher.event.bases import SkipHandler
-from aiogram.types import CallbackQuery, Message, Update
+from aiogram.types import CallbackQuery, ChatMemberUpdated, Message, Update
 
 from config import BACKEND_URL, BOT_TOKEN
 
@@ -26,7 +29,9 @@ logger = logging.getLogger(__name__)
 
 router = Router(name="finance")
 
-SITE_LINK = re.compile(r"^/start(@\w+)?\s+\S+")
+# /start <user_id> links a site account (handled here, never forwarded).
+# /start davomat (the work-group «Botga ulanish» link) is forwarded to HR.
+SITE_LINK = re.compile(r"^/start(@\w+)?\s+\d+\s*$")
 TIMEOUT = aiohttp.ClientTimeout(total=55)
 
 
@@ -64,6 +69,23 @@ async def finance_message(message: Message, event_update: Update):
         raise SkipHandler()
     if not await forward(event_update):
         raise SkipHandler()
+
+
+@router.message(F.chat.type.in_({"group", "supergroup"}))
+async def group_message(message: Message, event_update: Update):
+    """Work groups: attendance reports, /ulash, joins/leaves. Never answered by the
+    site handler (it would spam the group)."""
+    await forward(event_update)
+
+
+@router.my_chat_member()
+async def bot_membership(event: ChatMemberUpdated, event_update: Update):
+    await forward(event_update)
+
+
+@router.chat_member()
+async def member_change(event: ChatMemberUpdated, event_update: Update):
+    await forward(event_update)
 
 
 @router.callback_query()

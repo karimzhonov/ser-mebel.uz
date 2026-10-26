@@ -91,12 +91,6 @@ async def test_photo_without_text_does_not_crash_site_handler(answers):
     answers[0].assert_awaited_once()
 
 
-async def test_group_messages_are_not_forwarded(answers):
-    with patch.object(finance, "forward", new=AsyncMock(return_value=True)) as fwd:
-        await dp.feed_update(tg_bot, msg_update("x", chat_type="group", uid=-5))
-    fwd.assert_not_awaited()
-
-
 async def test_callbacks_are_forwarded():
     with patch.object(finance, "forward", new=AsyncMock(return_value=True)) as fwd:
         await dp.feed_update(tg_bot, cb_update())
@@ -159,3 +153,21 @@ async def test_backend_down_falls_back():
 
     with patch.object(finance.aiohttp, "ClientSession", Boom):
         assert await finance.forward(msg_update("hi")) is False
+
+
+# ---------------------------------------------------------------- davomat (HR)
+async def test_group_messages_go_to_backend_and_never_get_site_greeting(answers):
+    with patch.object(finance, "forward", new=AsyncMock(return_value=False)) as fwd:
+        await dp.feed_update(tg_bot, msg_update("keldim", chat_type="supergroup", uid=-100123))
+    fwd.assert_awaited_once()
+    assert not answers[0].await_count and not answers[1].await_count
+
+
+async def test_start_davomat_is_forwarded_not_treated_as_site_link(answers):
+    with patch.object(finance, "forward", new=AsyncMock(return_value=True)) as fwd:
+        await dp.feed_update(tg_bot, msg_update("/start davomat"))
+    fwd.assert_awaited_once()
+
+
+def test_webhook_receives_membership_updates():
+    assert {"my_chat_member", "chat_member"} <= set(dp.resolve_used_update_types())

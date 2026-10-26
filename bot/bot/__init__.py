@@ -1,6 +1,6 @@
 import logging
 
-from aiogram import Bot, Dispatcher, Router
+from aiogram import Bot, Dispatcher, F, Router
 from aiogram.exceptions import AiogramError
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -24,7 +24,7 @@ def build_keyboard(url: str = ""):
     )
 
 
-@site_router.message()
+@site_router.message(F.chat.type == "private")
 async def handle_any_message(message: Message):
     # photos/stickers have no text
     args = (message.text or "").split()

@@ -18,6 +18,8 @@ import FinanceSummaryPage from "@/pages/finance/Summary";
 import FinanceOperationsPage from "@/pages/finance/Operations";
 import FinanceSettingsPage from "@/pages/finance/Settings";
 import { FinanceOrdersPage, FinanceWalletsPage } from "@/pages/finance/Wallets";
+import { HrJournalPage, HrTodayPage } from "@/pages/hr/Today";
+import { HrCalendarPage, HrEmployeesPage, HrRatingPage, HrSettingsPage } from "@/pages/hr/People";
 import { FinanceChecksPage, FinanceFollowupPage, FinanceReportsPage, FinanceRequestsPage } from "@/pages/finance/Tasks";
 import UsersPage from "@/pages/Users";
 import FolderPage from "@/pages/Folder";
@@ -66,6 +68,12 @@ export default function App() {
         <Route path="finance/followup" element={<FinanceFollowupPage />} />
         <Route path="finance/checks" element={<FinanceChecksPage />} />
         <Route path="finance/settings" element={<FinanceSettingsPage />} />
+        <Route path="hr" element={<HrTodayPage />} />
+        <Route path="hr/journal" element={<HrJournalPage />} />
+        <Route path="hr/rating" element={<HrRatingPage />} />
+        <Route path="hr/employees" element={<HrEmployeesPage />} />
+        <Route path="hr/calendar" element={<HrCalendarPage />} />
+        <Route path="hr/settings" element={<HrSettingsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="files/:id" element={<FolderPage />} />
         <Route path="login" element={<Navigate to="/" replace />} />

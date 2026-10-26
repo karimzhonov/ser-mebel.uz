@@ -176,8 +176,15 @@ def _private_sender(up: dict):
 
 
 def claims(up: dict) -> bool:
-    """Is this update for the finance bot? Answered before the (slow) handling, so the
-    site bot can fall back to its greeting immediately. Must agree with _route()."""
+    """Is this update for davomat (HR) or the finance bot? Answered before the (slow)
+    handling, so the site bot can fall back to its greeting immediately."""
+    from hr.telegram import claims as hr_claims
+
+    return hr_claims(up) or _finance_claims(up)
+
+
+def _finance_claims(up: dict) -> bool:
+    """Must agree with _route()."""
     frm, chat, cq, msg = _private_sender(up)
     if not frm:
         return False
@@ -185,7 +192,7 @@ def claims(up: dict) -> bool:
         return True
     text = msg.get("text") or ""
     if _command(text) == "/start" and len(text.split()) > 1:
-        return False  # /start <user_id>: site account linking
+        return False  # /start <user_id>: site account linking; /start davomat: HR
     m = S.member_by_tg(frm["id"])
     if m:
         # blocked people (e.g. rebuilt by the importer) keep the site bot greeting
@@ -218,36 +225,61 @@ def handle_update(up: dict, recorded: bool = False) -> bool:
                 ProcessedUpdate.objects.create(update_id=uid)
         except IntegrityError:
             return True  # Telegram retry of an update we already handled
-    frm, chat, cq, msg = _private_sender(up)
-    if not frm:
+    sender = _sender_id(up)
+    if sender is None:
         return False
-    with _user_lock(frm["id"]):
-        session, _ = BotSession.objects.get_or_create(telegram_id=int(frm["id"]))
-        if (
-            session.data
-            and session.updated_at
-            and S.now() - session.updated_at > timedelta(hours=6)
-        ):
-            session.data, session.flow_messages = None, []
-        ctx = Ctx(frm, chat["id"], session)
-        tracker = api.Tracker(chat["id"])
-        if msg:
-            tracker.ids.append(msg.get("message_id"))
-        api.set_tracker(tracker)
-        try:
-            handled = _route(ctx, cq, msg)
-        except ServiceError as e:
-            send(ctx, f"❗ {esc(e.message)}")
-            handled = True
-        finally:
-            api.set_tracker(None)
-        # keep the ids of this flow's messages so «❌ Bekor qilish» can delete them
-        session.refresh_from_db(fields=["data"])
-        if not getattr(tracker, "done", False):
-            session.flow_messages = (
-                (list(session.flow_messages or []) + tracker.ids)[-80:] if session.data else []
-            )
-            session.save(update_fields=["flow_messages"])
+    with _user_lock(sender):
+        # davomat (HR) first, like DV.handle in the Apps Script: group reports,
+        # `dv:` buttons, davomat commands and the answers it is waiting for
+        from hr.telegram import handle as hr_handle
+
+        if hr_handle(up):
+            return True
+        frm, chat, cq, msg = _private_sender(up)
+        if not frm:
+            return False
+        return _handle_finance(up, frm, chat, cq, msg)
+
+
+def _sender_id(up: dict):
+    """Whose update this is (the per-user lock key). Membership changes are keyed by
+    the member, not the actor: a join/leave done by another bot still counts."""
+    for key in ("my_chat_member", "chat_member"):
+        ev = up.get(key)
+        if ev:
+            user = (ev.get("new_chat_member") or {}).get("user") or ev.get("from") or {}
+            return user.get("id") or (ev.get("chat") or {}).get("id")
+    for key in ("callback_query", "message"):
+        frm = (up.get(key) or {}).get("from")
+        if frm:
+            return None if frm.get("is_bot") else frm["id"]
+    return None
+
+
+def _handle_finance(up: dict, frm, chat, cq, msg) -> bool:
+    """The finance bot part (called with the per-user lock held)."""
+    session, _ = BotSession.objects.get_or_create(telegram_id=int(frm["id"]))
+    if session.data and session.updated_at and S.now() - session.updated_at > timedelta(hours=6):
+        session.data, session.flow_messages = None, []
+    ctx = Ctx(frm, chat["id"], session)
+    tracker = api.Tracker(chat["id"])
+    if msg:
+        tracker.ids.append(msg.get("message_id"))
+    api.set_tracker(tracker)
+    try:
+        handled = _route(ctx, cq, msg)
+    except ServiceError as e:
+        send(ctx, f"❗ {esc(e.message)}")
+        handled = True
+    finally:
+        api.set_tracker(None)
+    # keep the ids of this flow's messages so «❌ Bekor qilish» can delete them
+    session.refresh_from_db(fields=["data"])
+    if not getattr(tracker, "done", False):
+        session.flow_messages = (
+            (list(session.flow_messages or []) + tracker.ids)[-80:] if session.data else []
+        )
+        session.save(update_fields=["flow_messages"])
     return handled
 
 

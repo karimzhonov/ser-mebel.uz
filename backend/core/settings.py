@@ -70,6 +70,7 @@ INSTALLED_APPS = [
     'metering.price',
     'discussion',
     'accounting',
+    'hr',
 
     'easy_thumbnails',
     'mptt',
