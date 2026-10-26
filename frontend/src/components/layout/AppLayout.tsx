@@ -24,6 +24,15 @@ import {
   UserCog,
   X,
   BookOpen,
+  PieChart,
+  ArrowLeftRight,
+  Wallet,
+  Receipt,
+  HandCoins,
+  CalendarCheck,
+  Gift,
+  ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 import logoWide from "@/assets/logo-wide.png";
 import { useAuth } from "@/auth/AuthContext";
@@ -72,10 +81,21 @@ const NAV: { title: string; items: NavItem[] }[] = [
     ],
   },
   {
-    title: "Buxgalteriya",
+    // Moliya = the finance Telegram bot moved onto the site (accounting/services.py).
+    // The old Kirimlar/Chiqimlar ledger stays as it was, in its own tables.
+    title: "Moliya",
     items: [
-      { to: "/accounting/income", label: "Kirimlar", icon: Download, perm: "accounting.view_income" },
-      { to: "/accounting/expense", label: "Chiqimlar", icon: Upload, perm: "accounting.view_expense" },
+      { to: "/finance", label: "Xulosa", icon: PieChart, perm: "accounting.view_operation" },
+      { to: "/finance/operations", label: "Amallar", icon: ArrowLeftRight, perm: "accounting.view_operation" },
+      { to: "/finance/wallets", label: "Hamyonlar", icon: Wallet, perm: "accounting.view_operation" },
+      { to: "/finance/orders", label: "Buyurtmalar moliyasi", icon: Receipt, perm: "accounting.view_all_operations" },
+      { to: "/finance/requests", label: "Pul so'rovlari", icon: HandCoins, perm: "accounting.view_moneyrequest" },
+      { to: "/finance/reports", label: "Oylik hisob", icon: CalendarCheck, perm: "accounting.view_monthreport" },
+      { to: "/finance/followup", label: "Готов va bonuslar", icon: Gift, perm: "accounting.view_orderbonus" },
+      { to: "/finance/checks", label: "Tekshiruv", icon: ShieldCheck, perm: "accounting.view_all_operations" },
+      { to: "/finance/settings", label: "Sozlamalar", icon: SlidersHorizontal, perm: "oauth.view_telegrammember" },
+      { to: "/accounting/income", label: "Eski kirimlar", icon: Download, perm: "accounting.view_income" },
+      { to: "/accounting/expense", label: "Eski chiqimlar", icon: Upload, perm: "accounting.view_expense" },
     ],
   },
   {

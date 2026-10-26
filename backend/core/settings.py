@@ -231,6 +231,16 @@ CONSTANCE_CONFIG = {
     'PRODUCTION_WARNING_ORDER_DAYS': (14, 'Предупреждение о прасрочка заказа (производство)', int),
     'ASSEMBLY_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Сборка цена за квадрат', 'price_field'),
     'ROVER_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Ровер цена за квадрат', 'price_field'),
+    # Moliya (finance bot) — the «Sozlamalar» sheet of the old Apps Script.
+    'FIN_REMINDER_HOUR': (19, "Moliya: xodimlarga kunlik eslatma soati", int),
+    'FIN_ADMIN_REPORT_HOUR': (21, "Moliya: rahbarga kunlik hisobot soati", int),
+    'FIN_MONTH_END_DAYS': (3, "Moliya: oy tugashiga necha kun qolganda eslatma", int),
+    'FIN_WARN_PERCENT': (80, "Moliya: buyurtma byudjetining necha % sarflansa ogohlantirish", int),
+    'FIN_USD_RATE': (0.0, "Moliya: dollar kursi (0 — Markaziy bank kursi)", float),
+    'FIN_CHANNEL_ID': ('', "Moliya: Telegram kanal (@username yoki -100...)", str),
+    'FIN_READY_DAYS': (30, "Moliya: «Готов» buyurtma qoldiq to'lov ro'yxatida necha kun turadi", int),
+    'FIN_BONUS_SINCE': ('', "Moliya: shu sanadan keyin «Готов» bo'lganlarga bonus kuzatuvi (bo'sh — birinchi ishga tushgan kun)", str),
+    'FIN_REPORT_TEMPLATE': ('', "Moliya: hisob-kitob varaqasi fon rasmi (media yo'li)", str),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
@@ -265,7 +275,20 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
             "fields": {
                 "ASSEMBLY_PRICE_PER_SQUARE",
             }
-        }
+        },
+        "Moliya": {
+            "fields": (
+                "FIN_REMINDER_HOUR",
+                "FIN_ADMIN_REPORT_HOUR",
+                "FIN_MONTH_END_DAYS",
+                "FIN_WARN_PERCENT",
+                "FIN_USD_RATE",
+                "FIN_CHANNEL_ID",
+                "FIN_READY_DAYS",
+                "FIN_BONUS_SINCE",
+                "FIN_REPORT_TEMPLATE",
+            )
+        },
     }
 )
 

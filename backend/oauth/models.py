@@ -82,3 +82,75 @@ class User(AbstractBaseUser, PermissionsMixin):
             (PAINTER_PERMISSION, 'Painter'),
             (ASSEMBLY_PERMISSION, 'Assembly'),
         ]
+
+
+class TelegramRole(models.TextChoices):
+    ADMIN = "admin", "Rahbar"
+    STAFF = "staff", "Xodim"
+    PENDING = "pending", "Tasdiq kutmoqda"
+    BLOCKED = "blocked", "Bloklangan"
+
+
+class TelegramMember(models.Model):
+    """Who may use the finance Telegram bot, and as what.
+
+    Deliberately a separate table, not columns on oauth_user: the bot mirrors
+    oauth_user by hand (bot/db/models/oauth.py), and most finance staff (workers,
+    drivers) have no site account at all. `user` links the two when they do.
+    """
+
+    telegram_id = models.BigIntegerField(unique=True, verbose_name="Telegram ID")
+    user = models.OneToOneField(
+        User,
+        models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="telegram_member",
+        verbose_name="Sayt foydalanuvchisi",
+    )
+    name = models.CharField(max_length=255, verbose_name="Ism")
+    username = models.CharField(max_length=255, blank=True, default="", verbose_name="Username")
+    role = models.CharField(
+        max_length=16,
+        choices=TelegramRole.choices,
+        default=TelegramRole.PENDING,
+        db_index=True,
+        verbose_name="Rol",
+    )
+    # Duties (the Apps Script picked these people by name or by a config key).
+    is_site_entry = models.BooleanField(default=False, verbose_name="Saytga kirituvchi")
+    is_feedback = models.BooleanField(default=False, verbose_name="Mijoz fikri menejeri")
+    is_bonus_receiver = models.BooleanField(
+        default=False, verbose_name="«Готов» varaqasi va bonus oluvchi"
+    )
+    is_deadline_receiver = models.BooleanField(
+        default=False, verbose_name="Srok eslatmalari oluvchi"
+    )
+    joined_at = models.DateTimeField(auto_now_add=True, verbose_name="Qo'shilgan")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Telegram a'zo"
+        verbose_name_plural = "Telegram a'zolar"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name or str(self.telegram_id)
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == TelegramRole.ADMIN
+
+    @property
+    def is_active_member(self) -> bool:
+        return self.role in (TelegramRole.ADMIN, TelegramRole.STAFF)
+
+    @property
+    def is_task_only(self) -> bool:
+        """Site-entry / feedback managers don't book money and aren't asked for
+        reports — unless they are also an admin (taskOnly_ in code.txt)."""
+        return (self.is_site_entry or self.is_feedback) and self.role != TelegramRole.ADMIN
+
+    @property
+    def has_wallet(self) -> bool:
+        return self.is_active_member and not self.is_task_only

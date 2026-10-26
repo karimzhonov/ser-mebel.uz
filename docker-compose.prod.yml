@@ -40,6 +40,28 @@ services:
       - ./media/:/media/
       - ./static/:/static/
 
+  # Moliya bot: reminders, daily reports, Готов/bonus follow-up (was the Apps Script
+  # "hourly" trigger). Same image and env as "back"; jobs are once-per-key in the DB.
+  scheduler:
+    container_name: ${STACK_PREFIX:-}scheduler
+    image: khtkarimzhonov/api.ser-mebel.uz:${IMAGE_TAG}
+    environment:
+      - SECRET_KEY
+      - DEBUG
+      - POSTGRES_DB
+      - POSTGRES_USER
+      - POSTGRES_PASSWORD
+      - POSTGRES_HOST
+      - POSTGRES_PORT
+      - BOT_TOKEN
+      - BOT_SERVER
+    command: python manage.py finance_scheduler
+    volumes:
+      - ./media/:/media/
+    depends_on:
+      - back
+    restart: unless-stopped
+
   front:
     container_name: ${STACK_PREFIX:-}front
     image: khtkarimzhonov/front.ser-mebel.uz:${IMAGE_TAG}
@@ -62,6 +84,8 @@ services:
       - BOT_TOKEN
       - WEBHOOK_URL
       - BASE_SITE
+      # Finance updates are forwarded to the backend over the compose network.
+      - BACKEND_URL=http://back:8000
       - POSTGRES_DB
       - POSTGRES_HOST
       - POSTGRES_USER

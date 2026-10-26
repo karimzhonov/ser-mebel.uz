@@ -16,6 +16,19 @@ services:
     depends_on:
       - db
 
+  # Moliya scheduled jobs (reminders, reports). Optional in dev.
+  scheduler:
+    container_name: scheduler
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    command: python manage.py finance_scheduler
+    volumes:
+      - ./media/:/media/
+      - ./backend/:/app/
+    depends_on:
+      - db
+
   db: 
     container_name: db
     image: postgres:18

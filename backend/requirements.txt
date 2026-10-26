@@ -44,3 +44,4 @@ requests
 openpyxl
 pytest==8.3.5
 pytest-django==4.9.0
+google-auth

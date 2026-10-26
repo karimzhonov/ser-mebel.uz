@@ -14,6 +14,11 @@ import { OrderCreatePage, OrderDetailPage, OrdersPage } from "@/pages/Orders";
 import ProductionPage from "@/pages/Production";
 import FactoriesPage from "@/pages/Factories";
 import AccountingPage from "@/pages/Accounting";
+import FinanceSummaryPage from "@/pages/finance/Summary";
+import FinanceOperationsPage from "@/pages/finance/Operations";
+import FinanceSettingsPage from "@/pages/finance/Settings";
+import { FinanceOrdersPage, FinanceWalletsPage } from "@/pages/finance/Wallets";
+import { FinanceChecksPage, FinanceFollowupPage, FinanceReportsPage, FinanceRequestsPage } from "@/pages/finance/Tasks";
 import UsersPage from "@/pages/Users";
 import FolderPage from "@/pages/Folder";
 import { Empty } from "@/components/ui";
@@ -52,6 +57,15 @@ export default function App() {
         <Route path="production/:kind" element={<ProductionPage />} />
         <Route path="factories" element={<FactoriesPage />} />
         <Route path="accounting/:kind" element={<AccountingPage />} />
+        <Route path="finance" element={<FinanceSummaryPage />} />
+        <Route path="finance/operations" element={<FinanceOperationsPage />} />
+        <Route path="finance/wallets" element={<FinanceWalletsPage />} />
+        <Route path="finance/orders" element={<FinanceOrdersPage />} />
+        <Route path="finance/requests" element={<FinanceRequestsPage />} />
+        <Route path="finance/reports" element={<FinanceReportsPage />} />
+        <Route path="finance/followup" element={<FinanceFollowupPage />} />
+        <Route path="finance/checks" element={<FinanceChecksPage />} />
+        <Route path="finance/settings" element={<FinanceSettingsPage />} />
         <Route path="users" element={<UsersPage />} />
         <Route path="files/:id" element={<FolderPage />} />
         <Route path="login" element={<Navigate to="/" replace />} />

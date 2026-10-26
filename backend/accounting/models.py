@@ -75,3 +75,22 @@ class Income(models.Model):
             return Money(self.converted_cost, self.converted_cost_currency)
         return self.cost
 
+
+
+# Finance bot (Moliya) — separate tables, see accounting/finance_models.py
+from .finance_models import (  # noqa: E402,F401
+    BotSession,
+    ClientFeedback,
+    FinanceCar,
+    FinanceCategory,
+    FinanceJobRun,
+    ManualOrder,
+    MoneyRequest,
+    MonthReport,
+    Operation,
+    OrderBonus,
+    ProcessedUpdate,
+    SiteEntryTask,
+    WarrantyLetter,
+    Worker,
+)
