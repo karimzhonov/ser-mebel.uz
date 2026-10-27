@@ -13,12 +13,12 @@ import CatalogPage from "@/pages/Catalog";
 import { OrderCreatePage, OrderDetailPage, OrdersPage } from "@/pages/Orders";
 import ProductionPage from "@/pages/Production";
 import FactoriesPage from "@/pages/Factories";
-import AccountingPage from "@/pages/Accounting";
 import FinanceSummaryPage from "@/pages/finance/Summary";
 import FinanceOperationsPage from "@/pages/finance/Operations";
 import FinanceSettingsPage from "@/pages/finance/Settings";
 import { FinanceOrdersPage, FinanceWalletsPage } from "@/pages/finance/Wallets";
 import { HrJournalPage, HrTodayPage } from "@/pages/hr/Today";
+import { WarehouseMovementsPage, WarehouseSettingsPage, WarehouseStockPage } from "@/pages/warehouse/Warehouse";
 import { HrCalendarPage, HrEmployeesPage, HrRatingPage, HrSettingsPage } from "@/pages/hr/People";
 import { FinanceChecksPage, FinanceFollowupPage, FinanceReportsPage, FinanceRequestsPage } from "@/pages/finance/Tasks";
 import UsersPage from "@/pages/Users";
@@ -42,7 +42,7 @@ export default function App() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
-        <Route index element={<DashboardPage />} />
+        <Route index element={user.is_warehouse_keeper && !user.is_superuser ? <Navigate to="/warehouse" replace /> : <DashboardPage />} />
         <Route path="call-center" element={<CallCenterPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="clients/:phone" element={<ClientDetailPage />} />
@@ -58,7 +58,6 @@ export default function App() {
         <Route path="orders/:id" element={<OrderDetailPage />} />
         <Route path="production/:kind" element={<ProductionPage />} />
         <Route path="factories" element={<FactoriesPage />} />
-        <Route path="accounting/:kind" element={<AccountingPage />} />
         <Route path="finance" element={<FinanceSummaryPage />} />
         <Route path="finance/operations" element={<FinanceOperationsPage />} />
         <Route path="finance/wallets" element={<FinanceWalletsPage />} />
@@ -68,6 +67,9 @@ export default function App() {
         <Route path="finance/followup" element={<FinanceFollowupPage />} />
         <Route path="finance/checks" element={<FinanceChecksPage />} />
         <Route path="finance/settings" element={<FinanceSettingsPage />} />
+        <Route path="warehouse" element={<WarehouseStockPage />} />
+        <Route path="warehouse/movements" element={<WarehouseMovementsPage />} />
+        <Route path="warehouse/settings" element={<WarehouseSettingsPage />} />
         <Route path="hr" element={<HrTodayPage />} />
         <Route path="hr/journal" element={<HrJournalPage />} />
         <Route path="hr/rating" element={<HrRatingPage />} />

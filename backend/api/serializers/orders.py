@@ -1,7 +1,6 @@
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import serializers
 
-from accounting.models import EXPENSE_ORDER_PERMISSION
 from metering.design.models import DesignType
 from metering.models import Metering
 from oauth.models import User
@@ -159,7 +158,6 @@ class OrderDetailSerializer(OrderSerializer):
             ),
             "go_to_assembly": user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
             and obj.status == OrderStatus.WORKING,
-            "add_expense": user.has_perm(f"accounting.{EXPENSE_ORDER_PERMISSION}"),
             "edit_price": can_view_price(self.context.get("request")),
         }
 

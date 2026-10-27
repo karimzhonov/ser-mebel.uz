@@ -3,7 +3,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import accounting, call_center, finance, hr, metering, orders, users
+from .views import call_center, finance, hr, metering, orders, users, warehouse
 from .views.auth import LoginView, LogoutView, MeView, TelegramLoginView
 from .views.dashboard import BoardsView, MetaView
 from .views.files import FileView, FolderMessagesView, FolderView
@@ -26,10 +26,6 @@ router.register("rovers", orders.RoverViewSet, basename="rover")
 router.register("painter-types", orders.PainterTypeViewSet, basename="paintertype")
 router.register("painters", orders.PainterViewSet, basename="painter")
 router.register("assemblies", orders.AssemblyViewSet, basename="assembly")
-router.register("incomes", accounting.IncomeViewSet, basename="income")
-router.register("expenses", accounting.ExpenseViewSet, basename="expense")
-router.register("income-categories", accounting.IncomeCategoryViewSet, basename="incomecategory")
-router.register("expense-categories", accounting.ExpenseCategoryViewSet, basename="expensecategory")
 router.register("finance/members", finance.TelegramMemberViewSet, basename="telegrammember")
 router.register("finance/categories", finance.FinanceCategoryViewSet, basename="financecategory")
 router.register("finance/workers", finance.WorkerViewSet, basename="worker")
@@ -49,6 +45,8 @@ router.register("hr/holidays", hr.HolidayViewSet, basename="holiday")
 router.register("hr/leaves", hr.LeaveViewSet, basename="leave")
 router.register("hr/points", hr.PointAdjustmentViewSet, basename="pointadjustment")
 router.register("hr/winners", hr.WinnerViewSet, basename="winner")
+router.register("warehouse/products", warehouse.ProductViewSet, basename="product")
+router.register("warehouse/movements", warehouse.MovementViewSet, basename="movement")
 router.register("users", users.UserViewSet, basename="user")
 router.register("groups", users.GroupViewSet, basename="group")
 
@@ -79,6 +77,9 @@ v1 = [
     path("finance/settings/", finance.FinanceSettingsView.as_view(), name="api-finance-settings"),
     path("finance/handover/", finance.HandoverView.as_view(), name="api-finance-handover"),
     path("finance/me/", finance.MeFinanceView.as_view(), name="api-finance-me"),
+    path("warehouse/summary/", warehouse.WarehouseSummaryView.as_view(), name="api-warehouse-summary"),
+    path("warehouse/keeper/", warehouse.KeeperView.as_view(), name="api-warehouse-keeper"),
+    path("warehouse/export/", warehouse.WarehouseExportView.as_view(), name="api-warehouse-export"),
     path("hr/day/", hr.HrDayView.as_view(), name="api-hr-day"),
     path("hr/stats/", hr.HrStatsView.as_view(), name="api-hr-stats"),
     path("hr/settings/", hr.HrSettingsView.as_view(), name="api-hr-settings"),

@@ -13,13 +13,11 @@ import {
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useGet, useList, useMeta } from "@/api/hooks";
 import type {
-  Category,
   Design,
   Factory,
   HistoryEntry,
   Metering,
   Money,
-  MoneyRecord,
   Order,
   OrderDetail,
   StatusStats,
@@ -62,6 +60,8 @@ import {
 import { cn } from "@/lib/cn";
 import { date, dateTime, leftPercent, money, num, phone, todayISO } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
+import { CatLabel, som } from "@/pages/finance/shared";
+import type { FinOrder } from "@/pages/finance/types";
 
 /* ------------------------------------------------------------------ List */
 
@@ -290,7 +290,7 @@ export function OrderDetailPage() {
         options={[
           { value: "info", label: "Ma'lumot" },
           { value: "production", label: "Ishlab chiqarish" },
-          ...(can("accounting.view_expense") ? [{ value: "expenses", label: "Chiqimlar" }] : []),
+          ...(can("accounting.view_operation", "accounting.view_all_operations") ? [{ value: "expenses", label: "Moliya" }] : []),
           { value: "history", label: "Tarix" },
         ]}
       />
@@ -385,7 +385,7 @@ export function OrderDetailPage() {
         </div>
       )}
 
-      {tab === "expenses" && <OrderExpenses orderId={o.id} canAdd={a.add_expense} />}
+      {tab === "expenses" && o.order_number && <OrderFinance orderNumber={o.order_number} />}
       {tab === "history" && <OrderHistory orderId={o.id} />}
 
       {editing && <OrderEditModal order={o} onClose={() => setEditing(false)} />}
@@ -491,76 +491,43 @@ function ProdCard({
   );
 }
 
-function OrderExpenses({ orderId, canAdd }: { orderId: number; canAdd: boolean }) {
-  const { data: meta } = useMeta();
-  const { data, refetch } = useGet<MoneyRecord[]>(`/orders/${orderId}/expenses/`);
-  const { data: categories } = useAll<Category>("expense-categories", {}, canAdd);
-  const [form, setForm] = useState<{ category: string; desc: string; cost: { amount: number | string; currency: string } } | null>(null);
-  const add = useAction(() => api.post(`/orders/${orderId}/expenses/`, { ...form, category: Number(form?.category) }), {
-    success: "Chiqim qo'shildi",
-    invalidate: ["expenses"],
-    onSuccess: () => {
-      setForm(null);
-      refetch();
-    },
-  });
-  const total = (data ?? []).reduce<Record<string, number>>((acc, e) => {
-    acc[e.cost.currency] = (acc[e.cost.currency] ?? 0) + e.cost.amount;
-    return acc;
-  }, {});
+/** Money booked on this order in Moliya (bot + site): what was spent, by category. */
+function OrderFinance({ orderNumber }: { orderNumber: number }) {
+  const { data, isLoading } = useGet<FinOrder>(`/finance/orders/${orderNumber}/`);
+  if (isLoading) return <Card><Empty title="Yuklanmoqda…" /></Card>;
+  if (!data) return <Card><Empty title="Moliya ma'lumoti yo'q" /></Card>;
   return (
     <Card
-      title="Buyurtma bo'yicha chiqimlar"
+      title="Moliya: shu buyurtma bo'yicha amallar"
       padded={false}
-      actions={
-        canAdd && (
-          <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ category: "", desc: "", cost: { amount: "", currency: meta?.default_currency ?? "USD" } })}>
-            Chiqim
-          </Button>
-        )
-      }
+      actions={<Link className="text-sm text-brand-600 hover:underline" to={`/finance/operations?order_ref=${orderNumber}&date_from=&date_to=`}>Moliyada ochish →</Link>}
     >
+      <div className="grid grid-cols-2 gap-3 border-b border-slate-100 p-4 sm:grid-cols-4 dark:border-slate-800">
+        <StatTile label="Sarflandi" value={som(data.spent)} tone="danger" hint={data.spent_percent !== null ? `${data.spent_percent}%` : undefined} />
+        <StatTile label="Mijozdan (botda)" value={som(data.collected)} tone="ok" />
+        <StatTile label={data.profit !== null && data.profit < 0 ? "Zarar" : "Foyda"} value={data.profit === null ? "—" : som(data.profit)} tone={data.profit !== null && data.profit < 0 ? "danger" : "ok"} />
+        <StatTile label="Amallar" value={data.operations?.length ?? 0} tone="idle" />
+      </div>
       <DataTable
-        rows={data}
+        rows={data.operations}
         rowKey={(r) => r.id}
-        empty={<Empty title="Chiqimlar yo'q" />}
+        empty={<Empty title="Bu buyurtmaga hali amal yozilmagan" />}
         columns={[
-          { key: "cat", header: "Kategoriya", cell: (r) => r.category_name },
-          { key: "desc", header: "Tavsif", cell: (r) => r.desc || "—" },
-          { key: "cost", header: "Summa", cell: (r) => <span className="font-medium tabular-nums">{money(r.cost)}</span> },
-          { key: "who", header: "Kim", cell: (r) => r.user_detail?.name || phone(r.user_detail?.phone) },
-          { key: "when", header: "Sana", cell: (r) => <span className="muted">{date(r.created_at)}</span> },
+          { key: "d", header: "Sana", cell: (r) => <span className="muted">{date(r.date)}</span> },
+          { key: "c", header: "Kategoriya", cell: (r) => <CatLabel c={r.category_detail} /> },
+          { key: "m", header: "Kim", cell: (r) => r.member_detail.name },
+          { key: "i", header: "Izoh", cell: (r) => <span className="line-clamp-1 max-w-xs">{r.comment || "—"}</span>, hideOnMobile: true },
+          {
+            key: "a",
+            header: "Summa",
+            cell: (r) => (
+              <span className={`font-medium tabular-nums ${r.kind === "income" ? "text-emerald-600" : "text-rose-600"}`}>
+                {som(r.kind === "income" ? r.amount : -Number(r.amount), true)}
+              </span>
+            ),
+          },
         ]}
       />
-      {Object.keys(total).length > 0 && (
-        <div className="border-t border-slate-100 px-5 py-3 text-right text-sm dark:border-slate-800">
-          Jami: {Object.entries(total).map(([c, v]) => <b key={c} className="ml-2">{money({ amount: v, currency: c })}</b>)}
-        </div>
-      )}
-      <Modal
-        open={!!form}
-        onClose={() => setForm(null)}
-        title="Yangi chiqim"
-        size="sm"
-        footer={<Button loading={add.isPending} disabled={!form?.category} onClick={() => add.mutate()}>Qo'shish</Button>}
-      >
-        {form && (
-          <div className="space-y-4">
-            <Field label="Kategoriya">
-              <Select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                <option value="">— tanlang —</option>
-                {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </Select>
-            </Field>
-            <Field label="Summa">
-              <MoneyInput value={form.cost} currencies={meta?.currencies} onChange={(cost) => setForm({ ...form, cost })} />
-            </Field>
-            <Field label="Tavsif">
-              <Textarea value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} />
-            </Field>
-          </div>
-        )}
-      </Modal>
     </Card>
   );
 }

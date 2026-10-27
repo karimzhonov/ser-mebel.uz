@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'discussion',
     'accounting',
     'hr',
+    'warehouse',
 
     'easy_thumbnails',
     'mptt',

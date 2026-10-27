@@ -19,7 +19,7 @@ def test_money_rejects_non_finite_and_huge(admin_api, order_factory, amount):
     "url",
     [
         "/api/v1/orders/?factory=x",
-        "/api/v1/incomes/?date_from=bad",
+        "/api/v1/finance/operations/?date_from=bad",
         "/api/v1/inventory-types/?obj=x",
     ],
 )

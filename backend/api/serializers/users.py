@@ -20,8 +20,16 @@ class MeSerializer(serializers.ModelSerializer):
             "is_superuser",
             "permissions",
             "telegram_link",
+            "is_warehouse_keeper",
         ]
         read_only_fields = fields
+
+    is_warehouse_keeper = serializers.SerializerMethodField()
+
+    def get_is_warehouse_keeper(self, obj):
+        from warehouse.services import is_keeper
+
+        return is_keeper(obj)
 
     def get_permissions(self, obj):
         return sorted(obj.get_all_permissions())
@@ -77,6 +85,13 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
     def update(self, instance, validated_data):
+        from warehouse.services import KEEPER_GROUP, is_keeper
+
+        if "groups" in validated_data and is_keeper(instance):
+            if [g.name for g in validated_data["groups"]] != [KEEPER_GROUP]:
+                raise serializers.ValidationError(
+                    {"groups": "Bu xodim — omborchi. Uning huquqlari Ombor → Omborchi sahifasida boshqariladi."}
+                )
         password = validated_data.pop("password", None)
         user = super().update(instance, validated_data)
         if password:

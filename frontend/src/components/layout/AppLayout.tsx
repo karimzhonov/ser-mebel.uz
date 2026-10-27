@@ -18,8 +18,6 @@ import {
   Send,
   Settings2,
   Sun,
-  Upload,
-  Download,
   Users,
   UserCog,
   X,
@@ -38,6 +36,9 @@ import {
   Trophy,
   IdCard,
   CalendarDays,
+  Warehouse,
+  ArrowDownUp,
+  UserCheck,
 } from "lucide-react";
 import logoWide from "@/assets/logo-wide.png";
 import { useAuth } from "@/auth/AuthContext";
@@ -87,7 +88,6 @@ const NAV: { title: string; items: NavItem[] }[] = [
   },
   {
     // Moliya = the finance Telegram bot moved onto the site (accounting/services.py).
-    // The old Kirimlar/Chiqimlar ledger stays as it was, in its own tables.
     title: "Moliya",
     items: [
       { to: "/finance", label: "Xulosa", icon: PieChart, perm: "accounting.view_operation" },
@@ -99,8 +99,15 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { to: "/finance/followup", label: "Готов va bonuslar", icon: Gift, perm: "accounting.view_orderbonus" },
       { to: "/finance/checks", label: "Tekshiruv", icon: ShieldCheck, perm: "accounting.view_all_operations" },
       { to: "/finance/settings", label: "Sozlamalar", icon: SlidersHorizontal, perm: "oauth.view_telegrammember" },
-      { to: "/accounting/income", label: "Eski kirimlar", icon: Download, perm: "accounting.view_income" },
-      { to: "/accounting/expense", label: "Eski chiqimlar", icon: Upload, perm: "accounting.view_expense" },
+    ],
+  },
+  {
+    // Ombor: stock, kirim/chiqim with prices. Only the keeper (omborchi) books.
+    title: "Ombor",
+    items: [
+      { to: "/warehouse", label: "Qoldiq", icon: Warehouse, perm: "warehouse.view_product" },
+      { to: "/warehouse/movements", label: "Kirim / chiqim", icon: ArrowDownUp, perm: "warehouse.view_movement" },
+      { to: "/warehouse/settings", label: "Omborchi", icon: UserCheck, superuser: true },
     ],
   },
   {
@@ -129,6 +136,11 @@ const MOBILE_TABS: NavItem[] = [
   { to: "/call-center", label: "Qo'ng'iroqlar", icon: PhoneCall, perm: "call_center.view_invoice" },
 ];
 
+const KEEPER_TABS: NavItem[] = [
+  { to: "/warehouse", label: "Qoldiq", icon: Warehouse, perm: "warehouse.view_product" },
+  { to: "/warehouse/movements", label: "Kirim / chiqim", icon: ArrowDownUp, perm: "warehouse.view_movement" },
+];
+
 function useTheme() {
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   useEffect(() => {
@@ -149,7 +161,11 @@ export function AppLayout() {
   const location = useLocation();
   useEffect(() => setOpen(false), [location.pathname]);
 
-  const visible = (item: NavItem) => (item.superuser ? user?.is_superuser : !item.perm || can(item.perm));
+  // the omborchi sees only the warehouse (the server gives them nothing else anyway)
+  const keeperOnly = !!user?.is_warehouse_keeper && !user.is_superuser;
+  const visible = (item: NavItem) =>
+    keeperOnly ? item.to.startsWith("/warehouse") && (!item.perm || can(item.perm)) && !item.superuser
+      : item.superuser ? user?.is_superuser : !item.perm || can(item.perm);
   const sections = NAV.map((s) => ({ ...s, items: s.items.filter(visible) })).filter((s) => s.items.length);
 
   const sidebar = (
@@ -236,7 +252,7 @@ export function AppLayout() {
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-4 border-t border-slate-200/70 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur dark:border-slate-800 dark:bg-slate-900/90 lg:hidden">
-        {MOBILE_TABS.filter(visible).map((item) => (
+        {(keeperOnly ? KEEPER_TABS : MOBILE_TABS).filter(visible).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
