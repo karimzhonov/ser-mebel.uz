@@ -1,5 +1,8 @@
 """Davomat (attendance) rules — the source of truth for the bot and the site.
-Port of davomat.txt; function names in docstrings point to the original."""
+Port of davomat.txt; function names in docstrings point to the original.
+
+The Telegram bot (bot/ service) calls these through api/views/bot/hr.py; the
+`process_*` functions decide what happened and return data, never message text."""
 
 from __future__ import annotations
 
@@ -11,7 +14,7 @@ from zoneinfo import ZoneInfo
 from django.db import IntegrityError, transaction
 from django.db.models import Max
 
-from core.exceptions import ServiceError
+from core.exceptions import ServiceConflict, ServiceError
 
 from .constants import (
     ACK_MODES,
@@ -21,6 +24,7 @@ from .constants import (
     LABELS,
     MONTHS,
     PTS,
+    REASONS,
     TIME_KEYS,
     UZ_HOLIDAYS,
     WEEKDAYS,
@@ -33,6 +37,7 @@ from .models import (
     HrState,
     Leave,
     PointAdjustment,
+    Winner,
     WorkGroup,
 )
 
@@ -225,6 +230,11 @@ def fire_once(day: date, name: str) -> bool:
         return True
     except IntegrityError:
         return False
+
+
+def unfire_once(day: date, name: str) -> None:
+    """Release a fire_once key (a send that never happened must be retried)."""
+    HrState.objects.filter(key=f"f_{day.isoformat()}_{name}"[:191]).delete()
 
 
 def since() -> date | None:
@@ -924,3 +934,643 @@ def day_rows(day: date, now_d: datetime | None = None) -> list[dict]:
             }
         )
     return out
+
+
+# =================================================================== bot-facing rules
+# What the davomat Telegram handlers used to decide inline (hr/telegram.py). The bot now
+# forwards raw Telegram facts to api/views/bot/hr.py, which calls these functions; they
+# return DATA (what happened, what to say), never message text. Docs: docs/BOT_CONTRACT.md.
+def employee_dto(e: Employee) -> dict:
+    effective = emp_off_days(e)
+    return {
+        "telegram_id": e.telegram_id,
+        "number": e.number,
+        "name": e.name,
+        "username": e.username,
+        "is_active": e.is_active,
+        "can_dm": e.can_dm,
+        "group": {"chat_id": e.group.chat_id, "title": e.group.title} if e.group_id else None,
+        "work_start": e.work_start,
+        "work_end": e.work_end,
+        "hours_label": emp_hours(e),
+        "ontime_until": hm_str(emp_start(e) + setting_int("GRACE_MIN")),
+        "off_days": list(e.off_days) if e.off_days else None,
+        "off_days_effective": effective,
+        "off_label": days_label(effective) if effective else "rahbar belgilaydi",
+    }
+
+
+def group_dto(g: WorkGroup) -> dict:
+    return {"chat_id": g.chat_id, "title": g.title, "is_active": g.is_active}
+
+
+def _events():
+    from . import events
+
+    return events
+
+
+def mark_dm_ok(e: Employee) -> None:
+    """They wrote to the bot, so it can write back."""
+    if e.can_dm is not True:
+        Employee.objects.filter(pk=e.pk).update(can_dm=True)
+        e.can_dm = True
+
+
+def record_dm(tg_id, ok: bool, blocked: bool = False) -> None:
+    """The bot tried to write to an employee privately: remember the result (dm_)."""
+    e = emp(tg_id)
+    if not e:
+        return
+    if ok:
+        mark_dm_ok(e)
+    elif blocked and e.can_dm is not False:
+        Employee.objects.filter(pk=e.pk).update(can_dm=False)
+
+
+def record_dm_results(delivered) -> None:
+    """After an `hr.*` event: `delivered` is the bot's [{chat_id, ok, blocked}, ...]."""
+    for d in delivered or []:
+        try:
+            record_dm(d.get("chat_id"), bool(d.get("ok")), bool(d.get("blocked")))
+        except (TypeError, ValueError):
+            continue
+
+
+def msg_link(chat: dict, message_id: int) -> str:
+    if chat.get("username"):
+        return f"https://t.me/{chat['username']}/{message_id}"
+    cid = re.sub(r"^-100|^-", "", str(chat["id"]))
+    return f"https://t.me/c/{cid}/{message_id}"
+
+
+_IGNORED = {"action": "ignored", "react": None, "reply": None, "dm": None}
+
+
+def _dm_payload(e: Employee, kind: str, day: date, **fields) -> dict | None:
+    """The DM the bot should send; None when the person blocked the bot."""
+    if e.can_dm is False:
+        return None
+    return {
+        "kind": kind,
+        "employee": employee_dto(e),
+        "day": day.isoformat(),
+        "at": "",
+        "late_min": 0,
+        "early_min": 0,
+        "end": hm_str(emp_end(e)),
+        "uniform_ask": False,
+        **fields,
+    }
+
+
+def process_group_report(
+    *,
+    chat: dict,
+    message_id: int,
+    ts: int,
+    user: dict,
+    forwarded: bool = False,
+    media: dict | None = None,
+    text: str = "",
+) -> dict:
+    """on_group_message: a message in a watched work group. Decides whether it is a
+    check-in / leaving report and records it. Returns
+    {action, react, reply, dm} (see docs/BOT_CONTRACT.md)."""
+    with transaction.atomic():
+        return _process_group_report(chat, message_id, ts, user, forwarded, media or {}, text)
+
+
+def _process_group_report(chat, message_id, ts, user, forwarded, media, text) -> dict:
+    group = group_by_chat(chat["id"])
+    if user.get("is_bot") or not group or is_admin(user["id"]):
+        return dict(_IGNORED)
+    e, _ = upsert_emp(user, group)
+    at = from_unix(ts or 0)
+    day, at_min = at.date(), mod(at)
+    if at_min < (parse_hm(setting("CHECKIN_FROM")) or 300):
+        return dict(_IGNORED)
+    if forwarded:
+        return dict(_IGNORED)  # a forwarded report doesn't count
+    mode = setting("CHECKIN_MODE").lower()
+    is_vn = bool(media.get("video_note"))
+    has_media = any(media.get(k) for k in ("photo", "video", "video_note", "location", "venue"))
+    txt = str(text or "").lower()
+    kws = [k.strip() for k in setting("KEYWORDS").lower().split(",") if k.strip()]
+    has_kw = any(k in txt for k in kws)
+    if mode == "video_note":
+        ok = is_vn
+    elif mode == "media":
+        ok = has_media
+    elif mode == "keyword":
+        ok = has_kw
+    elif mode == "any":
+        ok = has_media or bool(txt.strip())
+    else:
+        ok = has_media or has_kw
+    sn = since()
+    if sn and day < sn:
+        return dict(_IGNORED)
+    if not expected_today(e, day):
+        return dict(_IGNORED)
+    # lock the day's row before deciding: two quick reports must not both be "first"
+    if ok:
+        Attendance.objects.select_for_update().get_or_create(employee=e, day=day)
+    a = att(day, e)
+    real = ok and (mode != "any" or has_media)
+    ack = setting("GROUP_ACK")
+    if a and a.in_time:
+        if real:
+            return _process_checkout(e, day, a, at_min, ack)
+        return dict(_IGNORED)
+    # no check-in, but less than 2h to the end of the day: this is the leaving report
+    if real and ((a and a.out_time) or at_min >= emp_end(e) - 120):
+        first = not (a and a.out_time)
+        set_att(day, e, out_time=to_time(at_min), no_checkin=True, wait="")
+        return {
+            "action": "leave_only",
+            "react": "\U0001fae1" if ack == "reaction" else None,
+            "reply": None,
+            "dm": (
+                _dm_payload(e, "leave_without_checkin", day, at=hm_str(at_min)) if first else None
+            ),
+        }
+    if not ok:
+        if mode == "video_note" and (has_media or has_kw) and not (a and a.warned):
+            set_att(day, e, warned=True)
+            return {
+                "action": "format_warning",
+                "react": None,
+                "reply": None,
+                "dm": _dm_payload(e, "format_warning", day),
+            }
+        return dict(_IGNORED)
+    start = emp_start(e)
+    late = at_min - start
+    st = "on_time" if late <= setting_int("GRACE_MIN") else "late"
+    link = msg_link(chat, message_id)
+    set_att(
+        day,
+        e,
+        in_time=to_time(at_min),
+        late_min=max(late, 0),
+        status=st,
+        link=link,
+        wait="lr" if st == "late" else "",
+        work_start=hm_str(start),
+        work_end=hm_str(emp_end(e)),
+        group_title=group.title,
+    )
+    react = None
+    reply = None
+    if ack == "reaction":
+        react = "\U0001f525" if st == "on_time" else "✍"
+    elif ack == "reply":
+        reply = {"status": st, "at": hm_str(at_min), "late_min": max(late, 0)}
+    if st == "late" and setting_bool("MANAGER_LIVE_ALERTS"):
+        _events().live_alert(
+            "late",
+            e,
+            {
+                "group_title": group.title,
+                "in_time": hm_str(at_min),
+                "late_min": max(late, 0),
+                "link": link,
+            },
+        )
+    return {
+        "action": "checkin",
+        "react": react,
+        "reply": reply,
+        "dm": _dm_payload(
+            e,
+            "checkin_on_time" if st == "on_time" else "checkin_late",
+            day,
+            at=hm_str(at_min),
+            late_min=max(late, 0),
+            uniform_ask=st == "on_time" and setting_bool("UNIFORM_CHECK"),
+        ),
+    }
+
+
+def _process_checkout(e: Employee, day: date, a: Attendance, at_min: int, ack: str) -> dict:
+    """onCheckout_: a video note at least OUT_MIN_GAP after arrival = leaving."""
+    in_min = parse_hm(a.in_time)
+    if at_min - in_min < setting_int("OUT_MIN_GAP"):
+        return dict(_IGNORED)
+    end = parse_hm(a.work_end) if a.work_end else emp_end(e)
+    early = max(end - at_min, 0)
+    is_early = early > setting_int("LEAVE_GRACE_MIN")
+    first = a.out_time is None
+    wait = "er" if is_early and not a.early_reason else ("" if a.wait in ("er", "ec") else a.wait)
+    set_att(
+        day,
+        e,
+        out_time=to_time(at_min),
+        early_min=early if is_early else 0,
+        early_reason=a.early_reason if is_early else "",
+        wait=wait,
+    )
+    out = {
+        "action": "checkout",
+        "react": ("✍" if is_early else "\U0001fae1") if ack == "reaction" else None,
+        "reply": None,
+        "dm": None,
+    }
+    if not first and not is_early:
+        return out
+    if not is_early:
+        out["dm"] = _dm_payload(e, "checkout", day, at=hm_str(at_min), end=hm_str(end))
+    elif not a.early_reason:
+        out["dm"] = _dm_payload(
+            e, "checkout_early", day, at=hm_str(at_min), early_min=early, end=hm_str(end)
+        )
+    return out
+
+
+def set_eta(e: Employee, day: date, eta_min: int) -> None:
+    set_att(day, e, eta=to_time(eta_min), eta_sent=False, wait="")
+    if setting_bool("MANAGER_LIVE_ALERTS"):
+        _events().live_alert("eta", e, {"eta": hm_str(eta_min)})
+
+
+def set_excused(e: Employee, day: date, reason: str) -> None:
+    set_att(day, e, status="excused", excuse=reason or "sabab ko'rsatilmadi", wait="")
+    _events().live_alert("excused", e, {"reason": reason})
+
+
+def _looks_finance(text: str) -> bool:
+    """«350000 furnitura 406» is a finance entry; «20 daqiqa» is an ETA."""
+    from accounting.text import parse_quick
+
+    try:
+        q = parse_quick(text, [], [])
+        return bool(q) and (q["val"] >= 1000 or q["cur"] == "USD")
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def process_private_text(tg_id, text: str) -> dict:
+    """on_private_text: a private message that may be the answer the bot waits for
+    (lateness / leaving comment, reason for absence, arrival time). The bot calls it only
+    when no finance flow is open. `handled: false` = not for HR."""
+    text = str(text or "").strip()
+    nothing = {"handled": False, "outcome": None, "data": {}}
+    e = emp(tg_id)
+    if not text or not e:
+        return nothing
+    mark_dm_ok(e)
+    fin = _looks_finance(text)
+    now_d = now()
+    day = now_d.date()
+    a = att(day, e)
+    if not a:
+        return nothing
+    live = setting_bool("MANAGER_LIVE_ALERTS")
+    if a.wait == "lc" and a.in_time and not fin:
+        set_att(day, e, late_comment=text[:300], wait="")
+        if live:
+            _events().live_alert(
+                "late_comment", e, {"late_reason": a.late_reason, "comment": text[:300]}
+            )
+        return {
+            "handled": True,
+            "outcome": "late_comment",
+            "data": {
+                "late_reason": a.late_reason,
+                "uniform_ask": setting_bool("UNIFORM_CHECK") and a.uniform is None,
+            },
+        }
+    if a.wait == "ec" and a.out_time and not fin:
+        set_att(day, e, early_comment=text[:300], wait="")
+        return {
+            "handled": True,
+            "outcome": "early_comment",
+            "data": {"early_reason": a.early_reason},
+        }
+    if a.wait == "reason" and not a.in_time and not fin:
+        set_excused(e, day, text[:300])
+        return {"handled": True, "outcome": "excused", "data": {}}
+    if not a.in_time and (a.asked or a.eta) and a.status not in ("excused", "off") and not fin:
+        eta = parse_eta(text, mod(now_d))
+        if eta is not None:
+            set_eta(e, day, eta)
+            return {"handled": True, "outcome": "eta", "data": {"eta": hm_str(eta)}}
+    return nothing
+
+
+def process_employee_callback(tg_id, action: str, day_iso: str, arg: str = "") -> dict:
+    """The employee's `dv:` buttons (uni, lr, er, eta, here, cant, rsn, offreq).
+    Returns {answer, alert, clear_kb, reply: {kind, data}|None}."""
+    out = {"answer": "", "alert": False, "clear_kb": False, "reply": None}
+    e = emp(tg_id)
+    if not e:
+        return {**out, "answer": "Siz ro'yxatda yo'qsiz"}
+    today_ = now().date()
+    try:
+        day = date.fromisoformat(day_iso)
+    except (TypeError, ValueError):
+        return out
+    if day != today_:
+        return {**out, "answer": "Bu tugma eskirgan (boshqa kun uchun edi).", "alert": True}
+    mark_dm_ok(e)
+    a = att(day, e)
+
+    def reply(kind, **data):
+        return {"kind": kind, "data": {"employee": employee_dto(e), **data}}
+
+    if action == "uni":
+        set_att(day, e, uniform=arg == "1")
+        return {
+            **out,
+            "answer": "Rahmat!",
+            "clear_kb": True,
+            "reply": reply("uniform_yes" if arg == "1" else "uniform_no"),
+        }
+    if action == "lr":
+        if not (a and a.in_time):
+            return out
+        lr = "Sababli" if arg == "1" else "Sababsiz"
+        set_att(day, e, late_reason=lr, wait="lc")
+        return {**out, "clear_kb": True, "reply": reply("late_reason_ask", reason=lr)}
+    if action == "er":
+        if not (a and a.out_time):
+            return out
+        er = "Sababli" if arg == "1" else "Sababsiz"
+        set_att(day, e, early_reason=er, wait="ec")
+        return {**out, "clear_kb": True, "reply": reply("early_reason_ask", reason=er)}
+    if a and a.in_time:
+        return {**out, "answer": "Siz bugun otchet tashlagansiz ✅", "clear_kb": True}
+    if action == "eta":
+        try:
+            minutes = int(arg)
+        except (TypeError, ValueError):
+            return out
+        eta = mod(now()) + minutes
+        set_eta(e, day, eta)
+        return {
+            **out,
+            "answer": "Qabul qilindi",
+            "clear_kb": True,
+            "reply": reply("eta_ok", eta=hm_str(eta)),
+        }
+    if action == "here":
+        return {**out, "clear_kb": True, "reply": reply("here_ok")}
+    if action == "cant":
+        set_att(day, e, wait="reason")
+        return {**out, "clear_kb": True, "reply": reply("cant_ask")}
+    if action == "rsn":
+        if arg == "other":
+            set_att(day, e, wait="reason")
+            return {**out, "clear_kb": True, "reply": reply("reason_other")}
+        set_excused(e, day, REASONS.get(arg, arg))
+        return {**out, "clear_kb": True, "reply": reply("excused_done")}
+    if action == "offreq":
+        set_att(day, e, off_requested=True)
+        _events().off_request(e, day)
+        return {**out, "clear_kb": True, "reply": reply("offreq_sent")}
+    return out
+
+
+def cant_come(tg_id) -> dict:
+    """/kelolmayman: {result: not_employee | already_in | ask_reason, day}."""
+    day = now().date()
+    e = emp(tg_id)
+    if not e:
+        return {"result": "not_employee", "day": day.isoformat()}
+    mark_dm_ok(e)
+    a = att(day, e)
+    if a and a.in_time:
+        return {"result": "already_in", "day": day.isoformat()}
+    set_att(day, e, wait="reason")
+    return {"result": "ask_reason", "day": day.isoformat(), "employee": employee_dto(e)}
+
+
+def employee_start(user: dict, group_chat_id: int | None = None) -> Employee | None:
+    """/start from a private chat. An existing employee is switched on (can_dm, active).
+    A newcomer is created only when the bot found them in a work group
+    (`group_chat_id`, from getChatMember over hr/groups/)."""
+    e = emp(user["id"])
+    if not e and group_chat_id is not None:
+        g = group_by_chat(group_chat_id)
+        if g:
+            e, _ = upsert_emp(user, g)
+    if not e:
+        return None
+    e.can_dm, e.is_active = True, True
+    e.save(update_fields=["can_dm", "is_active"])
+    return e
+
+
+def members_joined(chat: dict, users: list[dict]) -> list[dict]:
+    """new_chat_members in a work group -> who gets the «connect to the bot» welcome."""
+    group = group_by_chat(chat["id"])
+    welcome = []
+    if not group:
+        return welcome
+    for u in users:
+        if u.get("is_bot") or is_admin(u["id"]):
+            continue
+        e, is_new = upsert_emp(u, group)
+        if is_new or e.can_dm is not True:
+            welcome.append({"name": e.name})
+    return welcome
+
+
+def member_left(chat: dict, user: dict) -> Employee | None:
+    """left_chat_member / chat_member(left|kicked): drop them from the list."""
+    group = group_by_chat(chat["id"])
+    if not group or not user or user.get("is_bot"):
+        return None
+    e = emp(user["id"])
+    if e and e.is_active and e.group_id == group.id:
+        e.is_active = False
+        e.save(update_fields=["is_active"])
+        _events().employee_left(e)
+        return e
+    return None
+
+
+def bot_added_to_group(chat: dict, status: str) -> bool:
+    """my_chat_member: the bot joined a group we don't watch yet -> tell the admins."""
+    if (
+        chat.get("type", "group") in ("group", "supergroup")
+        and status in ("member", "administrator")
+        and not group_by_chat(chat["id"])
+    ):
+        _events().bot_added_to_group(chat.get("title") or str(chat["id"]))
+        return True
+    return False
+
+
+def connect_group(chat_id: int, title: str) -> WorkGroup:
+    """/ulash"""
+    g, _ = WorkGroup.objects.update_or_create(
+        chat_id=int(chat_id), defaults={"title": (title or str(chat_id))[:255], "is_active": True}
+    )
+    return g
+
+
+def disconnect_group(chat_id: int) -> bool:
+    """/uzish"""
+    return bool(WorkGroup.objects.filter(chat_id=int(chat_id)).update(is_active=False))
+
+
+def set_off_days(e: Employee, days) -> Employee:
+    """days: list of 1..7, or None for the general OFF_DAYS setting."""
+    e.off_days = None if days is None else parse_days(",".join(str(d) for d in days))
+    e.save(update_fields=["off_days"])
+    return e
+
+
+def toggle_off_day(e: Employee, d: int) -> tuple[Employee, bool]:
+    """Add/remove one weekday from the personal list. Returns (employee, was_set)."""
+    if not 1 <= int(d) <= 7:
+        raise ServiceError("Hafta kuni 1 dan 7 gacha.")
+    off = list(e.off_days or [])
+    was = int(d) in off
+    off = sorted([x for x in off if x != int(d)] if was else off + [int(d)])
+    e.off_days = off
+    e.save(update_fields=["off_days"])
+    return e, was
+
+
+def set_active(e: Employee, active: bool) -> Employee:
+    e.is_active = bool(active)
+    e.save(update_fields=["is_active"])
+    return e
+
+
+def delete_leave(number: int) -> bool:
+    return bool(Leave.objects.filter(number=int(number)).delete()[0])
+
+
+def set_holiday(day: date, name: str) -> Holiday:
+    h, _ = Holiday.objects.update_or_create(day=day, defaults={"name": (name or "bayram")[:128]})
+    return h
+
+
+def delete_holiday(day: date) -> bool:
+    return bool(Holiday.objects.filter(day=day).delete()[0])
+
+
+def decide_holiday(hol_day: date, n: int, start_day: date | None = None) -> dict:
+    """The admin answered «dam olinadimi?» once. {days, name}; ServiceConflict if decided."""
+    from .models import HolidayDecision
+
+    if n < 0 or n > 30:
+        raise ServiceError("Kunlar soni 0 dan 30 gacha.")
+    with transaction.atomic():
+        try:
+            # the unique holiday_day row is the lock: the second answer fails here
+            with transaction.atomic():
+                HolidayDecision.objects.create(holiday_day=hol_day, days=n)
+        except IntegrityError:
+            raise ServiceConflict("Bu bayram bo'yicha qaror allaqachon qabul qilingan.")
+        days = apply_holiday(hol_day, n, start_day or hol_day)
+    return {"days": days, "name": holiday_name(hol_day)}
+
+
+def answer_off_request(e: Employee, day: date, approve: bool) -> None:
+    """Admin's answer to «bugun dam olish kunim»."""
+    with transaction.atomic():
+        a = Attendance.objects.select_for_update().filter(employee=e, day=day).first()
+        if not a or not a.off_requested:
+            raise ServiceConflict("Bu so'rovga allaqachon javob berilgan.")
+        if approve:
+            set_att(day, e, status="off", off_requested=False)
+        else:
+            set_att(day, e, off_requested=False)
+
+
+def announce_winner(kind: str, period: str, employee: Employee) -> dict:
+    """announceWinner_ data: once per period. ServiceConflict when already announced.
+    Returns {employee, pts, disc, groups: [chat_id]}."""
+    if kind not in ("m", "y"):
+        raise ServiceError("Noto'g'ri tur.")
+    now_d = now()
+    with transaction.atomic():
+        if Winner.objects.select_for_update().filter(kind=kind, period=period).exists():
+            raise ServiceConflict("Bu tanlov allaqachon e'lon qilingan.")
+        if kind == "m":
+            st = next((s for s in month_stats(period, now_d) if s.e.id == employee.id), None)
+            pts, disc = (st.pts, st.disc) if st else (0, 0)
+        else:
+            st = next((s for s in year_stats(period, now_d) if s["e"].id == employee.id), None)
+            pts, disc = (st["pts"], st["disc"]) if st else (0, 0)
+        try:
+            Winner.objects.create(kind=kind, period=period, employee=employee)
+        except IntegrityError:
+            raise ServiceConflict("Bu tanlov allaqachon e'lon qilingan.")
+    return {
+        "employee": employee,
+        "pts": pts,
+        "disc": disc,
+        "groups": [g.chat_id for g in groups()],
+    }
+
+
+def my_status_data(e: Employee) -> dict:
+    """/holatim: today's state and the month's standing."""
+    now_d = now()
+    day = now_d.date()
+    r = next((x for x in compute_day(day, now_d) if x.e.id == e.id), None)
+    allst = month_stats(day.strftime("%Y-%m"), now_d)
+    idx = next((i for i, s in enumerate(allst) if s.e.id == e.id), -1)
+    month = None
+    if idx >= 0:
+        st = allst[idx]
+        month = {
+            "rank": idx + 1,
+            "of": len(allst),
+            "pts": st.pts,
+            "on_time": st.on_time,
+            "late": st.late,
+            "late_min": st.late_min,
+            "absent": st.absent,
+            "excused": st.excused,
+            "early_n": st.early_n,
+            "disc": st.disc,
+        }
+    return {
+        "employee": employee_dto(e),
+        "today": {
+            "st": r.st if r else None,
+            "in_time": hm(r.g("in_time")) if r else "",
+            "out_time": hm(r.g("out_time")) if r else "",
+        },
+        "month": month,
+    }
+
+
+def ranking_rows(
+    ym: str | None = None, year: str | None = None, only_active: bool = False
+) -> list[dict]:
+    """/reyting data. only_active: active employees with expected days (the winner pick)."""
+    now_d = now()
+    if year:
+        return [
+            {
+                "telegram_id": x["e"].telegram_id,
+                "name": x["e"].name,
+                "pts": x["pts"],
+                "disc": x["disc"],
+                "bonus": x["bonus"],
+                "adj": x["adj"],
+                "wins": x["wins"],
+            }
+            for x in year_stats(year, now_d)
+        ]
+    return [
+        {
+            "telegram_id": s.e.telegram_id,
+            "name": s.e.name,
+            "pts": s.pts,
+            "disc": s.disc,
+            "bonus": s.bonus,
+            "adj": s.adj,
+            "wins": 0,
+        }
+        for s in month_stats(ym or now_d.strftime("%Y-%m"), now_d)
+        if not only_active or (s.e.is_active and s.exp)
+    ]

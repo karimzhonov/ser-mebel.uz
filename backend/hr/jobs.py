@@ -1,17 +1,25 @@
-"""Davomat schedule (runSchedule_ in davomat.txt), run every minute
-by celery beat (hr/tasks.py)."""
+"""Davomat schedule (runSchedule_ in davomat.txt), run every minute by celery beat
+(hr/tasks.py).
+
+The schedule decides WHO is told WHAT and WHEN; the Telegram bot renders and sends
+(events: hr/events.py). Steps that need to know whether the person was reached
+(2, 4, 4b, 5) send synchronously and count an ask only on a confirmed delivery. If the
+bot is down the tick stops sending and un-marks the once-per-day keys, so the next
+tick (the windows last 90+ minutes) tries again.
+"""
 
 from __future__ import annotations
 
 import logging
-import random
 from datetime import datetime, timedelta
 
-from . import reports as R
+from core.bot_notify import BotUnavailable
+
+from . import events as E
+from . import report_data as RD
 from . import services as S
-from .constants import ETA_GRACE_MIN, MAX_ASKS, TXT, UZ_HOLIDAYS
+from .constants import ETA_GRACE_MIN, MAX_ASKS, UZ_HOLIDAYS
 from .models import Holiday, HolidayDecision
-from .telegram import dm, esc, eta_kb, ism, kb, notify_admins, send, site_url
 
 log = logging.getLogger("hr.jobs")
 
@@ -40,25 +48,46 @@ def ask_holidays(day) -> list:
             continue
         if not S.fire_once(day, f"hol_{d.isoformat()}"):
             continue
-        dd = d.isoformat()
-        notify_admins(
-            f"🎉 <b>{S.fmt_day(d)}</b> — {esc(name)}.\nDam olinadimi? Necha kun?",
-            kb(
-                [
-                    [("Yo'q, ishlaymiz", f"hol:{dd}:0")],
-                    [("1 kun", f"hol:{dd}:1"), ("2 kun", f"hol:{dd}:2"), ("3 kun", f"hol:{dd}:3")],
-                    [("✏️ Boshqa (yozaman)", f"hol:{dd}:x")],
-                ]
-            ),
-        )
+        E.holiday_ask(d, name)
         asked.append(d)
     return asked
+
+
+class _Sender:
+    """Synchronous per-person sends with the circuit breaker."""
+
+    def __init__(self, day):
+        self.day = day
+        self.down = False
+
+    def deliver(self, once_name: str | None, e, send) -> bool:
+        """Run `send()` (an hr.events sync call) for `e`. Returns True when the person was
+        reached. Skips people who blocked the bot. On BotUnavailable: stops for the tick
+        and releases `once_name` so a later tick retries."""
+        if self.down or e.can_dm is False:
+            if self.down and once_name:
+                S.unfire_once(self.day, once_name)
+            return False
+        try:
+            answer = send()
+        except BotUnavailable:
+            log.warning("bot unreachable; davomat tick stops sending")
+            self.down = True
+            if once_name:
+                S.unfire_once(self.day, once_name)
+            return False
+        delivered = answer.get("delivered") or []
+        S.record_dm_results(delivered)
+        if answer.get("duplicate"):  # an earlier try got through (timed out on our side)
+            return True
+        return bool(answer.get("ok")) and any(d.get("ok") for d in delivered)
 
 
 def run_schedule(now_d: datetime | None = None) -> list[str]:
     now_d = now_d or S.now()
     day, nm, grace = now_d.date(), S.mod(now_d), S.setting_int("GRACE_MIN")
     done: list[str] = []
+    sender = _Sender(day)
 
     def once(name):
         ok = S.fire_once(day, name)
@@ -95,20 +124,7 @@ def run_schedule(now_d: datetime | None = None) -> list[str]:
                 f"morning_{g.chat_id}"
             ):
                 continue
-            t = (
-                f"☀️ <b>Xayrli tong, jamoa!</b>\n\n{random.choice(TXT['morning'])}\n\n⏰ "
-                + (
-                    f"Ish soat <b>{S.hm_str(starts[0])}</b> da boshlanadi. "
-                    if len(starts) == 1
-                    else "Ish boshlanishi: "
-                    + " / ".join(f"<b>{S.hm_str(x)}</b>" for x in starts)
-                    + " (har kimning o'z vaqti). "
-                )
-                + "Kelganingizda shu yerga <b>video-doiracha</b> tashlang."
-            )
-            if S.setting_bool("UNIFORM_CHECK"):
-                t += "\n" + random.choice(TXT["uniform"])
-            send(g.chat_id, t)
+            E.morning(g.chat_id, starts)
 
     rows_now = S.compute_day(day, now_d)
 
@@ -118,25 +134,21 @@ def run_schedule(now_d: datetime | None = None) -> list[str]:
         if r.st != "waiting":
             continue
         st = S.emp_start(r.e)
-        if not in_win(nm, st + grace + 1, 90) or not once(f"ask_{r.e.telegram_id}"):
+        name = f"ask_{r.e.telegram_id}"
+        if not in_win(nm, st + grace + 1, 90) or not once(name):
             continue
         miss_now.append(r)
-        if dm(
-            r.e,
-            f"Assalomu alaykum, {ism(r.e)}! 👋\nIsh soat {S.hm_str(st)} da boshlandi, guruhda hali video-doirachangizni ko'rmadim. Hammasi joyidami?\n"
-            "Ishga qancha vaqtda yetib kelasiz? Tugmani bosing yoki yozing (masalan: <i>20 daqiqa</i> yoki <i>10:30</i>).",
-            eta_kb(day),
-        ):
+        if sender.deliver(name, r.e, lambda r=r, st=st: E.ask_eta(r.e, st, day, repeat=False)):
             r.a = S.set_att(day, r.e, asked=(r.g("asked") or 0) + 1)
-    if miss_now and S.setting_bool("GROUP_LIST_MISSING"):
+    if miss_now and S.setting_bool("GROUP_LIST_MISSING") and not sender.down:
         for g in S.groups():
             names = [
-                esc("@" + r.e.username if r.e.username else r.e.name)
+                ("@" + r.e.username) if r.e.username else r.e.name
                 for r in miss_now
                 if r.e.group_id == g.id
             ]
             if names:
-                send(g.chat_id, "⏰ Ish boshlandi. Hali otchet tashlamaganlar: " + ", ".join(names))
+                E.missing_list(g.chat_id, names)
 
     # 4) ask again
     rep = S.setting_int("REPEAT_ASK_MIN")
@@ -144,12 +156,11 @@ def run_schedule(now_d: datetime | None = None) -> list[str]:
         for r in rows_now:
             if r.st != "waiting" or r.g("eta") or (r.g("asked") or 0) >= MAX_ASKS:
                 continue
-            if not in_win(nm, S.emp_start(r.e) + rep, 90) or not once(f"rep_{r.e.telegram_id}"):
+            name = f"rep_{r.e.telegram_id}"
+            if not in_win(nm, S.emp_start(r.e) + rep, 90) or not once(name):
                 continue
-            if dm(
-                r.e,
-                f"{ism(r.e)}, hali ham video-doirachangizni ko'rmadim. 🤔\nHammasi joyidami? Qancha vaqtda yetib kelasiz?",
-                eta_kb(day),
+            if sender.deliver(
+                name, r.e, lambda r=r: E.ask_eta(r.e, S.emp_start(r.e), day, repeat=True)
             ):
                 r.a = S.set_att(day, r.e, asked=(r.g("asked") or 0) + 1)
 
@@ -158,14 +169,10 @@ def run_schedule(now_d: datetime | None = None) -> list[str]:
         if not r.g("in_time") or r.g("out_time"):
             continue
         end = S.parse_hm(r.a.work_end) if r.a.work_end else S.emp_end(r.e)
-        if not in_win(nm, end + S.setting_int("OUT_REMIND_MIN"), 120) or not once(
-            f"outrem_{r.e.telegram_id}"
-        ):
+        name = f"outrem_{r.e.telegram_id}"
+        if not in_win(nm, end + S.setting_int("OUT_REMIND_MIN"), 120) or not once(name):
             continue
-        dm(
-            r.e,
-            f"{ism(r.e)}, ish kuningiz yakunlandi, rahmat! 🙏\nKetayotganingizda guruhga <b>video-doiracha</b> tashlashni unutmang, ketish vaqtingiz shunda qayd etiladi. 🙂",
-        )
+        sender.deliver(name, r.e, lambda r=r: E.out_reminder(r.e, day))
 
     # 5) the time they promised has passed
     for r in S.compute_day(day, now_d):
@@ -176,20 +183,21 @@ def run_schedule(now_d: datetime | None = None) -> list[str]:
         S.set_att(day, r.e, eta_sent=True)
         if (r.g("asked") or 0) >= MAX_ASKS:
             continue
-        if dm(
-            r.e,
-            f"{ism(r.e)}, siz soat {S.hm(r.a.eta)} da yetib kelaman degan edingiz, lekin guruhda video-doiracha hali yo'q. ⏳\n"
-            "Yetib kelgan bo'lsangiz guruhga tashlang. Yana qancha vaqt kerak?",
-            eta_kb(day),
-        ):
+        if sender.down:
+            S.set_att(day, r.e, eta_sent=False)  # try again on a later tick
+            continue
+        eta_hm = S.hm(r.a.eta)
+        if sender.deliver(None, r.e, lambda r=r, eta_hm=eta_hm: E.eta_passed(r.e, eta_hm, day)):
             S.set_att(day, r.e, asked=(r.g("asked") or 0) + 1)
             done.append(f"eta:{r.e.telegram_id}")
+        elif sender.down:
+            S.set_att(day, r.e, eta_sent=False)
 
     # 6) daily report (11:30)
     if in_win(nm, S.parse_hm(S.setting("REPORT_TIME")) or 690, 180) and once("report"):
         rows = S.compute_day(day, now_d)
         if expected or any(r.g("in_time") for r in rows):
-            notify_admins(R.day_report(day, now_d, f"📊 Kunlik hisobot ({S.hm_str(nm)})"))
+            E.day_report(S.hm_str(nm), RD.day_report_data(day, now_d))
 
     # 7) last day of the month: month report, «Oy xodimi» (and «Yil xodimi» on 31.12)
     if (
@@ -198,15 +206,14 @@ def run_schedule(now_d: datetime | None = None) -> list[str]:
         and once("month")
     ):
         ym = day.strftime("%Y-%m")
-        notify_admins(
-            R.period_report(day.replace(day=1), day, now_d, f"🗓 Oylik hisobot ({ym})")
-            + f"\n\n🌐 To'liq jadval saytda: {site_url()}"
-        )
-        text, k = R.month_winner_msg(ym, now_d)
-        notify_admins(text, k)
+        E.month_report(ym, RD.period_report_data(day.replace(day=1), day, now_d))
+        rows_m = S.ranking_rows(ym, only_active=True)
+        if rows_m:
+            E.winner_pick("m", ym, rows_m)
         if day.month == 12 and day.day == 31:
-            text, k = R.year_report(str(day.year), now_d)
-            notify_admins(text, k)
+            rows_y = S.ranking_rows(year=str(day.year))
+            if rows_y:
+                E.winner_pick("y", str(day.year), rows_y)
 
     # 8) ask about upcoming holidays
     if nm >= 600:

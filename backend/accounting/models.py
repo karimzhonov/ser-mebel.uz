@@ -417,37 +417,6 @@ class ClientFeedback(models.Model):
         return f"{self.order_ref} · {self.client}"
 
 
-class BotSession(models.Model):
-    """Draft of a multi-step bot flow (Apps Script kept it in CacheService for 6h).
-    In the DB so every uvicorn worker sees the same state."""
-
-    telegram_id = models.BigIntegerField(unique=True)
-    data = models.JSONField(null=True, blank=True)
-    # Message ids of the current flow, deleted on «❌ Bekor qilish».
-    flow_messages = models.JSONField(default=list, blank=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return str(self.telegram_id)
-
-
-class ProcessedUpdate(models.Model):
-    """Telegram retries a webhook on timeout — never handle one update twice.
-
-    Also the outbox of the webhook: the update is stored (done=False) before Telegram
-    gets its 200, so a restart in the middle can't lose a button press — the
-    scheduler re-runs unfinished ones (accounting/jobs.py replay_updates)."""
-
-    update_id = models.BigIntegerField(unique=True)
-    payload = models.JSONField(null=True, blank=True)
-    done = models.BooleanField(default=True, db_index=True)
-    attempts = models.PositiveSmallIntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
-
-    def __str__(self):
-        return str(self.update_id)
-
-
 class FinanceJobRun(models.Model):
     """Once-per-day (or once-ever) markers for scheduled jobs and reminders."""
 

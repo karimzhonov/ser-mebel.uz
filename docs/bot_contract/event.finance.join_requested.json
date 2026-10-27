@@ -1,0 +1,26 @@
+{
+  "id": "00000000-0000-0000-0000-000000001005",
+  "event": "finance.join_requested",
+  "data": {
+    "member": {
+      "id": 7,
+      "telegram_id": 111222333,
+      "name": "Jasur Karimov",
+      "username": "jasur_k",
+      "role": "pending",
+      "is_admin": false,
+      "is_active_member": false,
+      "is_task_only": false,
+      "has_wallet": false,
+      "is_site_entry": false,
+      "is_feedback": false,
+      "is_bonus_receiver": true,
+      "is_deadline_receiver": false,
+      "site_user": null
+    },
+    "admins": [
+      555000111
+    ],
+    "superusers": []
+  }
+}

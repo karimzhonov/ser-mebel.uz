@@ -1,7 +1,6 @@
-"""PNG images of the finance bot.
+"""PNG image served to the finance bot: the «Hisob-kitob varaqasi» (the Готов payment sheet).
 
-- Charts: QuickChart.io, exactly as code.txt did (donut of categories, bar chart of months).
-- «Hisob-kitob varaqasi» (the Готов payment sheet): drawn with Pillow. The Apps Script
+The charts (donut / bars) moved to the bot service. The sheet is drawn with Pillow. The Apps Script
   built it in Google Slides; the layout coordinates (1225×1178 design px) are the same,
   and an uploaded background (constance FIN_REPORT_TEMPLATE, a media path) replaces the
   drawn base like the old /shablon did.
@@ -10,123 +9,18 @@
 from __future__ import annotations
 
 import io
-import json
 import logging
 from pathlib import Path
 
-import requests
 from constance import config
 from django.conf import settings
 from PIL import Image, ImageDraw, ImageFont
 
+from .text import cur_name, ddmm, fmt_cur
+
 log = logging.getLogger("finance.images")
 
 FONT_DIR = Path(__file__).resolve().parent / "fonts"
-
-
-def _chart(conf_json: str, w: int, h: int) -> bytes | None:
-    try:
-        r = requests.post(
-            "https://quickchart.io/chart",
-            data=json.dumps(
-                {
-                    "chart": conf_json,
-                    "width": w,
-                    "height": h,
-                    "backgroundColor": "white",
-                    "format": "png",
-                    "version": "2",
-                }
-            ),
-            headers={"Content-Type": "application/json"},
-            timeout=20,
-        )
-        if r.status_code != 200:
-            log.warning("QuickChart %s", r.status_code)
-            return None
-        return r.content
-    except requests.RequestException as e:
-        log.warning("QuickChart %s", e)
-        return None
-
-
-def donut_png(items: list[dict], center1: str, center2: str) -> bytes | None:
-    has = bool(items)
-    conf = {
-        "type": "doughnut",
-        "data": {
-            "labels": [i["name"] for i in items] if has else ["—"],
-            "datasets": [
-                {
-                    "data": [float(i["sum"]) for i in items] if has else [1],
-                    "backgroundColor": [i["color"] for i in items] if has else ["#E0E0E0"],
-                    "borderWidth": 3,
-                    "borderColor": "#ffffff",
-                }
-            ],
-        },
-        "options": {
-            "cutoutPercentage": 64,
-            "legend": {"display": False},
-            "plugins": {
-                "datalabels": {
-                    "display": has,
-                    "color": "#ffffff",
-                    "font": {"size": 22, "weight": "bold"},
-                    "formatter": "__F__",
-                },
-                "doughnutlabel": {
-                    "labels": [
-                        {
-                            "text": center1,
-                            "font": {"size": 30, "weight": "bold"},
-                            "color": "#111111",
-                        },
-                        {
-                            "text": center2,
-                            "font": {"size": 32, "weight": "bold"},
-                            "color": "#E8384F",
-                        },
-                    ]
-                },
-            },
-        },
-    }
-    s = json.dumps(conf, ensure_ascii=False).replace(
-        '"__F__"',
-        "function(v,c){var t=c.dataset.data.reduce(function(a,b){return a+b},0);var p=Math.round(v*100/t);return p>=4?p+' %':''}",
-    )
-    return _chart(s, 640, 640)
-
-
-def bars_png(labels: list[str], inc: list, exp: list) -> bytes | None:
-    conf = {
-        "type": "bar",
-        "data": {
-            "labels": labels,
-            "datasets": [
-                {"label": "Daromad", "data": [float(x) for x in inc], "backgroundColor": "#7ED6A5"},
-                {"label": "Xarajat", "data": [float(x) for x in exp], "backgroundColor": "#F7A1AE"},
-            ],
-        },
-        "options": {
-            "legend": {"position": "bottom"},
-            "plugins": {"datalabels": {"display": False}},
-            "scales": {
-                "yAxes": [
-                    {
-                        "ticks": {"beginAtZero": True, "callback": "__Y__"},
-                        "gridLines": {"borderDash": [6, 4]},
-                    }
-                ],
-                "xAxes": [{"gridLines": {"display": False}}],
-            },
-        },
-    }
-    s = json.dumps(conf, ensure_ascii=False).replace(
-        '"__Y__"', "function(v){return (v/1e6).toFixed(1).replace('.0','')+'M'}"
-    )
-    return _chart(s, 800, 480)
 
 
 # ---------------------------------------------------------------- hisob-kitob varaqasi
@@ -274,3 +168,22 @@ def report_card_png(values: dict) -> bytes:
     buf = io.BytesIO()
     im.save(buf, "PNG", optimize=True)
     return buf.getvalue()
+
+
+def card_values(bn, paid) -> dict:
+    """The texts of the payment sheet for an OrderBonus (hisobValues_)."""
+    from .services import ZERO
+
+    rest = max(ZERO, bn.total - paid)
+    c = bn.currency
+    return {
+        "MIJOZ": f"{bn.client[:26]} (ID {bn.order_ref})",
+        "TUR": (bn.description or "—")[:34],
+        "SANA": ddmm(bn.ready_date),
+        "VAL": f"Summa ({cur_name(c)})",
+        "S1": fmt_cur(bn.total, c),
+        "S2": "- " + fmt_cur(paid, c),
+        "S3": fmt_cur(rest, c),
+        "FORMULA": f"{fmt_cur(bn.total, c)} – {fmt_cur(paid, c)} =",
+        "YAKUN": f"{fmt_cur(rest, c)} {cur_name(c)}",
+    }

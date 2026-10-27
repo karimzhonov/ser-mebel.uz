@@ -84,7 +84,7 @@ def test_employee_edit_hours_and_off_days(admin, jasur):
     )
 
 
-def test_leaves_points_winners(admin, jasur, tg):
+def test_leaves_points_winners(admin, jasur, bot_events):
     r = admin.post(
         "/api/v1/hr/leaves/",
         {
@@ -102,6 +102,8 @@ def test_leaves_points_winners(admin, jasur, tg):
         format="json",
     )
     assert r.status_code == 201 and PointAdjustment.objects.count() == 1
+    pe = bot_events.one("hr.points_added")
+    assert pe["from_site"] is True and pe["value"] == 10 and pe["employee"]["telegram_id"] == 500
     assert (
         admin.post(
             "/api/v1/hr/points/",
@@ -116,7 +118,8 @@ def test_leaves_points_winners(admin, jasur, tg):
         format="json",
     )
     assert r.status_code == 201 and Winner.objects.count() == 1
-    assert any("eng yaxshi xodimi" in t for t in tg.texts(GROUP))
+    won = bot_events.one("hr.winner_announced")
+    assert won["groups"] == [GROUP] and won["kind"] == "m" and won["employee"]["telegram_id"] == 500
     assert (
         admin.post(
             "/api/v1/hr/winners/announce/",

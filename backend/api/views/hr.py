@@ -14,6 +14,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from hr import events as E
 from hr import services as S
 from hr.constants import DEFAULTS, LABELS, ST_LABEL
 from hr.excel import build_xlsx
@@ -201,25 +202,7 @@ class PointAdjustmentViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         a = serializer.save()
-        from hr.telegram import dm, esc, ism
-
-        v, why = a.value, a.reason
-        dm(
-            a.employee,
-            (
-                (
-                    f"🌟 {ism(a.employee)}, rahbar sizga <b>+{v} ball</b> berdi"
-                    + (f": {esc(why)}" if why else "")
-                    + ". Barakalla! 👏"
-                )
-                if v > 0
-                else (
-                    f"ℹ️ {ism(a.employee)}, sizga <b>{v} ball</b> yozildi"
-                    + (f": {esc(why)}" if why else "")
-                    + "."
-                )
-            ),
-        )
+        E.points_added(a, from_site=True)
 
 
 class WinnerViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
@@ -240,11 +223,8 @@ class WinnerViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
         e = Employee.objects.filter(pk=request.data.get("employee")).first()
         if not e:
             raise ValidationError({"employee": "Xodimni tanlang."})
-        if Winner.objects.filter(kind=kind, period=period).exists():
-            raise ValidationError({"period": "Bu tanlov allaqachon e'lon qilingan."})
-        from hr.telegram import announce_winner
-
-        announce_winner(kind, period, e.telegram_id)
+        result = S.announce_winner(kind, period, e)  # 400 (ServiceConflict) when announced
+        E.winner_announced(kind, period, result)
         return Response(
             WinnerSerializer(Winner.objects.get(kind=kind, period=period)).data, status=201
         )

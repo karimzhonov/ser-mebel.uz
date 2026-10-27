@@ -1,0 +1,10 @@
+{
+  "code": "material",
+  "name": "Material",
+  "emoji": "🧱",
+  "kind": "expense",
+  "admin_only": false,
+  "no_order": false,
+  "archive": true,
+  "excluded": false
+}

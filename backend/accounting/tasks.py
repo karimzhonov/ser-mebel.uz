@@ -2,7 +2,7 @@
 
 from celery import shared_task
 
-from . import jobs
+from . import followup, jobs
 from . import services as S
 from .text import now
 
@@ -37,15 +37,10 @@ def hourly_orders():
     at = now()
     if not S.once(f"job:orders:{at.date().isoformat()}:{at.hour}"):
         return False
-    jobs.hourly_orders(9 <= at.hour <= 21)
+    followup.hourly_orders(9 <= at.hour <= 21)
     return True
 
 
 @shared_task
 def cleanup():
     jobs.cleanup()
-
-
-@shared_task
-def replay_updates():
-    jobs.replay_updates()

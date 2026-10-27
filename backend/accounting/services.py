@@ -1,16 +1,19 @@
 """Finance (Moliya) business rules — the single source of truth.
 
-Both the Telegram bot (accounting/telegram/) and the REST API (api/views/finance.py)
-call these functions, so an operation booked in Telegram and one booked on the site
-follow the same rules. Ported from code.txt (Google Apps Script); the functions name
-their original in the docstring where it helps to compare.
+Both the Telegram bot (through the internal API api/views/bot/finance.py) and the site
+REST API (api/views/finance.py) call these functions, so an operation booked in
+Telegram and one booked on the site follow the same rules. Ported from code.txt
+(Google Apps Script); the functions name their original in the docstring where it
+helps to compare.
 
 Telegram side effects (channel posts, "money was given to you") are not sent from
-here: callers pass the returned objects to accounting/telegram/notify.py.
+here: callers pass the returned objects to accounting/events.py, which queues events
+for the bot service (core/bot_notify.py).
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -18,29 +21,16 @@ from decimal import ROUND_HALF_UP, Decimal
 import requests
 from constance import config
 from django.core.cache import cache
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
 from django.db.models import Max, Q, Sum
 
-from core.exceptions import ServiceError
+from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden
 from oauth.models import TelegramMember, TelegramRole, User
 from order.constants import OrderStatus
 from order.models import Order
 
-from .text import (
-    add_months,
-    cur_name,
-    days_between,
-    ddmm,
-    fmt_cur,
-    money,
-    month_bounds,
-    month_full,
-    month_name,
-    now,
-    num,
-    parse_money,
-    today,
-)
 from .constants import (
     ARCHIVE_DAYS,
     BONUS_TIERS,
@@ -63,6 +53,21 @@ from .models import (
     OrderBonus,
     SiteEntryTask,
     WarrantyLetter,
+)
+from .text import (
+    add_months,
+    cur_name,
+    days_between,
+    ddmm,
+    fmt_cur,
+    money,
+    month_bounds,
+    month_full,
+    month_name,
+    now,
+    num,
+    parse_money,
+    today,
 )
 
 ZERO = Decimal("0")
@@ -127,9 +132,8 @@ def duty_members(duty: str):
 def register_member(telegram_id: int, name: str, username: str = "") -> tuple[TelegramMember, bool]:
     """Unknown account asks to join → pending, waiting for an admin.
 
-    Never linked to a site account automatically: oauth_user.telegram_id is set by the
-    unauthenticated `/start <user_id>` deep link (backend/CLAUDE.md), so anyone could
-    claim the boss's account. An admin links them on the site (Moliya → Sozlamalar)."""
+    Never linked to a site account automatically: an admin links them on the site
+    (Moliya → Sozlamalar)."""
     m = member_by_tg(telegram_id)
     if m:
         return m, False
@@ -488,9 +492,13 @@ def order_infos(refs) -> dict[str, OrderInfo]:
 
 
 def create_manual_order(ref: str, client: str, phone: str = "", price=0) -> ManualOrder:
-    ref = str(ref).strip()[:32]
+    ref = str(ref).strip()
     if not ref:
         raise ServiceError("ID kiritilmagan.")
+    if not re.fullmatch(r"[A-Za-z0-9-]{1,20}", ref):
+        raise ServiceError(
+            "ID faqat lotin harflari, raqamlar va «-» dan iborat bo'lishi kerak (20 tagacha)."
+        )
     if order_info(ref):
         raise ServiceError("Bu ID band. Boshqasini yozing.")
     return ManualOrder.objects.create(
@@ -994,7 +1002,7 @@ def give_request(
     with transaction.atomic():
         req = MoneyRequest.objects.select_for_update().get(pk=req.pk)
         if req.status != "pending":
-            raise ServiceError("Bu so'rovga allaqachon javob berilgan.")
+            raise ServiceConflict("Bu so'rovga allaqachon javob berilgan.")
         op = create_operation(
             internal=True,
             member=req.member,
@@ -1024,7 +1032,7 @@ def reject_request(req: MoneyRequest, by: TelegramMember | None) -> MoneyRequest
     with transaction.atomic():
         req = MoneyRequest.objects.select_for_update().get(pk=req.pk)
         if req.status != "pending":
-            raise ServiceError("Bu so'rovga allaqachon javob berilgan.")
+            raise ServiceConflict("Bu so'rovga allaqachon javob berilgan.")
         req.status = "rejected"
         req.answer = "rad etildi"
         req.answered_by = by
@@ -1123,7 +1131,7 @@ def _lock_waiting_bonus(b: OrderBonus) -> OrderBonus:
     """Re-read under a lock: the scheduler (expiry) and a «Pul oldim» press can race."""
     locked = OrderBonus.objects.select_for_update().get(pk=b.pk)
     if locked.status != "waiting":
-        raise ServiceError("Bu zakaz bo'yicha bonus allaqachon yopilgan.")
+        raise ServiceConflict("Bu zakaz bo'yicha bonus allaqachon yopilgan.")
     return locked
 
 
@@ -1159,7 +1167,7 @@ def bonus_collect(b: OrderBonus, collector: TelegramMember, m: dict, full: bool)
     with transaction.atomic():
         b = OrderBonus.objects.select_for_update().get(pk=b.pk)
         if b.status != "waiting":
-            raise ServiceError("Bu zakaz bo'yicha bonus allaqachon yopilgan.")
+            raise ServiceConflict("Bu zakaz bo'yicha bonus allaqachon yopilgan.")
         before = money_state(b)
         if b.rest_base is None:
             b.rest_base, b.got = before["rest"], ZERO
@@ -1210,22 +1218,26 @@ def warranty_ensure(ref: str, client: str, ready: date | None) -> WarrantyLetter
 
 def warranty_give(ref: str, by_name: str) -> WarrantyLetter:
     ref = str(ref).lstrip("#").strip()
-    w = WarrantyLetter.objects.filter(order_ref=ref).first()
     info = order_info(ref)
-    if not w and not info:
-        raise ServiceError(f"{ref} zakazi topilmadi.")
-    if w and w.given:
-        raise ServiceError(
-            f"{ref} · {w.client} — kafolat xati allaqachon berilgan ({ddmm(w.given_at)})."
-        )
-    if not w:
-        w = WarrantyLetter(
-            order_ref=ref, client=info.client[:255], ready_date=info.ready_date or today()
-        )
-    w.given, w.given_at, w.given_by = True, today(), by_name[:255]
-    if info and not w.client:
-        w.client = info.client[:255]
-    w.save()
+    with transaction.atomic():
+        w = WarrantyLetter.objects.select_for_update().filter(order_ref=ref).first()
+        if not w and not info:
+            raise ServiceError(f"{ref} zakazi topilmadi.")
+        if w and w.given:
+            raise ServiceConflict(
+                f"{ref} · {w.client} — kafolat xati allaqachon berilgan ({ddmm(w.given_at)})."
+            )
+        if not w:
+            w = WarrantyLetter(
+                order_ref=ref, client=info.client[:255], ready_date=info.ready_date or today()
+            )
+        w.given, w.given_at, w.given_by = True, today(), by_name[:255]
+        if info and not w.client:
+            w.client = info.client[:255]
+        try:
+            w.save()
+        except IntegrityError:  # two first-time presses at once
+            raise ServiceConflict(f"{ref} — kafolat xati allaqachon berilgan.")
     return w
 
 
@@ -1247,10 +1259,12 @@ def site_entry_create(
 
 
 def site_entry_done(task: SiteEntryTask, by_name: str) -> SiteEntryTask:
-    if task.is_done:
-        raise ServiceError("Bu allaqachon belgilangan.")
-    task.is_done, task.done_at, task.done_by = True, today(), by_name[:255]
-    task.save()
+    with transaction.atomic():
+        task = SiteEntryTask.objects.select_for_update().get(pk=task.pk)
+        if task.is_done:
+            raise ServiceConflict("Bu allaqachon belgilangan.")
+        task.is_done, task.done_at, task.done_by = True, today(), by_name[:255]
+        task.save()
     return task
 
 
@@ -1283,7 +1297,7 @@ def handover_pending():
             is_deleted=False,
             handover="",
         )
-        .select_related("member")
+        .select_related("member", "category", "author")
         .order_by("date", "number")
     )
 
@@ -1297,14 +1311,14 @@ def _lock_handover(op: Operation) -> Operation:
     ):
         raise ServiceError("Bu yozuv mijozdan olingan «Pul oldim» puli emas.")
     if op.is_deleted or op.handover:
-        raise ServiceError(f"#{op.number} allaqachon belgilangan.")
+        raise ServiceConflict(f"#{op.number} allaqachon belgilangan.")
     return op
 
 
 def handover_accept(op: Operation, boss: TelegramMember) -> tuple[Operation, Operation]:
     """The collector handed the cash to the boss: transfer collector → boss."""
     if not boss.is_admin:
-        raise ServiceError("Pulni faqat rahbar qabul qiladi.")
+        raise ServiceForbidden("Pulni faqat rahbar qabul qiladi.")
     with transaction.atomic():
         op = _lock_handover(op)
         info = order_info(op.order_ref)
@@ -1458,3 +1472,257 @@ def checks() -> list[dict]:
 
 def fmt_order_money(info: OrderInfo, v) -> str:
     return f"{fmt_cur(v, info.currency)} {cur_name(info.currency)}"
+
+
+# =================================================================== bot-facing rules
+# Rules the Telegram bot used to hold inline (accounting/telegram/router.py); the bot
+# now calls them through api/views/bot/finance.py. The site uses them too.
+def touch_member_username(telegram_id, username: str) -> TelegramMember | None:
+    """_sync_profile: keep the Telegram username fresh."""
+    m = member_by_tg(telegram_id)
+    username = username or ""
+    if m and username != m.username:
+        m.username = username[:255]
+        m.save(update_fields=["username", "updated_at"])
+    return m
+
+
+def rename_member(member: TelegramMember, name: str) -> TelegramMember:
+    name = (name or "").strip()[:255]
+    if not name:
+        raise ServiceError("Ism bo'sh bo'lishi mumkin emas.")
+    member.name = name
+    member.save(update_fields=["name", "updated_at"])
+    return member
+
+
+def set_usd_rate(rate) -> Decimal:
+    """/kurs: 0 = use the Central Bank rate."""
+    try:
+        value = D(str(rate).replace(",", ".").replace(" ", ""))
+    except Exception:  # noqa: BLE001 — Decimal parse errors
+        raise ServiceError("Kursni raqam bilan yozing, masalan: 12050")
+    if value < 0 or value > 1_000_000:
+        raise ServiceError("Kurs 0 dan 1 000 000 gacha bo'lishi kerak.")
+    config.FIN_USD_RATE = float(value)
+    return value
+
+
+def set_report_template(content: bytes) -> str:
+    """/shablon: background picture of the payment sheet (report_card_png)."""
+    if not content:
+        raise ServiceError("Rasm bo'sh.")
+    path = default_storage.save("finance/report_background.png", ContentFile(content))
+    config.FIN_REPORT_TEMPLATE = path
+    return path
+
+
+def reset_report_template() -> None:
+    config.FIN_REPORT_TEMPLATE = ""
+
+
+def duty_recipients(duty: str) -> tuple[list[TelegramMember], bool]:
+    """Who holds `duty`; if nobody does, the admins and fallback=True (notifyTo_)."""
+    members = duty_members(duty)
+    if members:
+        return members, False
+    return admins(), True
+
+
+def create_operation_as(actor: TelegramMember, target: TelegramMember, **fields) -> Operation:
+    """The bot's booking rule: only active, non-task-only members book money, and only
+    admins book into somebody else's wallet. `actor_admin` always comes from the actor."""
+    if not actor.is_active_member or actor.is_task_only:
+        raise ServiceForbidden("Siz kirim-chiqim kirita olmaysiz.")
+    if target.pk != actor.pk and not actor.is_admin:
+        raise ServiceForbidden("Faqat o'z hamyoningizga yozishingiz mumkin.")
+    if not target.is_active_member:
+        raise ServiceError("Xodim topilmadi.")
+    for spoofable in ("actor_admin", "author", "member", "internal"):
+        fields.pop(spoofable, None)
+    if fields.get("category_code") == CAT_SALARY and not actor.is_admin:
+        fields["pay_type"] = "Avans"  # only the boss chooses avans / oylik
+    if fields.get("currency") == "USD":  # the amount is orig * rate, never what the client says
+        rate = usd_rate()  # the server's rate, never the client's
+        if not fields.get("orig_amount") or not rate:
+            raise ServiceError("Dollar summasi va kursi kerak.")
+        fields["rate"] = rate
+        fields["amount"] = q2(round(D(fields["orig_amount"]) * rate))
+    return create_operation(member=target, author=actor, actor_admin=actor.is_admin, **fields)
+
+
+def attach_receipt(op: Operation, file_id: str, actor: TelegramMember) -> Operation:
+    """Receipt photo on an existing entry: the author or an admin."""
+    if op.is_deleted:
+        raise ServiceError("O'chirilgan amalga chek qo'shib bo'lmaydi.")
+    if not (actor.is_admin or (actor.is_active_member and op.author_id == actor.pk)):
+        raise ServiceForbidden("Bu amalga chek qo'sha olmaysiz.")
+    if not file_id:
+        raise ServiceError("Chek rasmi yuborilmadi.")
+    op.receipt_file_id = file_id
+    op.save(update_fields=["receipt_file_id", "updated_at"])
+    return op
+
+
+def delete_operation_as(actor: TelegramMember, number: int) -> list[Operation]:
+    op = (
+        Operation.objects.select_related("member", "category", "author")
+        .filter(number=number)
+        .first()
+    )
+    if not op:
+        raise ServiceError(f"#{number} amal topilmadi.")
+    if not can_delete(actor, op):
+        raise ServiceForbidden(
+            "Bu amalni o'chira olmaysiz (sizniki emas yoki 2 kundan eski — rahbarga murojaat qiling)."
+        )
+    return delete_operation(op)
+
+
+def request_money(member: TelegramMember, amount_text: str, reason: str = "") -> MoneyRequest:
+    """«Rahbardan pul so'rash»: parse the amount and open a request."""
+    if not member.has_wallet:
+        raise ServiceForbidden("Pul so'rash faqat hamyoni bor xodimlar uchun.")
+    return create_request(member, money_in(amount_text), reason)
+
+
+def request_amount(req: MoneyRequest, amount_text: str | None = None) -> dict:
+    """The money a «give» books: what the boss typed, else the requested amount."""
+    text = str(amount_text or "").strip()
+    if text:
+        return money_in(text)
+    if req.currency == "USD":
+        return money_in(f"{req.orig_amount}$")
+    return {"amount": req.amount, "cur": "UZS", "orig": None, "rate": None}
+
+
+def set_request_messages(req: MoneyRequest, messages) -> MoneyRequest:
+    """Remember the admins' message ids so the answer can edit them."""
+    try:
+        clean = [[int(c), int(m)] for c, m in (messages or [])]
+    except (TypeError, ValueError):
+        raise ServiceError("Xabar identifikatorlari noto'g'ri.")
+    req.admin_messages = clean
+    req.save(update_fields=["admin_messages"])
+    return req
+
+
+def month_report_target(member: TelegramMember) -> str:
+    """Which month «Oylik hisob» offers: the one to report, or the current month when
+    last month is already submitted."""
+    ym = month_for_report()
+    cur = today().strftime("%Y-%m")
+    if ym != cur and MonthReport.objects.filter(member=member, month=ym).exists():
+        ym = cur
+    return ym
+
+
+def wallets_overview() -> dict:
+    """«Hamyonlar»: every wallet with balance, last entry day, report flag and the
+    month's spending, plus pending join requests. (Per-member queries on purpose:
+    a dozen wallets.)"""
+    ym = today().strftime("%Y-%m")
+    s, e = month_bounds(ym)
+    rep_month = month_for_report()
+    bal = balances()
+    reported = set(MonthReport.objects.filter(month=rep_month).values_list("member_id", flat=True))
+    rows, total = [], ZERO
+    for u in wallets():
+        bv = bal.get(u.id, ZERO)
+        if u.role == TelegramRole.STAFF:
+            total += bv
+        spent = sum((t.amount for t in period_ops(s, e, u) if t.kind == OpKind.EXPENSE), ZERO)
+        rows.append(
+            {
+                "member": u,
+                "balance": bv,
+                "last_day": last_day(u),
+                "reported": u.id in reported,
+                "month_spent": spent,
+            }
+        )
+    pending = list(TelegramMember.objects.filter(role=TelegramRole.PENDING).select_related("user"))
+    return {"report_month": rep_month, "rows": rows, "pending": pending, "staff_total": total}
+
+
+def set_manual_price(ref: str, price_text: str) -> ManualOrder:
+    """Change the contract price of a hand-made order."""
+    mo = ManualOrder.objects.filter(ref__iexact=str(ref).strip()).first()
+    if not mo:
+        raise ServiceError("Bu qo'lda kiritilgan buyurtma emas.")
+    mo.price = money_in(price_text)["amount"]
+    mo.save(update_fields=["price"])
+    return mo
+
+
+def toggle_manual_order(ref: str) -> ManualOrder:
+    """Close / reopen a hand-made order."""
+    mo = ManualOrder.objects.filter(ref__iexact=str(ref).strip()).first()
+    if not mo:
+        raise ServiceError("Bu qo'lda kiritilgan buyurtma emas.")
+    mo.is_closed = not mo.is_closed
+    mo.closed = today() if mo.is_closed else None
+    mo.save(update_fields=["is_closed", "closed"])
+    return mo
+
+
+def bonus_collect_flow(
+    ref: str, collector: TelegramMember, amount_text: str, full: bool = False
+) -> dict:
+    """«Pul oldim» end to end: parse the amount, book the money, update the bonus and
+    open the «Saytga kiritish» task - one transaction."""
+    with transaction.atomic():
+        bn = OrderBonus.objects.filter(order_ref=str(ref), status="waiting").first()
+        if not bn:
+            raise ServiceConflict("Bu zakaz bo'yicha bonus allaqachon yopilgan.")
+        m = money_in(amount_text)
+        res = bonus_collect(bn, collector, m, full)
+        bn = res["bonus"]
+        cur = bn.currency
+        rest_text = "0" if res["full"] else f"{fmt_cur(res['rest'], cur)} {cur_name(cur)}"
+        sum_text = money_text(m)
+        task = site_entry_create(bn.order_ref, bn.client, sum_text, collector.name, rest_text)
+    return {**res, "task": task, "sum_text": sum_text, "rest_text": rest_text}
+
+
+def bonus_close(ref: str, who: str) -> OrderBonus:
+    """«Zakazni yopish»: only when the client owes nothing."""
+    bn = OrderBonus.objects.filter(order_ref=str(ref), status="waiting").first()
+    if not bn:
+        raise ServiceConflict(
+            f"{ref} zakazi bo'yicha bonus allaqachon yopilgan (yoki 30 kundan o'tgan)."
+        )
+    ms = money_state(bn)
+    if ms["rest"] > bonus_tolerance(bn.currency):
+        raise ServiceError(
+            f"Qoldiq hali {fmt_cur(ms['rest'], bn.currency)} {cur_name(bn.currency)} — zakazni "
+            "faqat qoldiq 0 bo'lganda yopish mumkin. Olgan pulingizni «Pul oldim» orqali kiriting."
+        )
+    return bonus_finish(bn, f"Yopdi: {who}" + (f" · olingan: {bn.got_text}" if bn.got_text else ""))
+
+
+def receive_feedback_photo(
+    ref: str, by_name: str, caption: str, file_id: str, content: bytes | None
+) -> ClientFeedback:
+    """«Fikr oldim»: the screenshot of the client's feedback. Creates the feedback row
+    when the order never got one, stores the picture and marks it received."""
+    import re
+
+    ref = str(ref).strip().lstrip("#")
+    with transaction.atomic():
+        fb = ClientFeedback.objects.select_for_update().filter(order_ref=ref).first()
+        if fb is None:
+            info = order_info(ref)
+            fb = ClientFeedback.objects.create(
+                order_ref=ref, client=(info.client if info else "")[:255], status="asked"
+            )
+        if fb.status == "received":
+            raise ServiceConflict(f"{ref} — fikr allaqachon olingan.")
+        url = ""
+        if content:
+            path = default_storage.save(
+                f"finance/feedback/{re.sub(r'[^0-9A-Za-z_-]', '_', fb.order_ref)}.jpg",
+                ContentFile(content),
+            )
+            url = default_storage.url(path)
+        return feedback_receive(fb, by_name, (caption or "")[:300], file_id, url)

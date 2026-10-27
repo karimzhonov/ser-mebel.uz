@@ -1,0 +1,11 @@
+{
+  "id": "00000000-0000-0000-0000-000000001029",
+  "event": "hr.holiday_ask",
+  "data": {
+    "admins": [
+      555000111
+    ],
+    "day": "2026-12-08",
+    "name": "Konstitutsiya kuni"
+  }
+}

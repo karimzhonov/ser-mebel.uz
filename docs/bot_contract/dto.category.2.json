@@ -1,0 +1,10 @@
+{
+  "code": "avans",
+  "name": "Avans",
+  "emoji": "💵",
+  "kind": "income",
+  "admin_only": false,
+  "no_order": false,
+  "archive": false,
+  "excluded": false
+}

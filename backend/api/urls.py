@@ -64,12 +64,19 @@ v1 = [
         name="api-folder-messages",
     ),
     path("files/<int:file_id>/", FileView.as_view(), name="api-file"),
-    path("finance/telegram/update/", finance.TelegramUpdateView.as_view(), name="api-finance-telegram"),
     path("finance/summary/", finance.FinanceSummaryView.as_view(), name="api-finance-summary"),
     path("finance/wallets/", finance.WalletsView.as_view(), name="api-finance-wallets"),
     path("finance/orders/", finance.FinanceOrdersView.as_view(), name="api-finance-orders"),
-    path("finance/orders/<str:ref>/", finance.FinanceOrderDetailView.as_view(), name="api-finance-order"),
-    path("finance/order-options/", finance.FinanceOrderOptionsView.as_view(), name="api-finance-order-options"),
+    path(
+        "finance/orders/<str:ref>/",
+        finance.FinanceOrderDetailView.as_view(),
+        name="api-finance-order",
+    ),
+    path(
+        "finance/order-options/",
+        finance.FinanceOrderOptionsView.as_view(),
+        name="api-finance-order-options",
+    ),
     path("finance/checks/", finance.ChecksView.as_view(), name="api-finance-checks"),
     path("finance/export/", finance.ExportView.as_view(), name="api-finance-export"),
     path("finance/settings/", finance.FinanceSettingsView.as_view(), name="api-finance-settings"),
@@ -81,6 +88,9 @@ v1 = [
     path("hr/export/", hr.HrExportView.as_view(), name="api-hr-export"),
     path("", include(router.urls)),
 ]
+
+# Signed internal channel for the bot service (api/authentication.py); not in the schema.
+v1.insert(0, path("bot/", include("api.bot_urls")))
 
 urlpatterns = [
     path("v1/", include(v1)),

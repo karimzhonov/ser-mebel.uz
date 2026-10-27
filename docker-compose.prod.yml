@@ -26,7 +26,7 @@ services:
       - POSTGRES_HOST
       - POSTGRES_PORT
       - BOT_TOKEN
-      - BOT_SERVER
+      - BOT_SERVER=http://bot:80
       - TELEGRAM_BOT_USERNAME
       - REDIS_URL=redis://redis:6379/0
       # Optional (unset = defaults in core/settings.py).
@@ -57,7 +57,7 @@ services:
       - POSTGRES_HOST
       - POSTGRES_PORT
       - BOT_TOKEN
-      - BOT_SERVER
+      - BOT_SERVER=http://bot:80
       - TELEGRAM_BOT_USERNAME
       - REDIS_URL=redis://redis:6379/0
     command: celery -A core worker -l info --concurrency 2
@@ -109,12 +109,13 @@ services:
       - BOT_TOKEN
       - WEBHOOK_URL
       - BASE_SITE
-      # Finance updates are forwarded to the backend over the compose network.
+      # The bot holds no database: business calls go to the backend over the compose network.
       - BACKEND_URL=http://back:8000
-      - POSTGRES_DB
-      - POSTGRES_HOST
-      - POSTGRES_USER
-      - POSTGRES_PASSWORD
+      - REDIS_URL=redis://redis:6379/1
+      - TELEGRAM_BOT_USERNAME
+    depends_on:
+      - redis
+      - back
     command: sh -c "uvicorn main:app --host 0.0.0.0 --port 80 --workers 4"
 
   db:

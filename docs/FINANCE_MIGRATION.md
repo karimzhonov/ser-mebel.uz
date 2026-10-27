@@ -7,41 +7,55 @@ read or written here.
 
 ## Architecture
 
+> Updated 2026-10-27 (bot refactor): the Telegram logic left the backend. `bot/` owns every
+> button, text and flow; the backend owns data and rules and talks to the bot only through
+> the signed internal API and events described in `docs/BOT_CONTRACT.md`.
+
 ```
-Telegram ──webhook──► bot/ (aiogram, BOT_TOKEN from bot/config.py)
-                        │  finance router: forwards private messages + callbacks
-                        │  POST http://back:8000/api/v1/finance/telegram/update/
-                        │  header X-Bot-Signature = HMAC-SHA256(BOT_TOKEN, body)
+Telegram ──webhook──► bot/ (aiogram + Redis FSM; renders every message)
+                        │  signed HTTP (HMAC-SHA256 keyed with BOT_TOKEN)
+                        │  POST/GET http://back:8000/api/v1/bot/finance/...   (api/views/bot/finance.py)
                         ▼
-                    backend/accounting/telegram/   (port of code.txt: router, flows, texts)
-                        │  every write goes through accounting/services.py
-                        ▼
-                    Postgres  ◄── backend/api/views/finance.py ◄── frontend /finance/*
+                    backend: api/views/bot/* ─► accounting/services.py (rules) ─► Postgres
+                        │                                   ▲
+                        │ accounting/events.py              │  backend/api/views/finance.py ◄── frontend /finance/*
+                        ▼ core.bot_notify.emit (on_commit)
+                    Celery  core.tasks.notify_bot (8 retries) ─► POST http://bot:80/notify ─► bot renders + sends
                         ▲
-   celery-worker + celery-beat (accounting/tasks.py, schedule in accounting/schedule.py) — hourly/daily jobs of code.txt
+   celery-worker + celery-beat (accounting/tasks.py, schedule in accounting/schedule.py) - hourly/daily jobs; they only emit events
 ```
 
-- **One source of rules**: `accounting/services.py`. The bot handlers and the REST API
-  both call it, so a row created in Telegram and one created on the site behave the same
-  (balances, transfer pairs, channel posts, bonus checks).
-- **The bot stays thin**: it does not get new Tortoise models (no new DB contract).
-  It only forwards the raw update; the backend replies through the Telegram Bot API with
-  the same `BOT_TOKEN` (already in the `back` service env). `/start <user_id>` (site
-  account linking) is not forwarded and works exactly as before.
-- **Draft state** (multi-step "Chiqim → summa → kategoriya → …" flows) lives in the DB
-  (`accounting.BotSession`), not in aiogram's MemoryStorage — prod runs 4 uvicorn
-  workers, so memory state would be lost between steps.
-- **Orders come from the site DB** — the Apps Script logged into `/admin/` and scraped
+- **One source of rules**: `accounting/services.py`. The bot (through `/api/v1/bot/`) and the
+  site REST API both call it, so a row created in Telegram and one created on the site
+  behave the same (balances, transfer pairs, channel posts, bonus checks). Role rules
+  (who may book into whose wallet, admin-only categories, delete window, receiver/duty
+  checks, contract money only for admins) are enforced by the backend; the bot only relays
+  the signed Telegram id of the acting user.
+- **The backend sends nothing to Telegram.** Channel posts, "money was given to you", the
+  hourly/daily reminders and the Готов card are *events* (`accounting/events.py`,
+  `accounting/followup.py`, `accounting/jobs.py`): data + recipients, no wording. The bot
+  renders them. A booking is never undone by a down bot: `emit` runs after commit and the
+  Celery task retries with backoff.
+- **Draft state** (multi-step "Chiqim -> summa -> kategoriya -> ..." flows) lives in the bot's
+  Redis FSM, not in the DB (`accounting.BotSession` and `ProcessedUpdate` were dropped,
+  migration `0016`). Update de-duplication is the bot's Redis key; there is no outbox any more
+  (a crash mid-update is recovered by Telegram's own retry).
+- **Orders come from the site DB** - the Apps Script logged into `/admin/` and scraped
   HTML for statuses, `Итого`, `Полученная сумма`, `Дата сдачи`. Now these are read
   straight from `order.Order` (`price`, `discount`, `lost_money`, `status`, `end_date`).
   Order ids in operations are the site's `order_number`; ids that never existed on the
   site (`SM-001`, manual ones) are kept as `order_ref` text + `accounting.ManualOrder`.
+- **Files**: receipts/screenshots are Telegram `file_id`s. The site's receipt view fetches the
+  bytes from the bot (`GET /files/{file_id}`, `core.bot_notify.fetch_file`); the bot uploads
+  feedback screenshots / the report background to the backend (multipart).
+- **Charts** (donut, bars) are drawn by the bot (QuickChart). Only the payment sheet
+  (`accounting/images.py report_card_png`) and the Excel export stay in the backend.
 
 ## Telegram roles (separate from site permissions)
 
 `oauth.TelegramMember` — one row per Telegram account using the finance bot, optionally
-linked to a site `oauth.User`. It does NOT add columns to `oauth_user`, so the bot's
-hand-mirrored `bot/db/models/oauth.py` is unaffected.
+linked to a site `oauth.User`. It does NOT add columns to `oauth_user`. (The bot no longer
+mirrors any table: it has no database connection.)
 
 | Apps Script                         | TelegramMember                          |
 |-------------------------------------|-----------------------------------------|
@@ -117,8 +131,8 @@ equal the sheet's own numbers.
 2. Jadvalni qayta .xlsx qilib yuklab oling (oxirgi yozuvlar bilan) va production'da import
    qiling (avval `--dry-run`). Qayta import xavfsiz — yozuvlar ikki marta qo'shilmaydi.
 3. Xodimlarga: «endi @<sayt boti> ga /start yozing» — rollari import qilingan, qayta
-   tasdiqlash shart emas. Yangi xodimlar esa /moliya yozib ro'yxatdan o'tadi (oddiy /start
-   saytning odatdagi salomini ko'rsatadi, sayt foydalanuvchilarini chalg'itmaslik uchun).
+   tasdiqlash shart emas. Yangi xodimlar /start yozib ro'yxatdan o'tadi (/moliya ham ishlaydi).
+   Ro'yxatda yo'q odamning oddiy matniga bot javob bermaydi.
 
 Google API orqali (yuklab olmasdan): Google Cloud'da service account yarating, jadvalni
 uning e-mailiga «Ko'ruvchi» qilib ulashing va:
@@ -130,8 +144,9 @@ uning e-mailiga «Ko'ruvchi» qilib ulashing va:
   olinadi (soatlik «saytdan yangilash» kerak emas), «➕ Yangi buyurtma» faqat saytda yo'q
   ID lar uchun.
 - Birinchi /start yozgan odam endi avtomatik rahbar bo'lmaydi — rahbarni saytda belgilaysiz.
-- Telegram a'zo sayt profiliga avtomatik ulanmaydi (botdagi `/start <id>` bog'lanishi
-  tekshirilmagan) — Moliya → Sozlamalar → Telegram a'zolar'da qo'lda ulang.
+- Telegram a'zo sayt profiliga avtomatik ulanmaydi — Moliya → Sozlamalar → Telegram a'zolar'da
+  qo'lda ulang. (Sayt profili <-> Telegram bog'lanishi endi imzolangan havola bilan ishlaydi:
+  `?start=u<id>_<imzo>`; eski raqamli havola bir reliz davomida qabul qilinadi.)
 - Saytda xodim (barcha hamyonlarni ko'rish huquqi yo'q) faqat o'zi kiritgan, oxirgi 2 kundagi
   yozuvni o'zgartira/o'chira oladi; «Rahbardan» va o'tkazmani faqat rahbar yozadi — botdagi
   qoidalar bilan bir xil.

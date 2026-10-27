@@ -55,3 +55,16 @@ def api(make_staff):
 @pytest.fixture
 def admin_api(api):
     return api(superuser=True)
+
+
+# The internal bot channel: signed client + event collector, the finance fixtures (members,
+# site_order) and the HR kit (clock, boss, group) its tests need.
+from api.tests.botkit import (  # noqa: E402,F401
+    bot_client,
+    bot_events,
+    contract,
+    fake_replay_cache,
+    members,
+    site_order,
+)
+from hr.tests.hrkit import _fresh_settings_cache, boss, clock, group  # noqa: E402,F401

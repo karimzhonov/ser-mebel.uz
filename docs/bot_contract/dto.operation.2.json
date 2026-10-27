@@ -1,0 +1,32 @@
+{
+  "number": 1043,
+  "date": "2026-10-27",
+  "time": "14:35",
+  "kind": "income",
+  "amount": "3540000.00",
+  "currency": "USD",
+  "orig_amount": "300.00",
+  "rate": "11800.0000",
+  "category": {
+    "code": "avans",
+    "name": "Avans",
+    "emoji": "💵",
+    "kind": "income",
+    "admin_only": false,
+    "no_order": false,
+    "archive": false,
+    "excluded": false
+  },
+  "member": {
+    "telegram_id": 111222333,
+    "name": "Jasur Karimov"
+  },
+  "author_tg": 111222333,
+  "order_ref": "406",
+  "comment": "avans",
+  "worker": "",
+  "pay_type": "",
+  "receipt_file_id": "AgACAgIAAxkBAAI",
+  "is_deleted": false,
+  "handover": ""
+}

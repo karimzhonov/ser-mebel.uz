@@ -1,0 +1,25 @@
+{
+  "chat": {
+    "id": -1001234567890,
+    "title": "Chilonzor filiali",
+    "username": ""
+  },
+  "message_id": 55,
+  "date": 1790496000,
+  "from": {
+    "id": 777001,
+    "username": "dilmurod",
+    "first_name": "Dilmurod",
+    "last_name": "Ergashev",
+    "is_bot": false
+  },
+  "forwarded": false,
+  "media": {
+    "video_note": true,
+    "photo": false,
+    "video": false,
+    "location": false,
+    "venue": false
+  },
+  "text": ""
+}

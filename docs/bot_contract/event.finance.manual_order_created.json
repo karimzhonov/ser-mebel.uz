@@ -1,0 +1,15 @@
+{
+  "id": "00000000-0000-0000-0000-00000000100b",
+  "event": "finance.manual_order_created",
+  "data": {
+    "order": {
+      "ref": "SM-003",
+      "client": "Qo'lda mijoz",
+      "phone": "",
+      "price": "8000000.00",
+      "is_closed": false
+    },
+    "spent": "0.00",
+    "channel_id": "-1001999888777"
+  }
+}

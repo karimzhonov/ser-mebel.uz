@@ -35,7 +35,6 @@ def periodic_tasks() -> dict[str, tuple[str, dict]]:
         "moliya: oy oxiri eslatmasi": ("accounting.tasks.month_job", {"minute": "0", "hour": "10"}),
         "moliya: buyurtmalar kuzatuvi": ("accounting.tasks.hourly_orders", {"minute": "0"}),
         "moliya: tozalash": ("accounting.tasks.cleanup", {"minute": "30", "hour": "3"}),
-        "moliya: uzilgan update'lar": ("accounting.tasks.replay_updates", {"minute": "*"}),
         "hr: davomat jadvali": ("hr.tasks.tick", {"minute": "*"}),
     }
 
@@ -43,11 +42,18 @@ def periodic_tasks() -> dict[str, tuple[str, dict]]:
 def sync_periodic_tasks() -> None:
     wanted = periodic_tasks()
     for name, (task, fields) in wanted.items():
-        cron = {"minute": "*", "hour": "*", "day_of_week": "*", "day_of_month": "*",
-                "month_of_year": "*", **fields}
+        cron = {
+            "minute": "*",
+            "hour": "*",
+            "day_of_week": "*",
+            "day_of_month": "*",
+            "month_of_year": "*",
+            **fields,
+        }
         crontab, _ = CrontabSchedule.objects.get_or_create(timezone=settings.TIME_ZONE, **cron)
         pt, _ = PeriodicTask.objects.update_or_create(
-            name=name, defaults={"task": task, "crontab": crontab, "interval": None, "enabled": True}
+            name=name,
+            defaults={"task": task, "crontab": crontab, "interval": None, "enabled": True},
         )
         if pt.last_run_at is None:
             # With USE_TZ=False django-celery-beat reads naive last_run_at as UTC; left

@@ -1,8 +1,9 @@
 """Moliya (finance) API — the site side of the finance Telegram bot.
 
-Every write goes through accounting.services (the same functions the bot calls);
-Telegram side effects go through accounting.telegram.notify, so booking on the site
-posts to the channel and tells the wallet owner exactly like booking in the bot.
+Every write goes through accounting.services (the same functions the bot's internal API
+calls); Telegram side effects are queued as events (accounting.events -> core.bot_notify),
+so booking on the site posts to the channel and tells the wallet owner exactly like
+booking in the bot.
 
 Row scoping: without accounting.view_all_operations a user only sees the wallet of
 the Telegram member linked to their account.
@@ -10,9 +11,6 @@ the Telegram member linked to their account.
 
 from __future__ import annotations
 
-import hashlib
-import hmac
-import json
 import logging
 from datetime import date
 
@@ -23,14 +21,12 @@ from django.http import HttpResponse
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
-from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounting import events as E
 from accounting import services as S
 from accounting.excel import build_xlsx
-from accounting.schedule import sync_periodic_tasks
-from accounting.text import month_bounds, today
 from accounting.models import (
     ClientFeedback,
     FinanceCar,
@@ -44,6 +40,9 @@ from accounting.models import (
     WarrantyLetter,
     Worker,
 )
+from accounting.schedule import sync_periodic_tasks
+from accounting.text import month_bounds, today
+from core.bot_notify import fetch_file
 from core.exceptions import ServiceError
 from oauth.models import TelegramMember, TelegramRole
 
@@ -89,39 +88,6 @@ def scoped_member(request) -> TelegramMember | None:
             "Profilingiz Telegram a'zoga ulanmagan — faqat o'z hamyoningizni ko'ra olasiz."
         )
     return m
-
-
-# ===================================================================== Telegram webhook (from bot/)
-def bot_signature(body: bytes) -> str:
-    key = (settings.TELEGRAM_BOT_TOKEN or "").encode()
-    return hmac.new(key, body, hashlib.sha256).hexdigest()
-
-
-class TelegramUpdateView(APIView):
-    """bot/ forwards private-chat updates here (X-Bot-Signature = HMAC-SHA256 of the
-    body with BOT_TOKEN). Answers {"handled": bool}: false → bot/ replies as before."""
-
-    authentication_classes = []
-    permission_classes = [AllowAny]
-    throttle_classes = []
-
-    def post(self, request):
-        body = request.body
-        sig = request.headers.get("X-Bot-Signature", "")
-        if not settings.TELEGRAM_BOT_TOKEN or not hmac.compare_digest(sig, bot_signature(body)):
-            raise PermissionDenied("bad signature")
-        try:
-            update = json.loads(body or b"{}")
-        except ValueError:
-            raise ValidationError("bad json")
-        from accounting.telegram.router import dispatch
-
-        try:
-            handled = dispatch(update)
-        except Exception:  # noqa: BLE001 — never make Telegram retry forever
-            log.exception("finance update failed")
-            handled = False
-        return Response({"handled": bool(handled)})
 
 
 # ===================================================================== catalogs
@@ -179,15 +145,7 @@ class TelegramMemberViewSet(viewsets.ModelViewSet):
         old_role = serializer.instance.role
         m = serializer.save()
         if old_role == TelegramRole.PENDING and m.role == TelegramRole.STAFF:
-            from accounting.telegram import api
-            from accounting.telegram.texts import HELP_STAFF, KB_STAFF
-
-            api.send(
-                m.telegram_id,
-                "✅ Rahbar sizni tasdiqladi! Endi kirim-chiqimlarni kiritishingiz mumkin.\n\n"
-                + HELP_STAFF,
-                KB_STAFF,
-            )
+            E.member_approved(m)
 
     def perform_destroy(self, instance):
         if instance.operations.exists():
@@ -277,9 +235,7 @@ class OperationViewSet(viewsets.ModelViewSet):
             on_date=d.get("date"),
             actor_admin=only is None,
         )
-        from accounting.telegram.notify import announce_operation
-
-        announce_operation(op, author=author, from_site=True)
+        E.operation_created(op, author=author, from_site=True)
         return Response(OperationSerializer(op).data, status=201)
 
     def partial_update(self, request, *args, **kwargs):
@@ -293,11 +249,13 @@ class OperationViewSet(viewsets.ModelViewSet):
             )
         if only and "member" in d and d["member"].pk != only.pk:
             raise PermissionDenied("Faqat o'z hamyoningizga yozishingiz mumkin.")
-        before = OperationSerializer(op).data
+        before = {
+            "kind_label": op.get_kind_display(),
+            "amount": str(op.amount),
+            "category_name": op.category.name,
+        }
         op = S.update_operation(op, d, site_user=request.user, actor_admin=only is None)
-        from accounting.telegram.notify import announce_edited
-
-        announce_edited(op, before, f"{request.user.name or request.user.phone} (sayt)")
+        E.operation_edited(op, before, f"{request.user.name or request.user.phone} (sayt)")
         return Response(OperationSerializer(Operation.objects.get(pk=op.pk)).data)
 
     def destroy(self, request, *args, **kwargs):
@@ -308,9 +266,7 @@ class OperationViewSet(viewsets.ModelViewSet):
                 "Faqat o'zingiz kiritgan, oxirgi 2 kundagi yozuvni o'chira olasiz."
             )
         deleted = S.delete_operation(op)
-        from accounting.telegram.notify import announce_deleted
-
-        announce_deleted(deleted, f"{request.user.name or request.user.phone} (sayt)")
+        E.operation_deleted(deleted, f"{request.user.name or request.user.phone} (sayt)")
         return Response(status=204)
 
     @action(detail=True, methods=["post"])
@@ -327,9 +283,7 @@ class OperationViewSet(viewsets.ModelViewSet):
         op = self.get_object()
         if not op.receipt_file_id:
             raise NotFound("Chek yo'q.")
-        from accounting.telegram.api import download_file
-
-        got = download_file(op.receipt_file_id)
+        got = fetch_file(op.receipt_file_id)
         if not got:
             raise NotFound("Chekni Telegram'dan olib bo'lmadi.")
         resp = HttpResponse(got[0], content_type=got[1])
@@ -355,9 +309,7 @@ class OperationViewSet(viewsets.ModelViewSet):
             source="site",
             site_user=request.user,
         )
-        from accounting.telegram.notify import announce_transfer
-
-        announce_transfer(out, inc, author)
+        E.transfer_created(out, inc, author)
         return Response(OperationSerializer([out, inc], many=True).data, status=201)
 
     @action(detail=False, methods=["get"])
@@ -742,28 +694,12 @@ class MoneyRequestViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     def give(self, request, pk=None):
         require_perm(request.user, "accounting.change_moneyrequest", VIEW_ALL)
         req = self._req(pk)
-        text = str(request.data.get("amount") or "").strip()
-        m = (
-            S.money_in(text)
-            if text
-            else (
-                S.money_in(f"{req.orig_amount}$")
-                if req.currency == "USD"
-                else {"amount": req.amount, "cur": "UZS", "orig": None, "rate": None}
-            )
-        )
+        m = S.request_amount(req, request.data.get("amount"))
         op = S.give_request(req, acting_member(request), m, site_user=request.user)
-        from accounting.telegram import api
-        from accounting.telegram.router import req_close_messages
-        from accounting.telegram.texts import KB_STAFF, op_card
-
         req.refresh_from_db()
-        req_close_messages(req, f"✅ <b>Berildi: {S.money_text(m)}</b> (saytdan)")
-        api.send(
-            req.member.telegram_id,
-            f"💸 So'rovingiz #{req.number} bo'yicha pul berildi:\n\n"
-            + op_card(op, S.balance(req.member)),
-            KB_STAFF,
+        # an answer given on the site is not announced in the channel (post_to_channel=false)
+        E.request_answered(
+            req, "given", f"{request.user.name or request.user.phone} (sayt)", True, op
         )
         return Response(MoneyRequestSerializer(req).data)
 
@@ -771,13 +707,8 @@ class MoneyRequestViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     def reject(self, request, pk=None):
         require_perm(request.user, "accounting.change_moneyrequest", VIEW_ALL)
         req = S.reject_request(self._req(pk), acting_member(request))
-        from accounting.telegram import api
-        from accounting.telegram.router import req_close_messages
-
-        req_close_messages(req, "❌ <b>Rad etildi</b> (saytdan)")
-        api.send(
-            req.member.telegram_id,
-            f"❌ Pul so'rovingiz #{req.number} rad etildi. Savol bo'lsa, rahbarga murojaat qiling.",
+        E.request_answered(
+            req, "rejected", f"{request.user.name or request.user.phone} (sayt)", True
         )
         return Response(MoneyRequestSerializer(req).data)
 
@@ -808,9 +739,7 @@ class OrderBonusViewSet(mixins.ListModelMixin, mixins.UpdateModelMixin, viewsets
                 "Qoldiq hali 0 emas — zakazni faqat qoldiq 0 bo'lganda yopish mumkin."
             )
         bn = S.bonus_finish(bn, f"Yopdi: {request.user.name or request.user.phone} (sayt)")
-        from accounting.telegram.bonus import announce_bonus_done
-
-        announce_bonus_done(bn)
+        E.bonus_done(bn)
         return Response(OrderBonusSerializer(bn).data)
 
 
@@ -851,9 +780,7 @@ class SiteEntryTaskViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     def done(self, request, pk=None):
         require_perm(request.user, "accounting.change_siteentrytask")
         task = S.site_entry_done(self.get_object(), request.user.name or str(request.user.phone))
-        from accounting.telegram.bonus import site_entry_done_announce
-
-        site_entry_done_announce(task, f"{task.done_by} (sayt)")
+        E.site_entry_done(task, f"{task.done_by} (sayt)")
         return Response(SiteEntryTaskSerializer(task).data)
 
 
