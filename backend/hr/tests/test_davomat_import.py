@@ -4,7 +4,7 @@ from datetime import date
 import pytest
 from openpyxl import Workbook
 
-from accounting.finance.importer import XlsxSource
+from accounting.importer import XlsxSource
 from hr import services as S
 from hr.importer import DavomatImporter
 from hr.models import (
@@ -373,8 +373,8 @@ def test_import_without_export_sheet_warns(tmp_path):
 
 def test_finance_import_never_reads_davomat(book, db):
     """The two importers are separate: the finance one ignores these sheets."""
-    from accounting.finance.importer import Importer
-    from accounting.finance_models import Operation
+    from accounting.importer import Importer
+    from accounting.models import Operation
 
     Importer(XlsxSource(book)).run()
     assert not Operation.objects.exists() and not Attendance.objects.exists()

@@ -1,0 +1,10 @@
+{
+  "handled": true,
+  "outcome": "eta",
+  "data": {
+    "late_reason": "",
+    "early_reason": "",
+    "eta": "10:30",
+    "uniform_ask": false
+  }
+}

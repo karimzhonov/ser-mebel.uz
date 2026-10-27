@@ -8,7 +8,6 @@ from djmoney.money import Money
 from filer.models import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
-from accounting.constants import DefaultExpenseCategoryChoices
 from django.urls import reverse_lazy
 from core.sms import format_phone, absolute_url, send_bulk_sms
 
@@ -50,10 +49,6 @@ class Painter(models.Model):
 def create_painter_folders(
     sender: Type[Painter], instance: Painter, created, update_fields, **kwargs
 ):
-    # DefaultExpenseCategoryChoices.update_or_create_expense(
-    #     DefaultExpenseCategoryChoices.painter, instance.order, instance.price
-    # )
-
     if update_fields and "type" in update_fields and instance.type:
         url = reverse_lazy("admin:painter_painter_change", kwargs={"object_id": instance.pk})
         instance.type.user.send_message(url)

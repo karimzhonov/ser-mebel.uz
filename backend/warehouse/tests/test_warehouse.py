@@ -4,7 +4,7 @@ import pytest
 from django.contrib.auth.models import Group
 from rest_framework.test import APIClient
 
-from accounting.tests.conftest import site_order  # noqa: F401
+from api.tests.botkit import site_order  # noqa: F401
 from api.tests.conftest import api, make_staff  # noqa: F401
 from warehouse.models import Movement, Product
 

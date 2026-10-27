@@ -147,3 +147,38 @@ def notify_user(user, *, url, telegram_text, sms_template=None, sms_context=None
                 xodim_ism=user.name or "", url=absolute_url(url), **(sms_context or {})
             )
             send_bulk_sms([{"phone": phone, "text": text}])
+
+
+def link_telegram(token, telegram_id: int):
+    """Link a Telegram account to the site user named by a `/start` link payload.
+
+    `token` is the signed payload built by core.telegram.link_token (`u{pk}_{hmac10}`);
+    plain digits (the old unsigned format) are still accepted for one release and
+    logged as deprecated. Returns the User, or None for a bad signature, an unknown or
+    inactive user. The Telegram id is moved here if another user still had it (login by
+    telegram_id must stay unambiguous). Called by POST /api/v1/bot/link/ - the bot no
+    longer writes oauth_user itself.
+    """
+    from django.db import transaction
+
+    from core.telegram import parse_link_token
+
+    from .models import User
+
+    pk = parse_link_token(token)
+    if pk is None:
+        return None
+    signed = not str(token or "").strip().isdigit()
+    with transaction.atomic():
+        user = User.objects.select_for_update().filter(pk=pk, is_active=True).first()
+        if user is None:
+            return None
+        if not signed and (
+            user.is_staff or user.is_superuser or user.telegram_id not in (None, int(telegram_id))
+        ):
+            return None  # the unsigned format may only fill an empty slot, never take over
+        User.objects.filter(telegram_id=int(telegram_id)).exclude(pk=pk).update(telegram_id=None)
+        if user.telegram_id != int(telegram_id):
+            user.telegram_id = int(telegram_id)
+            user.save(update_fields=["telegram_id"])
+    return user

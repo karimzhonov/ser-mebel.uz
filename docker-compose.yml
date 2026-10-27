@@ -16,18 +16,52 @@ services:
     depends_on:
       - db
 
-  # Moliya scheduled jobs (reminders, reports). Optional in dev.
-  scheduler:
-    container_name: scheduler
+  # Background + periodic tasks (Celery). Schedule: backend/accounting/schedule.py.
+  celery-worker:
+    container_name: celery-worker
     build: ./backend
     env_file:
       - ./backend/.env
-    command: python manage.py finance_scheduler
+    command: celery -A core worker -l info
     volumes:
       - ./media/:/media/
       - ./backend/:/app/
     depends_on:
       - db
+      - redis
+
+  celery-beat:
+    container_name: celery-beat
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    command: celery -A core beat -l info
+    volumes:
+      - ./backend/:/app/
+    depends_on:
+      - db
+      - redis
+
+  redis:
+    container_name: redis
+    image: redis:7-alpine
+
+  # Telegram bot (polling). Not started by default: docker compose --profile bot up bot
+  bot:
+    container_name: bot
+    build: ./bot
+    profiles: ["bot"]
+    env_file:
+      - ./bot/.env
+    environment:
+      - BACKEND_URL=http://back:8000
+      - REDIS_URL=redis://redis:6379/1
+    command: python runbot.py
+    volumes:
+      - ./bot/:/app/
+    depends_on:
+      - back
+      - redis
 
   db: 
     container_name: db

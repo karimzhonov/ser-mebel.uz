@@ -1,0 +1,22 @@
+{
+  "id": "00000000-0000-0000-0000-000000001010",
+  "event": "finance.site_entry_created",
+  "data": {
+    "task": {
+      "code": "sk18c2a3f",
+      "order_ref": "389",
+      "client": "Dilnoza",
+      "sum_text": "5 000 000 so'm",
+      "rest_text": "4 000 000 so'm",
+      "taken_by": "Jasur Karimov",
+      "date": "2026-10-27",
+      "is_done": false
+    },
+    "collector_name": "Jasur Karimov",
+    "to": [
+      111222333
+    ],
+    "fallback": false,
+    "fallback_who": "Saytga kirituvchi menejer"
+  }
+}

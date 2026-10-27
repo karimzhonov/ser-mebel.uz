@@ -23,6 +23,7 @@ import type {
   StatusStats,
 } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
+import { OrderFinance } from "@/pages/finance/Wallets";
 import {
   AddressLink,
   BackLink,
@@ -60,8 +61,6 @@ import {
 import { cn } from "@/lib/cn";
 import { date, dateTime, leftPercent, money, num, phone, todayISO } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
-import { CatLabel, som } from "@/pages/finance/shared";
-import type { FinOrder } from "@/pages/finance/types";
 
 /* ------------------------------------------------------------------ List */
 
@@ -215,7 +214,6 @@ export function OrdersPage() {
 export function OrderDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { can } = useAuth();
   const { data: o, isLoading } = useGet<OrderDetail>(`/orders/${id}/`);
   const [tab, setTab] = useState("info");
   const [editing, setEditing] = useState(false);
@@ -290,7 +288,7 @@ export function OrderDetailPage() {
         options={[
           { value: "info", label: "Ma'lumot" },
           { value: "production", label: "Ishlab chiqarish" },
-          ...(can("accounting.view_operation", "accounting.view_all_operations") ? [{ value: "expenses", label: "Moliya" }] : []),
+          ...(a.finance && o.order_number ? [{ value: "finance", label: "Moliya" }] : []),
           { value: "history", label: "Tarix" },
         ]}
       />
@@ -385,7 +383,7 @@ export function OrderDetailPage() {
         </div>
       )}
 
-      {tab === "expenses" && o.order_number && <OrderFinance orderNumber={o.order_number} />}
+      {tab === "finance" && o.order_number && <OrderFinance orderNumber={o.order_number} />}
       {tab === "history" && <OrderHistory orderId={o.id} />}
 
       {editing && <OrderEditModal order={o} onClose={() => setEditing(false)} />}
@@ -487,47 +485,6 @@ function ProdCard({
       }
     >
       {rows ? <KV items={rows} /> : <p className="muted text-sm">Hali yaratilmagan</p>}
-    </Card>
-  );
-}
-
-/** Money booked on this order in Moliya (bot + site): what was spent, by category. */
-function OrderFinance({ orderNumber }: { orderNumber: number }) {
-  const { data, isLoading } = useGet<FinOrder>(`/finance/orders/${orderNumber}/`);
-  if (isLoading) return <Card><Empty title="Yuklanmoqda…" /></Card>;
-  if (!data) return <Card><Empty title="Moliya ma'lumoti yo'q" /></Card>;
-  return (
-    <Card
-      title="Moliya: shu buyurtma bo'yicha amallar"
-      padded={false}
-      actions={<Link className="text-sm text-brand-600 hover:underline" to={`/finance/operations?order_ref=${orderNumber}&date_from=&date_to=`}>Moliyada ochish →</Link>}
-    >
-      <div className="grid grid-cols-2 gap-3 border-b border-slate-100 p-4 sm:grid-cols-4 dark:border-slate-800">
-        <StatTile label="Sarflandi" value={som(data.spent)} tone="danger" hint={data.spent_percent !== null ? `${data.spent_percent}%` : undefined} />
-        <StatTile label="Mijozdan (botda)" value={som(data.collected)} tone="ok" />
-        <StatTile label={data.profit !== null && data.profit < 0 ? "Zarar" : "Foyda"} value={data.profit === null ? "—" : som(data.profit)} tone={data.profit !== null && data.profit < 0 ? "danger" : "ok"} />
-        <StatTile label="Amallar" value={data.operations?.length ?? 0} tone="idle" />
-      </div>
-      <DataTable
-        rows={data.operations}
-        rowKey={(r) => r.id}
-        empty={<Empty title="Bu buyurtmaga hali amal yozilmagan" />}
-        columns={[
-          { key: "d", header: "Sana", cell: (r) => <span className="muted">{date(r.date)}</span> },
-          { key: "c", header: "Kategoriya", cell: (r) => <CatLabel c={r.category_detail} /> },
-          { key: "m", header: "Kim", cell: (r) => r.member_detail.name },
-          { key: "i", header: "Izoh", cell: (r) => <span className="line-clamp-1 max-w-xs">{r.comment || "—"}</span>, hideOnMobile: true },
-          {
-            key: "a",
-            header: "Summa",
-            cell: (r) => (
-              <span className={`font-medium tabular-nums ${r.kind === "income" ? "text-emerald-600" : "text-rose-600"}`}>
-                {som(r.kind === "income" ? r.amount : -Number(r.amount), true)}
-              </span>
-            ),
-          },
-        ]}
-      />
     </Card>
   );
 }

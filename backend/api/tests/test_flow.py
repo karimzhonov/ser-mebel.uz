@@ -215,7 +215,6 @@ def test_read_endpoints_respond(admin_api, catalog, order_factory):
         "/api/v1/detailings/stats/",
         "/api/v1/assemblies/assemblers/",
         "/api/v1/finance/summary/",
-        "/api/v1/finance/operations/stats/",
         "/api/v1/users/",
         "/api/schema/",
     ]:

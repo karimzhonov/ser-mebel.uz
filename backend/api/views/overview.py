@@ -16,6 +16,7 @@ from django.db.models import Count, ExpressionWrapper, F, FloatField, Min, Q, Su
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from accounting import services as finance
 from call_center.constants import SolutionChoice
 from call_center.models import Invoice
 from metering.constants import MeteringStatus
@@ -242,23 +243,18 @@ class OverviewView(APIView):
             "debtors": len(debt),
         }
 
-    # --- income / expense -------------------------------------------------------------
+    # --- income / expense (Moliya operations, company-wide, in so'm) ------------------
 
     def accounting(self, user, params):
-        """Company income / expense for the period, from Moliya (the finance bot's
-        operations, in so'm). Internal moves and personal spending don't count."""
         if not user.has_perm("accounting.view_all_operations"):
             return None
-        from accounting import services as F
-
         start, end = date_range(params)
-        sm = F.summary(start, end)
-        income, expense = round(float(sm["income"]), 2), round(float(sm["expense"]), 2)
+        sm = finance.summary(start, end)
         return {
             "currency": "UZS",
-            "income": income,
-            "expense": expense,
-            "profit": round(income - expense, 2),
+            "income": round(float(sm["income"]), 2),
+            "expense": round(float(sm["expense"]), 2),
+            "profit": round(float(sm["balance"]), 2),
         }
 
     # --- production queues ------------------------------------------------------------

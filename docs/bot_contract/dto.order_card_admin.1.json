@@ -1,0 +1,25 @@
+{
+  "ref": "SM-003",
+  "client": "Qo'lda mijoz",
+  "phone": "",
+  "bucket": "jarayonda",
+  "status_label": "Jarayonda",
+  "ready_date": null,
+  "end_date": null,
+  "ready_days_left": null,
+  "manual": {
+    "is_closed": false,
+    "price": "8000000.00"
+  },
+  "stats": {
+    "spent": "0.00",
+    "collected": "0.00",
+    "cats": [],
+    "last_ops": []
+  },
+  "total": "8000000.00",
+  "currency": "UZS",
+  "price_uzs": "8000000.00",
+  "paid": null,
+  "rest": null
+}

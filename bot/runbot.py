@@ -1,11 +1,17 @@
 import asyncio
-from db.utils import init_tortoise
-from bot import dp, bot
+import logging
+
+from bot import bot, dp
+from bot.backend.client import backend
+
 
 async def main():
-    await init_tortoise()
-    await dp.start_polling(bot)
+    logging.basicConfig(level=logging.INFO)
+    try:
+        await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
+    finally:
+        await backend.close()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())

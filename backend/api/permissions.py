@@ -60,3 +60,14 @@ class ModelPermissions(DjangoModelPermissions):
 def require_perm(user, *perms: str) -> None:
     if not user.has_perms(perms):
         raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+
+
+class IsBot(BasePermission):
+    """Only the signed internal bot channel (api.authentication.BotSignatureAuthentication)."""
+
+    message = "bad signature"
+
+    def has_permission(self, request, view):
+        from .authentication import BotPrincipal
+
+        return isinstance(request.user, BotPrincipal)

@@ -8,7 +8,7 @@ from datetime import date
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 
-from accounting.finance.text import safe_cell as T
+from accounting.text import safe_cell as T
 
 from .models import Movement, Product
 

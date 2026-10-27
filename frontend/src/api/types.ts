@@ -59,6 +59,8 @@ export interface Meta {
   warning_order_days: number;
   usd_rate: number;
   site_title: string;
+  /** The site bot's @username (TELEGRAM_BOT_USERNAME), without the @. */
+  telegram_bot: string;
 }
 
 export interface Deadline {
@@ -255,6 +257,7 @@ export interface OrderDetail extends Order {
     next_status: boolean;
     next_status_label: string | null;
     go_to_assembly: boolean;
+    finance: boolean;
     edit_price: boolean;
   };
 }

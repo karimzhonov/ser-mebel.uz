@@ -1,0 +1,41 @@
+{
+  "id": "00000000-0000-0000-0000-000000001027",
+  "event": "hr.month_report",
+  "data": {
+    "admins": [
+      555000111
+    ],
+    "ym": "2026-10",
+    "report": {
+      "kind": "period",
+      "date_from": "2026-10-01",
+      "date_to": "2026-10-27",
+      "empty": false,
+      "on_time": 180,
+      "late": 12,
+      "late_reasoned": 4,
+      "absent": 3,
+      "excused": 2,
+      "discipline": 90,
+      "late_min": 420,
+      "rows": [
+        {
+          "telegram_id": 777001,
+          "name": "Dilmurod Ergashev",
+          "pts": 42,
+          "on_time": 20,
+          "late": 1,
+          "absent": 0,
+          "early_n": 0,
+          "disc": 95,
+          "late_min": 12,
+          "late_r": 0,
+          "viol": 1,
+          "bonus": 0,
+          "adj": 0
+        }
+      ]
+    },
+    "site_url": "https://ser-mebel.uz/hr"
+  }
+}

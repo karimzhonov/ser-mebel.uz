@@ -1,7 +1,9 @@
-from fastapi import FastAPI
 from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
+
+from bot.webhook import delete_webhook, set_webhook
 from config import DEBUG
-from bot.webhook import set_webhook, delete_webhook
 
 
 def register_webhook(app: FastAPI):

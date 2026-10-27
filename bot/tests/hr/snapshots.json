@@ -1,0 +1,326 @@
+{
+ "day_live": "<b>T</b>\n🗓 27-oktabr, Seshanba\n\n👥 Kutilgan: <b>10</b> · Keldi: <b>4</b>\n✅ Vaqtida: <b>2</b> (20%)\n⏰ Kech qoldi: <b>2</b>\n⏳ Hali kelmagan: <b>3</b>\n❌ Kelmadi: <b>2</b>\n📝 Sababli kelmadi: <b>1</b>\n😴 Dam / ta'til: <b>2</b>\n\n<b>🏢 Filiallar:</b>\n• Chilonzor filiali: ✅1 ⏰2 ⏳2 ❌0\n• Yunusobod &amp; Co: ✅1 ⏰0 ⏳1 ❌2 📝1\n\n<b>⏰ Kech qolganlar</b> (jami 1 soat):\n1. Azizbek — 09:40 (+40 daq) — Sababsiz: probka &lt;b&gt;\n2. Nodira — 09:20 (+20 daq) — sabab hali aytilmagan\n\n<b>⏳ Hali kelmaganlar:</b>\n1. Bobur — taxminan 10:30 da keladi\n2. Jasur — so'raldi, javob yo'q\n3. Kamol — botga ulanmagan\n\n<b>❌ Kelmaganlar:</b>\n1. Sardor (aytgan vaqti 11:00)\n2. Anvar\n\n<b>📝 Sababli kelmaganlar:</b>\n1. Hasan — kasal &amp; yo'q\n\n<b>🏖 Ta'tilda:</b> Umid (ta'til)\n\n<b>👕 Formasiz kelganlar:</b> Azizbek, Late2\n\n<b>✅ Vaqtida kelganlar:</b> Late2 (08:30), Dilmurod Ergashev (08:55)\n\n<b>🚪 Kecha erta ketganlar:</b>\n1. Bobur — 16:30 (1 soat 30 daq erta) — Sababsiz: x&lt;y\n2. Zafar — 16:00 (1 soat erta) — Sababsiz\n\n<b>📭 Kecha ketish otchetini tashlamaganlar:</b> Sardor\n\n⚠️ Botga ulanmaganlar (2): Kamol, Hasan\nUlar botga /start bosmaguncha bot ularga yoza olmaydi.",
+ "_live_dto": {
+  "kind": "live",
+  "day": "2026-10-27",
+  "empty": false,
+  "expected": 10,
+  "on_time": [
+   {
+    "name": "Late2",
+    "in_time": "08:30"
+   },
+   {
+    "name": "Dilmurod Ergashev",
+    "in_time": "08:55"
+   }
+  ],
+  "late": [
+   {
+    "name": "Azizbek",
+    "in_time": "09:40",
+    "late_min": 40,
+    "late_reason": "Sababsiz",
+    "late_comment": "probka <b>"
+   },
+   {
+    "name": "Nodira",
+    "in_time": "09:20",
+    "late_min": 20,
+    "late_reason": "",
+    "late_comment": ""
+   }
+  ],
+  "waiting": [
+   {
+    "name": "Bobur",
+    "eta": "10:30",
+    "asked": 1,
+    "can_dm": true
+   },
+   {
+    "name": "Jasur",
+    "eta": "",
+    "asked": 2,
+    "can_dm": true
+   },
+   {
+    "name": "Kamol",
+    "eta": "",
+    "asked": 0,
+    "can_dm": false
+   }
+  ],
+  "absent": [
+   {
+    "name": "Sardor",
+    "eta": "11:00"
+   },
+   {
+    "name": "Anvar",
+    "eta": null
+   }
+  ],
+  "excused": [
+   {
+    "name": "Hasan",
+    "note": "kasal & yo'q"
+   }
+  ],
+  "leave": [
+   {
+    "name": "Umid",
+    "note": "ta'til"
+   }
+  ],
+  "rest_count": 2,
+  "no_uniform": [
+   "Azizbek",
+   "Late2"
+  ],
+  "groups": [
+   {
+    "title": "Chilonzor filiali",
+    "on_time": 1,
+    "late": 2,
+    "waiting": 2,
+    "absent": 0,
+    "excused": 0
+   },
+   {
+    "title": "Yunusobod & Co",
+    "on_time": 1,
+    "late": 0,
+    "waiting": 1,
+    "absent": 2,
+    "excused": 1
+   }
+  ],
+  "yesterday_early": [
+   {
+    "name": "Bobur",
+    "out_time": "16:30",
+    "early_min": 90,
+    "early_reason": "Sababsiz",
+    "early_comment": "x<y"
+   },
+   {
+    "name": "Zafar",
+    "out_time": "16:00",
+    "early_min": 60,
+    "early_reason": "",
+    "early_comment": ""
+   }
+  ],
+  "yesterday_no_out": [
+   "Sardor"
+  ],
+  "not_connected": [
+   "Kamol",
+   "Hasan"
+  ]
+ },
+ "day_live_min": "<b>T</b>\n🗓 27-oktabr, Seshanba\n\n👥 Kutilgan: <b>1</b> · Keldi: <b>1</b>\n✅ Vaqtida: <b>1</b> (100%)\n⏰ Kech qoldi: <b>0</b>\n❌ Kelmadi: <b>0</b>\n\n<b>✅ Vaqtida kelganlar:</b> A (08:00)",
+ "day_live_empty": "<b>T</b>\n🗓 27-oktabr, Seshanba\n\nBugun ishga kutilgan xodim yo'q (dam / bayram).",
+ "day_past": "<b>📊 Hisobot</b>\n🗓 26-oktabr, Dushanba\n\n👥 Kutilgan: <b>4</b>\n✅ Vaqtida: <b>1</b>\n⏰ Kech qoldi: <b>2</b>\n❌ Kelmadi: <b>1</b>\n📝 Sababli kelmadi: <b>0</b>\n\n<b>⏰ Kech qolganlar:</b>\n1. Azizbek — 09:40 (+40 daq) — Sababsiz: x&amp;y\n2. Nodira — 09:20 (+20 daq)\n\n<b>❌ Kelmaganlar:</b> Sardor",
+ "_past_dto": {
+  "kind": "past",
+  "day": "2026-10-26",
+  "empty": false,
+  "expected": 4,
+  "on_time": 1,
+  "late": 2,
+  "absent": 1,
+  "excused": 0,
+  "late_rows": [
+   {
+    "name": "Azizbek",
+    "in_time": "09:40",
+    "late_min": 40,
+    "late_reason": "Sababsiz",
+    "late_comment": "x&y"
+   },
+   {
+    "name": "Nodira",
+    "in_time": "09:20",
+    "late_min": 20,
+    "late_reason": "",
+    "late_comment": ""
+   }
+  ],
+  "absent_names": [
+   "Sardor"
+  ]
+ },
+ "day_past_empty": "<b>📊 Hisobot</b>\n🗓 26-oktabr, Dushanba\n\nBu kun uchun ma'lumot yo'q.",
+ "period": "<b>T</b>\n🗓 2026-10-01 — 2026-10-27\n\n✅ Vaqtida: <b>90</b> · ⏰ Kech: <b>12</b> (sababli 3) · ❌ Kelmadi: <b>5</b> · 📝 Sababli: <b>0</b>\n📈 Umumiy intizom: <b>75%</b>\n⌛ Jami kechikish: <b>2 soat 27 daq</b>\n\n<b>Xodimlar reytingi</b> (ball · vaqtida / kech / kelmadi / erta ketdi · intizom):\n🥇 Dilmurod Ergashev: <b>120</b> ball · 15 / 1 / 0 / 0 · 95%, kechikish 12 daq\n🥈 Azizbek &lt;b&gt;: <b>80</b> ball · 15 / 3 / 1 / 2 · 88%, kechikish 45 daq\n🥉 Nodira: <b>80</b> ball · 15 / 0 / 0 / 0 · 88%\n4. Sardor: <b>80</b> ball · 15 / 3 / 3 / 2 · 88%, kechikish 45 daq\n5. Zafar: <b>80</b> ball · 15 / 2 / 0 / 0 · 88%\n6. Kamol: <b>1</b> ball · 15 / 3 / 1 / 2 · 88%, kechikish 45 daq\n\n<b>⚠️ E'tibor talab qiladi:</b> Sardor (2 sababsiz kech, 3 kelmadi, 2 erta ketdi), Azizbek &lt;b&gt; (2 sababsiz kech, 1 kelmadi, 2 erta ketdi), Kamol (2 sababsiz kech, 1 kelmadi, 2 erta ketdi), Zafar (2 sababsiz kech, 0 kelmadi), Dilmurod Ergashev (1 sababsiz kech, 0 kelmadi)",
+ "_period_dto": {
+  "kind": "period",
+  "date_from": "2026-10-01",
+  "date_to": "2026-10-27",
+  "empty": false,
+  "on_time": 90,
+  "late": 12,
+  "late_reasoned": 3,
+  "absent": 5,
+  "excused": 0,
+  "discipline": 75,
+  "late_min": 147,
+  "rows": [
+   {
+    "telegram_id": 1,
+    "name": "Dilmurod Ergashev",
+    "pts": 120,
+    "on_time": 15,
+    "late": 1,
+    "absent": 0,
+    "early_n": 0,
+    "disc": 95,
+    "late_min": 12,
+    "late_r": 0,
+    "viol": 1,
+    "bonus": 20,
+    "adj": 5
+   },
+   {
+    "telegram_id": 1,
+    "name": "Azizbek <b>",
+    "pts": 80,
+    "on_time": 15,
+    "late": 3,
+    "absent": 1,
+    "early_n": 2,
+    "disc": 88,
+    "late_min": 45,
+    "late_r": 1,
+    "viol": 3,
+    "bonus": 0,
+    "adj": 0
+   },
+   {
+    "telegram_id": 1,
+    "name": "Nodira",
+    "pts": 80,
+    "on_time": 15,
+    "late": 0,
+    "absent": 0,
+    "early_n": 0,
+    "disc": 88,
+    "late_min": 0,
+    "late_r": 0,
+    "viol": 0,
+    "bonus": 0,
+    "adj": 0
+   },
+   {
+    "telegram_id": 1,
+    "name": "Sardor",
+    "pts": 80,
+    "on_time": 15,
+    "late": 3,
+    "absent": 3,
+    "early_n": 2,
+    "disc": 88,
+    "late_min": 45,
+    "late_r": 1,
+    "viol": 4,
+    "bonus": 0,
+    "adj": 0
+   },
+   {
+    "telegram_id": 1,
+    "name": "Zafar",
+    "pts": 80,
+    "on_time": 15,
+    "late": 2,
+    "absent": 0,
+    "early_n": 0,
+    "disc": 88,
+    "late_min": 0,
+    "late_r": 0,
+    "viol": 2,
+    "bonus": 0,
+    "adj": 0
+   },
+   {
+    "telegram_id": 1,
+    "name": "Kamol",
+    "pts": 1,
+    "on_time": 15,
+    "late": 3,
+    "absent": 1,
+    "early_n": 2,
+    "disc": 88,
+    "late_min": 45,
+    "late_r": 1,
+    "viol": 1,
+    "bonus": 0,
+    "adj": 0
+   }
+  ]
+ },
+ "period_empty": "<b>T</b>\n🗓 2026-10-01 — 2026-10-27\n\nHali ma'lumot yo'q.",
+ "_rank_rows": [
+  {
+   "telegram_id": 1,
+   "name": "Dilmurod Ergashev",
+   "pts": 120,
+   "disc": 95,
+   "bonus": 20,
+   "adj": 5,
+   "wins": 0
+  },
+  {
+   "telegram_id": 2,
+   "name": "Azizbek",
+   "pts": 60,
+   "disc": 70,
+   "bonus": 0,
+   "adj": -10,
+   "wins": 0
+  },
+  {
+   "telegram_id": 3,
+   "name": "Nodira",
+   "pts": 50,
+   "disc": 99,
+   "bonus": 0,
+   "adj": 0,
+   "wins": 0
+  },
+  {
+   "telegram_id": 4,
+   "name": "Zafar",
+   "pts": -3,
+   "disc": 40,
+   "bonus": 0,
+   "adj": 0,
+   "wins": 0
+  }
+ ],
+ "ranking": "<b>R</b>\n\n🥇 Dilmurod Ergashev — <b>120</b> ball (intizom 95%, +20 bonus, rahbardan +5)\n🥈 Azizbek — <b>60</b> ball (intizom 70%, rahbardan -10)\n🥉 Nodira — <b>50</b> ball (intizom 99%)\n4. Zafar — <b>-3</b> ball (intizom 40%)\n\nQoidalar: /ballar",
+ "ranking_empty": "<b>R</b>\n\nHali ma'lumot yo'q.",
+ "month_winner": "<b>🏆 Oy xodimi tanlovi — oktabr 2026</b>\n\n🥇 Dilmurod Ergashev — <b>120</b> ball (intizom 95%, +20 bonus, rahbardan +5)\n🥈 Azizbek — <b>60</b> ball (intizom 70%, rahbardan -10)\n🥉 Nodira — <b>50</b> ball (intizom 99%)\n4. Zafar — <b>-3</b> ball (intizom 40%)\n\nQoidalar: /ballar\n\nBallar bo'yicha g'olib: <b>Dilmurod Ergashev</b>. Guruhlarda kimni «Oy xodimi» deb e'lon qilamiz?",
+ "_year_rows": [
+  {
+   "telegram_id": 1,
+   "name": "Dilmurod Ergashev",
+   "pts": 900,
+   "disc": 94,
+   "wins": 3,
+   "bonus": 0,
+   "adj": 0
+  },
+  {
+   "telegram_id": 2,
+   "name": "Nodira",
+   "pts": 700,
+   "disc": 90,
+   "wins": 0,
+   "bonus": 0,
+   "adj": 0
+  }
+ ],
+ "year": "<b>👑 Yil xodimi tanlovi — 2026</b>\n\n🥇 Dilmurod Ergashev — <b>900</b> ball, intizom 94%, 🏆×3 oy xodimi\n🥈 Nodira — <b>700</b> ball, intizom 90%\n\nGuruhlarda kimni «Yil xodimi» deb e'lon qilamiz?",
+ "year_empty": "<b>👑 Yil xodimi tanlovi — 2026</b>\n\nHali ma'lumot yo'q."
+}

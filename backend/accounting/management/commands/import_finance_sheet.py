@@ -10,7 +10,7 @@ Safe to re-run (rows are matched by their ids). See docs/FINANCE_MIGRATION.md.
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from accounting.finance.importer import GoogleSource, Importer, XlsxSource
+from accounting.importer import GoogleSource, Importer, XlsxSource
 
 
 class DryRun(Exception):

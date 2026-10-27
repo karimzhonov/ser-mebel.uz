@@ -1,0 +1,37 @@
+{
+  "id": "00000000-0000-0000-0000-00000000100a",
+  "event": "finance.month_submitted",
+  "data": {
+    "member": {
+      "id": 7,
+      "telegram_id": 111222333,
+      "name": "Jasur Karimov",
+      "username": "jasur_k",
+      "role": "staff",
+      "is_admin": false,
+      "is_active_member": true,
+      "is_task_only": false,
+      "has_wallet": true,
+      "is_site_entry": false,
+      "is_feedback": false,
+      "is_bonus_receiver": true,
+      "is_deadline_receiver": false,
+      "site_user": null
+    },
+    "month": "2026-10",
+    "summary": {
+      "month": "2026-10",
+      "opening": "100000.00",
+      "income": "900000.00",
+      "expense": "750000.00",
+      "closing": "250000.00",
+      "count": 14
+    },
+    "note": "",
+    "closing": "250000.00",
+    "admins": [
+      555000111
+    ],
+    "channel_id": "-1001999888777"
+  }
+}

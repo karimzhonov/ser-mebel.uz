@@ -19,6 +19,7 @@ from django.urls import reverse_lazy
 from constance import config
 from djmoney.money import Money
 from metering.constants import MeteringStatus
+from .telegram import user_bot_link
 from .utils import media
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -88,6 +89,7 @@ INSTALLED_APPS = [
     'django_filters',
     'drf_spectacular',
     'api',
+    'django_celery_beat',
 ]
 
 MIDDLEWARE = [
@@ -368,7 +370,8 @@ UNFOLD = {
         "navigation": [
             {
                 "title": "Связать Telegram",
-                "link": lambda request: 'https://t.me/ser_mebel_admin_bot?start=%s' % request.user.id,
+                # signed /start token (core/telegram.py), verified by the bot's link/ call
+                "link": lambda request: user_bot_link(request.user.id),
             },
         ],
     },
@@ -479,8 +482,23 @@ TELEGRAM_WEBAPP_LOGIN_ENABLED = os.getenv("TELEGRAM_WEBAPP_LOGIN_ENABLED", "") =
 # initData older than this is rejected (replay window).
 TELEGRAM_INIT_DATA_MAX_AGE = int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", 60 * 60))
 
+# Celery: every background / periodic task goes through it (Redis broker, beat
+# schedule in the DB — see accounting/schedule.py).
+REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+CELERY_BROKER_URL = REDIS_URL
+CELERY_RESULT_BACKEND = None
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = False
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+DJANGO_CELERY_BEAT_TZ_AWARE = USE_TZ
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
 TELEGRAM_BOT_TOKEN = os.getenv('BOT_TOKEN')
 TELEGRAM_BOT_SERVER = os.getenv('BOT_SERVER')
+# The site bot's @username (without @) — every t.me deep link is built from it.
+TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', 'ser_mebel_admin_bot').lstrip('@')
 
 SMS_GATEWAY_URL = os.getenv('SMS_GATEWAY_URL', 'http://185.8.212.184/smsgateway/')
 SMS_LOGIN = os.getenv('SMS_LOGIN')

@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "delivered": [
+    {
+      "chat_id": 111222333,
+      "ok": true,
+      "message_id": 5001,
+      "error_code": null,
+      "blocked": false
+    },
+    {
+      "chat_id": 555000111,
+      "ok": false,
+      "message_id": null,
+      "error_code": 403,
+      "blocked": true
+    }
+  ]
+}

@@ -5,15 +5,29 @@ Phase 2 of the move (phase 1, finance: docs/FINANCE_MIGRATION.md). Port of
 
 ## Architecture
 
-- Same path as finance: `bot/` forwards updates (now also **work-group messages** and
-  `my_chat_member` / `chat_member`) → `POST /api/v1/finance/telegram/update/` →
-  `accounting/telegram/router.py` asks `hr/telegram.py` first (like `DV.handle` did),
-  then the finance bot. One outbox / per-user lock for both.
-- Rules: `hr/services.py` (day state, points, stats, finalize). Telegram: `hr/telegram.py`.
-  Schedule: `hr/jobs.py` (every minute, from the same `scheduler` container).
+> Updated 2026-10-27 (bot refactor): the Telegram handlers left the backend (`hr/telegram.py`
+> and `hr/reports.py` are gone). `bot/` forwards raw facts; the backend decides and returns
+> data. Contract: `docs/BOT_CONTRACT.md`.
+
+- **bot -> backend** (signed, `/api/v1/bot/hr/...`, `api/views/bot/hr.py`): work-group
+  messages (`group-message/`), joins/leaves, private answers (`private-text/`), buttons
+  (`callback/`), `/start`, `/holatim`, `/kelolmayman` and every admin command. The rules
+  live in `hr/services.py` (`process_group_report`, `process_private_text`,
+  `process_employee_callback`, `employee_start`, `announce_winner`, ...). They return what
+  happened and what to say (`action`, `react`, `reply`, `dm`) - never message text.
+- **backend -> bot** (events, `hr/events.py` -> `core.bot_notify`): the minute-by-minute
+  schedule `hr/jobs.py` (celery beat task `hr.tasks.tick`) and live alerts. Steps that need
+  to know the person was reached (ask for an ETA, leaving reminder, "promised time passed")
+  use `send_event_sync` and count an ask only on a confirmed delivery; if the bot is down
+  the tick stops and releases its once-per-day keys, so the next tick (the windows last
+  90+ minutes) tries again. Reports are data (`hr/report_data.py`); the bot formats them.
+- `Employee.can_dm` is updated from the bot's delivery results (`record_dm_results` after
+  every `hr.*` event, `hr/dm-status/` after interactive DMs).
 - Admins = finance admins (`TelegramMember.role == admin`), as in the Apps Script.
-- A finished day is **frozen** (`Attendance.finalized`, status + points stored) — what
+- A finished day is **frozen** (`Attendance.finalized`, status + points stored) - what
   the «Davomat» sheet row used to be. Today is computed live.
+- The admin's "how many days off?" answer (`AWAIT_<id>` rows in `HrState`) is now the bot's
+  Redis FSM state; migration `hr/0002` deletes the dead rows.
 - Site: «HR» section (/hr): today board, journal (HR can correct a day; points are
   recomputed), rating + extra points + «Oy/Yil xodimi», employees (hours, days off),
   holidays/leaves, settings and groups, Excel.

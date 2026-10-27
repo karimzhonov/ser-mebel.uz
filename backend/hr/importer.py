@@ -19,7 +19,7 @@ from datetime import date, timedelta
 
 from django.db import transaction
 
-from accounting.finance.importer import Report, s, tg_id, to_date, to_time
+from accounting.importer import Report, s, tg_id, to_date, to_time
 
 from . import services as S
 from .constants import DEFAULTS, ST_PLAIN

@@ -158,6 +158,7 @@ class OrderDetailSerializer(OrderSerializer):
             ),
             "go_to_assembly": user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
             and obj.status == OrderStatus.WORKING,
+            "finance": user.has_perm("accounting.view_all_operations"),
             "edit_price": can_view_price(self.context.get("request")),
         }
 

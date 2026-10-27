@@ -1,0 +1,22 @@
+{
+  "kind": "past",
+  "day": "2026-10-26",
+  "empty": false,
+  "expected": 11,
+  "on_time": 8,
+  "late": 2,
+  "absent": 1,
+  "excused": 0,
+  "late_rows": [
+    {
+      "name": "Azizbek",
+      "in_time": "09:40",
+      "late_min": 40,
+      "late_reason": "Sababsiz",
+      "late_comment": ""
+    }
+  ],
+  "absent_names": [
+    "Sardor"
+  ]
+}
