@@ -45,3 +45,6 @@ openpyxl
 pytest==8.3.5
 pytest-django==4.9.0
 google-auth
+celery[redis]==5.5.3
+redis==5.2.1
+django-celery-beat==2.8.1

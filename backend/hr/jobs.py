@@ -1,5 +1,5 @@
-"""Every-minute davomat schedule (runSchedule_ in davomat.txt). Called by the
-scheduler process (manage.py finance_scheduler runs both bots' jobs)."""
+"""Davomat schedule (runSchedule_ in davomat.txt), run every minute
+by celery beat (hr/tasks.py)."""
 
 from __future__ import annotations
 

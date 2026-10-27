@@ -29,6 +29,7 @@ from rest_framework.views import APIView
 
 from accounting import services as S
 from accounting.excel import build_xlsx
+from accounting.schedule import sync_periodic_tasks
 from accounting.text import month_bounds, today
 from accounting.models import (
     ClientFeedback,
@@ -669,6 +670,8 @@ class FinanceSettingsView(APIView):
             clean[k] = value
         for k, value in clean.items():
             setattr(config, k, value)
+        if clean.keys() & {"FIN_REMINDER_HOUR", "FIN_ADMIN_REPORT_HOUR"}:
+            sync_periodic_tasks()
         return self.get(request)
 
 

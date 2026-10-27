@@ -18,7 +18,7 @@ Telegram ──webhook──► bot/ (aiogram, BOT_TOKEN from bot/config.py)
                         ▼
                     Postgres  ◄── backend/api/views/finance.py ◄── frontend /finance/*
                         ▲
-   scheduler (python manage.py finance_scheduler) — hourly/daily jobs of code.txt
+   celery-worker + celery-beat (accounting/tasks.py, schedule in accounting/schedule.py) — hourly/daily jobs of code.txt
 ```
 
 - **One source of rules**: `accounting/services.py`. The bot handlers and the REST API
@@ -87,7 +87,7 @@ equal the sheet's own numbers.
 
 ### 1. Staging (test.ser-mebel.uz)
 
-1. `test` branchni push qiling — deploy o'zi `scheduler` konteynerini ham ko'taradi.
+1. `test` branchni push qiling — deploy o'zi `redis`, `celery-worker`, `celery-beat` konteynerlarini ham ko'taradi.
    Yangi secret kerak emas (`BOT_TOKEN` back va bot'da allaqachon bor).
 2. Google jadvalni yuklab oling: Fayl → Yuklab olish → Microsoft Excel (.xlsx).
 3. Serverga nusxalang va importni avval sinab ko'ring (hech narsa saqlanmaydi):

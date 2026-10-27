@@ -382,15 +382,27 @@ def test_excel_from_bot(tg, members):
     assert any(m == "sendDocument" for m, _, _ in tg.calls)
 
 
-def test_scheduler_runs_each_job_once(tg, members):
-    from datetime import datetime
+def test_scheduled_tasks_run_each_job_once(tg, members):
+    from accounting import tasks
 
-    from accounting.jobs import run_due
+    assert tasks.admin_daily() is True
+    assert tasks.hourly_orders() is True
+    assert tasks.admin_daily() is False
+    assert tasks.hourly_orders() is False
 
-    at = datetime.combine(date.today(), datetime.min.time()).replace(hour=21)
-    first = run_due(at)
-    assert "admin" in first and "orders" in first
-    assert run_due(at) == []
+
+def test_beat_schedule_follows_settings(db):
+    from constance import config
+    from django_celery_beat.models import PeriodicTask
+
+    from accounting.schedule import sync_periodic_tasks
+
+    config.FIN_REMINDER_HOUR = 18
+    sync_periodic_tasks()
+    sync_periodic_tasks()  # idempotent
+    t = PeriodicTask.objects.get(task="accounting.tasks.daily_reminder")
+    assert t.crontab.hour == "18" and t.crontab.minute == "0"
+    assert PeriodicTask.objects.filter(task="hr.tasks.tick").count() == 1
 
 
 # ---------------------------------------------------------------- review fixes

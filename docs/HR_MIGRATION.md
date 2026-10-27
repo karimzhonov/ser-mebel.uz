@@ -10,7 +10,7 @@ Phase 2 of the move (phase 1, finance: docs/FINANCE_MIGRATION.md). Port of
   `accounting/telegram/router.py` asks `hr/telegram.py` first (like `DV.handle` did),
   then the finance bot. One outbox / per-user lock for both.
 - Rules: `hr/services.py` (day state, points, stats, finalize). Telegram: `hr/telegram.py`.
-  Schedule: `hr/jobs.py` (every minute, from the same `scheduler` container).
+  Schedule: `hr/jobs.py` (every minute, celery beat task `hr.tasks.tick`).
 - Admins = finance admins (`TelegramMember.role == admin`), as in the Apps Script.
 - A finished day is **frozen** (`Attendance.finalized`, status + points stored) — what
   the «Davomat» sheet row used to be. Today is computed live.

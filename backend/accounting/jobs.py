@@ -1,7 +1,7 @@
 """Scheduled jobs of the finance bot (hourly()/hourlyBody_ in code.txt).
 
-run_due() is called every minute by `manage.py finance_scheduler`; every job is
-guarded by a FinanceJobRun key, so a restart or a second scheduler never sends a
+Run by celery beat through accounting/tasks.py; each task is guarded by a
+FinanceJobRun key, so a beat restart or a duplicate delivery never sends a
 reminder twice.
 """
 
@@ -154,35 +154,3 @@ def replay_updates():
 def cleanup():
     ProcessedUpdate.objects.filter(created_at__lt=now() - timedelta(days=3)).delete()
     FinanceJobRun.objects.filter(created_at__lt=now() - timedelta(days=150)).delete()
-
-
-def run_due(at=None):
-    """Run whatever is due at this minute. Returns the list of jobs started."""
-    at = at or now()
-    day, h = at.date().isoformat(), at.hour
-    ran = []
-
-    def once(key, fn):
-        if S.once(f"job:{key}:{day}"):
-            ran.append(key)
-            _safe(key, fn)
-
-    if h == int(config.FIN_REMINDER_HOUR or 19):
-        once("daily", daily_reminder)
-    if h == int(config.FIN_ADMIN_REPORT_HOUR or 21):
-        once("admin", admin_daily)
-    if h == 10:
-        once("month", month_job)
-    # order follow-up (deadlines, Готов sheets, bonus, feedback) — every hour;
-    # messages only in the daytime, like the Apps Script (9:00–21:00)
-    if S.once(f"job:orders:{day}:{h}"):
-        ran.append("orders")
-        _safe("orders", hourly_orders, 9 <= h <= 21)
-    once("cleanup", cleanup)
-    _safe("replay", replay_updates)
-    # davomat (HR) keeps its own once-per-day markers; it only shares the process
-    from hr.jobs import tick as hr_tick
-
-    if hr_tick():
-        ran.append("hr")
-    return ran
