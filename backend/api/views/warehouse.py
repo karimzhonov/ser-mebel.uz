@@ -3,6 +3,8 @@ warehouse/services.py, which also requires the caller to be THE keeper (omborchi
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from django.http import HttpResponse
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
@@ -23,6 +25,8 @@ from ..utils import date_range, int_param
 class ProductSerializer(serializers.ModelSerializer):
     unit_label = serializers.CharField(source="get_unit_display", read_only=True)
     value = serializers.SerializerMethodField()
+    avg_cost_usd = serializers.SerializerMethodField()
+    value_usd = serializers.SerializerMethodField()
     low = serializers.SerializerMethodField()
 
     class Meta:
@@ -38,6 +42,8 @@ class ProductSerializer(serializers.ModelSerializer):
             "quantity",
             "avg_cost",
             "value",
+            "avg_cost_usd",
+            "value_usd",
             "low",
             "is_active",
             "created_at",
@@ -46,6 +52,20 @@ class ProductSerializer(serializers.ModelSerializer):
 
     def get_value(self, obj):
         return round(float(obj.quantity * obj.avg_cost), 2)
+
+    def _rate(self):
+        # one rate per response (it is cached, but the list has many rows)
+        if "usd_rate" not in self.context:
+            self.context["usd_rate"] = W.usd_rate()
+        return self.context["usd_rate"]
+
+    def get_avg_cost_usd(self, obj):
+        r = self._rate()
+        return round(float(obj.avg_cost / r), 2) if r else None
+
+    def get_value_usd(self, obj):
+        r = self._rate()
+        return round(float(obj.quantity * obj.avg_cost / r), 2) if r else None
 
     def get_low(self, obj):
         return bool(obj.min_quantity) and obj.quantity <= obj.min_quantity
@@ -71,6 +91,9 @@ class MovementSerializer(serializers.ModelSerializer):
             "kind",
             "kind_label",
             "quantity",
+            "currency",
+            "orig_price",
+            "rate",
             "unit_price",
             "total",
             "date",
@@ -90,7 +113,20 @@ class MovementInputSerializer(serializers.Serializer):
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all())
     kind = serializers.ChoiceField(choices=["in", "out"])
     quantity = serializers.DecimalField(max_digits=14, decimal_places=3)
-    unit_price = serializers.DecimalField(max_digits=16, decimal_places=2)
+    currency = serializers.ChoiceField(choices=["UZS", "USD"], default="UZS")
+    unit_price = serializers.DecimalField(max_digits=16, decimal_places=2, required=False)
+    orig_price = serializers.DecimalField(max_digits=16, decimal_places=2, required=False)
+    rate = serializers.DecimalField(
+        max_digits=16, decimal_places=4, required=False, min_value=Decimal("0.0001")
+    )
+
+    def validate(self, attrs):
+        if attrs.get("currency") == "USD" and attrs.get("orig_price") is None:
+            raise serializers.ValidationError({"orig_price": "Dollar narxini kiriting."})
+        if attrs.get("currency", "UZS") == "UZS" and attrs.get("unit_price") is None:
+            raise serializers.ValidationError({"unit_price": "Narxni kiriting."})
+        return attrs
+
     date = serializers.DateField(required=False)
     counterparty = serializers.CharField(required=False, allow_blank=True, max_length=255)
     order_number = serializers.IntegerField(required=False, allow_null=True)
@@ -182,7 +218,10 @@ class MovementViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.G
             product=d["product"],
             kind=d["kind"],
             quantity=d["quantity"],
-            unit_price=d["unit_price"],
+            unit_price=d.get("unit_price"),
+            currency=d.get("currency", "UZS"),
+            orig_price=d.get("orig_price"),
+            rate=d.get("rate"),
             on_date=d.get("date"),
             counterparty=d.get("counterparty", ""),
             order_number=d.get("order_number"),
@@ -206,6 +245,8 @@ class WarehouseSummaryView(APIView):
         k = sm.pop("keeper")
         sm["keeper"] = UserShortSerializer(k).data if k else None
         sm["is_keeper"] = W.is_keeper(request.user)
+        r = sm["usd_rate"]
+        sm["stock_value_usd"] = round(float(sm["stock_value"] / r), 2) if r else None
         return Response(sm)
 
 

@@ -65,6 +65,17 @@ class Movement(models.Model):
     )
     kind = models.CharField(max_length=3, choices=KIND, db_index=True, verbose_name="Turi")
     quantity = models.DecimalField(max_digits=14, decimal_places=3, verbose_name="Miqdor")
+    # Prices as typed (so'm or $) + the rate; unit_price/total are always in so'm so
+    # stock bought in both currencies averages correctly.
+    currency = models.CharField(
+        max_length=3, choices=[("UZS", "so'm"), ("USD", "$")], default="UZS", verbose_name="Valyuta"
+    )
+    orig_price = models.DecimalField(
+        max_digits=16, decimal_places=2, null=True, blank=True, verbose_name="Narxi ($)"
+    )
+    rate = models.DecimalField(
+        max_digits=16, decimal_places=4, null=True, blank=True, verbose_name="Kurs (1 $)"
+    )
     unit_price = models.DecimalField(max_digits=16, decimal_places=2, verbose_name="Narxi (so'm)")
     total = models.DecimalField(max_digits=18, decimal_places=2, verbose_name="Summa (so'm)")
     date = models.DateField(db_index=True, verbose_name="Sana")

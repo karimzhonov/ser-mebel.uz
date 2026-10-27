@@ -21,6 +21,8 @@ interface Product {
   quantity: string;
   avg_cost: string;
   value: number;
+  avg_cost_usd: number | null;
+  value_usd: number | null;
   low: boolean;
   is_active: boolean;
 }
@@ -33,6 +35,9 @@ interface Movement {
   kind: "in" | "out";
   kind_label: string;
   quantity: string;
+  currency: "UZS" | "USD";
+  orig_price: string | null;
+  rate: string | null;
   unit_price: string;
   total: string;
   date: string;
@@ -47,6 +52,8 @@ interface Movement {
 interface Summary {
   products: number;
   stock_value: string;
+  stock_value_usd: number | null;
+  usd_rate: string;
   low_stock: { id: number; name: string; quantity: string; min_quantity: string; unit: string }[];
   period_in: string;
   period_out: string;
@@ -56,6 +63,10 @@ interface Summary {
 
 const nf = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 });
 const som = (v: number | string | null | undefined) => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Number(v ?? 0))} so'm`;
+const usd = (v: number | string | null | undefined) => `$${new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v ?? 0))}`;
+/** price as it was typed: «$11.00 × 12 500» or «120 000 so'm» */
+const priceText = (m: Pick<Movement, "currency" | "orig_price" | "rate" | "unit_price">) =>
+  m.currency === "USD" ? `${usd(m.orig_price)} × ${new Intl.NumberFormat("ru-RU").format(Number(m.rate))}` : som(m.unit_price);
 const qty = (v: number | string, unit?: string) => `${nf.format(Number(v))}${unit ? ` ${unit}` : ""}`;
 
 function useKeeper() {
@@ -66,7 +77,8 @@ function useKeeper() {
 // ---------------------------------------------------------------- stock
 export function WarehouseStockPage() {
   const isKeeper = useKeeper();
-  const { state, page, set } = useUrlState({ search: "", category: "", low: "", active: "1" });
+  const { state, page, set } = useUrlState({ search: "", category: "", low: "", active: "1", cur: "UZS" });
+  const inUsd = state.cur === "USD";
   const { data, isFetching } = useList<Product>("warehouse/products", { ...state, page, ordering: "name" });
   const { data: s } = useGet<Summary>("/warehouse/summary/", { date_from: monthStartISO(), date_to: iso(new Date()) });
   const { data: meta } = useGet<{ categories: string[]; units: { value: string; label: string }[] }>("/warehouse/products/categories/");
@@ -96,7 +108,12 @@ export function WarehouseStockPage() {
       />
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="📦 Mahsulotlar" value={s?.products ?? 0} tone="primary" />
-        <StatTile label="💰 Ombordagi qiymat" value={som(s?.stock_value)} tone="ok" hint="o'rtacha tannarx bo'yicha" />
+        <StatTile
+          label="💰 Ombordagi qiymat"
+          value={inUsd ? usd(s?.stock_value_usd) : som(s?.stock_value)}
+          tone="ok"
+          hint={inUsd ? `kurs ${som(s?.usd_rate)} · ${som(s?.stock_value)}` : `o'rtacha tannarx bo'yicha · ${usd(s?.stock_value_usd)}`}
+        />
         <StatTile label="⚠️ Kam qolgan" value={s?.low_stock.length ?? 0} tone={s?.low_stock.length ? "danger" : "idle"} onClick={() => set({ low: state.low ? "" : "1" })} active={!!state.low} />
         <StatTile label="Shu oy: kirim / chiqim" value={`${som(s?.period_in)}`} tone="info" hint={`chiqim ${som(s?.period_out)}`} />
       </div>
@@ -107,6 +124,7 @@ export function WarehouseStockPage() {
             <option value="">Barcha turlar</option>
             {meta?.categories.map((c) => <option key={c} value={c}>{c}</option>)}
           </Select>
+          <Segmented value={state.cur} onChange={(cur) => set({ cur })} options={[{ value: "UZS", label: "so'm" }, { value: "USD", label: "$" }]} />
           <Segmented value={state.active} onChange={(active) => set({ active })} options={[{ value: "1", label: "Faol" }, { value: "0", label: "Faol emas" }, { value: "", label: "Hammasi" }]} />
         </div>
         <DataTable
@@ -119,8 +137,8 @@ export function WarehouseStockPage() {
             { key: "n", header: "Mahsulot", cell: (r) => <span><span className="font-medium">{r.name}</span>{r.code && <span className="muted ml-1 text-xs">{r.code}</span>}</span> },
             { key: "c", header: "Turi", cell: (r) => r.category || "—", hideOnMobile: true },
             { key: "q", header: "Qoldiq", cell: (r) => <span className={`font-semibold tabular-nums ${r.low ? "text-rose-600" : ""}`}>{qty(r.quantity, r.unit_label)}{r.low && <Badge tone="danger" className="ml-2">kam</Badge>}</span> },
-            { key: "a", header: "O'rtacha narx", cell: (r) => <span className="tabular-nums">{som(r.avg_cost)}</span>, hideOnMobile: true },
-            { key: "v", header: "Qiymati", cell: (r) => <span className="tabular-nums">{som(r.value)}</span> },
+            { key: "a", header: "O'rtacha narx", cell: (r) => <span className="tabular-nums">{inUsd ? usd(r.avg_cost_usd) : som(r.avg_cost)}</span>, hideOnMobile: true },
+            { key: "v", header: "Qiymati", cell: (r) => <span className="tabular-nums">{inUsd ? usd(r.value_usd) : som(r.value)}</span> },
             {
               key: "x",
               header: "",
@@ -200,11 +218,16 @@ function MovementModal({ kind: initialKind, product: initial, onClose }: { kind:
     // keep the chosen product in the list even when the search hides it
     return initial && !l.some((x) => x.id === initial.id) ? [initial, ...l] : l;
   }, [products, initial]);
+  const { data: sm } = useGet<Summary>("/warehouse/summary/");
+  const defaultPrice = (x: Product | undefined, kind: string, cur: string) =>
+    !x || kind !== "out" ? "" : cur === "USD" ? String(x.avg_cost_usd ?? "") : String(Math.round(Number(x.avg_cost)));
   const [f, setF] = useState({
     kind: initialKind,
     product: initial ? String(initial.id) : "",
     quantity: "",
-    unit_price: initial && initialKind === "out" ? String(Math.round(Number(initial.avg_cost))) : "",
+    currency: "UZS" as "UZS" | "USD",
+    rate: "",
+    unit_price: defaultPrice(initial, initialKind, "UZS"),
     date: iso(new Date()),
     counterparty: "",
     order_number: "",
@@ -212,19 +235,27 @@ function MovementModal({ kind: initialKind, product: initial, onClose }: { kind:
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const p = list.find((x) => String(x.id) === f.product);
-  const total = Number(f.quantity || 0) * Number(f.unit_price || 0);
+  const rate = Number(f.rate || sm?.usd_rate || 0) || 0; // "." → 0, not NaN
+  const totalIn = Number(f.quantity || 0) * Number(f.unit_price || 0); // in the chosen currency
+  const totalSom = f.currency === "USD" ? totalIn * rate : totalIn;
   const save = useAction(
     () =>
       api.post("/warehouse/movements/", {
-        ...f,
+        kind: f.kind,
         product: Number(f.product),
+        quantity: f.quantity,
+        date: f.date,
+        counterparty: f.counterparty,
+        comment: f.comment,
+        currency: f.currency,
+        ...(f.currency === "USD" ? { orig_price: f.unit_price, rate: f.rate ? f.rate : rate || undefined } : { unit_price: f.unit_price }),
         order_number: f.order_number ? Number(f.order_number) : null,
       }),
     { success: f.kind === "in" ? "Kirim yozildi" : "Chiqim yozildi", invalidate: ["warehouse"], onSuccess: onClose },
   );
   const pick = (id: string) => {
     const x = list.find((y) => String(y.id) === id);
-    setF({ ...f, product: id, unit_price: f.kind === "out" && x ? String(Math.round(Number(x.avg_cost))) : f.unit_price });
+    setF({ ...f, product: id, unit_price: f.kind === "out" && x ? defaultPrice(x, "out", f.currency) : f.unit_price });
   };
   return (
     <Modal
@@ -236,7 +267,7 @@ function MovementModal({ kind: initialKind, product: initial, onClose }: { kind:
       <div className="space-y-3">
         <Segmented value={f.kind} onChange={(kind) => setF({ ...f, kind })} options={[{ value: "in", label: "📥 Kirim" }, { value: "out", label: "📤 Chiqim" }]} />
         <SearchInput value={search} onChange={setSearch} placeholder="Mahsulotni qidirish (nomi yoki kodi)" />
-        <Field label="Mahsulot" error={errors.product} hint={p ? `Omborda: ${qty(p.quantity, p.unit_label)} · o'rtacha narx ${som(p.avg_cost)}` : undefined}>
+        <Field label="Mahsulot" error={errors.product} hint={p ? `Omborda: ${qty(p.quantity, p.unit_label)} · o'rtacha narx ${som(p.avg_cost)} (${usd(p.avg_cost_usd)})` : undefined}>
           <Select value={f.product} onChange={(e) => pick(e.target.value)}>
             <option value="">— tanlang —</option>
             {list.map((x) => <option key={x.id} value={x.id}>{x.name} ({qty(x.quantity, x.unit_label)})</option>)}
@@ -246,11 +277,29 @@ function MovementModal({ kind: initialKind, product: initial, onClose }: { kind:
           <Field label={`Miqdor${p ? ` (${p.unit_label})` : ""}`} error={errors.quantity}>
             <Input inputMode="decimal" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value.replace(/[^\d.]/g, "") })} />
           </Field>
-          <Field label="Narxi (1 birlik, so'm)" error={errors.unit_price}>
+          <Field label={`Narxi (1 birlik, ${f.currency === "USD" ? "$" : "so'm"})`} error={errors.unit_price || errors.orig_price}>
             <Input inputMode="decimal" value={f.unit_price} onChange={(e) => setF({ ...f, unit_price: e.target.value.replace(/[^\d.]/g, "") })} />
           </Field>
         </div>
-        {total > 0 && <p className="text-sm">Jami: <b>{som(total)}</b></p>}
+        <div className="grid grid-cols-[auto_1fr] items-end gap-3">
+          <Field label="Valyuta">
+            <Segmented
+              value={f.currency}
+              onChange={(currency) => setF({ ...f, currency, unit_price: defaultPrice(p, f.kind, currency) })}
+              options={[{ value: "UZS", label: "so'm" }, { value: "USD", label: "$" }]}
+            />
+          </Field>
+          {f.currency === "USD" && (
+            <Field label="Kurs (1 $ = so'm)" hint={`Moliya kursi: ${som(sm?.usd_rate)}`} error={errors.rate}>
+              <Input inputMode="decimal" value={f.rate} placeholder={String(Number(sm?.usd_rate ?? 0))} onChange={(e) => setF({ ...f, rate: e.target.value.replace(/[^\d.]/g, "") })} />
+            </Field>
+          )}
+        </div>
+        {totalIn > 0 && (
+          <p className="text-sm">
+            Jami: <b>{f.currency === "USD" ? `${usd(totalIn)} = ${som(totalSom)}` : som(totalSom)}</b>
+          </p>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <Field label={f.kind === "in" ? "Kimdan (yetkazib beruvchi)" : "Kimga / qayerga"} error={errors.counterparty}>
             <Input value={f.counterparty} onChange={(e) => setF({ ...f, counterparty: e.target.value })} placeholder={f.kind === "in" ? "Kronospan" : "Sex, usta Dilmurod"} />
@@ -285,7 +334,7 @@ function HistoryModal({ product, onClose }: { product: Product; onClose: () => v
           { key: "d", header: "Sana", cell: (r) => date(r.date) },
           { key: "k", header: "Turi", cell: (r) => <Badge tone={r.kind === "in" ? "ok" : "warn"}>{r.kind_label}</Badge> },
           { key: "q", header: "Miqdor", cell: (r) => `${r.kind === "in" ? "+" : "−"}${qty(r.quantity)}` },
-          { key: "p", header: "Narx", cell: (r) => som(r.unit_price) },
+          { key: "p", header: "Narx", cell: (r) => priceText(r) },
           { key: "c", header: "Kimdan / kimga", cell: (r) => r.counterparty || "—" },
           { key: "b", header: "Qoldiq", cell: (r) => qty(r.balance_after) },
         ]}
@@ -336,8 +385,17 @@ export function WarehouseMovementsPage() {
             { key: "k", header: "Turi", cell: (r) => <Badge tone={r.kind === "in" ? "ok" : "warn"}>{r.kind_label}</Badge> },
             { key: "p", header: "Mahsulot", cell: (r) => <span className="font-medium">{r.product_name}</span> },
             { key: "q", header: "Miqdor", cell: (r) => <span className="tabular-nums">{qty(r.quantity, r.product_unit)}</span> },
-            { key: "u", header: "Narx", cell: (r) => <span className="tabular-nums">{som(r.unit_price)}</span>, hideOnMobile: true },
-            { key: "t", header: "Summa", cell: (r) => <b className="tabular-nums">{som(r.total)}</b> },
+            { key: "u", header: "Narx", cell: (r) => <span className="tabular-nums">{priceText(r)}</span>, hideOnMobile: true },
+            {
+              key: "t",
+              header: "Summa",
+              cell: (r) => (
+                <span className="tabular-nums">
+                  <b>{som(r.total)}</b>
+                  {r.currency === "USD" && r.orig_price && <span className="muted ml-1 text-xs">({usd(Number(r.orig_price) * Number(r.quantity))})</span>}
+                </span>
+              ),
+            },
             { key: "c", header: "Kimdan / kimga", cell: (r) => <span className="text-sm">{r.counterparty || "—"}{r.order_number && <span className="muted"> · №{r.order_number}</span>}</span>, hideOnMobile: true },
             { key: "w", header: "Kiritdi", cell: (r) => <span className="muted text-xs">{r.created_by_detail?.name || r.created_by_detail?.phone} · {dateTime(r.created_at)}</span>, hideOnMobile: true },
             {

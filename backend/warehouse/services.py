@@ -50,6 +50,14 @@ def q2(v) -> Decimal:
     return D(v).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def usd_rate() -> Decimal:
+    """The same dollar rate as Moliya (manual FIN_USD_RATE, else the Central Bank,
+    else the site's USD_CURRENCY)."""
+    from accounting.services import usd_rate as finance_rate
+
+    return D(finance_rate())
+
+
 # ------------------------------------------------------------------ keeper
 def keeper() -> User | None:
     return WarehouseConfig.get().keeper
@@ -152,15 +160,34 @@ def add_movement(
     product: Product,
     kind: str,
     quantity,
-    unit_price,
+    unit_price=None,
     on_date: date | None = None,
     counterparty: str = "",
     order_number: int | None = None,
     comment: str = "",
+    currency: str = "UZS",
+    orig_price=None,
+    rate=None,
 ) -> Movement:
+    """unit_price is in so'm. For a dollar price pass currency="USD", orig_price
+    (per unit, $) and optionally rate (default: the Moliya USD rate)."""
     require_keeper(user)
     if kind not in ("in", "out"):
         raise ServiceError("Turi kirim yoki chiqim bo'lishi kerak.")
+    if currency not in ("UZS", "USD"):
+        raise ServiceError("Valyuta so'm yoki $ bo'lishi kerak.")
+    if currency == "USD":
+        if orig_price is None or D(orig_price) < 0:
+            raise ServiceError("Dollar narxini kiriting.")
+        rate = D(rate) if rate is not None else usd_rate()
+        if rate <= 0:
+            raise ServiceError("Dollar kursi noto'g'ri.")
+        orig_price = q2(orig_price)
+        unit_price = orig_price * rate
+    else:
+        orig_price, rate = None, None
+        if unit_price is None:
+            raise ServiceError("Narxni kiriting.")
     qty, price = q3(quantity), q2(unit_price)
     if qty <= 0:
         raise ServiceError("Miqdor 0 dan katta bo'lishi kerak.")
@@ -208,6 +235,9 @@ def add_movement(
                     comment=comment or "",
                     balance_after=p.quantity,
                     created_by=user,
+                    currency=currency,
+                    orig_price=orig_price,
+                    rate=rate,
                 )
         except IntegrityError:
             continue  # two keepers' tabs took the same number — retry
@@ -276,6 +306,7 @@ def summary(start: date | None = None, end: date | None = None) -> dict:
             }
             for p in low
         ],
+        "usd_rate": usd_rate(),
         "period_in": q2(agg["inc"] or 0),
         "period_out": q2(agg["out"] or 0),
         "keeper": keeper(),

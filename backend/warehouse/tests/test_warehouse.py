@@ -181,3 +181,88 @@ def test_bad_inputs_are_400_not_500(admin, keeper):
     assert admin.put(f"{URL}/keeper/", {"user": "abc"}, format="json").status_code == 400
     p = product(keeper)
     assert move(keeper, p["id"], "in", "99999999999", "99999999999").status_code == 400
+
+
+# ---------------------------------------------------------------- dollars
+def test_dollar_and_som_purchases_average_together(keeper):
+    from constance import config
+
+    config.FIN_USD_RATE = 12000.0
+    p = product(keeper)
+    r = keeper.post(
+        f"{URL}/movements/",
+        {"product": p["id"], "kind": "in", "quantity": "10", "currency": "USD", "orig_price": "10"},
+        format="json",
+    )
+    assert r.status_code == 201, r.data
+    assert (r.data["currency"], Decimal(r.data["rate"]), Decimal(r.data["unit_price"])) == (
+        "USD",
+        Decimal("12000"),
+        Decimal("120000.00"),
+    )
+    move(keeper, p["id"], "in", "10", "100000")  # so'm
+    prod = keeper.get(f"{URL}/products/{p['id']}/").data
+    assert Decimal(prod["avg_cost"]) == Decimal("110000.00")
+    assert prod["avg_cost_usd"] == round(110000 / 12000, 2)
+    # a dollar chiqim at a rate typed by the keeper
+    r = keeper.post(
+        f"{URL}/movements/",
+        {
+            "product": p["id"],
+            "kind": "out",
+            "quantity": "2",
+            "currency": "USD",
+            "orig_price": "11",
+            "rate": "12500",
+        },
+        format="json",
+    )
+    assert Decimal(r.data["total"]) == Decimal("275000.00") and Decimal(r.data["rate"]) == Decimal(
+        "12500"
+    )
+    s = keeper.get(f"{URL}/summary/").data
+    assert s["stock_value_usd"] == round(18 * 110000 / 12000, 2)
+
+
+def test_dollar_price_is_required(keeper):
+    p = product(keeper)
+    r = keeper.post(
+        f"{URL}/movements/",
+        {"product": p["id"], "kind": "in", "quantity": "1", "currency": "USD"},
+        format="json",
+    )
+    assert r.status_code == 400 and "orig_price" in r.data
+    r = keeper.post(
+        f"{URL}/movements/", {"product": p["id"], "kind": "in", "quantity": "1"}, format="json"
+    )
+    assert r.status_code == 400 and "unit_price" in r.data
+
+
+def test_zero_rate_is_refused_not_replaced(keeper):
+    from warehouse import services as W
+
+    p = product(keeper)
+    r = keeper.post(
+        f"{URL}/movements/",
+        {
+            "product": p["id"],
+            "kind": "in",
+            "quantity": "1",
+            "currency": "USD",
+            "orig_price": "10",
+            "rate": "0",
+        },
+        format="json",
+    )
+    assert r.status_code == 400 and "rate" in r.data
+    with pytest.raises(W.ServiceError):
+        W.add_movement(
+            keeper.user,
+            product=Product.objects.get(pk=p["id"]),
+            kind="in",
+            quantity=1,
+            currency="USD",
+            orig_price=10,
+            rate=0,
+        )
+    assert not Movement.objects.exists()
