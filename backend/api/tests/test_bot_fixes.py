@@ -34,22 +34,21 @@ def test_manual_order_refs_are_restricted(members):
     assert S.create_manual_order("SM-007", "K").ref == "SM-007"
 
 
-def test_plain_digit_link_only_fills_an_empty_slot(bot_client, make_staff):
+def test_plain_digit_link_is_refused_for_everyone(bot_client, make_staff):
     from oauth.models import User
 
-    free = User.objects.create_user(phone="+998900000001", password="x")
-    r = bot_client.post("link/", data={"token": str(free.pk), "telegram_id": 701})
+    free = User.objects.create_user(phone="+998900000091", password="x")
+    staff = make_staff()
+    for u in (free, staff):
+        r = bot_client.post("link/", data={"token": str(u.pk), "telegram_id": 701})
+        assert r.status_code == 404
+        u.refresh_from_db()
+        assert u.telegram_id is None
+    # a signed token links, and re-links
+    r = bot_client.post("link/", data={"token": link_token(free.pk), "telegram_id": 703})
     assert r.status_code == 200
-    taken = User.objects.create_user(phone="+998900000002", password="x", telegram_id=702)
-    r = bot_client.post("link/", data={"token": str(taken.pk), "telegram_id": 703})
-    assert r.status_code == 404
-    taken.refresh_from_db()
-    assert taken.telegram_id == 702
-    # a signed token still re-links
-    r = bot_client.post("link/", data={"token": link_token(taken.pk), "telegram_id": 703})
-    assert r.status_code == 200
-    taken.refresh_from_db()
-    assert taken.telegram_id == 703
+    free.refresh_from_db()
+    assert free.telegram_id == 703
 
 
 def test_manual_order_price_hidden_from_staff(bot_client, members):
@@ -227,11 +226,3 @@ def test_usd_rate_is_the_servers(bot_client, members):
         r.data["operation"]["rate"] == "12000.0000"
         and r.data["operation"]["amount"] == "1200000.00"
     )
-
-
-def test_plain_digit_link_refuses_staff_but_signed_links(bot_client, make_staff):
-    staff = make_staff()  # is_staff
-    r = bot_client.post("link/", data={"token": str(staff.pk), "telegram_id": 801})
-    assert r.status_code == 404
-    r = bot_client.post("link/", data={"token": link_token(staff.pk), "telegram_id": 801})
-    assert r.status_code == 200

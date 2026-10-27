@@ -1,3 +1,4 @@
+import json
 import requests
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
@@ -55,10 +56,14 @@ class User(AbstractBaseUser, PermissionsMixin):
         if not self.telegram_id: return
         # timeout: this runs synchronously inside admin requests and post_save signals.
         # Without it an unreachable bot server hangs the whole request indefinitely.
-        requests.post(f'{TELEGRAM_BOT_SERVER}/user/{self.telegram_id}/message', json={
-            'text': text,
-            'url': url
-        }, timeout=10)
+        from core.bot_signing import signed_headers
+
+        path = f'/user/{self.telegram_id}/message'
+        body = json.dumps({'text': text, 'url': url}).encode()
+        requests.post(f'{TELEGRAM_BOT_SERVER}{path}', data=body, timeout=10, headers={
+            'Content-Type': 'application/json',
+            **signed_headers('POST', path, body=body),
+        })
 
     @classmethod
     def send_messages(cls, permission, path_name, kwargs, text='Оповещение о заказе', sms_template=None, sms_context=None):

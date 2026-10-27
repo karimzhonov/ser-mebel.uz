@@ -46,7 +46,7 @@ an actor, e.g. `link/`).
 `core.telegram.link_token(pk)` returns `"u{pk}_{hmac10}"`, where
 `hmac10 = hmac.new(settings.SECRET_KEY.encode(), f"tg-link:{pk}".encode(), sha256).hexdigest()[:10]`.
 Deep link: `https://t.me/<bot>?start=u5_a1b2c3d4e5`. The bot only forwards the payload
-(`u\d+_[0-9a-f]{10}`, or plain digits for one more release) to `POST link/`; only the backend
+(`u\d+_[0-9a-f]{10}`; plain digits are forwarded but refused with 404) to `POST link/`; only the backend
 signs and verifies. SECRET_KEY was chosen (not BOT_TOKEN) so that revoking the bot token does not
 invalidate every link; links are rebuilt on each page load.
 
@@ -205,7 +205,8 @@ Actor comes from `X-Bot-Actor`. Every role rule is enforced server-side.
   - Unknown event or bad data → `400`; backend does not retry.
   - Telegram 403 / "chat not found" is still `200` with `blocked: true`.
 - `GET /files/{file_id}` (signed): bytes + `Content-Type`; `404` when Telegram can't serve it. Replaces the backend's `download_file`.
-- `POST /webhook` and `POST /user/{chat_id}/message`: unchanged.
+- `POST /webhook`: unchanged (Telegram `secret_token`).
+- `POST /user/{chat_id}/message` (`oauth.User.send_message`): body `{text, url}`, now **signed** like `/notify` (same headers, actor empty); 403 without a valid signature.
 
 ### 1.5 Event catalogue (backend → bot)
 

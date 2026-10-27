@@ -7,8 +7,7 @@ egallaydi va so'rovlarni o'zi taqsimlaydi:
 ```
 Internet ──TLS──> server nginx (o'zgarishsiz) ──> :8000 = front (nginx)
                                                     ├─ /                  React panel
-                                                    ├─ /?telegram_id=…    ─┐
-                                                    ├─ /api /admin /filer ─┴─> back (ichki tarmoq, port ochilmagan)
+                                                    ├─ /api /admin /filer ───> back (ichki tarmoq, port ochilmagan)
                                                     └─ /media /static     diskdan (./media, ./static)
           server nginx ──> :7000 = bot (o'zgarishsiz)
 ```

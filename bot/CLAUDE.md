@@ -22,7 +22,7 @@ The bot is a **thin Telegram UI**. It has **no database** and no business rules:
 - **FSM state is in Redis** (6 h TTL, shared by the 4 uvicorn workers). HR uses `destiny="hr"` so it never clobbers a finance draft. Per-user lock + update dedup are in Redis too; a handler exception deletes the dedup key so Telegram's retry is processed.
 - **Actor middleware is OUTER** (filters need `actor`); `whoami` is cached 30 s in Redis (`whoami:{tg}`), dropped after any non-GET backend call made for that person. Paths are encoded once in `BackendClient` (pass raw refs, never `quote()` at call sites). Bot default parse mode is HTML; the legacy `send_message` sends plain text.
 - **Notifications**: a new backend event needs a renderer registered with `@on` in `bot/finance/notify.py` or `bot/hr/notify.py`; unknown events answer 400 (never retried).
-- `/start u<pk>_<hmac10>` (or plain digits, deprecated) goes to `POST link/`; the backend verifies the signed token. The bot never writes `oauth_user`.
+- `/start u<pk>_<hmac10>` (plain digits are still forwarded but the backend refuses them) goes to `POST link/`; the backend verifies the signed token. The bot never writes `oauth_user`.
 - Adding an endpoint/event means changing `docs/BOT_CONTRACT.md` and the backend together; run `integration-guard`.
 
 ## Commands

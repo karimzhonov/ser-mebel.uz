@@ -26,8 +26,8 @@ Two-service project. Full findings: `docs/ARCHITECTURE_ANALYSIS.md` — read it 
 **A signed HTTP contract — `docs/BOT_CONTRACT.md` (+ `docs/bot_contract/*.json` fixtures) is the source of truth.** Read it before touching anything that crosses the boundary:
 
 - **bot → backend**: `bot/bot/backend/client.py` calls the internal API `/api/v1/bot/...` (`backend/api/bot_urls.py`, `backend/api/views/bot/`). Every request is HMAC-signed with `BOT_TOKEN` (`X-Bot-Timestamp`, `X-Bot-Actor`, `X-Bot-Signature`; `core/bot_signing.py` ↔ `bot/bot/backend/signing.py`, same test vector). The acting Telegram user comes from `X-Bot-Actor`; every role rule is enforced in the backend. The bot has **no database access** — no Tortoise, no Postgres env.
-- **backend → bot**: `core.bot_notify.emit(event, data)` → (on commit) Celery `core.tasks.notify_bot` → signed `POST {BOT_SERVER}/notify`; the bot renders texts/keyboards (`bot/bot/*/notify.py`, `@on("event")`). Also signed `GET /files/{file_id}` (receipts) and the legacy unsigned `POST /user/{chat_id}/message` used by `oauth.User.send_message()`. In compose `BOT_SERVER=http://bot:80`.
-- **Account linking**: `/start u<pk>_<hmac>` (built by `core/telegram.py`, `MeSerializer.telegram_link`) → bot → `POST /api/v1/bot/link/` → `oauth.services.link_telegram`. Plain-digit `/start <pk>` is still accepted for one release.
+- **backend → bot**: `core.bot_notify.emit(event, data)` → (on commit) Celery `core.tasks.notify_bot` → signed `POST {BOT_SERVER}/notify`; the bot renders texts/keyboards (`bot/bot/*/notify.py`, `@on("event")`). Also signed `GET /files/{file_id}` (receipts) and signed `POST /user/{chat_id}/message` used by `oauth.User.send_message()`. In compose `BOT_SERVER=http://bot:80`.
+- **Account linking**: `/start u<pk>_<hmac>` (built by `core/telegram.py`, `MeSerializer.telegram_link`) → bot → `POST /api/v1/bot/link/` → `oauth.services.link_telegram`. Only signed tokens link; the old plain-digit `/start <pk>` is refused.
 - **Changing the contract**: add/rename an endpoint field or event payload ⇒ update `docs/BOT_CONTRACT.md` + fixtures + both sides in the same change, and run `integration-guard`. Bot FSM, update dedup and per-user locks live in Redis (db 1; Celery uses db 0).
 - There is no shared Python package between the two services. Do not import Django code from the bot or vice versa — the coupling is HTTP only.
 
@@ -42,7 +42,7 @@ Two-service project. Full findings: `docs/ARCHITECTURE_ANALYSIS.md` — read it 
 
 Dev: `docker-compose.yml` — `back` (Django via `runserver.sh`, port 8000) + `db` (Postgres 18) + `front` (Vite, port 5173) + `redis` + `celery-worker` + `celery-beat`. Bot is under the `bot` profile (`docker compose --profile bot up bot`) or run it separately (`python runbot.py` for polling, from `bot/`).
 
-Prod: `docker-compose.prod.yml` — `front` (nginx) publishes `BACK_PORT` (8000) so the server nginx needs no changes; it serves the SPA + /media + /static and proxies /api, /admin, /filer (and `/?telegram_id=`) to `back`, which is no longer published. `bot` (port 7000→80), `db` (Postgres 18), `redis`, `celery-worker`, `celery-beat`. CI builds 3 images (api/front/bot). Details: `docs/DEPLOY.md`. Only `back`/celery connect to Postgres; the bot reaches data through the API.
+Prod: `docker-compose.prod.yml` — `front` (nginx) publishes `BACK_PORT` (8000) so the server nginx needs no changes; it serves the SPA + /media + /static and proxies /api, /admin, /filer to `back`, which is no longer published. `bot` (port 7000→80), `db` (Postgres 18), `redis`, `celery-worker`, `celery-beat`. CI builds 3 images (api/front/bot). Details: `docs/DEPLOY.md`. Only `back`/celery connect to Postgres; the bot reaches data through the API.
 
 ## Orchestration rules (subagent pipeline)
 
