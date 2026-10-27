@@ -14,6 +14,7 @@ import re
 from datetime import date, datetime, timedelta
 
 from accounting.telegram import api
+from core.telegram import bot_link as core_bot_link
 
 from . import reports as R
 from . import services as S
@@ -126,13 +127,7 @@ def react(chat_id, message_id, emoji: str):
 
 
 def bot_link() -> str:
-    u = S.state("BOT_USERNAME")
-    if not u:
-        me = tg("getMe", {}) or {}
-        u = me.get("username") or ""
-        if u:
-            S.set_state("BOT_USERNAME", u)
-    return f"https://t.me/{u}?start=davomat"
+    return core_bot_link("davomat")
 
 
 def msg_link(chat: dict, mid: int) -> str:
@@ -628,7 +623,7 @@ def my_status(uid: int):
 
 def _looks_finance(text: str) -> bool:
     """«350000 furnitura 406» is a finance entry; «20 daqiqa» is an ETA."""
-    from accounting.finance.text import parse_quick
+    from accounting.text import parse_quick
 
     try:
         q = parse_quick(text, [], [])
@@ -656,7 +651,7 @@ def on_private_text(m: dict) -> bool:
     e = S.emp(uid)
     if not e:
         return False
-    from accounting.finance_models import BotSession
+    from accounting.models import BotSession
     from accounting.telegram.router import MENU_ADMIN, MENU_STAFF
 
     s = BotSession.objects.filter(telegram_id=uid).first()

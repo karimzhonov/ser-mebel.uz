@@ -24,9 +24,9 @@ from core.exceptions import ServiceError
 from oauth.models import TelegramMember, TelegramRole
 
 from .. import services as S
-from ..finance.excel import month_xlsx
-from ..finance.images import bars_png, donut_png
-from ..finance.text import (
+from ..excel import month_xlsx
+from ..images import bars_png, donut_png
+from ..text import (
     add_months,
     cur_month,
     cur_name,
@@ -46,7 +46,7 @@ from ..finance.text import (
     today,
     usd,
 )
-from ..finance_constants import (
+from ..constants import (
     CAT_ADVANCE,
     CAT_FROM_BOSS,
     CAT_REST,
@@ -56,7 +56,7 @@ from ..finance_constants import (
     CategoryKind,
     OpKind,
 )
-from ..finance_models import (
+from ..models import (
     BotSession,
     ClientFeedback,
     FinanceCar,
@@ -2186,7 +2186,7 @@ def on_callback(ctx: Ctx, data: str):
     if cmd == "ocard":
         return order_card(ctx, arg)
     if cmd == "oclosed":
-        from ..finance_models import ManualOrder
+        from ..models import ManualOrder
 
         rows = list(ManualOrder.objects.filter(is_closed=True)[:30])
         if not rows:

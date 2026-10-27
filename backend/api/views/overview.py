@@ -13,11 +13,10 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 from django.db.models import Count, ExpressionWrapper, F, FloatField, Min, Q, Sum
-from djmoney import settings as dj_settings
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from accounting.models import Expense, Income
+from accounting import services as finance
 from call_center.constants import SolutionChoice
 from call_center.models import Invoice
 from metering.constants import MeteringStatus
@@ -244,29 +243,18 @@ class OverviewView(APIView):
             "debtors": len(debt),
         }
 
-    # --- income / expense -------------------------------------------------------------
+    # --- income / expense (Moliya operations, company-wide, in so'm) ------------------
 
     def accounting(self, user, params):
-        can_in = user.has_perm("accounting.view_income")
-        can_out = user.has_perm("accounting.view_expense")
-        if not (can_in or can_out):
+        if not user.has_perm("accounting.view_all_operations"):
             return None
-        currency = params.get("currency") or dj_settings.DEFAULT_CURRENCY
-
-        def total(model):
-            qs = model.objects.all()
-            if not user.is_superuser:  # same scoping as the Приходы/Расходы lists
-                qs = qs.filter(user=user)
-            qs = apply_period(qs, "created_at", params)
-            return round(float(qs.aggregate(s=Sum("converted_cost"))["s"] or 0), 2)
-
-        income = total(Income) if can_in else None
-        expense = total(Expense) if can_out else None
+        start, end = date_range(params)
+        sm = finance.summary(start, end)
         return {
-            "currency": currency,
-            "income": income,
-            "expense": expense,
-            "profit": round(income - expense, 2) if can_in and can_out else None,
+            "currency": "UZS",
+            "income": round(float(sm["income"]), 2),
+            "expense": round(float(sm["expense"]), 2),
+            "profit": round(float(sm["balance"]), 2),
         }
 
     # --- production queues ------------------------------------------------------------

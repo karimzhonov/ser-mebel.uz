@@ -367,7 +367,7 @@ UNFOLD = {
         "navigation": [
             {
                 "title": "Связать Telegram",
-                "link": lambda request: 'https://t.me/ser_mebel_admin_bot?start=%s' % request.user.id,
+                "link": lambda request: f"https://t.me/{TELEGRAM_BOT_USERNAME}?start={request.user.id}",
             },
         ],
     },
@@ -480,6 +480,8 @@ TELEGRAM_INIT_DATA_MAX_AGE = int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", 60 * 60
 
 TELEGRAM_BOT_TOKEN = os.getenv('BOT_TOKEN')
 TELEGRAM_BOT_SERVER = os.getenv('BOT_SERVER')
+# The site bot's @username (without @) — every t.me deep link is built from it.
+TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', 'ser_mebel_admin_bot').lstrip('@')
 
 SMS_GATEWAY_URL = os.getenv('SMS_GATEWAY_URL', 'http://185.8.212.184/smsgateway/')
 SMS_LOGIN = os.getenv('SMS_LOGIN')

@@ -3,7 +3,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import accounting, call_center, finance, hr, metering, orders, users
+from .views import call_center, finance, hr, metering, orders, users
 from .views.auth import LoginView, LogoutView, MeView, TelegramLoginView
 from .views.dashboard import BoardsView, MetaView
 from .views.files import FileView, FolderMessagesView, FolderView
@@ -26,10 +26,6 @@ router.register("rovers", orders.RoverViewSet, basename="rover")
 router.register("painter-types", orders.PainterTypeViewSet, basename="paintertype")
 router.register("painters", orders.PainterViewSet, basename="painter")
 router.register("assemblies", orders.AssemblyViewSet, basename="assembly")
-router.register("incomes", accounting.IncomeViewSet, basename="income")
-router.register("expenses", accounting.ExpenseViewSet, basename="expense")
-router.register("income-categories", accounting.IncomeCategoryViewSet, basename="incomecategory")
-router.register("expense-categories", accounting.ExpenseCategoryViewSet, basename="expensecategory")
 router.register("finance/members", finance.TelegramMemberViewSet, basename="telegrammember")
 router.register("finance/categories", finance.FinanceCategoryViewSet, basename="financecategory")
 router.register("finance/workers", finance.WorkerViewSet, basename="worker")

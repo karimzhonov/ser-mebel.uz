@@ -5,7 +5,6 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
-from accounting.models import EXPENSE_ORDER_PERMISSION, Expense
 from client.models import Client
 from core.exceptions import ServiceError
 from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
@@ -32,7 +31,6 @@ from order.services import (
 )
 
 from ..permissions import ModelPermissions, require_perm
-from ..serializers.accounting import ExpenseSerializer
 from ..serializers.common import UserShortSerializer, can_view_price
 from ..serializers.orders import (
     AssemblySerializer,
@@ -218,27 +216,6 @@ class OrderViewSet(viewsets.ModelViewSet):
         response = self._detail(order)
         response.data["assembly_id"] = assembly.pk
         return response
-
-    @action(detail=True, methods=["get", "post"], serializer_class=ExpenseSerializer)
-    def expenses(self, request, pk=None):
-        """The order's "Расходы" tab (ExposeInline)."""
-        order = self.get_object()
-        if request.method == "POST":
-            require_perm(request.user, f"accounting.{EXPENSE_ORDER_PERMISSION}")
-            data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
-            # Bound to this order regardless of its status, like the admin inline.
-            data.pop("order", None)
-            serializer = ExpenseSerializer(data=data)
-            serializer.is_valid(raise_exception=True)
-            serializer.save(user=request.user, order=order)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        require_perm(request.user, "accounting.view_expense")
-        expenses = (
-            Expense.objects.filter(order=order)
-            .select_related("category", "user", "order__client")
-            .order_by("-created_at")
-        )
-        return Response(ExpenseSerializer(expenses, many=True).data)
 
     @action(detail=True, methods=["get"])
     def history(self, request, pk=None):

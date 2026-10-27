@@ -214,8 +214,7 @@ def test_read_endpoints_respond(admin_api, catalog, order_factory):
         "/api/v1/inventory-types/?obj=%d" % catalog["kitchen"].pk,
         "/api/v1/detailings/stats/",
         "/api/v1/assemblies/assemblers/",
-        "/api/v1/incomes/stats/?currency=UZS",
-        "/api/v1/expenses/stats/",
+        "/api/v1/finance/summary/",
         "/api/v1/users/",
         "/api/schema/",
     ]:

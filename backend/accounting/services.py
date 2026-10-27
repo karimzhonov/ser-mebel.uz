@@ -26,7 +26,7 @@ from oauth.models import TelegramMember, TelegramRole, User
 from order.constants import OrderStatus
 from order.models import Order
 
-from .finance.text import (
+from .text import (
     add_months,
     cur_name,
     days_between,
@@ -41,7 +41,7 @@ from .finance.text import (
     parse_money,
     today,
 )
-from .finance_constants import (
+from .constants import (
     ARCHIVE_DAYS,
     BONUS_TIERS,
     CAT_ADVANCE,
@@ -52,7 +52,7 @@ from .finance_constants import (
     CategoryKind,
     OpKind,
 )
-from .finance_models import (
+from .models import (
     ClientFeedback,
     FinanceCategory,
     FinanceJobRun,

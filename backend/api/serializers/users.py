@@ -2,6 +2,7 @@ from django.contrib.auth.models import Group
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import serializers
 
+from core.telegram import bot_link
 from oauth.models import User
 
 
@@ -29,7 +30,7 @@ class MeSerializer(serializers.ModelSerializer):
     def get_telegram_link(self, obj):
         # Same deep link as the admin's "Связать Telegram" menu item; the bot's
         # /start handler writes telegram_id for this user id.
-        return f"https://t.me/ser_mebel_admin_bot?start={obj.pk}"
+        return bot_link(obj.pk)
 
 
 class GroupSerializer(serializers.ModelSerializer):

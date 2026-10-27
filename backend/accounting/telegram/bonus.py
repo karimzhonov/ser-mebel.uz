@@ -17,9 +17,9 @@ from constance import config
 from oauth.models import TelegramMember
 
 from .. import services as S
-from ..finance.images import report_card_png
-from ..finance.text import cur_name, days_between, ddmm, esc, fmt_cur, money, num, today
-from ..finance_models import ClientFeedback, OrderBonus, SiteEntryTask
+from ..images import report_card_png
+from ..text import cur_name, days_between, ddmm, esc, fmt_cur, money, num, today
+from ..models import ClientFeedback, OrderBonus, SiteEntryTask
 from . import api
 from .api import b, ik
 from .notify import notify_to, to_admins

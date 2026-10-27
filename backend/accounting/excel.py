@@ -9,9 +9,9 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from .. import services as S
-from ..finance_constants import CAT_SALARY, OpKind
-from ..finance_models import MonthReport
+from . import services as S
+from .constants import CAT_SALARY, OpKind
+from .models import MonthReport
 from .text import add_months, month_bounds, month_full, month_name, safe_cell
 
 DARK, MINT, BAND = "0B3D2E", "E8F3EC", "F3F8F5"

@@ -21,9 +21,9 @@ from django.db import transaction
 
 from oauth.models import TelegramMember, TelegramRole
 
-from .. import services as S
-from ..finance_constants import CategoryKind
-from ..finance_models import (
+from . import services as S
+from .constants import CategoryKind
+from .models import (
     ClientFeedback,
     FinanceCategory,
     ManualOrder,

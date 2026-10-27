@@ -27,6 +27,7 @@ services:
       - POSTGRES_PORT
       - BOT_TOKEN
       - BOT_SERVER
+      - TELEGRAM_BOT_USERNAME
       # Optional (unset = defaults in core/settings.py).
       - CORS_ALLOWED_ORIGINS
       - JWT_ACCESS_MINUTES

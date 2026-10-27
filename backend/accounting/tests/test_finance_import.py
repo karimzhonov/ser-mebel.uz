@@ -5,8 +5,8 @@ import pytest
 from openpyxl import Workbook
 
 from accounting import services as S
-from accounting.finance.importer import Importer, XlsxSource
-from accounting.finance_models import (
+from accounting.importer import Importer, XlsxSource
+from accounting.models import (
     ManualOrder,
     MonthReport,
     Operation,
@@ -327,7 +327,7 @@ def test_import_everything_and_verify(sheet, site_order):
     bn = OrderBonus.objects.get()
     assert bn.percent == Decimal("0.5") and bn.status == "done"
     assert WarrantyLetter.objects.get().given
-    from accounting.finance_models import ClientFeedback
+    from accounting.models import ClientFeedback
 
     assert ClientFeedback.objects.get().screenshot_url == "https://drive.google.com/x"
     from constance import config

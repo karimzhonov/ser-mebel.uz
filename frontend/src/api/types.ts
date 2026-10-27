@@ -57,6 +57,8 @@ export interface Meta {
   warning_order_days: number;
   usd_rate: number;
   site_title: string;
+  /** The site bot's @username (TELEGRAM_BOT_USERNAME), without the @. */
+  telegram_bot: string;
 }
 
 export interface Deadline {
@@ -253,7 +255,7 @@ export interface OrderDetail extends Order {
     next_status: boolean;
     next_status_label: string | null;
     go_to_assembly: boolean;
-    add_expense: boolean;
+    finance: boolean;
     edit_price: boolean;
   };
 }
@@ -299,32 +301,6 @@ export interface PainterType {
   price: Money;
   user: number | null;
   user_detail: UserShort | null;
-}
-
-export interface Category {
-  id: number;
-  name: string;
-  created_at: string;
-}
-
-export interface MoneyRecord {
-  id: number;
-  cost: Money;
-  category: number;
-  category_name: string;
-  desc: string | null;
-  created_at: string;
-  user_detail: UserShort | null;
-  order?: number | null;
-  order_detail?: { id: number; order_number: number; client: string | null } | null;
-}
-
-export interface MoneyStats {
-  currency: string;
-  total: number;
-  count: number;
-  by_category: { id: number; label: string; amount: number; share: number }[];
-  timeline: { date: string; value: number }[];
 }
 
 export interface StatusStats {

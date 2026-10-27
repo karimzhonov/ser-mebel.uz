@@ -13,8 +13,8 @@ from datetime import timedelta
 from constance import config
 
 from . import services as S
-from .finance.excel import month_xlsx
-from .finance.text import (
+from .excel import month_xlsx
+from .text import (
     add_months,
     cur_month,
     esc,
@@ -25,7 +25,7 @@ from .finance.text import (
     num,
     today,
 )
-from .finance_models import FinanceJobRun, MonthReport, ProcessedUpdate
+from .models import FinanceJobRun, MonthReport, ProcessedUpdate
 from .telegram import api
 from .telegram.api import b, ik
 from .telegram.bonus import hourly_orders

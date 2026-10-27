@@ -6,8 +6,8 @@ from decimal import Decimal
 import pytest
 
 from accounting import services as S
-from accounting.finance.text import parse_amount, parse_money, parse_quick
-from accounting.finance_models import (
+from accounting.text import parse_amount, parse_money, parse_quick
+from accounting.models import (
     MoneyRequest,
     MonthReport,
     Operation,

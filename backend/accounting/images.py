@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 log = logging.getLogger("finance.images")
 
-FONT_DIR = Path(__file__).resolve().parent.parent / "fonts"
+FONT_DIR = Path(__file__).resolve().parent / "fonts"
 
 
 def _chart(conf_json: str, w: int, h: int) -> bytes | None:

@@ -15,7 +15,7 @@ import time
 import requests
 from django.conf import settings
 
-from ..finance.text import clip
+from ..text import clip
 
 log = logging.getLogger("finance.telegram")
 

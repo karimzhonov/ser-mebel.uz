@@ -58,7 +58,7 @@ def tg(monkeypatch, settings):
         "accounting.telegram.api.download_file", lambda fid: (b"\x89PNG fake", "image/png")
     )
     # no QuickChart / CBU in tests
-    monkeypatch.setattr("accounting.finance.images._chart", lambda *a, **k: b"png")
+    monkeypatch.setattr("accounting.images._chart", lambda *a, **k: b"png")
     # webhook updates are handled in a worker thread in prod; inline in tests
     monkeypatch.setattr(
         "accounting.telegram.router._executor.submit", lambda fn, *a, **k: fn(*a, **k)

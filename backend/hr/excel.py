@@ -9,7 +9,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from accounting.finance.text import safe_cell as T
+from accounting.text import safe_cell as T
 
 from . import services as S
 from .constants import ST_PLAIN, WEEKDAYS

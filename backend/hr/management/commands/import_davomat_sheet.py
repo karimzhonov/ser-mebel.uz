@@ -11,7 +11,7 @@ Safe to re-run. Finance sheets are never read here.
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
-from accounting.finance.importer import GoogleSource, XlsxSource
+from accounting.importer import GoogleSource, XlsxSource
 from hr.importer import DavomatImporter
 
 

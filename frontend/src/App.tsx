@@ -13,7 +13,6 @@ import CatalogPage from "@/pages/Catalog";
 import { OrderCreatePage, OrderDetailPage, OrdersPage } from "@/pages/Orders";
 import ProductionPage from "@/pages/Production";
 import FactoriesPage from "@/pages/Factories";
-import AccountingPage from "@/pages/Accounting";
 import FinanceSummaryPage from "@/pages/finance/Summary";
 import FinanceOperationsPage from "@/pages/finance/Operations";
 import FinanceSettingsPage from "@/pages/finance/Settings";
@@ -58,7 +57,6 @@ export default function App() {
         <Route path="orders/:id" element={<OrderDetailPage />} />
         <Route path="production/:kind" element={<ProductionPage />} />
         <Route path="factories" element={<FactoriesPage />} />
-        <Route path="accounting/:kind" element={<AccountingPage />} />
         <Route path="finance" element={<FinanceSummaryPage />} />
         <Route path="finance/operations" element={<FinanceOperationsPage />} />
         <Route path="finance/wallets" element={<FinanceWalletsPage />} />

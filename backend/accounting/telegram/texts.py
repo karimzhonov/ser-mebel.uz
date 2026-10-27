@@ -5,9 +5,9 @@ from __future__ import annotations
 from oauth.models import TelegramMember
 
 from .. import services as S
-from ..finance.text import ddmm, esc, money, num, usd
-from ..finance_constants import CAT_SALARY, CAT_TRANSFER, OpKind
-from ..finance_models import Operation, Worker
+from ..text import ddmm, esc, money, num, usd
+from ..constants import CAT_SALARY, CAT_TRANSFER, OpKind
+from ..models import Operation, Worker
 from .api import reply_kb
 
 VERSION = "site-1"

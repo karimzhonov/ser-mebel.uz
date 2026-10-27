@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from accounting.finance_models import (
+from accounting.models import (
     ClientFeedback,
     FinanceCar,
     FinanceCategory,

@@ -108,7 +108,7 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
         )}
         {accounting && accounting.profit !== null && (
           <Kpi
-            to="/accounting/income"
+            to="/finance"
             icon={<TrendingUp className="h-5 w-5" />}
             tone={accounting.profit >= 0 ? "ok" : "danger"}
             label={`Foyda ${range}`}

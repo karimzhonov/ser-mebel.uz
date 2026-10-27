@@ -6,7 +6,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from accounting import services as S
-from accounting.finance_models import Operation
+from accounting.models import Operation
 from api.views.finance import bot_signature
 
 pytestmark = pytest.mark.django_db
@@ -287,7 +287,7 @@ def test_staff_site_create_rules(tg, ali_api, members):
 
 
 def test_bonus_close_refused_while_client_owes(tg, boss_api, site_order):
-    from accounting.finance_models import OrderBonus
+    from accounting.models import OrderBonus
 
     bn = OrderBonus.objects.create(
         order_ref="406", total=1000, currency="USD", ready_date=date.today()
@@ -377,7 +377,7 @@ def test_transfer_needs_wallets_on_both_sides(tg, boss_api, members):
 
 
 def test_webhook_stores_update_before_answering_and_replay_finishes_it(tg, members, monkeypatch):
-    from accounting.finance_models import ProcessedUpdate
+    from accounting.models import ProcessedUpdate
     from accounting.jobs import replay_updates
     from accounting.telegram import router
 

@@ -50,24 +50,6 @@ def test_assembler_sees_only_own_jobs(api, make_staff, order_factory):
     assert resp.data["count"] == 1
 
 
-def test_income_scoped_and_superuser_only_edits(api, admin_api):
-    from accounting.models import Income, IncomeCategory
-
-    category = IncomeCategory.objects.create(name="Аванс")
-    booker = api("accounting.view_income", "accounting.add_income", "accounting.change_income")
-    resp = booker.post(
-        "/api/v1/incomes/",
-        {"cost": {"amount": 100, "currency": "USD"}, "category": category.pk},
-        format="json",
-    )
-    assert resp.status_code == 201, resp.content
-    Income.objects.create(user=admin_api.user, cost=Money(5, "USD"), category=category)
-    assert booker.get("/api/v1/incomes/").data["count"] == 1
-    resp = booker.patch(f"/api/v1/incomes/{resp.data['id']}/", {"desc": "x"}, format="json")
-    assert resp.status_code == 403
-    assert admin_api.get("/api/v1/incomes/").data["count"] == 2
-
-
 def test_closed_invoice_is_read_only(api):
     from call_center.constants import SolutionChoice
     from call_center.models import Invoice

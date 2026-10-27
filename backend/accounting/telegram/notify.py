@@ -10,9 +10,9 @@ from constance import config
 from oauth.models import TelegramMember
 
 from .. import services as S
-from ..finance.text import esc, money
-from ..finance_constants import CAT_ADVANCE, CAT_REST, OpKind
-from ..finance_models import Operation
+from ..text import esc, money
+from ..constants import CAT_ADVANCE, CAT_REST, OpKind
+from ..models import Operation
 from . import api
 from .texts import KB_STAFF, op_card
 

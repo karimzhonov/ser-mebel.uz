@@ -18,8 +18,6 @@ import {
   Send,
   Settings2,
   Sun,
-  Upload,
-  Download,
   Users,
   UserCog,
   X,
@@ -87,7 +85,6 @@ const NAV: { title: string; items: NavItem[] }[] = [
   },
   {
     // Moliya = the finance Telegram bot moved onto the site (accounting/services.py).
-    // The old Kirimlar/Chiqimlar ledger stays as it was, in its own tables.
     title: "Moliya",
     items: [
       { to: "/finance", label: "Xulosa", icon: PieChart, perm: "accounting.view_operation" },
@@ -99,8 +96,6 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { to: "/finance/followup", label: "Готов va bonuslar", icon: Gift, perm: "accounting.view_orderbonus" },
       { to: "/finance/checks", label: "Tekshiruv", icon: ShieldCheck, perm: "accounting.view_all_operations" },
       { to: "/finance/settings", label: "Sozlamalar", icon: SlidersHorizontal, perm: "oauth.view_telegrammember" },
-      { to: "/accounting/income", label: "Eski kirimlar", icon: Download, perm: "accounting.view_income" },
-      { to: "/accounting/expense", label: "Eski chiqimlar", icon: Upload, perm: "accounting.view_expense" },
     ],
   },
   {

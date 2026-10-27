@@ -133,49 +133,63 @@ export function FinanceOrdersPage() {
 
 function OrderModal({ refId, onClose }: { refId: string; onClose: () => void }) {
   const { data: o } = useGet<FinOrder>(`/finance/orders/${encodeURIComponent(refId)}/`);
+  return (
+    <Modal open onClose={onClose} title={o ? `🧾 ${o.ref} — ${o.client}` : refId} size="lg">
+      {o && <OrderFinanceBody o={o} />}
+    </Modal>
+  );
+}
+
+/** The order's «Moliya» tab: same money picture as «Buyurtmalar moliyasi». */
+export function OrderFinance({ orderNumber }: { orderNumber: number }) {
+  const { data: o, isLoading } = useGet<FinOrder>(`/finance/orders/${orderNumber}/`);
+  return (
+    <Card title="Buyurtma moliyasi">
+      {o ? <OrderFinanceBody o={o} /> : !isLoading && <p className="muted text-sm">Ma'lumot yo'q</p>}
+    </Card>
+  );
+}
+
+function OrderFinanceBody({ o }: { o: FinOrder }) {
   const { data: cats } = useCategories();
   const byCode = Object.fromEntries((cats ?? []).map((c) => [c.code, c]));
   return (
-    <Modal open onClose={onClose} title={o ? `🧾 ${o.ref} — ${o.client}` : refId} size="lg">
-      {o && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatTile label="Shartnoma" value={o.total ? inCur(o.total, o.currency) : "—"} tone="primary" hint={o.currency === "USD" ? `≈ ${som(o.price_uzs)}` : undefined} />
-            <StatTile label="Saytda olingan" value={o.paid === null ? "—" : inCur(o.paid, o.currency)} tone="ok" hint={o.rest !== null ? `qoldiq ${inCur(o.rest, o.currency)}` : undefined} />
-            <StatTile label="Sarflandi" value={som(o.spent)} tone="danger" hint={o.spent_percent !== null ? `${o.spent_percent}%` : undefined} />
-            <StatTile label={o.profit !== null && o.profit < 0 ? "Zarar" : "Foyda"} value={o.profit === null ? "—" : som(o.profit)} tone={o.profit !== null && o.profit < 0 ? "danger" : "ok"} />
-          </div>
-          {o.bonus && (
-            <p className="text-sm">
-              🎁 Bonus: <b>{o.bonus.status_label}</b> · Готов {date(o.bonus.ready_date)}
-              {o.bonus.bonus && <> · {o.bonus.percent}% = {som(o.bonus.bonus)}</>}
-            </p>
-          )}
-          {o.by_category.length > 0 && (
-            <ul className="space-y-1 text-sm">
-              {o.by_category.map((c) => (
-                <li key={c.code} className="flex justify-between">
-                  <CatLabel c={byCode[c.code]} />
-                  <span className="tabular-nums">{som(c.amount)}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
-            {o.operations?.map((t) => (
-              <div key={t.id} className="flex justify-between gap-3 py-2">
-                <span>
-                  <span className="muted">#{t.number} · {date(t.date)}</span> · {t.member_detail.name} · {t.category_detail.emoji} {t.category_detail.name}
-                  {t.comment && <span className="muted"> — {t.comment}</span>}
-                </span>
-                <span className={`whitespace-nowrap tabular-nums ${t.kind === "income" ? "text-emerald-600" : "text-rose-600"}`}>
-                  {som(t.kind === "income" ? t.amount : -Number(t.amount), true)}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatTile label="Shartnoma" value={o.total ? inCur(o.total, o.currency) : "—"} tone="primary" hint={o.currency === "USD" ? `≈ ${som(o.price_uzs)}` : undefined} />
+        <StatTile label="Saytda olingan" value={o.paid === null ? "—" : inCur(o.paid, o.currency)} tone="ok" hint={o.rest !== null ? `qoldiq ${inCur(o.rest, o.currency)}` : undefined} />
+        <StatTile label="Sarflandi" value={som(o.spent)} tone="danger" hint={o.spent_percent !== null ? `${o.spent_percent}%` : undefined} />
+        <StatTile label={o.profit !== null && o.profit < 0 ? "Zarar" : "Foyda"} value={o.profit === null ? "—" : som(o.profit)} tone={o.profit !== null && o.profit < 0 ? "danger" : "ok"} />
+      </div>
+      {o.bonus && (
+        <p className="text-sm">
+          🎁 Bonus: <b>{o.bonus.status_label}</b> · Готов {date(o.bonus.ready_date)}
+          {o.bonus.bonus && <> · {o.bonus.percent}% = {som(o.bonus.bonus)}</>}
+        </p>
       )}
-    </Modal>
+      {o.by_category.length > 0 && (
+        <ul className="space-y-1 text-sm">
+          {o.by_category.map((c) => (
+            <li key={c.code} className="flex justify-between">
+              <CatLabel c={byCode[c.code]} />
+              <span className="tabular-nums">{som(c.amount)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+        {o.operations?.map((t) => (
+          <div key={t.id} className="flex justify-between gap-3 py-2">
+            <span>
+              <span className="muted">#{t.number} · {date(t.date)}</span> · {t.member_detail.name} · {t.category_detail.emoji} {t.category_detail.name}
+              {t.comment && <span className="muted"> — {t.comment}</span>}
+            </span>
+            <span className={`whitespace-nowrap tabular-nums ${t.kind === "income" ? "text-emerald-600" : "text-rose-600"}`}>
+              {som(t.kind === "income" ? t.amount : -Number(t.amount), true)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

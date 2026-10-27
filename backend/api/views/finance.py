@@ -28,9 +28,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounting import services as S
-from accounting.finance.excel import build_xlsx
-from accounting.finance.text import month_bounds, today
-from accounting.finance_models import (
+from accounting.excel import build_xlsx
+from accounting.text import month_bounds, today
+from accounting.models import (
     ClientFeedback,
     FinanceCar,
     FinanceCategory,
