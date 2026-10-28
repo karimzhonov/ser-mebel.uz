@@ -296,3 +296,15 @@ def test_deadline_reminders_once_per_step(members, site_order, bot_events):
     followup.deadline_reminders(S.open_orders(["jarayonda"]))
     last = bot_events.of("finance.deadline")[-1]
     assert last["key"] == "1" and last["to"] == [200] and last["fallback_who"] == E.WHO_DEADLINE
+
+
+def test_ready_card_failure_rolls_back_the_bonus_row(members, site_order, bot_events, monkeypatch):
+    make_done(site_order)
+
+    def boom(*a, **k):
+        raise RuntimeError("feedback down")
+
+    monkeypatch.setattr(S, "feedback_schedule", boom)
+    with pytest.raises(RuntimeError):
+        followup.hourly_orders(ok_hour=True)
+    assert not OrderBonus.objects.exists()  # the next pass retries the card

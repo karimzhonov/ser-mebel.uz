@@ -151,14 +151,16 @@ def _is_new_ready(info, since: date) -> bool:
 def start_ready(info) -> bool:
     """A new «Готов» -> payment sheet to the bonus receiver, bonus tracking starts,
     warranty row and a feedback task are created. Once per order: OrderBonus.order_ref
-    is unique, so the instant path and the hourly pass can't both send the card."""
-    bn, created = S.bonus_start(info, info.ready_date)
-    if not created:
-        return False
-    E.ready_card(bn)
-    S.warranty_ensure(info.ref, info.client, info.ready_date)
-    S.feedback_schedule(info, info.ready_date)
-    return True
+    is unique, so the instant path and the hourly pass can't both send the card.
+    Atomic: if a step fails the bonus row is rolled back and a later pass retries."""
+    with transaction.atomic():
+        bn, created = S.bonus_start(info, info.ready_date)
+        if not created:
+            return False
+        E.ready_card(bn)
+        S.warranty_ensure(info.ref, info.client, info.ready_date)
+        S.feedback_schedule(info, info.ready_date)
+        return True
 
 
 def order_ready(ref: str) -> bool:
@@ -167,8 +169,7 @@ def order_ready(ref: str) -> bool:
     info = S.order_info(ref)
     if not info or not info.order or not _is_new_ready(info, bonus_since()):
         return False
-    with transaction.atomic():
-        return start_ready(info)
+    return start_ready(info)
 
 
 def new_ready_orders(infos, ok_hour: bool):
