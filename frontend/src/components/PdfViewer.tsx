@@ -1,23 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Download, ExternalLink, Loader2, Minus, Plus, X } from "lucide-react";
+import { Download, Loader2, Minus, Plus, X } from "lucide-react";
 // Legacy build: runs in older iOS/Android WebViews (Telegram) too.
 import * as pdfjs from "pdfjs-dist/legacy/build/pdf";
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.js?url";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
+import { errorMessage, fetchBlob, saveBlob } from "@/api/client";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 /** Full-screen PDF viewer drawn inside the panel (PDF.js), so a PDF opens the same
  * on a computer, a phone and inside Telegram — where the built-in viewers can't
- * show PDFs — and files saved without ".pdf" open too (it reads the bytes). */
+ * show PDFs — and files saved without ".pdf" open too (it reads the bytes).
+ * The bytes come from the API (`/files/<id>/`), never from a bare /media/ link. */
 export default function PdfViewer({
-  url,
+  fileId,
   name,
   downloadName,
   onClose,
 }: {
-  url: string;
+  fileId: number;
   name: string;
   downloadName?: string | null;
   onClose: () => void;
@@ -25,33 +27,41 @@ export default function PdfViewer({
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [blob, setBlob] = useState<Blob | null>(null);
   const [width, setWidth] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
     let loaded: PDFDocumentProxy | null = null;
-    const task = pdfjs.getDocument({
-      url,
-      isEvalSupported: false,
-      // Copied by scripts/copy-pdfjs-assets.mjs: fonts/encodings for non-embedded fonts.
-      standardFontDataUrl: "/pdfjs/standard_fonts/",
-      cMapUrl: "/pdfjs/cmaps/",
-      cMapPacked: true,
-    });
-    task.promise.then(
-      (d) => {
-        loaded = d;
-        if (!cancelled) setDoc(d);
-      },
-      () => !cancelled && setError("Faylni ochib bo'lmadi — u PDF emas yoki shikastlangan."),
-    );
+    let task: ReturnType<typeof pdfjs.getDocument> | null = null;
+    fetchBlob(`/files/${fileId}/`)
+      .then(async (b) => {
+        if (cancelled) return;
+        setBlob(b);
+        task = pdfjs.getDocument({
+          data: new Uint8Array(await b.arrayBuffer()),
+          isEvalSupported: false,
+          // Copied by scripts/copy-pdfjs-assets.mjs: fonts/encodings for non-embedded fonts.
+          standardFontDataUrl: "/pdfjs/standard_fonts/",
+          cMapUrl: "/pdfjs/cmaps/",
+          cMapPacked: true,
+        });
+        return task.promise.then(
+          (d) => {
+            loaded = d;
+            if (!cancelled) setDoc(d);
+          },
+          () => !cancelled && setError("Faylni ochib bo'lmadi — u PDF emas yoki shikastlangan."),
+        );
+      })
+      .catch((e) => !cancelled && setError(errorMessage(e)));
     return () => {
       cancelled = true;
-      task.destroy();
+      task?.destroy();
       loaded?.destroy();
     };
-  }, [url]);
+  }, [fileId]);
 
   useEffect(() => {
     const measure = () => setWidth(Math.min((scroller.current?.clientWidth ?? 800) - 32, 1000));
@@ -85,12 +95,9 @@ export default function PdfViewer({
         <button className={btn} title="Kattalashtirish" disabled={zoom >= 3} onClick={() => setZoom((z) => Math.min(3, z + 0.25))}>
           <Plus className="h-4 w-4" />
         </button>
-        <a className={btn} href={url} download={downloadName || name} title="Yuklab olish">
+        <button className={btn} title="Yuklab olish" disabled={!blob} onClick={() => blob && saveBlob(blob, downloadName || name)}>
           <Download className="h-4 w-4" />
-        </a>
-        <a className={btn} href={url} target="_blank" rel="noreferrer" title="Yangi oynada ochish">
-          <ExternalLink className="h-4 w-4" />
-        </a>
+        </button>
         <button className={btn} title="Yopish" onClick={onClose}>
           <X className="h-5 w-5" />
         </button>

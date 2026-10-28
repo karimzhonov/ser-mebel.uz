@@ -1,4 +1,4 @@
-import { lazy, Suspense, useRef, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   Area,
@@ -11,11 +11,13 @@ import {
 } from "recharts";
 import {
   ArrowLeft,
+  Download,
   ExternalLink,
   FileText,
   Folder as FolderIcon,
   FolderOpen,
   FolderPlus,
+  ImageOff,
   MapPin,
   MessageSquare,
   Phone,
@@ -24,7 +26,7 @@ import {
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api, downloadFile, errorMessage } from "@/api/client";
+import { api, errorMessage, fetchBlob, saveBlob } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
 import type { Deadline, Folder, FolderFile, Message, Money, Tone } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
@@ -206,11 +208,70 @@ function isPdf(f: FolderFile) {
   return [f.name, f.download_name ?? ""].some((n) => /\.pdf$/i.test(n)) || f.mime_type === "application/pdf";
 }
 
-/** Through the API, not the bare /media/ link: the file comes back as an attachment
- * under a name with the right extension, and a missing file is a clear error instead of
- * the server's redirect to /admin/ being saved as the "file". */
-function download(f: FolderFile) {
-  downloadFile(`/files/${f.id}/`, f.download_name || f.name).catch((e) => toast.error(errorMessage(e)));
+/** Every file is read through the API (`/files/<id>/`), never through its bare /media/
+ * link: the panel must never land on the server's redirect to the Django admin. A
+ * download shows its progress and its error on the file card itself. */
+type DlState = { busy?: boolean; error?: string };
+
+function useFileDownloads() {
+  const [state, setState] = useState<Record<number, DlState>>({});
+  const set = (id: number, v: DlState) => setState((s) => ({ ...s, [id]: v }));
+  async function download(f: FolderFile) {
+    if (state[f.id]?.busy) return;
+    set(f.id, { busy: true });
+    try {
+      saveBlob(await fetchBlob(`/files/${f.id}/`), f.download_name || f.name);
+      set(f.id, {});
+    } catch (e) {
+      set(f.id, { error: errorMessage(e) });
+    }
+  }
+  return { state, download, clear: (id: number) => set(id, {}) };
+}
+
+/** Full-screen image, loaded through the API so a missing file says so. */
+function ImagePreview({ file, onClose }: { file: FolderFile; onClose: () => void }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let url: string | null = null;
+    let cancelled = false;
+    fetchBlob(`/files/${file.id}/`).then(
+      (b) => {
+        url = URL.createObjectURL(b);
+        if (!cancelled) setSrc(url);
+      },
+      (e) => !cancelled && setError(errorMessage(e)),
+    );
+    return () => {
+      cancelled = true;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [file.id]);
+  return (
+    <div className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center bg-black/80 p-4" onClick={onClose}>
+      {error ? (
+        <p className="max-w-sm rounded-xl bg-white/10 p-4 text-center text-sm text-rose-200">⚠️ {error}</p>
+      ) : src ? (
+        <img src={src} className="max-h-full max-w-full rounded-xl" alt={file.name} />
+      ) : (
+        <Spinner className="h-8 w-8 text-white" />
+      )}
+    </div>
+  );
+}
+
+/** A thumbnail that turns into an icon when the picture can't be loaded. */
+function Thumb({ file }: { file: FolderFile }) {
+  const [broken, setBroken] = useState(false);
+  if (broken || !(file.thumbnail || file.url))
+    return (
+      <span className="flex h-full w-full flex-col items-center justify-center gap-1 text-slate-400">
+        <ImageOff className="h-8 w-8" />
+        <span className="text-[11px]">Rasm ochilmadi</span>
+      </span>
+    );
+  return <img src={file.thumbnail || file.url} alt={file.name} loading="lazy" className="h-full w-full object-cover" onError={() => setBroken(true)} />;
 }
 
 export function FolderButton({ folderId, label = "Fayllar" }: { folderId: number | null | undefined; label?: string }) {
@@ -245,7 +306,8 @@ export function FolderBrowser({
   const { can } = useAuth();
   const { data, isLoading, refetch } = useGet<Folder>(`/folders/${folderId}/`);
   const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState<string | null>(null);
+  const [preview, setPreview] = useState<FolderFile | null>(null);
+  const dl = useFileDownloads();
   const [pdf, setPdf] = useState<FolderFile | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [newFolder, setNewFolder] = useState<string | null>(null);
@@ -353,8 +415,8 @@ export function FolderBrowser({
         {data.files.map((f) => (
           <div key={f.id} className="group relative overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
             {f.is_image ? (
-              <button className="block aspect-[4/3] w-full bg-slate-100 dark:bg-slate-800" onClick={() => setPreview(f.url)}>
-                <img src={f.thumbnail || f.url} alt={f.name} loading="lazy" className="h-full w-full object-cover" />
+              <button className="block aspect-[4/3] w-full bg-slate-100 dark:bg-slate-800" onClick={() => setPreview(f)}>
+                <Thumb file={f} />
               </button>
             ) : (
               isPdf(f) ? (
@@ -366,19 +428,35 @@ export function FolderBrowser({
                   <span className="text-[11px] font-semibold text-rose-600">PDF</span>
                 </button>
               ) : (
-                <button onClick={() => download(f)} className="flex aspect-[4/3] w-full items-center justify-center bg-slate-50 dark:bg-slate-800/60">
-                  <FileText className="h-10 w-10 text-slate-400" />
+                <button
+                  onClick={() => dl.download(f)}
+                  disabled={dl.state[f.id]?.busy}
+                  className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-1 bg-slate-50 dark:bg-slate-800/60"
+                >
+                  {dl.state[f.id]?.busy ? <Spinner className="h-8 w-8 text-brand-500" /> : <FileText className="h-10 w-10 text-slate-400" />}
+                  <span className="text-[11px] font-medium text-slate-500">
+                    {dl.state[f.id]?.busy ? "Yuklanmoqda…" : (
+                      <span className="inline-flex items-center gap-1">
+                        <Download className="h-3 w-3" /> Yuklab olish
+                      </span>
+                    )}
+                  </span>
                 </button>
               )
             )}
             <div className="flex items-center justify-between gap-1 p-2">
               <button
-                onClick={() => (isPdf(f) ? setPdf(f) : f.is_image ? setPreview(f.url) : download(f))}
+                onClick={() => (isPdf(f) ? setPdf(f) : f.is_image ? setPreview(f) : dl.download(f))}
                 className="min-w-0 text-left"
               >
                 <div className="truncate text-xs font-medium">{f.name}</div>
                 <div className="muted text-[11px]">{fileSize(f.size)} · {relative(f.uploaded_at)}</div>
               </button>
+              {!f.is_image && !isPdf(f) && (
+                <IconButton label="Yuklab olish" className="h-7 w-7" disabled={dl.state[f.id]?.busy} onClick={() => dl.download(f)}>
+                  <Download className="h-3.5 w-3.5" />
+                </IconButton>
+              )}
               {can("filer.delete_file") && (
                 <IconButton
                   label="O'chirish"
@@ -389,6 +467,15 @@ export function FolderBrowser({
                 </IconButton>
               )}
             </div>
+            {dl.state[f.id]?.error && (
+              <div role="alert" className="border-t border-rose-100 bg-rose-50 px-2 py-1.5 text-[11px] text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">
+                ⚠️ {dl.state[f.id]?.error}
+                <div className="mt-1 flex gap-3 font-medium">
+                  <button className="underline" onClick={() => dl.download(f)}>Qayta urinish</button>
+                  <button className="underline" onClick={() => dl.clear(f.id)}>Yopish</button>
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -400,14 +487,10 @@ export function FolderBrowser({
 
       {pdf && (
         <Suspense fallback={<div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/90"><Spinner className="h-8 w-8 text-white" /></div>}>
-          <PdfViewer url={pdf.url} name={pdf.name} downloadName={pdf.download_name} onClose={() => setPdf(null)} />
+          <PdfViewer fileId={pdf.id} name={pdf.name} downloadName={pdf.download_name} onClose={() => setPdf(null)} />
         </Suspense>
       )}
-      {preview && (
-        <div className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center bg-black/80 p-4" onClick={() => setPreview(null)}>
-          <img src={preview} className="max-h-full max-w-full rounded-xl" alt="" />
-        </div>
-      )}
+      {preview && <ImagePreview file={preview} onClose={() => setPreview(null)} />}
     </div>
   );
 }

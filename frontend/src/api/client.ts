@@ -120,23 +120,36 @@ export function fieldErrors(error: unknown): Record<string, string> {
   return out;
 }
 
-export async function downloadFile(url: string, filename: string) {
+/** A file from the API as a Blob. Files never come from a bare /media/ link: a missing
+ * file there is redirected to the Django admin by the server, and the panel must never
+ * end up there. Errors carry {"detail": …} so errorMessage() reads them. */
+export async function fetchBlob(url: string): Promise<Blob> {
   const resp = await api.get(url, { responseType: "blob" }).catch(async (e: AxiosError<any>) => {
-    // the error body arrives as a Blob too: turn {"detail": …} back into JSON for errorMessage
+    // the error body arrives as a Blob too: turn {"detail": …} back into JSON
     const data = e?.response?.data;
-    if (data instanceof Blob) {
+    if (data instanceof Blob && e.response) {
       try {
-        e.response!.data = JSON.parse(await data.text());
+        e.response.data = JSON.parse(await data.text());
       } catch {
-        e.response!.data = undefined;
+        e.response.data = undefined;
       }
     }
     throw e;
   });
-  const href = URL.createObjectURL(resp.data);
+  const type = String(resp.headers["content-type"] || "");
+  if (type.startsWith("text/html")) throw new Error("Fayl o'rniga sahifa keldi — fayl serverda topilmadi.");
+  return resp.data;
+}
+
+export function saveBlob(blob: Blob, filename: string) {
+  const href = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = href;
   a.download = filename;
   a.click();
   setTimeout(() => URL.revokeObjectURL(href), 1000);
+}
+
+export async function downloadFile(url: string, filename: string) {
+  saveBlob(await fetchBlob(url), filename);
 }
