@@ -180,6 +180,9 @@ async def send(chat_id, text: str, kb=None) -> dict:
             if isinstance(e, TelegramBadRequest) and blocked:
                 code = 400
             return delivery(chat_id, error_code=code, blocked=blocked)
+        except Exception:  # noqa: BLE001 - network hiccup etc.: report, don't stop a fan-out
+            log.exception("send to %s crashed", chat_id)
+            return delivery(chat_id)
     return delivery(chat_id)
 
 

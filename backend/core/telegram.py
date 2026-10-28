@@ -29,17 +29,13 @@ def link_token(pk: int) -> str:
 
 
 def parse_link_token(token) -> int | None:
-    """User pk when `token` is a genuine link token, else None. Plain digits (the old,
-    unsigned format) are still accepted for one release and logged as deprecated."""
-    token = str(token or "").strip()
-    m = _LINK_RE.match(token)
-    if m:
-        pk = int(m.group(1))
-        return pk if hmac.compare_digest(_link_mac(pk), m.group(2)) else None
-    if token.isdigit():
-        log.warning("deprecated unsigned Telegram link payload for user %s", token)
-        return int(token)
-    return None
+    """User pk when `token` is a genuine signed link token, else None. The old unsigned
+    `/start <pk>` payload is refused: it let anyone bind any site account."""
+    m = _LINK_RE.match(str(token or "").strip())
+    if not m:
+        return None
+    pk = int(m.group(1))
+    return pk if hmac.compare_digest(_link_mac(pk), m.group(2)) else None
 
 
 def user_bot_link(pk: int) -> str:

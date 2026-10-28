@@ -206,3 +206,33 @@ async def test_member_approved_drops_whoami(fake_redis):
 
     await dispatch(env, B())
     assert await fake_redis.get(f"whoami:{tg}") is None
+
+
+async def test_one_crashing_recipient_does_not_stop_the_others():
+    from bot.notify.registry import Notifier
+
+    sent = []
+
+    class B:
+        async def send_message(self, chat_id, text, **kw):
+            if chat_id == 2:
+                raise RuntimeError("unexpected")  # not a Telegram / network error
+            sent.append(chat_id)
+            return SimpleNamespace(message_id=1)
+
+    n = Notifier(B(), "evt-crash")
+    await n.many([1, 2, 3], "hi")
+    assert sent == [1, 3]
+    assert [d["ok"] for d in n.delivered] == [True, False, True]
+
+
+async def test_hr_send_never_raises():
+    from bot.hr import api as hrapi
+
+    class B:
+        async def send_message(self, *a, **kw):
+            raise RuntimeError("unexpected")
+
+    with patch.object(hrapi, "get_bot", lambda: B()):
+        d = await hrapi.send(5, "x")
+    assert d["ok"] is False

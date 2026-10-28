@@ -41,6 +41,17 @@ def hourly_orders():
     return True
 
 
+@shared_task(bind=True, max_retries=3, default_retry_delay=20)
+def order_ready(self, ref: str):
+    """An order just became Готов: the payment sheet goes now (hourly_orders is the
+    fallback). Queued by accounting/signals.py. The result says why a card was or
+    wasn't sent; only a not-yet-visible status history is worth retrying."""
+    res = followup.order_ready(ref)
+    if res == followup.READY_NO_DATE and self.request.retries < self.max_retries:
+        raise self.retry()
+    return res
+
+
 @shared_task
 def cleanup():
     jobs.cleanup()

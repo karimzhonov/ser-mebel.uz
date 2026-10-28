@@ -28,7 +28,7 @@ POST {TELEGRAM_BOT_SERVER}/user/{chat_id}/message  (bot/api/routes.py)
 - **No Celery/background task queue.** All side effects (Telegram push, currency-rate lookup via `cbu.uz` inside `ConvertedCostManager`) run synchronously in the request/signal path with a bare `except Exception`.
 - **No `db_index` anywhere in the schema**, notably missing on `Order.status` / `Metering.status`, the two fields every admin list and dashboard filters/groups by.
 - **N+1s**: `OrderAdmin`, `MeteringAdmin`, `InvoiceAdmin` all show a `client` FK column with no `list_select_related`; `OrderWaitListComponent` iterates orders calling `str(row.client)` per row.
-- **Security**: `oauth/views.py`'s `telegram_admin_login` logs a user in by trusting a raw `telegram_id` query param with **no HMAC/signature verification** of the Telegram payload — a real account-takeover risk if that ID leaks (URLs, logs, referrers).
+- **Security (fixed)**: the old `telegram_admin_login` (login by a raw `?telegram_id=` query param, no signature) has been removed.
 - **Tests**: none. No `pytest`/`pytest-django`, no real test files anywhere — every `tests.py` is the untouched Django stub.
 - **Migrations**: ~108 files across 13 apps, no branching detected by filename inspection. `order` (19) and `metering.price` (13) are most iterated.
 - **Static/media**: filer-based folder hierarchy (not plain FileField), served by nginx in prod, by Django's `static()` helper in dev.
@@ -66,9 +66,7 @@ backend/ (Django + DRF)  api/views/bot/*  ->  <app>/services.py (rules)  ->  Pos
   token and writes `oauth_user.telegram_id` (`oauth.services.link_telegram`).
 - **Link tokens are signed.** `core.telegram.link_token(pk)` = `u{pk}_{hmac10}`, HMAC-SHA256
   of the user pk keyed with `SECRET_KEY` (only the backend signs and verifies; revoking the
-  bot token does not break links). Plain digits are still accepted for one release and
-  logged as deprecated. `TELEGRAM_WEBAPP_LOGIN_ENABLED` stays off until that fallback is
-  removed.
+  bot token does not break links). The old plain-digit payload is refused.
 - **Signed both ways.** `core/bot_signing.py` (`sign` / `verify`, +-300 s window,
   `compare_digest`). `api.authentication.BotSignatureAuthentication` + `api.permissions.IsBot`
   guard `/api/v1/bot/`; a JWT alone never reaches it, and the endpoints are excluded from the

@@ -103,10 +103,8 @@ def test_link_token_roundtrip_and_tamper(settings):
     assert parse_link_token(t) is None
 
 
-def test_plain_digits_are_deprecated_but_accepted(caplog):
-    with caplog.at_level("WARNING", logger="core.telegram"):
-        assert parse_link_token("15") == 15
-    assert "deprecated" in caplog.text
+def test_plain_digits_are_refused():
+    assert parse_link_token("15") is None
 
 
 def test_me_serializer_telegram_link_is_signed(api):
@@ -124,13 +122,13 @@ def test_link_endpoint(bot_client, make_staff):
     assert user.telegram_id == 777
     for token in ("u%d_0000000000" % user.pk, "u99999_aaaaaaaaaa", "zzz"):
         assert bot_client.post("link/", data={"token": token, "telegram_id": 1}).status_code == 404
-    # plain digits still work for one release
+    # the old unsigned plain-digit payload is refused
     from oauth.models import User
 
     other = User.objects.create_user(phone="+998900000003", password="x")
     assert (
         bot_client.post("link/", data={"token": str(other.pk), "telegram_id": 778}).status_code
-        == 200
+        == 404
     )
     # the Telegram id moves instead of ending up on two users
     assert (

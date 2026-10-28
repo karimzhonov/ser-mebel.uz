@@ -150,6 +150,10 @@ class Notifier:
             except (asyncio.TimeoutError, OSError) as e:
                 self._fail(chat_id, e)
                 return None
+            except Exception as e:  # noqa: BLE001 - one bad recipient must not stop the rest
+                logger.exception("notify to %s crashed", chat_id)
+                self._fail(chat_id, e)
+                return None
             self._ok(chat_id, res if isinstance(res, Message) else None)
             return res
         return None

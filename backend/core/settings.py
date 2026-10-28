@@ -19,7 +19,7 @@ from django.urls import reverse_lazy
 from constance import config
 from djmoney.money import Money
 from metering.constants import MeteringStatus
-from .telegram import user_bot_link
+from .telegram import bot_link, user_bot_link
 from .utils import media
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -90,6 +90,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'api',
     'django_celery_beat',
+    'django_celery_results',
 ]
 
 MIDDLEWARE = [
@@ -371,7 +372,8 @@ UNFOLD = {
             {
                 "title": "Связать Telegram",
                 # signed /start token (core/telegram.py), verified by the bot's link/ call
-                "link": lambda request: user_bot_link(request.user.id),
+                # (anonymous on the login page -> plain bot link, no token)
+                "link": lambda request: user_bot_link(request.user.id) if request.user.is_authenticated else bot_link(),
             },
         ],
     },
@@ -486,8 +488,13 @@ TELEGRAM_INIT_DATA_MAX_AGE = int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", 60 * 60
 # schedule in the DB — see accounting/schedule.py).
 REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
 CELERY_BROKER_URL = REDIS_URL
-CELERY_RESULT_BACKEND = None
-CELERY_TASK_IGNORE_RESULT = True
+# Task results go to the DB (django_celery_results) and are browsed in the admin
+# («Фоновые задачи»). Kept 7 days; beat's celery.backend_cleanup (04:00) prunes them.
+CELERY_RESULT_BACKEND = 'django-db'
+CELERY_RESULT_EXTENDED = True
+CELERY_RESULT_EXPIRES = 7 * 24 * 3600
+CELERY_TASK_IGNORE_RESULT = False
+CELERY_TASK_TRACK_STARTED = True
 CELERY_TIMEZONE = TIME_ZONE
 CELERY_ENABLE_UTC = False
 CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'

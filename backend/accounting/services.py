@@ -704,6 +704,9 @@ def update_operation(
         if "kind" in data:
             op.kind = data["kind"]
         if "category_code" in data and data["category_code"] != op.category.code:
+            if CAT_FROM_BOSS in (data["category_code"], op.category.code):
+                # a «Rahbardan» row carries the boss's paired chiqim (boss_hand_out)
+                raise ServiceError("«Rahbardan» kategoriyasini o'zgartirib bo'lmaydi — o'chirib qaytadan yozing.")
             cat = category(data["category_code"])
             if not cat:
                 raise ServiceError("Kategoriya topilmadi.")
@@ -940,6 +943,12 @@ def summary(start: date | None, end: date | None, member: TelegramMember | None 
     def total(pred):
         return sum((t.amount for t in rows if pred(t)), ZERO)
 
+    boss_outs = set(
+        Operation.objects.filter(
+            category__code=CAT_FROM_BOSS, pair_id__in=[t.id for t in rows]
+        ).values_list("pair_id", flat=True)
+    )
+
     salary: dict[str, Decimal] = {}
     for t in rows:
         if t.kind == OpKind.EXPENSE and t.category.code == CAT_SALARY:
@@ -956,7 +965,12 @@ def summary(start: date | None, end: date | None, member: TelegramMember | None 
             lambda t: t.kind == OpKind.EXPENSE and t.category.code == "rahbarga"
         ),
         "home": total(lambda t: t.kind == OpKind.EXPENSE and t.category.code == "uy"),
-        "transfers": total(lambda t: t.kind == OpKind.EXPENSE and t.category.code == CAT_TRANSFER),
+        # a boss hand-out's chiqim is already in given_to_staff: not a staff transfer
+        "transfers": total(
+            lambda t: t.kind == OpKind.EXPENSE
+            and t.category.code == CAT_TRANSFER
+            and t.id not in boss_outs
+        ),
         "expense_by_category": group(lambda t: is_company_expense(t, scope_all)),
         "income_by_category": group(lambda t: is_company_income(t, scope_all)),
         "salary_by_worker": sorted(salary.items(), key=lambda kv: -kv[1]),
@@ -1017,6 +1031,7 @@ def give_request(
             source="site" if site_user else "bot",
             site_user=site_user,
         )
+        boss_hand_out(op, by)
         req.status = "given"
         req.answer = "berildi " + (
             f"{num(m.get('orig'))}$" if m["cur"] == "USD" else num(m["amount"])
@@ -1194,6 +1209,7 @@ def bonus_collect(b: OrderBonus, collector: TelegramMember, m: dict, full: bool)
             order_ref=b.order_ref,
             comment="Pul oldim (mijozdan qoldiq)",
         )
+        on_site = _add_to_order_paid(b.order_ref, m, full)
         after = money_state(b)
         b.rest = after["rest"]
         b.note = f"Olindi: {b.got_text}"
@@ -1205,7 +1221,54 @@ def bonus_collect(b: OrderBonus, collector: TelegramMember, m: dict, full: bool)
                 ("To'liq oldi: " if full else "Qismlab oldi: ")
                 + f"{collector.name} · {b.got_text}",
             )
-    return {"bonus": b, "operation": op, "rest": after["rest"], "full": done}
+    return {"bonus": b, "operation": op, "rest": after["rest"], "full": done, "on_site": on_site}
+
+
+def _add_to_order_paid(ref: str, m: dict, full: bool = False) -> bool:
+    """«Pul oldim» on a site order raises its «Полученная сумма» (Order.lost_money) by
+    the collected money, in the order's currency — the rest on the site follows at once.
+    False for manual orders (nothing on the site to update)."""
+    from djmoney.money import Money
+
+    if not str(ref).isdigit():
+        return False
+    order = Order.objects.select_for_update().filter(order_number=int(ref)).first()
+    if not order:
+        return False
+    cur = str(order.price.currency) if order.price else ("USD" if m["cur"] == "USD" else "UZS")
+    rate = usd_rate() or D(1)
+
+    def in_cur(amount_uzs, orig, from_cur) -> Decimal:
+        if cur == "USD":
+            return D(orig) if from_cur == "USD" and orig is not None else D(amount_uzs) / rate
+        return D(amount_uzs)
+
+    if order.lost_money is not None:
+        old_cur = str(order.lost_money.currency)
+        old = D(order.lost_money.amount)
+        paid = old if old_cur == cur else (old * rate if cur == "UZS" else old / rate)
+        paid += in_cur(m["amount"], m.get("orig"), m["cur"])
+    else:
+        # no site figure yet: start from what money_state counted — every advance/rest
+        # booked for this order in the bot, this collection included
+        paid = sum(
+            (
+                in_cur(t.amount, t.orig_amount, t.currency)
+                for t in Operation.objects.filter(
+                    order_ref=str(ref),
+                    kind=OpKind.INCOME,
+                    is_deleted=False,
+                    category__code__in=[CAT_ADVANCE, CAT_REST],
+                )
+            ),
+            ZERO,
+        )
+    total = _order_money(order)[0] if order.price else ZERO
+    if total:
+        # «to'liq oldi» means nothing is owed; never show more paid than the price
+        paid = total if full else min(paid, total)
+    Order.objects.filter(pk=order.pk).update(lost_money=Money(q2(paid), cur))
+    return True
 
 
 # =================================================================== warranty / site entry / feedback
@@ -1529,6 +1592,41 @@ def duty_recipients(duty: str) -> tuple[list[TelegramMember], bool]:
     return admins(), True
 
 
+def boss_hand_out(inc: Operation, giver: TelegramMember | None) -> Operation | None:
+    """«Rahbardan» money leaves the giver's own wallet: a paired chiqim («O'tkazma», so it
+    is never a company expense) — the boss's balance goes down by what he handed out.
+    Deleting/editing either side follows the pair (delete_operation, update_operation)."""
+    if (
+        not giver
+        or not giver.is_admin
+        or not giver.has_wallet
+        or giver.pk == inc.member_id
+        or inc.kind != OpKind.INCOME
+        or inc.category.code != CAT_FROM_BOSS
+    ):
+        return None
+    out = create_operation(
+        internal=True,
+        member=giver,
+        author=giver,
+        kind=OpKind.EXPENSE,
+        amount=inc.amount,
+        category_code=CAT_TRANSFER,
+        comment=f"👔 {inc.member.name}ga berildi (#{inc.number})",
+        worker=inc.member.name,
+        currency=inc.currency,
+        orig_amount=inc.orig_amount,
+        rate=inc.rate,
+        source=inc.source,
+        site_user=inc.site_user,
+        on_date=inc.date,
+        at_time=inc.time,
+    )
+    inc.pair = out
+    inc.save(update_fields=["pair"])
+    return out
+
+
 def create_operation_as(actor: TelegramMember, target: TelegramMember, **fields) -> Operation:
     """The bot's booking rule: only active, non-task-only members book money, and only
     admins book into somebody else's wallet. `actor_admin` always comes from the actor."""
@@ -1548,7 +1646,10 @@ def create_operation_as(actor: TelegramMember, target: TelegramMember, **fields)
             raise ServiceError("Dollar summasi va kursi kerak.")
         fields["rate"] = rate
         fields["amount"] = q2(round(D(fields["orig_amount"]) * rate))
-    return create_operation(member=target, author=actor, actor_admin=actor.is_admin, **fields)
+    with transaction.atomic():
+        op = create_operation(member=target, author=actor, actor_admin=actor.is_admin, **fields)
+        boss_hand_out(op, actor)
+    return op
 
 
 def attach_receipt(op: Operation, file_id: str, actor: TelegramMember) -> Operation:
@@ -1682,6 +1783,10 @@ def bonus_collect_flow(
         rest_text = "0" if res["full"] else f"{fmt_cur(res['rest'], cur)} {cur_name(cur)}"
         sum_text = money_text(m)
         task = site_entry_create(bn.order_ref, bn.client, sum_text, collector.name, rest_text)
+        if res["on_site"]:
+            # the site's «Полученная сумма» is already updated: nothing to enter by hand
+            task.is_done, task.done_at, task.done_by = True, today(), "Avtomatik"
+            task.save(update_fields=["is_done", "done_at", "done_by"])
     return {**res, "task": task, "sum_text": sum_text, "rest_text": rest_text}
 
 

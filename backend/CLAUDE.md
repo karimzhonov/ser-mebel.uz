@@ -9,7 +9,7 @@ DRF REST API in `api/` (JWT auth) serving the React SPA in `../frontend/`. That 
 - Permissions mirror the admin: `api.permissions.ModelPermissions` (view_/add_/change_/delete_ per HTTP method) on CRUD; custom `@action`s need view_ on the model plus the exact admin permission via `require_perm(...)`. Row scoping (assemblers see own jobs, accounting non-superusers see own rows) is in `get_queryset`, same as the admin.
 - Money is `{"amount", "currency"}` (`api.fields.MoneyField`). Order money fields are hidden without `order.view_order_price`.
 - **The Django admin is frozen legacy** (see root CLAUDE.md "Working scope"). `<app>/services.py` is the source of truth for business rules; do not update admin actions/forms/components to follow service changes, and don't use the admin as the spec for new behavior.
-- Telegram WebApp login: `/api/v1/auth/telegram/` verifies `initData` HMAC (`oauth.services.verify_telegram_init_data`) but is OFF by default (`TELEGRAM_WEBAPP_LOGIN_ENABLED`). Linking is now authenticated (signed `?start=u{pk}_{hmac10}` token, below) but the old unsigned `/start <id>` payload is still accepted for one release, so keep it OFF until that fallback is removed. The old `?telegram_id=` admin login has the same root problem — see Security note.
+- Telegram WebApp login: `/api/v1/auth/telegram/` verifies `initData` HMAC (`oauth.services.verify_telegram_init_data`) but is OFF by default (`TELEGRAM_WEBAPP_LOGIN_ENABLED`). Linking is authenticated (only the signed `?start=u{pk}_{hmac10}` token links; plain digits are refused). The old unauthenticated `/?telegram_id=` admin login was removed.
 
 ## Bot channel (Telegram lives in `bot/`, not here)
 
@@ -49,7 +49,7 @@ Reality today: business logic lives in `post_save` signal handlers (folder creat
 
 ## Security note
 
-- `oauth/views.py`'s `telegram_admin_login` currently trusts a raw `telegram_id` query param with no signature check. If you touch this view, do not add features on top of it without flagging that it needs HMAC verification (see `docs/ARCHITECTURE_ANALYSIS.md` §4.1).
+- The old `telegram_admin_login` (`/?telegram_id=` logged anyone in by a raw Telegram id) was removed. Never reintroduce login by an unsigned Telegram id.
 
 ## Commands
 

@@ -14,3 +14,7 @@ class AccountingConfig(AppConfig):
 
     def ready(self):
         post_migrate.connect(_sync_schedule, sender=self, dispatch_uid="accounting_schedule")
+
+        from . import signals
+
+        signals.connect()

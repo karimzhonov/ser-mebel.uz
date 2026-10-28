@@ -28,7 +28,11 @@ async def webhook(request: Request) -> None:
 
 
 @router.post("/user/{chat_id}/message")
-async def message(chat_id: str, data: MessageSchema):
+async def message(chat_id: str, body: bytes = Depends(verify_signature)):
+    try:
+        data = MessageSchema(**json.loads(body))
+    except (ValueError, TypeError) as e:
+        raise HTTPException(400, f"bad body: {e}")
     try:
         return await send_message(chat_id=chat_id, **data.model_dump())
     except ConnectionError as e:

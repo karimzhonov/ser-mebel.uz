@@ -13,6 +13,7 @@ import logging
 from datetime import date
 
 from constance import config
+from django.db import transaction
 
 from oauth.models import TelegramMember
 
@@ -141,25 +142,73 @@ def deadline_reminders(infos):
             E.deadline(info, left, key, deadline_people(), E.WHO_DEADLINE)
 
 
-def new_ready_orders(infos, ok_hour: bool):
+def _is_new_ready(info, since: date) -> bool:
+    return bool(
+        info.bucket in ("yakun", "tugadi") and info.ready_date and info.ready_date >= since
+    )
+
+
+def start_ready(info) -> bool:
     """A new «Готов» -> payment sheet to the bonus receiver, bonus tracking starts,
-    warranty row and a feedback task are created. At most 5 per pass, daytime only."""
+    warranty row and a feedback task are created. Once per order: OrderBonus.order_ref
+    is unique, so the instant path and the hourly pass can't both send the card.
+    Atomic: if a step fails the bonus row is rolled back and a later pass retries."""
+    with transaction.atomic():
+        bn, created = S.bonus_start(info, info.ready_date)
+        if not created:
+            return False
+        E.ready_card(bn)
+        S.warranty_ensure(info.ref, info.client, info.ready_date)
+        S.feedback_schedule(info, info.ready_date)
+        return True
+
+
+# order_ready outcomes: what the task result says in the admin («Результаты задач»)
+READY_SENT = "sent: «Готов» varaqasi yuborildi"
+READY_NO_DATE = "retry: «Готов» sanasi status tarixida hali yo'q"
+
+
+def order_ready(ref: str) -> str:
+    """Right after an order became Готов (accounting/signals.py -> tasks.order_ready):
+    the card goes at once, at any hour. Returns why it was or wasn't sent."""
+    info = S.order_info(ref)
+    if not info or not info.order:
+        return f"skip: {ref} sayt buyurtmasi topilmadi"
+    if info.bucket not in ("yakun", "tugadi"):
+        return f"skip: {ref} hozir «Готов» emas ({info.status_label})"
+    if not info.ready_date:
+        return READY_NO_DATE
+    since = bonus_since()
+    if info.ready_date < since:
+        return (
+            f"skip: {ref} {info.ready_date.isoformat()} da «Готов» bo'lgan — "
+            f"FIN_BONUS_SINCE ({since.isoformat()}) dan oldin"
+        )
+    bn = OrderBonus.objects.filter(order_ref=info.ref).first()
+    if bn:
+        return (
+            f"skip: {ref} uchun varaqa avval yuborilgan "
+            f"(bonus {bn.created_at:%Y-%m-%d %H:%M}, holati: {bn.status})"
+        )
+    return READY_SENT if start_ready(info) else f"skip: {ref} uchun varaqa avval yuborilgan"
+
+
+def new_ready_orders(infos, ok_hour: bool):
+    """Hourly fallback for Готов orders the instant path missed (worker down, status set
+    with a queryset update, ...). At most 5 per pass, daytime only."""
     if not ok_hour:
         return
     since = bonus_since()
     sent = 0
     for info in infos:
-        if info.bucket not in ("yakun", "tugadi") or not info.ready_date or info.ready_date < since:
+        if not _is_new_ready(info, since):
             continue
         if OrderBonus.objects.filter(order_ref=info.ref).exists():
             continue
         if sent >= 5:
             break
-        sent += 1
-        bn, _ = S.bonus_start(info, info.ready_date)
-        E.ready_card(bn)
-        S.warranty_ensure(info.ref, info.client, info.ready_date)
-        S.feedback_schedule(info, info.ready_date)
+        if start_ready(info):
+            sent += 1
 
 
 def hourly_orders(ok_hour: bool):

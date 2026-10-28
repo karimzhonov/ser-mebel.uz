@@ -350,8 +350,24 @@ function SiteTab() {
   );
 }
 
+/** Opens the picture inside the panel (never a new tab on /media/: a missing file
+ * there is redirected to the Django admin by the server). */
+function Screenshot({ url, onClose }: { url: string; onClose: () => void }) {
+  const [broken, setBroken] = useState(false);
+  return (
+    <div className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center bg-black/80 p-4" onClick={onClose}>
+      {broken ? (
+        <p className="max-w-sm rounded-xl bg-white/10 p-4 text-center text-sm text-rose-200">⚠️ Skrinshot serverda topilmadi.</p>
+      ) : (
+        <img src={url} alt="Skrinshot" className="max-h-full max-w-full rounded-xl" onError={() => setBroken(true)} />
+      )}
+    </div>
+  );
+}
+
 function FeedbackTab() {
   const { state, page, set } = useUrlState({ status: "asked" });
+  const [shot, setShot] = useState<string | null>(null);
   const { data, isFetching } = useList<Feedback>("finance/feedback", { ...state, page });
   return (
     <Card padded={false}>
@@ -372,10 +388,11 @@ function FeedbackTab() {
           { key: "r", header: "Готов", cell: (r) => date(r.ready_date) },
           { key: "t", header: "Fikr", cell: (r) => <span className="line-clamp-2 max-w-sm text-sm">{r.text || "—"}</span> },
           { key: "b", header: "Kim oldi", cell: (r) => (r.received_by ? `${r.received_by} · ${date(r.received_date)}` : "—"), hideOnMobile: true },
-          { key: "s", header: "", cell: (r) => (r.screenshot_url ? <a className="text-brand-600 underline" href={r.screenshot_url} target="_blank" rel="noreferrer">📷 Skrinshot</a> : null) },
+          { key: "s", header: "", cell: (r) => (r.screenshot_url ? <button className="text-brand-600 underline" onClick={() => setShot(r.screenshot_url)}>📷 Skrinshot</button> : null) },
         ]}
       />
       <Pagination page={page} count={data?.count ?? 0} onPage={(p) => set({ page: p })} />
+      {shot && <Screenshot url={shot} onClose={() => setShot(null)} />}
     </Card>
   );
 }

@@ -84,3 +84,48 @@ class UFolderPermissionAdmin(ModelAdmin, PermissionAdmin):
 class UThumbnailOptionAdmin(ModelAdmin):
     list_display = ('name', 'width', 'height')
     search_fields = ['name']
+
+
+# --- Celery: beat schedule + task results («Фоновые задачи» in the sidebar, superusers).
+# The packages register plain Django admins; re-register them on unfold's ModelAdmin.
+from django_celery_beat.admin import PeriodicTaskAdmin as BasePeriodicTaskAdmin
+from django_celery_beat.models import (
+    ClockedSchedule,
+    CrontabSchedule,
+    IntervalSchedule,
+    PeriodicTask,
+    SolarSchedule,
+)
+from django_celery_results.admin import GroupResultAdmin as BaseGroupResultAdmin
+from django_celery_results.admin import TaskResultAdmin as BaseTaskResultAdmin
+from django_celery_results.models import GroupResult, TaskResult
+
+for _model in (PeriodicTask, IntervalSchedule, CrontabSchedule, SolarSchedule, ClockedSchedule, TaskResult, GroupResult):
+    admin.site.unregister(_model)
+
+
+@admin.register(PeriodicTask)
+class UPeriodicTaskAdmin(BasePeriodicTaskAdmin, ModelAdmin):
+    pass
+
+
+@admin.register(CrontabSchedule)
+class UCrontabScheduleAdmin(ModelAdmin):
+    list_display = ('__str__',)
+
+
+@admin.register(TaskResult)
+class UTaskResultAdmin(BaseTaskResultAdmin, ModelAdmin):
+    list_display = ('task_name', 'periodic_task_name', 'status', 'date_created', 'date_done', 'result')
+    list_filter = ('status', 'task_name', 'periodic_task_name', 'date_done')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(GroupResult)
+class UGroupResultAdmin(BaseGroupResultAdmin, ModelAdmin):
+    pass

@@ -39,3 +39,13 @@ def test_dedup_and_unknown():
     assert r2.json() == {"ok": True, "duplicate": True}
     with patch.object(routes, "dispatch", AsyncMock(side_effect=UnknownEvent("x"))):
         assert post("/notify", env("no.such")).status_code == 400
+
+
+def test_user_message_requires_signature():
+    payload = {"text": "Salom", "url": "/orders/1"}
+    with patch.object(routes, "send_message", AsyncMock(return_value={"status": "ok"})) as send:
+        assert post("/user/55/message", payload, sign=False).status_code == 403
+        send.assert_not_called()
+        r = post("/user/55/message", payload)
+    assert r.status_code == 200 and r.json() == {"status": "ok"}
+    send.assert_awaited_once_with(chat_id="55", text="Salom", url="/orders/1")
