@@ -47,7 +47,7 @@ from core.bot_notify import fetch_file
 from core.exceptions import ServiceError
 from oauth.models import TelegramMember, TelegramRole
 
-from ..permissions import ModelPermissions, is_staff, require_perm
+from ..permissions import IsSuperUser, ModelPermissions, is_staff, require_perm
 from ..serializers.finance import (
     ClientFeedbackSerializer,
     FinanceCarSerializer,
@@ -136,6 +136,11 @@ class TelegramMemberViewSet(viewsets.ModelViewSet):
     pagination_class = None
     search_fields = ["name", "username"]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_permissions(self):
+        if self.action == "destroy":
+            return [IsSuperUser()]
+        return super().get_permissions()
 
     def get_queryset(self):
         qs = super().get_queryset()

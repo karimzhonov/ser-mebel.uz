@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from oauth.models import User
-from oauth.services import TEST_MESSAGE_TEXT, send_test_telegram_messages
+from oauth.services import TEST_MESSAGE_TEXT, delete_user, send_test_telegram_messages
 
 from ..permissions import IsSuperUser
 from ..serializers.users import GroupSerializer, UserSerializer
@@ -17,7 +17,10 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     permission_classes = [IsSuperUser]
     search_fields = ["name", "phone"]
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def perform_destroy(self, instance):
+        delete_user(self.request.user, instance)
 
     @action(detail=True, methods=["post"], url_path="test-message")
     def test_message(self, request, pk=None):

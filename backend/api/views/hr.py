@@ -20,7 +20,7 @@ from hr.constants import DEFAULTS, LABELS, ST_LABEL
 from hr.excel import build_xlsx
 from hr.models import Attendance, Employee, Holiday, Leave, PointAdjustment, Winner, WorkGroup
 
-from ..permissions import ModelPermissions, require_perm
+from ..permissions import IsSuperUser, ModelPermissions, require_perm
 from ..serializers.hr import (
     AttendanceEditSerializer,
     AttendanceSerializer,
@@ -124,7 +124,13 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     serializer_class = EmployeeSerializer
     pagination_class = None
     search_fields = ["name", "username"]
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_permissions(self):
+        # Deleting wipes the person's attendance history too — admins only.
+        if self.action == "destroy":
+            return [IsSuperUser()]
+        return super().get_permissions()
 
     def get_queryset(self):
         qs = Employee.objects.select_related("group", "member")
