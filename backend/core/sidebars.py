@@ -118,5 +118,23 @@ def get_sidebar_items(request):
                     }
                 ],
             },
+            {
+                "title": "Фоновые задачи",
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "Расписание (celery beat)",
+                        "icon": "schedule",
+                        "link": reverse_lazy("admin:django_celery_beat_periodictask_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": "Результаты задач",
+                        "icon": "task_alt",
+                        "link": reverse_lazy("admin:django_celery_results_taskresult_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                ],
+            },
         ],
     }
