@@ -409,5 +409,28 @@ export interface Overview {
     upcoming: { id: number; client: string; phone: string; address: string; when: string }[];
   } | null;
   call_center: { unanswered: number; callback: number } | null;
+  warehouse: {
+    products: number;
+    stock_value: number;
+    stock_value_usd: number | null;
+    period_in: number;
+    period_out: number;
+    low_count: number;
+    low_stock: { id: number; name: string; quantity: number; min_quantity: number; unit: string }[];
+  } | null;
+  hr: {
+    date: string;
+    now: string;
+    holiday: string | null;
+    expected: number;
+    counts: Record<string, number>;
+    attention: { id: number; name: string; status: "late" | "absent" | "waiting"; in_time: string; late_min: number | null; group: string }[];
+  } | null;
+  wallets: {
+    currency: string;
+    total: number;
+    count: number;
+    rows: { id: number; name: string; role: string; balance: number }[];
+  } | null;
   timeline: { series: string[]; points: Record<string, number | string>[] };
 }

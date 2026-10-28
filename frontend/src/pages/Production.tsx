@@ -82,7 +82,7 @@ function ProductionList({ kind }: { kind: Kind }) {
             onChange={(v) => set({ [cfg.doneField]: v })}
             options={[
               { value: "false", label: "Faol" },
-              { value: "true", label: "Arxiv" },
+              { value: "true", label: "Bajarilgan" },
               { value: "", label: "Barchasi" },
             ]}
           />

@@ -44,7 +44,7 @@ export function DesignsPage() {
             onChange={(v) => set({ confirm: v })}
             options={[
               { value: "false", label: "Faol" },
-              { value: "true", label: "Arxiv" },
+              { value: "true", label: "Bajarilgan" },
               { value: "", label: "Barchasi" },
             ]}
           />

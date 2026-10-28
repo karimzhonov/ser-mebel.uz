@@ -68,6 +68,9 @@ class OverviewView(APIView):
                 "production": self.production(user),
                 "meterings": self.meterings(user),
                 "call_center": self.call_center(user),
+                "warehouse": self.warehouse(user, params),
+                "hr": self.hr(user),
+                "wallets": self.wallets(user),
                 "timeline": self.timeline(user, params),
             }
         )
@@ -255,6 +258,87 @@ class OverviewView(APIView):
             "income": round(float(sm["income"]), 2),
             "expense": round(float(sm["expense"]), 2),
             "profit": round(float(sm["balance"]), 2),
+        }
+
+    # --- warehouse (Ombor): stock value now + kirim/chiqim in the period -------------
+
+    def warehouse(self, user, params):
+        if not user.has_perm("warehouse.view_product"):
+            return None
+        from warehouse import services as W
+
+        start, end = date_range(params)
+        sm = W.summary(start, end)
+        rate = sm["usd_rate"]
+        low = sorted(sm["low_stock"], key=lambda p: p["quantity"])
+        return {
+            "products": sm["products"],
+            "stock_value": round(float(sm["stock_value"]), 2),
+            "stock_value_usd": round(float(sm["stock_value"] / rate), 2) if rate else None,
+            "period_in": round(float(sm["period_in"]), 2),
+            "period_out": round(float(sm["period_out"]), 2),
+            "low_count": len(low),
+            "low_stock": [
+                {**p, "quantity": float(p["quantity"]), "min_quantity": float(p["min_quantity"])}
+                for p in low[:8]
+            ],
+        }
+
+    # --- HR: today's attendance (live, ignores the date range) -------------------------
+
+    def hr(self, user):
+        if not user.has_perm("hr.view_attendance"):
+            return None
+        from hr import services as H
+
+        now_d = H.now()
+        rows = H.day_rows(now_d.date(), now_d)
+        counts = defaultdict(int)
+        for r in rows:
+            counts[r["status"]] += 1
+        expected = sum(counts[k] for k in ("on_time", "late", "waiting", "absent", "excused"))
+
+        def people(*statuses):
+            return [
+                {
+                    "id": r["employee_id"],
+                    "name": r["name"],
+                    "status": r["status"],
+                    "in_time": r["in_time"],
+                    "late_min": r["late_min"],
+                    "group": r["group"],
+                }
+                for r in rows
+                if r["status"] in statuses
+            ]
+
+        return {
+            "date": now_d.date(),
+            "now": now_d.strftime("%H:%M"),
+            "holiday": H.holiday(now_d.date()),
+            "expected": expected,
+            "counts": dict(counts),
+            "attention": people("late", "absent", "waiting"),
+        }
+
+    # --- Moliya wallets: who holds how much right now (so'm) ---------------------------
+
+    def wallets(self, user):
+        if not user.has_perm("accounting.view_all_operations"):
+            return None
+        bal = finance.balances()
+        rows = sorted(
+            (
+                {"id": m.id, "name": m.name, "role": m.role, "balance": round(float(bal.get(m.id, 0)), 2)}
+                for m in finance.wallets()
+            ),
+            key=lambda r: -r["balance"],
+        )
+        return {
+            "currency": "UZS",
+            "total": round(sum(r["balance"] for r in rows), 2),
+            "count": len(rows),
+            "rows": rows,
         }
 
     # --- production queues ------------------------------------------------------------
