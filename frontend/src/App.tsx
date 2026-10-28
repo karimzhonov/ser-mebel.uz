@@ -23,7 +23,7 @@ import { HrCalendarPage, HrEmployeesPage, HrRatingPage, HrSettingsPage } from "@
 import { FinanceChecksPage, FinanceFollowupPage, FinanceReportsPage, FinanceRequestsPage } from "@/pages/finance/Tasks";
 import UsersPage from "@/pages/Users";
 import FolderPage from "@/pages/Folder";
-import { Empty } from "@/components/ui";
+import NotFoundPage from "@/pages/NotFound";
 
 export default function App() {
   const { user, loading } = useAuth();
@@ -79,7 +79,7 @@ export default function App() {
         <Route path="users" element={<UsersPage />} />
         <Route path="files/:id" element={<FolderPage />} />
         <Route path="login" element={<Navigate to="/" replace />} />
-        <Route path="*" element={<Empty title="Sahifa topilmadi" />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );
