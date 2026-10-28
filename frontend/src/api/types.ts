@@ -20,6 +20,8 @@ export interface Me {
   is_superuser: boolean;
   permissions: string[];
   telegram_link: string;
+  /** the omborchi: sees only the «Ombor» section */
+  is_warehouse_keeper: boolean;
 }
 
 export interface UserShort {

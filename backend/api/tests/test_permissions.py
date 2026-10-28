@@ -50,6 +50,12 @@ def test_assembler_sees_only_own_jobs(api, make_staff, order_factory):
     assert resp.data["count"] == 1
 
 
+def test_old_income_expense_api_is_gone(admin_api):
+    """Kirim/chiqim moved to Moliya (/finance/); the old ledger stays in the DB only."""
+    for url in ("/api/v1/incomes/", "/api/v1/expenses/", "/api/v1/expense-categories/"):
+        assert admin_api.get(url).status_code == 404
+
+
 def test_closed_invoice_is_read_only(api):
     from call_center.constants import SolutionChoice
     from call_center.models import Invoice
