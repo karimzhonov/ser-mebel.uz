@@ -16,6 +16,7 @@ from datetime import date
 
 from constance import config
 from django.conf import settings
+from django.db import transaction
 from django.db.models import Max, Prefetch, Q, Sum
 from django.http import HttpResponse
 from rest_framework import mixins, viewsets
@@ -217,24 +218,26 @@ class OperationViewSet(viewsets.ModelViewSet):
         if not amount:
             raise ValidationError({"amount": "Summa kiriting."})
         author = acting_member(request)
-        op = S.create_operation(
-            member=d["member"],
-            author=author,
-            kind=d["kind"],
-            amount=amount,
-            category_code=d["category_code"],
-            currency=cur,
-            orig_amount=d.get("orig_amount"),
-            rate=d.get("rate"),
-            order_ref=d.get("order_ref"),
-            comment=d.get("comment", ""),
-            worker=d.get("worker", ""),
-            pay_type=d.get("pay_type", ""),
-            source="site",
-            site_user=request.user,
-            on_date=d.get("date"),
-            actor_admin=only is None,
-        )
+        with transaction.atomic():
+            op = S.create_operation(
+                member=d["member"],
+                author=author,
+                kind=d["kind"],
+                amount=amount,
+                category_code=d["category_code"],
+                currency=cur,
+                orig_amount=d.get("orig_amount"),
+                rate=d.get("rate"),
+                order_ref=d.get("order_ref"),
+                comment=d.get("comment", ""),
+                worker=d.get("worker", ""),
+                pay_type=d.get("pay_type", ""),
+                source="site",
+                site_user=request.user,
+                on_date=d.get("date"),
+                actor_admin=only is None,
+            )
+            S.boss_hand_out(op, author)
         E.operation_created(op, author=author, from_site=True)
         return Response(OperationSerializer(op).data, status=201)
 

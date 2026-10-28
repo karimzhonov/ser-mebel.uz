@@ -787,7 +787,8 @@ class BonusCollectView(BotAPIView):
             ref, me, str(request.data.get("amount_text") or ""), bool(request.data.get("full"))
         )
         bn, op, task = res["bonus"], res["operation"], res["task"]
-        E.site_entry_created(task, me.name)
+        if not task.is_done:  # a manual order: the site entry manager still enters it
+            E.site_entry_created(task, me.name)
         if not me.is_admin:
             E.handover_requested(
                 op, me.name, bn.order_ref, bn.client, res["sum_text"], res["rest_text"]

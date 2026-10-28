@@ -21,6 +21,7 @@ from accounting.models import (
     SiteEntryTask,
 )
 from oauth.models import TelegramMember
+from order.models import Order
 
 pytestmark = pytest.mark.django_db
 
@@ -317,7 +318,7 @@ def test_boss_gives_money_and_the_owner_is_told(bot_client, members, bot_events)
         data={"member_tg": ALI, "kind": "income", "amount": "1000000", "category": "rahbar"},
     )
     assert r.status_code == 201
-    op = Operation.objects.get()
+    op = Operation.objects.get(category__code="rahbar")
     assert (
         op.member.telegram_id == ALI
         and op.author.telegram_id == BOSS
@@ -325,6 +326,24 @@ def test_boss_gives_money_and_the_owner_is_told(bot_client, members, bot_events)
     )
     ev = bot_events.one("finance.operation_created")
     assert ev["notify_owner"] is True and ev["owner_tg"] == ALI
+    # the money left the boss's own wallet: a paired chiqim, not a company expense
+    out = op.pair
+    assert out.member.telegram_id == BOSS and out.kind == "expense" and out.amount == op.amount
+    assert out.category.code == "otkazma"
+    assert S.balance(members_by(ALI)) == 1000000 and S.balance(members_by(BOSS)) == -1000000
+    assert S.summary(None, None)["expense"] == 0
+    # deleting the kirim takes the boss's chiqim with it
+    S.delete_operation(op)
+    assert S.balance(members_by(BOSS)) == 0 and S.balance(members_by(ALI)) == 0
+
+
+def test_boss_giving_to_himself_books_no_pair(bot_client, members, bot_events):
+    r = bot_client.post(
+        "finance/operations/",
+        actor=BOSS,
+        data={"member_tg": BOSS, "kind": "income", "amount": "5000", "category": "rahbar"},
+    )
+    assert r.status_code == 201 and Operation.objects.count() == 1
 
 
 def test_pending_and_unknown_members_cannot_book(bot_client, members):
@@ -747,11 +766,12 @@ def test_collect_full_books_money_opens_site_task_and_asks_for_handover(
     assert bn.percent == Decimal("0.5") and bn.bonus == Decimal("60000")  # 1000$ * 12000 * 0.5%
     op = Operation.objects.get(category__code="qoldiq")
     assert op.member.telegram_id == VALI and op.orig_amount == 600
+    # the site's «Полученная сумма» follows: 400$ before + 600$ collected
+    site_order = Order.objects.get(order_number=406)
+    assert site_order.lost_money.amount == 1000 and str(site_order.lost_money.currency) == "USD"
     task = SiteEntryTask.objects.get(order_ref="406")
-    assert task.is_done is False and r.data["task"]["code"] == task.code
-    created = bot_events.one("finance.site_entry_created")
-    assert created["to"] == [BOSS] and created["fallback"] is True  # nobody holds the duty
-    assert created["task"]["code"] == task.code and created["collector_name"] == "Vali"
+    assert task.is_done is True and task.done_by == "Avtomatik" and r.data["task"]["code"] == task.code
+    assert not bot_events.of("finance.site_entry_created")  # nothing to enter by hand
     ho = bot_events.one("finance.handover_requested")
     assert ho["admins"] == [BOSS] and ho["ref"] == "406" and ho["operation"]["number"] == op.number
     done = bot_events.one("finance.bonus_done")
@@ -857,7 +877,9 @@ def test_warranty_and_site_entry_duties(bot_client, ready, bot_events):
     assert bot_client.post("finance/warranty/406/give/", actor=VALI).status_code == 409
     # tasks: scoped by duty
     bot_client.post("finance/bonuses/406/collect/", actor=VALI, data={"amount_text": "100$"})
-    code = SiteEntryTask.objects.get().code
+    assert SiteEntryTask.objects.get().is_done  # a site order: updated automatically
+    assert Order.objects.get(order_number=406).lost_money.amount == 500
+    code = S.site_entry_create("M-1", "Qo'lda", "100 $", "Vali", "0").code  # a manual order
     assert bot_client.get("finance/tasks/", actor=ALI).data == {"site_entry": [], "feedback": []}
     assert len(bot_client.get("finance/tasks/", actor=BOSS).data["site_entry"]) == 1
     assert bot_client.post(f"finance/site-entry/{code}/done/", actor=ALI).status_code == 403
@@ -900,3 +922,58 @@ def test_feedback_upload_creates_missing_row_and_saves_the_picture(
         ).status_code
         == 409
     )
+
+
+def test_money_request_given_by_boss_leaves_his_wallet(bot_client, members, bot_events):
+    bot_client.post("finance/requests/", actor=ALI, data={"amount_text": "300000", "reason": "x"})
+    num = MoneyRequest.objects.get().number
+    r = bot_client.post(f"finance/requests/{num}/give/", actor=BOSS, data={})
+    assert r.status_code == 200, r.data
+    assert S.balance(members_by(ALI)) == 300000 and S.balance(members_by(BOSS)) == -300000
+
+
+def test_collect_without_site_figure_starts_from_bot_bookings(bot_client, ready, members, bot_events):
+    Order.objects.filter(order_number=406).update(lost_money=None)
+    S.create_operation(
+        member=members_by(ALI), kind="income", amount=1200000, category_code="avans",
+        currency="USD", orig_amount=100, rate=12000, order_ref="406", internal=True,
+    )
+    r = bot_client.post("finance/bonuses/406/collect/", actor=VALI, data={"amount_text": "200$"})
+    assert r.status_code == 200, r.data
+    assert Order.objects.get(order_number=406).lost_money.amount == 300  # 100$ avans + 200$
+
+
+def test_collect_full_sets_the_site_paid_to_the_price(bot_client, ready, bot_events):
+    r = bot_client.post(
+        "finance/bonuses/406/collect/", actor=VALI, data={"amount_text": "500$", "full": True}
+    )
+    assert r.status_code == 200, r.data
+    assert Order.objects.get(order_number=406).lost_money.amount == 1000
+
+
+def test_boss_hand_out_is_not_counted_as_a_staff_transfer(bot_client, members, bot_events):
+    bot_client.post(
+        "finance/operations/",
+        actor=BOSS,
+        data={"member_tg": ALI, "kind": "income", "amount": "700000", "category": "rahbar"},
+    )
+    sm = S.summary(None, None)
+    assert sm["given_to_staff"] == 700000 and sm["transfers"] == 0
+
+
+def test_rahbar_category_cannot_be_edited_in_or_out(bot_client, members, bot_events):
+    from core.exceptions import ServiceError
+
+    bot_client.post(
+        "finance/operations/",
+        actor=BOSS,
+        data={"member_tg": ALI, "kind": "income", "amount": "700000", "category": "rahbar"},
+    )
+    op = Operation.objects.get(category__code="rahbar")
+    with pytest.raises(ServiceError):
+        S.update_operation(op, {"category_code": "boshqa_kirim"}, actor_admin=True)
+    other = S.create_operation(
+        member=members_by(ALI), kind="income", amount=1000, category_code="boshqa_kirim", internal=True
+    )
+    with pytest.raises(ServiceError):
+        S.update_operation(other, {"category_code": "rahbar"}, actor_admin=True)
