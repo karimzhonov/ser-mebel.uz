@@ -2,6 +2,7 @@ from django.contrib.auth.models import Group
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import serializers
 
+from core.telegram import user_bot_link
 from oauth.models import User
 
 
@@ -20,16 +21,24 @@ class MeSerializer(serializers.ModelSerializer):
             "is_superuser",
             "permissions",
             "telegram_link",
+            "is_warehouse_keeper",
         ]
         read_only_fields = fields
+
+    is_warehouse_keeper = serializers.SerializerMethodField()
+
+    def get_is_warehouse_keeper(self, obj):
+        from warehouse.services import is_keeper
+
+        return is_keeper(obj)
 
     def get_permissions(self, obj):
         return sorted(obj.get_all_permissions())
 
     def get_telegram_link(self, obj):
-        # Same deep link as the admin's "Связать Telegram" menu item; the bot's
-        # /start handler writes telegram_id for this user id.
-        return f"https://t.me/ser_mebel_admin_bot?start={obj.pk}"
+        # Same deep link as the admin's "Связать Telegram" menu item: a signed
+        # `?start=u{pk}_{hmac10}` token; the bot forwards it to POST /api/v1/bot/link/.
+        return user_bot_link(obj.pk)
 
 
 class GroupSerializer(serializers.ModelSerializer):
@@ -77,6 +86,13 @@ class UserSerializer(serializers.ModelSerializer):
         return user
 
     def update(self, instance, validated_data):
+        from warehouse.services import KEEPER_GROUP, is_keeper
+
+        if "groups" in validated_data and is_keeper(instance):
+            if [g.name for g in validated_data["groups"]] != [KEEPER_GROUP]:
+                raise serializers.ValidationError(
+                    {"groups": "Bu xodim — omborchi. Uning huquqlari Ombor → Omborchi sahifasida boshqariladi."}
+                )
         password = validated_data.pop("password", None)
         user = super().update(instance, validated_data)
         if password:

@@ -11,26 +11,6 @@ def get_sidebar_items(request):
         "show_all_applications": lambda request: request.user.is_superuser,
         "navigation": [
             {
-                "title": "Бухгалтерия",
-                "collapsible": True,
-                "items": [
-                    {
-                        "title": 'Приходы',
-                        "icon": "download",
-                        "link": reverse_lazy("admin:accounting_income_changelist"),
-                        "permission": lambda request: request.user.has_perm('accounting.view_income'),
-                        "color": "gradient-1"
-                    },
-                    {
-                        "title": 'Расходы',
-                        "icon": "upload",
-                        "link": reverse_lazy("admin:accounting_expense_changelist"),
-                        "permission": lambda request: request.user.has_perm('accounting.view_expense'),
-                        "color": "gradient-2"
-                    },
-                ]
-            },
-            {
                 "title": "Клиент база",
                 "collapsible": True,
                 "items": [
@@ -136,6 +116,24 @@ def get_sidebar_items(request):
                         "permission": lambda request: request.user.has_perm('order.view_factory'),
                         "color": "gradient-1"
                     }
+                ],
+            },
+            {
+                "title": "Фоновые задачи",
+                "collapsible": True,
+                "items": [
+                    {
+                        "title": "Расписание (celery beat)",
+                        "icon": "schedule",
+                        "link": reverse_lazy("admin:django_celery_beat_periodictask_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
+                    {
+                        "title": "Результаты задач",
+                        "icon": "task_alt",
+                        "link": reverse_lazy("admin:django_celery_results_taskresult_changelist"),
+                        "permission": lambda request: request.user.is_superuser,
+                    },
                 ],
             },
         ],

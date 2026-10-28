@@ -1,0 +1,15 @@
+{
+  "id": "00000000-0000-0000-0000-00000000100f",
+  "event": "finance.warranty_given",
+  "data": {
+    "letter": {
+      "order_ref": "389",
+      "client": "Dilnoza",
+      "given": false
+    },
+    "by_name": "Jasur Karimov",
+    "admins": [
+      555000111
+    ]
+  }
+}

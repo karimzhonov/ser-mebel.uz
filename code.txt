@@ -9,7 +9,7 @@
  *   5) Menyu → «2. Botni ulash» → URL ni joylang. Tayyor! Botga /start yozing — birinchi yozgan odam RAHBAR bo'ladi.
  */
 
-const BOT_TOKEN = '8929673215:AAHMZZ72OViIGRC5qay9ovvpLSThWNi95_c';
+const BOT_TOKEN = 'BU_YERGA_BOTFATHER_TOKENI'; // eski token ochiq repoda edi — @BotFather'da revoke qiling
 const TZ = 'Asia/Tashkent';
 const VERSION = 'v52';
 

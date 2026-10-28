@@ -1,0 +1,86 @@
+{
+  "id": "00000000-0000-0000-0000-000000001026",
+  "event": "hr.day_report",
+  "data": {
+    "admins": [
+      555000111
+    ],
+    "now_hm": "11:30",
+    "report": {
+      "kind": "live",
+      "day": "2026-10-27",
+      "empty": false,
+      "expected": 12,
+      "rest_count": 2,
+      "on_time": [
+        {
+          "name": "Dilmurod Ergashev",
+          "in_time": "08:55"
+        }
+      ],
+      "late": [
+        {
+          "name": "Azizbek",
+          "in_time": "09:40",
+          "late_min": 40,
+          "late_reason": "Sababsiz",
+          "late_comment": "probka"
+        }
+      ],
+      "waiting": [
+        {
+          "name": "Bobur",
+          "eta": "10:30",
+          "asked": 1,
+          "can_dm": true
+        }
+      ],
+      "absent": [
+        {
+          "name": "Sardor",
+          "eta": null
+        }
+      ],
+      "excused": [
+        {
+          "name": "Hasan",
+          "note": "kasal"
+        }
+      ],
+      "leave": [
+        {
+          "name": "Umid",
+          "note": "ta'til"
+        }
+      ],
+      "no_uniform": [
+        "Azizbek"
+      ],
+      "groups": [
+        {
+          "title": "Chilonzor filiali",
+          "on_time": 5,
+          "late": 1,
+          "waiting": 1,
+          "absent": 1,
+          "excused": 1
+        }
+      ],
+      "yesterday_early": [
+        {
+          "name": "Bobur",
+          "out_time": "16:30",
+          "early_min": 90,
+          "early_reason": "Sababsiz",
+          "early_comment": ""
+        }
+      ],
+      "yesterday_no_out": [
+        "Sardor"
+      ],
+      "not_connected": [
+        "Hasan"
+      ]
+    }
+  }
+}

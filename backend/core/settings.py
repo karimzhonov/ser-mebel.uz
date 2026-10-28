@@ -19,6 +19,7 @@ from django.urls import reverse_lazy
 from constance import config
 from djmoney.money import Money
 from metering.constants import MeteringStatus
+from .telegram import bot_link, user_bot_link
 from .utils import media
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -70,6 +71,8 @@ INSTALLED_APPS = [
     'metering.price',
     'discussion',
     'accounting',
+    'hr',
+    'warehouse',
 
     'easy_thumbnails',
     'mptt',
@@ -86,6 +89,8 @@ INSTALLED_APPS = [
     'django_filters',
     'drf_spectacular',
     'api',
+    'django_celery_beat',
+    'django_celery_results',
 ]
 
 MIDDLEWARE = [
@@ -231,6 +236,16 @@ CONSTANCE_CONFIG = {
     'PRODUCTION_WARNING_ORDER_DAYS': (14, 'Предупреждение о прасрочка заказа (производство)', int),
     'ASSEMBLY_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Сборка цена за квадрат', 'price_field'),
     'ROVER_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Ровер цена за квадрат', 'price_field'),
+    # Moliya (finance bot) — the «Sozlamalar» sheet of the old Apps Script.
+    'FIN_REMINDER_HOUR': (19, "Moliya: xodimlarga kunlik eslatma soati", int),
+    'FIN_ADMIN_REPORT_HOUR': (21, "Moliya: rahbarga kunlik hisobot soati", int),
+    'FIN_MONTH_END_DAYS': (3, "Moliya: oy tugashiga necha kun qolganda eslatma", int),
+    'FIN_WARN_PERCENT': (80, "Moliya: buyurtma byudjetining necha % sarflansa ogohlantirish", int),
+    'FIN_USD_RATE': (0.0, "Moliya: dollar kursi (0 — Markaziy bank kursi)", float),
+    'FIN_CHANNEL_ID': ('', "Moliya: Telegram kanal (@username yoki -100...)", str),
+    'FIN_READY_DAYS': (30, "Moliya: «Готов» buyurtma qoldiq to'lov ro'yxatida necha kun turadi", int),
+    'FIN_BONUS_SINCE': ('', "Moliya: shu sanadan keyin «Готов» bo'lganlarga bonus kuzatuvi (bo'sh — birinchi ishga tushgan kun)", str),
+    'FIN_REPORT_TEMPLATE': ('', "Moliya: hisob-kitob varaqasi fon rasmi (media yo'li)", str),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
@@ -265,7 +280,20 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
             "fields": {
                 "ASSEMBLY_PRICE_PER_SQUARE",
             }
-        }
+        },
+        "Moliya": {
+            "fields": (
+                "FIN_REMINDER_HOUR",
+                "FIN_ADMIN_REPORT_HOUR",
+                "FIN_MONTH_END_DAYS",
+                "FIN_WARN_PERCENT",
+                "FIN_USD_RATE",
+                "FIN_CHANNEL_ID",
+                "FIN_READY_DAYS",
+                "FIN_BONUS_SINCE",
+                "FIN_REPORT_TEMPLATE",
+            )
+        },
     }
 )
 
@@ -343,7 +371,9 @@ UNFOLD = {
         "navigation": [
             {
                 "title": "Связать Telegram",
-                "link": lambda request: 'https://t.me/ser_mebel_admin_bot?start=%s' % request.user.id,
+                # signed /start token (core/telegram.py), verified by the bot's link/ call
+                # (anonymous on the login page -> plain bot link, no token)
+                "link": lambda request: user_bot_link(request.user.id) if request.user.is_authenticated else bot_link(),
             },
         ],
     },
@@ -454,8 +484,28 @@ TELEGRAM_WEBAPP_LOGIN_ENABLED = os.getenv("TELEGRAM_WEBAPP_LOGIN_ENABLED", "") =
 # initData older than this is rejected (replay window).
 TELEGRAM_INIT_DATA_MAX_AGE = int(os.getenv("TELEGRAM_INIT_DATA_MAX_AGE", 60 * 60))
 
+# Celery: every background / periodic task goes through it (Redis broker, beat
+# schedule in the DB — see accounting/schedule.py).
+REDIS_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+CELERY_BROKER_URL = REDIS_URL
+# Task results go to the DB (django_celery_results) and are browsed in the admin
+# («Фоновые задачи»). Kept 7 days; beat's celery.backend_cleanup (04:00) prunes them.
+CELERY_RESULT_BACKEND = 'django-db'
+CELERY_RESULT_EXTENDED = True
+CELERY_RESULT_EXPIRES = 7 * 24 * 3600
+CELERY_TASK_IGNORE_RESULT = False
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = False
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+DJANGO_CELERY_BEAT_TZ_AWARE = USE_TZ
+CELERY_TASK_ACKS_LATE = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
 TELEGRAM_BOT_TOKEN = os.getenv('BOT_TOKEN')
 TELEGRAM_BOT_SERVER = os.getenv('BOT_SERVER')
+# The site bot's @username (without @) — every t.me deep link is built from it.
+TELEGRAM_BOT_USERNAME = os.getenv('TELEGRAM_BOT_USERNAME', 'ser_mebel_admin_bot').lstrip('@')
 
 SMS_GATEWAY_URL = os.getenv('SMS_GATEWAY_URL', 'http://185.8.212.184/smsgateway/')
 SMS_LOGIN = os.getenv('SMS_LOGIN')

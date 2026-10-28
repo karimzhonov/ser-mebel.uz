@@ -28,7 +28,7 @@ POST {TELEGRAM_BOT_SERVER}/user/{chat_id}/message  (bot/api/routes.py)
 - **No Celery/background task queue.** All side effects (Telegram push, currency-rate lookup via `cbu.uz` inside `ConvertedCostManager`) run synchronously in the request/signal path with a bare `except Exception`.
 - **No `db_index` anywhere in the schema**, notably missing on `Order.status` / `Metering.status`, the two fields every admin list and dashboard filters/groups by.
 - **N+1s**: `OrderAdmin`, `MeteringAdmin`, `InvoiceAdmin` all show a `client` FK column with no `list_select_related`; `OrderWaitListComponent` iterates orders calling `str(row.client)` per row.
-- **Security**: `oauth/views.py`'s `telegram_admin_login` logs a user in by trusting a raw `telegram_id` query param with **no HMAC/signature verification** of the Telegram payload — a real account-takeover risk if that ID leaks (URLs, logs, referrers).
+- **Security (fixed)**: the old `telegram_admin_login` (login by a raw `?telegram_id=` query param, no signature) has been removed.
 - **Tests**: none. No `pytest`/`pytest-django`, no real test files anywhere — every `tests.py` is the untouched Django stub.
 - **Migrations**: ~108 files across 13 apps, no branching detected by filename inspection. `order` (19) and `metering.price` (13) are most iterated.
 - **Static/media**: filer-based folder hierarchy (not plain FileField), served by nginx in prod, by Django's `static()` helper in dev.
@@ -42,12 +42,43 @@ POST {TELEGRAM_BOT_SERVER}/user/{chat_id}/message  (bot/api/routes.py)
 - **No FSM states, no middlewares, no rate limiting, no structured logging** (bare `print()` only).
 - **The one handler is fat and unguarded**: parses `/start <user_id>` manually (not via aiogram's `CommandStart(deep_link=True)`), does `User.get_or_none(id=user_id)` then `user.telegram_id = ...; user.save()` with **no null-check and no try/except** — a bad/stale deep-link id raises an unhandled `AttributeError` straight out of the webhook request.
 
-## 3. Integration layer — the real contract
+## 3. Integration layer - the real contract
 
-- **Bot → Django data path is NOT an API call.** `bot/db/models/oauth.py` is a **hand-written Tortoise ORM mirror** of `backend/oauth/models.py`'s `User` (same table `oauth_user`, same field set), connected to the *same Postgres instance* via matching `POSTGRES_*` env vars (bot hardcodes port 5432; Django reads `POSTGRES_PORT` from env — a small but real inconsistency). The bot writes `telegram_id` directly into this table on `/start`, completely bypassing Django's ORM, validation, signals, and permission logic.
-- **Django → bot is a real (if fragile) HTTP call**: `oauth.User.send_message()` does a synchronous, un-timeout'd `requests.post` to `{TELEGRAM_BOT_SERVER}/user/{chat_id}/message`, hitting `bot/api/routes.py`.
-- **No shared migration source of truth.** Any Django migration touching `oauth.User` (rename/drop a column, add NOT NULL) can silently break the bot's Tortoise model with nothing to catch it — no shared package, no contract test, no CI check.
-- **No shared code package at all** between the two services — the schema duplication is the only "shared code," and it's duplicated by hand, not imported.
+> **Updated 2026-10-27 (bot refactor).** The original findings below this note (shared-DB
+> mirror, no contract) are history; the section describes the integration as it is now.
+> Full wire contract: `docs/BOT_CONTRACT.md`.
+
+```
+Telegram ⇄ bot/ (aiogram 3 + FastAPI, Redis FSM / dedup / locks; renders every message)
+              │  signed HTTP, HMAC-SHA256(BOT_TOKEN), X-Bot-Timestamp / -Actor / -Signature
+              │  bot -> backend:  /api/v1/bot/...   (identity, link, finance, HR)
+              │  backend -> bot:  POST /notify (events), GET /files/{file_id}, POST /user/{chat_id}/message
+              ▼
+backend/ (Django + DRF)  api/views/bot/*  ->  <app>/services.py (rules)  ->  Postgres
+              │  accounting/events.py, hr/events.py  ->  core.bot_notify.emit (transaction.on_commit)
+              ▼
+         Celery core.tasks.notify_bot (retry x8, backoff, stable envelope id)  ->  bot /notify
+```
+
+- **The bot has no database.** The Tortoise mirror of `oauth.User` (`bot/db/models/oauth.py`)
+  and the bot's Postgres connection are gone. `/start <payload>` from the site's "connect
+  Telegram" link calls `POST /api/v1/bot/link/ {token, telegram_id}`; the backend verifies the
+  token and writes `oauth_user.telegram_id` (`oauth.services.link_telegram`).
+- **Link tokens are signed.** `core.telegram.link_token(pk)` = `u{pk}_{hmac10}`, HMAC-SHA256
+  of the user pk keyed with `SECRET_KEY` (only the backend signs and verifies; revoking the
+  bot token does not break links). The old plain-digit payload is refused.
+- **Signed both ways.** `core/bot_signing.py` (`sign` / `verify`, +-300 s window,
+  `compare_digest`). `api.authentication.BotSignatureAuthentication` + `api.permissions.IsBot`
+  guard `/api/v1/bot/`; a JWT alone never reaches it, and the endpoints are excluded from the
+  Swagger schema. The acting Telegram id travels in the signed `X-Bot-Actor` header, so every
+  role rule is enforced by the backend.
+- **Events, not Telegram calls.** The backend never calls the Telegram Bot API. Business
+  code emits a data-only event after the transaction commits; Celery delivers it. Jobs that
+  need the delivery result (HR asks) send synchronously and stop quietly when the bot is
+  down. `oauth.User.send_message()` -> `POST /user/{chat_id}/message` is unchanged (BOT_SERVER
+  is `http://bot:80` in compose).
+- **Still no shared package.** The coupling is HTTP + the documented JSON shapes
+  (`docs/bot_contract/*.json`, loaded by both test suites) - no shared schema to drift.
 
 ## 4. Risks ranked by severity
 

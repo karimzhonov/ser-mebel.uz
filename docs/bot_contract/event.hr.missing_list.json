@@ -1,0 +1,11 @@
+{
+  "id": "00000000-0000-0000-0000-000000001023",
+  "event": "hr.missing_list",
+  "data": {
+    "chat_id": -1001234567890,
+    "names": [
+      "@dilmurod",
+      "Azizbek"
+    ]
+  }
+}

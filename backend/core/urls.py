@@ -18,11 +18,9 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import path, include
-from oauth.views import telegram_admin_login
 
 
 urlpatterns = [
-    path("", telegram_admin_login, name="twa-admin-login"),
     path('admin/', admin.site.urls),
     path('filer/', include('filer.urls')),
     path('api/', include('api.urls')),

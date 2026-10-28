@@ -41,9 +41,6 @@ class Assembly(models.Model):
 
 @receiver(post_save, sender=Assembly)
 def create_assembly_folders(sender: Type[Assembly], instance: Assembly, created, **kwargs):
-    # DefaultExpenseCategoryChoices.update_or_create_expense(
-    #     DefaultExpenseCategoryChoices.assembly, instance.order, instance.price
-    # )
     if not created:
         return
     User.send_messages(

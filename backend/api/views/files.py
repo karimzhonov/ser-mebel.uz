@@ -4,9 +4,11 @@ browse it, upload into it and keep the discussion attached to it."""
 
 import os
 import re
+import zipfile
 
 from django.contrib.contenttypes.models import ContentType
 from django.db.models import Count
+from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from filer.models import File, Folder, Image
 from rest_framework import serializers, status
@@ -99,7 +101,8 @@ _CONTENT_TYPE_EXT = {
 }
 # Names that say nothing about the file ("pdf (3)", "document", "image_12").
 _GENERIC_NAME = re.compile(
-    r"^(pdf|file|fayl|document|doc|image|img|photo|scan|download|untitled)?[\s_\-()\d]*$",
+    r"^(pdf|file|fayl|document|doc|docx|xls|xlsx|csv|image|img|photo|scan|download|untitled)?"
+    r"[\s_\-()\d]*$",
     re.IGNORECASE,
 )
 
@@ -217,17 +220,43 @@ def _thumbnail(file):
         return None
 
 
+# A name that is only a type word ("xlsx", "pdf (2)"): the word is the extension.
+_NAME_IS_EXT = re.compile(r"^(pdf|docx?|xlsx?|pptx?|csv|zip|rar)[\s_\-()\d]*$", re.IGNORECASE)
+
+
+def _zip_office_ext(fh) -> str | None:
+    """.xlsx/.docx/.pptx are zip files: tell them apart by what is inside."""
+    try:
+        names = zipfile.ZipFile(fh).namelist()
+    except (zipfile.BadZipFile, OSError, ValueError):
+        return None
+    for prefix, ext in (("xl/", ".xlsx"), ("word/", ".docx"), ("ppt/", ".pptx")):
+        if any(n.startswith(prefix) for n in names):
+            return ext
+    return ".zip"
+
+
 def _download_name(file, name):
-    """Files saved before the upload fix may have no extension ("pdf (3)"); nginx then
-    serves them as an unknown type and they don't open. Read their first bytes and
-    offer a download name with the right extension. Nothing is changed on disk."""
+    """Files saved before the upload fix may have no extension ("pdf (3)", "xlsx");
+    phones then save them as an unknown type and they don't open. Read their bytes
+    (PDF/images by signature, Office files by their zip contents) or take the type word
+    of the name, and offer a download name with the right extension. Nothing is
+    changed on disk."""
     if not name or _REAL_EXTENSION.match(os.path.splitext(name)[1]):
         return None
+    ext = None
     try:
         with file.file.open("rb") as fh:
-            ext = _sniff(fh.read(16))
-    except Exception:  # missing file on disk etc. — just no hint
-        return None
+            head = fh.read(16)
+            ext = _sniff(head)
+            if not ext and head.startswith(b"PK\x03\x04"):
+                fh.seek(0)
+                ext = _zip_office_ext(fh)
+    except Exception:  # missing file on disk etc. — fall back to the name
+        ext = None
+    if not ext:
+        m = _NAME_IS_EXT.match(name.strip())
+        ext = f".{m.group(1).lower()}" if m else None
     return f"{name}{ext}" if ext else None
 
 
@@ -337,6 +366,23 @@ class FolderView(APIView):
 
 
 class FileView(APIView):
+    def get(self, request, file_id):
+        """The file itself as a download, under a name with the right extension. The
+        SPA uses this instead of the bare /media/ link: a missing file is a clear 404
+        here, not the server's redirect to /admin/ saved as the "file"."""
+        require_perm(request.user, "filer.view_folder")
+        f = get_object_or_404(File, pk=file_id)
+        name = f.original_filename or f.label or "fayl"
+        filename = _download_name(f, name) or name
+        try:
+            fh = f.file.open("rb")
+        except (FileNotFoundError, OSError, ValueError):
+            # 410, not 404: the server's nginx turns every 404 into a redirect to /admin/
+            return Response(
+                {"detail": "Fayl serverda topilmadi (diskda yo'q)."}, status=status.HTTP_410_GONE
+            )
+        return FileResponse(fh, as_attachment=True, filename=filename)
+
     def delete(self, request, file_id):
         require_perm(request.user, "filer.delete_file")
         get_object_or_404(File, pk=file_id).delete()

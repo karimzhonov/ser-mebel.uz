@@ -1,0 +1,28 @@
+{
+  "id": "00000000-0000-0000-0000-000000001032",
+  "event": "hr.day_off_set",
+  "data": {
+    "employee": {
+      "telegram_id": 777001,
+      "number": 5,
+      "name": "Dilmurod Ergashev",
+      "username": "dilmurod",
+      "is_active": true,
+      "can_dm": true,
+      "group": {
+        "chat_id": -1001234567890,
+        "title": "Chilonzor filiali"
+      },
+      "work_start": "",
+      "work_end": "",
+      "hours_label": "09:00–18:00",
+      "ontime_until": "09:15",
+      "off_days": null,
+      "off_days_effective": [
+        7
+      ],
+      "off_label": "Yakshanba"
+    },
+    "day": "2026-10-28"
+  }
+}

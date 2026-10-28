@@ -1,0 +1,28 @@
+{
+  "id": "00000000-0000-0000-0000-000000001035",
+  "event": "hr.off_days_set",
+  "data": {
+    "employee": {
+      "telegram_id": 777002,
+      "number": 6,
+      "name": "Azizbek",
+      "username": "",
+      "is_active": true,
+      "can_dm": null,
+      "group": null,
+      "work_start": "10:00",
+      "work_end": "19:00",
+      "hours_label": "10:00–19:00",
+      "ontime_until": "10:15",
+      "off_days": [
+        6,
+        7
+      ],
+      "off_days_effective": [
+        6,
+        7
+      ],
+      "off_label": "Shanba, Yakshanba"
+    }
+  }
+}

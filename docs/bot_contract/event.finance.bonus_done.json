@@ -1,0 +1,29 @@
+{
+  "id": "00000000-0000-0000-0000-000000001013",
+  "event": "finance.bonus_done",
+  "data": {
+    "bonus": {
+      "order_ref": "389",
+      "client": "Dilnoza",
+      "description": "Shkaf",
+      "total": "12000000.00",
+      "currency": "UZS",
+      "ready_date": "2026-10-20",
+      "status": "done",
+      "rest": "0.00",
+      "days": 3,
+      "percent": "0.50",
+      "bonus": "60000.00",
+      "note": "To'liq oldi: Jasur Karimov",
+      "got_text": ""
+    },
+    "to": [
+      111222333
+    ],
+    "fallback": false,
+    "fallback_who": "«Готов» bonus oluvchi",
+    "also_admins": [
+      555000111
+    ]
+  }
+}

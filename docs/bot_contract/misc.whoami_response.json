@@ -1,0 +1,42 @@
+{
+  "finance_member": {
+    "id": 7,
+    "telegram_id": 111222333,
+    "name": "Jasur Karimov",
+    "username": "jasur_k",
+    "role": "staff",
+    "is_admin": false,
+    "is_active_member": true,
+    "is_task_only": false,
+    "has_wallet": true,
+    "is_site_entry": false,
+    "is_feedback": false,
+    "is_bonus_receiver": true,
+    "is_deadline_receiver": false,
+    "site_user": null
+  },
+  "hr": {
+    "employee": {
+      "telegram_id": 777001,
+      "number": 5,
+      "name": "Dilmurod Ergashev",
+      "username": "dilmurod",
+      "is_active": true,
+      "can_dm": true,
+      "group": {
+        "chat_id": -1001234567890,
+        "title": "Chilonzor filiali"
+      },
+      "work_start": "",
+      "work_end": "",
+      "hours_label": "09:00–18:00",
+      "ontime_until": "09:15",
+      "off_days": null,
+      "off_days_effective": [
+        7
+      ],
+      "off_label": "Yakshanba"
+    },
+    "is_admin": false
+  }
+}

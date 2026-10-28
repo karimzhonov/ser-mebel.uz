@@ -75,8 +75,8 @@ def verify_telegram_init_data(init_data: str, bot_token: str, max_age: int | Non
     equal HMAC_SHA256(key=secret, msg=data_check_string), where data_check_string is
     every other field as "key=value", sorted by key, joined by "\\n".
 
-    This proves who the Telegram user is (unlike oauth.views.telegram_admin_login's bare
-    ?telegram_id=). It does NOT prove that this Telegram account belongs to the staff
+    This proves who the Telegram user is (unlike the removed bare ?telegram_id=
+    admin login). It does NOT prove that this Telegram account belongs to the staff
     user it is linked to — that depends on the bot's /start linking.
     """
     import hashlib
@@ -147,3 +147,32 @@ def notify_user(user, *, url, telegram_text, sms_template=None, sms_context=None
                 xodim_ism=user.name or "", url=absolute_url(url), **(sms_context or {})
             )
             send_bulk_sms([{"phone": phone, "text": text}])
+
+
+def link_telegram(token, telegram_id: int):
+    """Link a Telegram account to the site user named by a `/start` link payload.
+
+    `token` is the signed payload built by core.telegram.link_token (`u{pk}_{hmac10}`);
+    anything else (including the old plain-digit format) is refused. Returns the User,
+    or None for a bad signature, an unknown or inactive user. The Telegram id is moved here if another user still had it (login by
+    telegram_id must stay unambiguous). Called by POST /api/v1/bot/link/ - the bot no
+    longer writes oauth_user itself.
+    """
+    from django.db import transaction
+
+    from core.telegram import parse_link_token
+
+    from .models import User
+
+    pk = parse_link_token(token)
+    if pk is None:
+        return None
+    with transaction.atomic():
+        user = User.objects.select_for_update().filter(pk=pk, is_active=True).first()
+        if user is None:
+            return None
+        User.objects.filter(telegram_id=int(telegram_id)).exclude(pk=pk).update(telegram_id=None)
+        if user.telegram_id != int(telegram_id):
+            user.telegram_id = int(telegram_id)
+            user.save(update_fields=["telegram_id"])
+    return user

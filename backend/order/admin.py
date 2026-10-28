@@ -13,7 +13,6 @@ from unfold.admin import ModelAdmin as UnfoldModelAdmin
 from unfold.contrib.filters.admin import RelatedDropdownFilter
 from unfold.decorators import display
 
-from accounting.inlines import ExposeInline
 from core.filters import get_date_filter
 from core.unfold import ModelAdmin
 from core.utils import get_boolean_icons, get_folder_link_html, get_tag
@@ -94,9 +93,6 @@ class OrderAdmin(OrderActions, SimpleHistoryAdmin, ModelAdmin):
 
     def has_add_permission(self, request: HttpRequest) -> bool:
         return not_add_permission_in_admin(request)
-
-    def get_inlines(self, request: HttpRequest, obj: Any | None):
-        return [ExposeInline] if obj else []
 
     def get_readonly_fields(
         self, request: HttpRequest, obj: Any | None = ...

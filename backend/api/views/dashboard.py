@@ -1,4 +1,5 @@
 from constance import config
+from django.conf import settings
 from djmoney import settings as dj_settings
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -77,6 +78,7 @@ class MetaView(APIView):
                 "warning_order_days": config.WARNING_ORDER_DAYS,
                 "usd_rate": config.USD_CURRENCY,
                 "site_title": config.SITE_TITLE,
+                "telegram_bot": settings.TELEGRAM_BOT_USERNAME,
             }
         )
 

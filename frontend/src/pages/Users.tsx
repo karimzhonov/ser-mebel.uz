@@ -39,7 +39,7 @@ export default function UsersPage() {
     <div>
       <PageHeader
         title="Xodimlar"
-        subtitle="Batafsil huquqlar avvalgidek /admin/ da sozlanadi"
+        subtitle="Sayt foydalanuvchilari va ularning guruhlari"
         actions={
           <Button icon={<Plus className="h-4 w-4" />} onClick={() => (setErrors({}), setForm({ phone: "+998", name: "", password: "", is_active: true, is_staff: true, groups: [] }))}>
             Xodim
