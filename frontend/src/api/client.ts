@@ -68,7 +68,24 @@ async function refreshAccess(): Promise<string | null> {
 }
 
 api.interceptors.response.use(
-  (r) => r,
+  (r) => {
+    // The server's nginx turns any 404 into a redirect to the Django admin, and the
+    // browser follows it silently: an API call then "succeeds" with the admin's HTML.
+    // The panel never shows or uses that page — it is a "not found" error.
+    const type = String(r.headers?.["content-type"] || "");
+    const landed = String((r.request as XMLHttpRequest | undefined)?.responseURL || "");
+    if (type.startsWith("text/html") || landed.includes("/admin/")) {
+      return Promise.reject(
+        new AxiosError("Not found", "ERR_NOT_FOUND", r.config, r.request, {
+          ...r,
+          status: 404,
+          statusText: "Not Found",
+          data: { detail: "Topilmadi (server so'rovni boshqa sahifaga yo'naltirdi)." },
+        }),
+      );
+    }
+    return r;
+  },
   async (error: AxiosError) => {
     const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     if (error.response?.status === 401 && original && !original._retry) {

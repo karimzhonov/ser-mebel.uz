@@ -241,7 +241,7 @@ def test_type_word_name_is_used_when_the_bytes_say_nothing(
     assert files[0]["download_name"] == "docx (2).docx"
 
 
-def test_missing_file_download_is_a_404_not_a_redirect(admin_api, order_folder, tmp_path, settings):
+def test_missing_file_download_is_a_410_not_a_redirect(admin_api, order_folder, tmp_path, settings):
     import os
 
     from filer.models import File
@@ -252,4 +252,4 @@ def test_missing_file_download_is_a_404_not_a_redirect(admin_api, order_folder, 
     )
     os.remove(f.file.path)
     resp = admin_api.get(f"/api/v1/files/{f.pk}/")
-    assert resp.status_code == 404 and resp.data["detail"] == "Fayl serverda topilmadi."
+    assert resp.status_code == 410 and "topilmadi" in resp.data["detail"]

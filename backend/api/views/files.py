@@ -377,8 +377,9 @@ class FileView(APIView):
         try:
             fh = f.file.open("rb")
         except (FileNotFoundError, OSError, ValueError):
+            # 410, not 404: the server's nginx turns every 404 into a redirect to /admin/
             return Response(
-                {"detail": "Fayl serverda topilmadi."}, status=status.HTTP_404_NOT_FOUND
+                {"detail": "Fayl serverda topilmadi (diskda yo'q)."}, status=status.HTTP_410_GONE
             )
         return FileResponse(fh, as_attachment=True, filename=filename)
 
