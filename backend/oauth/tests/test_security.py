@@ -37,3 +37,8 @@ def test_send_message_is_signed(settings):
         body,
         nonce=h[HEADER_NONCE],
     )
+
+
+@pytest.mark.django_db
+def test_admin_login_page_renders_for_anonymous():
+    assert Client().get("/admin/login/?next=/admin/").status_code == 200

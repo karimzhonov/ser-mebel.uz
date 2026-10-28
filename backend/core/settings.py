@@ -19,7 +19,7 @@ from django.urls import reverse_lazy
 from constance import config
 from djmoney.money import Money
 from metering.constants import MeteringStatus
-from .telegram import user_bot_link
+from .telegram import bot_link, user_bot_link
 from .utils import media
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -370,7 +370,8 @@ UNFOLD = {
             {
                 "title": "Связать Telegram",
                 # signed /start token (core/telegram.py), verified by the bot's link/ call
-                "link": lambda request: user_bot_link(request.user.id),
+                # (anonymous on the login page -> plain bot link, no token)
+                "link": lambda request: user_bot_link(request.user.id) if request.user.is_authenticated else bot_link(),
             },
         ],
     },
