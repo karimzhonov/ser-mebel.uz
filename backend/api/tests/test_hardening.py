@@ -197,3 +197,59 @@ def test_dotted_client_name_pdf_accepted(admin_api, order_folder, tmp_path, sett
     )
     assert resp.status_code == 201, resp.data
     assert resp.data[0]["name"] == "Karimov.Smeta.pdf"
+
+
+def _xlsx_bytes():
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("xl/workbook.xml", "<workbook/>")
+    return buf.getvalue()
+
+
+def test_extensionless_xlsx_gets_download_name_and_downloads(
+    admin_api, order_folder, tmp_path, settings
+):
+    from filer.models import File
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    f = File.objects.create(
+        folder=order_folder, original_filename="xlsx", file=SimpleUploadedFile("xlsx", _xlsx_bytes())
+    )
+    files = admin_api.get(f"/api/v1/folders/{order_folder.pk}/").data["files"]
+    assert files[0]["download_name"] == "xlsx.xlsx"
+    resp = admin_api.get(f"/api/v1/files/{f.pk}/")
+    assert resp.status_code == 200
+    assert 'filename="xlsx.xlsx"' in resp["Content-Disposition"]
+    assert resp["Content-Disposition"].startswith("attachment")
+    assert b"".join(resp.streaming_content).startswith(b"PK")
+
+
+def test_type_word_name_is_used_when_the_bytes_say_nothing(
+    admin_api, order_folder, tmp_path, settings
+):
+    from filer.models import File
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    File.objects.create(
+        folder=order_folder, original_filename="docx (2)", file=SimpleUploadedFile("d", b"plain")
+    )
+    files = admin_api.get(f"/api/v1/folders/{order_folder.pk}/").data["files"]
+    assert files[0]["download_name"] == "docx (2).docx"
+
+
+def test_missing_file_download_is_a_404_not_a_redirect(admin_api, order_folder, tmp_path, settings):
+    import os
+
+    from filer.models import File
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    f = File.objects.create(
+        folder=order_folder, original_filename="a.pdf", file=SimpleUploadedFile("a.pdf", b"%PDF-1")
+    )
+    os.remove(f.file.path)
+    resp = admin_api.get(f"/api/v1/files/{f.pk}/")
+    assert resp.status_code == 404 and resp.data["detail"] == "Fayl serverda topilmadi."

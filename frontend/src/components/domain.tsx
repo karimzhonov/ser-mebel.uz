@@ -24,7 +24,7 @@ import {
   Upload,
 } from "lucide-react";
 import { toast } from "sonner";
-import { api, errorMessage } from "@/api/client";
+import { api, downloadFile, errorMessage } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
 import type { Deadline, Folder, FolderFile, Message, Money, Tone } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
@@ -206,9 +206,11 @@ function isPdf(f: FolderFile) {
   return [f.name, f.download_name ?? ""].some((n) => /\.pdf$/i.test(n)) || f.mime_type === "application/pdf";
 }
 
-function fileLinkProps(f: FolderFile) {
-  if (f.download_name) return { download: f.download_name };
-  return { target: "_blank", rel: "noreferrer" };
+/** Through the API, not the bare /media/ link: the file comes back as an attachment
+ * under a name with the right extension, and a missing file is a clear error instead of
+ * the server's redirect to /admin/ being saved as the "file". */
+function download(f: FolderFile) {
+  downloadFile(`/files/${f.id}/`, f.download_name || f.name).catch((e) => toast.error(errorMessage(e)));
 }
 
 export function FolderButton({ folderId, label = "Fayllar" }: { folderId: number | null | undefined; label?: string }) {
@@ -364,26 +366,19 @@ export function FolderBrowser({
                   <span className="text-[11px] font-semibold text-rose-600">PDF</span>
                 </button>
               ) : (
-                <a href={f.url} {...fileLinkProps(f)} className="flex aspect-[4/3] items-center justify-center bg-slate-50 dark:bg-slate-800/60">
+                <button onClick={() => download(f)} className="flex aspect-[4/3] w-full items-center justify-center bg-slate-50 dark:bg-slate-800/60">
                   <FileText className="h-10 w-10 text-slate-400" />
-                </a>
+                </button>
               )
             )}
             <div className="flex items-center justify-between gap-1 p-2">
-              <a
-                href={f.url}
-                {...fileLinkProps(f)}
-                onClick={(e) => {
-                  if (isPdf(f)) {
-                    e.preventDefault();
-                    setPdf(f);
-                  }
-                }}
-                className="min-w-0"
+              <button
+                onClick={() => (isPdf(f) ? setPdf(f) : f.is_image ? setPreview(f.url) : download(f))}
+                className="min-w-0 text-left"
               >
                 <div className="truncate text-xs font-medium">{f.name}</div>
                 <div className="muted text-[11px]">{fileSize(f.size)} · {relative(f.uploaded_at)}</div>
-              </a>
+              </button>
               {can("filer.delete_file") && (
                 <IconButton
                   label="O'chirish"

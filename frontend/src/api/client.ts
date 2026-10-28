@@ -121,7 +121,18 @@ export function fieldErrors(error: unknown): Record<string, string> {
 }
 
 export async function downloadFile(url: string, filename: string) {
-  const resp = await api.get(url, { responseType: "blob" });
+  const resp = await api.get(url, { responseType: "blob" }).catch(async (e: AxiosError<any>) => {
+    // the error body arrives as a Blob too: turn {"detail": …} back into JSON for errorMessage
+    const data = e?.response?.data;
+    if (data instanceof Blob) {
+      try {
+        e.response!.data = JSON.parse(await data.text());
+      } catch {
+        e.response!.data = undefined;
+      }
+    }
+    throw e;
+  });
   const href = URL.createObjectURL(resp.data);
   const a = document.createElement("a");
   a.href = href;
