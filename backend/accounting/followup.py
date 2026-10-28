@@ -163,13 +163,34 @@ def start_ready(info) -> bool:
         return True
 
 
-def order_ready(ref: str) -> bool:
+# order_ready outcomes: what the task result says in the admin («Результаты задач»)
+READY_SENT = "sent: «Готов» varaqasi yuborildi"
+READY_NO_DATE = "retry: «Готов» sanasi status tarixida hali yo'q"
+
+
+def order_ready(ref: str) -> str:
     """Right after an order became Готов (accounting/signals.py -> tasks.order_ready):
-    the card goes at once, at any hour."""
+    the card goes at once, at any hour. Returns why it was or wasn't sent."""
     info = S.order_info(ref)
-    if not info or not info.order or not _is_new_ready(info, bonus_since()):
-        return False
-    return start_ready(info)
+    if not info or not info.order:
+        return f"skip: {ref} sayt buyurtmasi topilmadi"
+    if info.bucket not in ("yakun", "tugadi"):
+        return f"skip: {ref} hozir «Готов» emas ({info.status_label})"
+    if not info.ready_date:
+        return READY_NO_DATE
+    since = bonus_since()
+    if info.ready_date < since:
+        return (
+            f"skip: {ref} {info.ready_date.isoformat()} da «Готов» bo'lgan — "
+            f"FIN_BONUS_SINCE ({since.isoformat()}) dan oldin"
+        )
+    bn = OrderBonus.objects.filter(order_ref=info.ref).first()
+    if bn:
+        return (
+            f"skip: {ref} uchun varaqa avval yuborilgan "
+            f"(bonus {bn.created_at:%Y-%m-%d %H:%M}, holati: {bn.status})"
+        )
+    return READY_SENT if start_ready(info) else f"skip: {ref} uchun varaqa avval yuborilgan"
 
 
 def new_ready_orders(infos, ok_hour: bool):
