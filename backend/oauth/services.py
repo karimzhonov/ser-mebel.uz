@@ -182,3 +182,57 @@ def link_telegram(token, telegram_id: int):
             user.telegram_id = int(telegram_id)
             user.save(update_fields=["telegram_id"])
     return user
+
+
+# Deleting a staff account must not silently take work history with it. These are
+# the only rows that may disappear (or be unlinked) together with the user.
+_USER_DELETE_OK = {
+    "oauth.user",
+    "admin.logentry",
+    "token_blacklist.outstandingtoken",
+    "token_blacklist.blacklistedtoken",
+}
+_USER_HAS_HISTORY = (
+    "Bu xodimning ish tarixi bor (yig'ish, izohlar …) — "
+    "o'chirish o'rniga «Faol» belgisini olib qo'ying."
+)
+
+
+def delete_user(actor, user) -> None:
+    """Admin removes a staff account (e.g. added by mistake).
+
+    Refused for yourself, for the last active superuser, and when the user owns work
+    records that would be deleted with them (assembly jobs, discussion messages …) —
+    then the account should be switched off («Faol» unticked) instead.
+    """
+    from django.db import transaction
+    from django.db.models.deletion import Collector, ProtectedError, RestrictedError
+
+    from core.exceptions import ServiceError
+
+    from .models import User
+
+    if actor.pk == user.pk:
+        raise ServiceError("O'zingizni o'chira olmaysiz.")
+    if (
+        user.is_superuser
+        and not User.objects.filter(is_superuser=True, is_active=True).exclude(pk=user.pk).exists()
+    ):
+        raise ServiceError("Oxirgi administratorni o'chirib bo'lmaydi.")
+
+    collector = Collector(using="default")
+    try:
+        collector.collect([user])
+    except (ProtectedError, RestrictedError):
+        raise ServiceError(_USER_HAS_HISTORY)
+    # Rows deleted with the user: `data` (loaded objects) + `fast_deletes` (querysets).
+    doomed = [(m, bool(objs)) for m, objs in collector.data.items()]
+    doomed += [(qs.model, qs.exists()) for qs in collector.fast_deletes]
+    for model, has_rows in doomed:
+        if not has_rows or model._meta.auto_created:  # groups / permissions link rows
+            continue
+        if model._meta.label_lower not in _USER_DELETE_OK:
+            raise ServiceError(_USER_HAS_HISTORY)
+
+    with transaction.atomic():
+        user.delete()

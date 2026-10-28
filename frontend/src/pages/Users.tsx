@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Pencil, Plus, Send } from "lucide-react";
+import { Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useList } from "@/api/hooks";
 import type { StaffUser } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { PhoneLink } from "@/components/domain";
-import { Badge, Button, Card, DataTable, Empty, Field, IconButton, Input, Modal, PageHeader, Pagination, SearchInput } from "@/components/ui";
+import { Badge, Button, Card, Confirm, DataTable, Empty, Field, IconButton, Input, Modal, PageHeader, Pagination, SearchInput } from "@/components/ui";
 import { dateTime } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 
@@ -19,6 +19,12 @@ export default function UsersPage() {
   const { data: groups } = useAll<{ id: number; name: string }>("groups", {}, !!user?.is_superuser);
   const [form, setForm] = useState<Form | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [del, setDel] = useState<StaffUser | null>(null);
+  const remove = useAction((id: number) => api.delete(`/users/${id}/`), {
+    success: "O'chirildi",
+    invalidate: ["users"],
+    onSuccess: () => setDel(null),
+  });
   const save = useAction(
     () => {
       const body: Record<string, unknown> = { ...form };
@@ -82,6 +88,11 @@ export default function UsersPage() {
                   >
                     <Pencil className="h-4 w-4" />
                   </IconButton>
+                  {r.id !== user?.id && (
+                    <IconButton label="O'chirish" onClick={() => setDel(r)}>
+                      <Trash2 className="h-4 w-4 text-rose-600" />
+                    </IconButton>
+                  )}
                 </div>
               ),
             },
@@ -126,6 +137,20 @@ export default function UsersPage() {
           </div>
         )}
       </Modal>
+      <Confirm
+        open={!!del}
+        onClose={() => setDel(null)}
+        onConfirm={() => remove.mutate(del!.id)}
+        loading={remove.isPending}
+        variant="danger"
+        confirmLabel="O'chirish"
+        title="Xodimni o'chirish"
+        text={
+          <>
+            <b>{del?.name || del?.phone}</b> butunlay o'chiriladi. Agar uning ish tarixi bo'lsa (yig'ish, izohlar), tizim o'chirmaydi — unda «Faol» belgisini olib qo'ying.
+          </>
+        }
+      />
     </div>
   );
 }
