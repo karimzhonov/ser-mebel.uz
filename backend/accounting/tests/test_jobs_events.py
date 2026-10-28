@@ -150,6 +150,44 @@ def test_new_ready_orders_are_capped_at_five_per_pass(
     assert not followup.new_ready_orders([], ok_hour=False)  # nothing at night
 
 
+def test_order_becoming_ready_queues_the_card_once(site_order, django_capture_on_commit_callbacks, ready_queue):
+    with django_capture_on_commit_callbacks(execute=True):
+        site_order.status = "done"
+        site_order.save()
+    assert ready_queue == ["406"]
+    with django_capture_on_commit_callbacks(execute=True):
+        site_order.desc = "edited after Готов"
+        site_order.save()  # already Готов: nothing new
+    assert ready_queue == ["406"]
+
+
+def test_order_ready_sends_the_card_at_once_at_any_hour(members, site_order, bot_events):
+    make_done(site_order)
+    assert tasks.order_ready("406") is True  # no ok_hour gate: night is fine too
+    ev = bot_events.one("finance.ready_card")
+    assert ev["bonus"]["order_ref"] == "406" and ev["to"] == [300]
+    assert OrderBonus.objects.filter(order_ref="406").count() == 1
+    assert ClientFeedback.objects.filter(order_ref="406").exists()
+    # neither a second run nor the hourly fallback sends it again
+    assert tasks.order_ready("406") is False
+    followup.hourly_orders(ok_hour=True)
+    assert len(bot_events.of("finance.ready_card")) == 1
+
+
+def test_order_ready_skips_orders_ready_before_bonus_since(members, site_order, bot_events):
+    make_done(site_order)
+    config.FIN_BONUS_SINCE = (date.today() + timedelta(days=1)).isoformat()
+    assert tasks.order_ready("406") is False
+    assert not OrderBonus.objects.exists() and bot_events == []
+
+
+def test_order_ready_ignores_orders_that_are_not_ready(members, site_order, bot_events):
+    config.FIN_BONUS_SINCE = (date.today() - timedelta(days=1)).isoformat()
+    assert tasks.order_ready("406") is False
+    assert tasks.order_ready("99999") is False
+    assert not OrderBonus.objects.exists()
+
+
 def test_nothing_is_sent_at_night(members, site_order, bot_events):
     make_done(site_order)
     followup.hourly_orders(ok_hour=False)

@@ -42,5 +42,12 @@ def hourly_orders():
 
 
 @shared_task
+def order_ready(ref: str):
+    """An order just became Готов: the payment sheet goes now (hourly_orders is the
+    fallback). Queued by accounting/signals.py."""
+    return followup.order_ready(ref)
+
+
+@shared_task
 def cleanup():
     jobs.cleanup()

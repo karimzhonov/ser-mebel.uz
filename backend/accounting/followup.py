@@ -13,6 +13,7 @@ import logging
 from datetime import date
 
 from constance import config
+from django.db import transaction
 
 from oauth.models import TelegramMember
 
@@ -141,25 +142,51 @@ def deadline_reminders(infos):
             E.deadline(info, left, key, deadline_people(), E.WHO_DEADLINE)
 
 
-def new_ready_orders(infos, ok_hour: bool):
+def _is_new_ready(info, since: date) -> bool:
+    return bool(
+        info.bucket in ("yakun", "tugadi") and info.ready_date and info.ready_date >= since
+    )
+
+
+def start_ready(info) -> bool:
     """A new «Готов» -> payment sheet to the bonus receiver, bonus tracking starts,
-    warranty row and a feedback task are created. At most 5 per pass, daytime only."""
+    warranty row and a feedback task are created. Once per order: OrderBonus.order_ref
+    is unique, so the instant path and the hourly pass can't both send the card."""
+    bn, created = S.bonus_start(info, info.ready_date)
+    if not created:
+        return False
+    E.ready_card(bn)
+    S.warranty_ensure(info.ref, info.client, info.ready_date)
+    S.feedback_schedule(info, info.ready_date)
+    return True
+
+
+def order_ready(ref: str) -> bool:
+    """Right after an order became Готов (accounting/signals.py -> tasks.order_ready):
+    the card goes at once, at any hour."""
+    info = S.order_info(ref)
+    if not info or not info.order or not _is_new_ready(info, bonus_since()):
+        return False
+    with transaction.atomic():
+        return start_ready(info)
+
+
+def new_ready_orders(infos, ok_hour: bool):
+    """Hourly fallback for Готов orders the instant path missed (worker down, status set
+    with a queryset update, ...). At most 5 per pass, daytime only."""
     if not ok_hour:
         return
     since = bonus_since()
     sent = 0
     for info in infos:
-        if info.bucket not in ("yakun", "tugadi") or not info.ready_date or info.ready_date < since:
+        if not _is_new_ready(info, since):
             continue
         if OrderBonus.objects.filter(order_ref=info.ref).exists():
             continue
         if sent >= 5:
             break
-        sent += 1
-        bn, _ = S.bonus_start(info, info.ready_date)
-        E.ready_card(bn)
-        S.warranty_ensure(info.ref, info.client, info.ready_date)
-        S.feedback_schedule(info, info.ready_date)
+        if start_ready(info):
+            sent += 1
 
 
 def hourly_orders(ok_hour: bool):

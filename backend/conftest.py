@@ -26,6 +26,15 @@ def _converted_cost_manager_request():
     ConvertedCostManager.request = None
 
 
+@pytest.fixture(autouse=True)
+def ready_queue(monkeypatch):
+    """An order saved as Готов queues accounting.tasks.order_ready (accounting/signals.py).
+    Tests never reach a broker: the queued refs land in this list instead."""
+    queued = []
+    monkeypatch.setattr("accounting.tasks.order_ready.delay", lambda ref: queued.append(ref))
+    return queued
+
+
 @pytest.fixture
 def rf():
     return RequestFactory()
