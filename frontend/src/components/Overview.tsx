@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowRight,
   Banknote,
+  Boxes,
   CalendarClock,
   Factory,
   Hammer,
@@ -11,6 +12,8 @@ import {
   PhoneCall,
   Ruler,
   TrendingUp,
+  Users,
+  Wallet,
 } from "lucide-react";
 import {
   Area,
@@ -27,7 +30,7 @@ import type { Money, Overview, Tone } from "@/api/types";
 import { cn } from "@/lib/cn";
 import { dateTime, money, num, phone } from "@/lib/format";
 import { DeadlinePill } from "./domain";
-import { Card, Empty, PageLoader, TONES } from "./ui";
+import { Badge, Card, Empty, PageLoader, TONES } from "./ui";
 
 const SERIES: Record<string, { label: string; color: string }> = {
   invoices: { label: "Arizalar", color: "#f59684" },
@@ -214,6 +217,15 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
               </ul>
             </Card>
           )}
+        </div>
+      )}
+
+      {/* Ombor · HR · Moliya */}
+      {(data.warehouse || data.hr || data.wallets) && (
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          {data.hr && <HrCard hr={data.hr} />}
+          {data.warehouse && <WarehouseCard w={data.warehouse} range={range} />}
+          {data.wallets && <WalletsCard w={data.wallets} />}
         </div>
       )}
 
@@ -417,6 +429,154 @@ function MultiChart({
         </AreaChart>
       </ResponsiveContainer>
     </div>
+  );
+}
+
+const HR_TILES: { key: string; label: string; tone: Tone }[] = [
+  { key: "on_time", label: "Vaqtida", tone: "ok" },
+  { key: "late", label: "Kech qoldi", tone: "warn" },
+  { key: "waiting", label: "Hali kelmadi", tone: "info" },
+  { key: "absent", label: "Kelmadi", tone: "danger" },
+];
+const HR_STATUS: Record<string, { label: string; tone: Tone }> = {
+  late: { label: "kech", tone: "warn" },
+  waiting: { label: "kutilmoqda", tone: "info" },
+  absent: { label: "kelmadi", tone: "danger" },
+};
+
+function HrCard({ hr }: { hr: NonNullable<Overview["hr"]> }) {
+  const off = (hr.counts.leave ?? 0) + (hr.counts.off ?? 0) + (hr.counts.excused ?? 0);
+  return (
+    <Card
+      title={
+        <span className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-slate-400" /> Bugungi davomat
+          <span className="muted text-xs font-normal">· {hr.now}</span>
+        </span>
+      }
+      padded={false}
+      actions={<MoreLink to="/hr" />}
+    >
+      {hr.holiday ? (
+        <Empty title={`🎉 Bayram: ${hr.holiday}`} text="Bugun davomat kuzatilmaydi" />
+      ) : (
+        <>
+          <div className="grid grid-cols-4 gap-2 px-5 pt-4">
+            {HR_TILES.map((t) => (
+              <div key={t.key} className="rounded-xl border border-slate-200 p-2 text-center dark:border-slate-700">
+                <div className={cn("text-xl font-semibold tabular-nums", TONES[t.tone].text)}>{hr.counts[t.key] ?? 0}</div>
+                <div className="muted text-[11px] leading-tight">{t.label}</div>
+              </div>
+            ))}
+          </div>
+          <p className="muted px-5 pt-2 text-xs">
+            Kutilgan: <b>{hr.expected}</b>
+            {off > 0 && <> · dam / ta'til / sababli: <b>{off}</b></>}
+          </p>
+          {!hr.attention.length ? (
+            <p className="muted px-5 py-4 text-sm">Hamma joyida 👍</p>
+          ) : (
+            <ul className="mt-2 max-h-64 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+              {hr.attention.map((p) => (
+                <li key={p.id} className="flex items-center justify-between gap-3 px-5 py-2 text-sm">
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium">{p.name}</span>
+                    {p.group && <span className="muted block truncate text-xs">{p.group}</span>}
+                  </span>
+                  <span className="flex items-center gap-2 whitespace-nowrap text-xs">
+                    {p.in_time && <span className="tabular-nums">{p.in_time}</span>}
+                    <Badge tone={HR_STATUS[p.status].tone} dot={false}>
+                      {HR_STATUS[p.status].label}
+                      {p.status === "late" && p.late_min ? ` ${p.late_min} daq` : ""}
+                    </Badge>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
+
+function WarehouseCard({ w, range }: { w: NonNullable<Overview["warehouse"]>; range: string }) {
+  const som = (v: number) => money({ amount: v, currency: "UZS" });
+  return (
+    <Card
+      title={
+        <span className="flex items-center gap-2">
+          <Boxes className="h-4 w-4 text-slate-400" /> Ombor
+        </span>
+      }
+      padded={false}
+      actions={<MoreLink to="/warehouse" />}
+    >
+      <dl className="grid grid-cols-2 gap-3 px-5 pt-4">
+        <div className="col-span-2">
+          <MoneyRow label={`Qoldiq qiymati · ${w.products} ta mahsulot`} value={som(w.stock_value)} />
+          {w.stock_value_usd !== null && <div className="muted text-xs tabular-nums">≈ {money({ amount: w.stock_value_usd, currency: "USD" })}</div>}
+        </div>
+        <MoneyRow label={`Kirim ${range}`} value={som(w.period_in)} tone="ok" />
+        <MoneyRow label={`Chiqim ${range}`} value={som(w.period_out)} tone="danger" />
+      </dl>
+      <div className="mt-3 border-t border-slate-100 px-5 py-2 text-xs font-medium dark:border-slate-800">
+        {w.low_count ? (
+          <span className={TONES.warn.text}>
+            <AlertTriangle className="mr-1 inline h-3.5 w-3.5" /> Kam qolgan: {w.low_count} ta
+          </span>
+        ) : (
+          <span className="muted">Kam qolgan mahsulot yo'q</span>
+        )}
+      </div>
+      {w.low_stock.length > 0 && (
+        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+          {w.low_stock.map((p) => (
+            <li key={p.id} className="flex items-center justify-between gap-3 px-5 py-2 text-sm">
+              <span className="truncate">{p.name}</span>
+              <span className="whitespace-nowrap tabular-nums">
+                <b className={TONES.danger.text}>{num(p.quantity)}</b>
+                <span className="muted"> / {num(p.min_quantity)} {p.unit}</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function WalletsCard({ w }: { w: NonNullable<Overview["wallets"]> }) {
+  const som = (v: number) => money({ amount: v, currency: w.currency });
+  return (
+    <Card
+      title={
+        <span className="flex items-center gap-2">
+          <Wallet className="h-4 w-4 text-slate-400" /> Hamyonlar
+        </span>
+      }
+      padded={false}
+      actions={<MoreLink to="/finance/wallets" />}
+    >
+      <dl className="px-5 pt-4">
+        <MoneyRow label={`Hozir qo'lda jami · ${w.count} ta hamyon`} value={som(w.total)} tone={w.total < 0 ? "danger" : undefined} />
+      </dl>
+      {!w.rows.length ? (
+        <Empty title="Hamyonlar yo'q" />
+      ) : (
+        <ul className="mt-3 max-h-72 divide-y divide-slate-100 overflow-y-auto border-t border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+          {w.rows.map((r) => (
+            <li key={r.id} className="flex items-center justify-between gap-3 px-5 py-2 text-sm">
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate">{r.name}</span>
+                {r.role === "admin" && <Badge tone="primary" dot={false}>rahbar</Badge>}
+              </span>
+              <b className={cn("whitespace-nowrap tabular-nums", r.balance < 0 ? TONES.danger.text : "")}>{som(r.balance)}</b>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 

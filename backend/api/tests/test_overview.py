@@ -127,3 +127,28 @@ def test_board_order_card_has_total_for_left_percent(admin_api, order_factory):
     cards = [c for col in boards[0]["columns"] for c in col["cards"]]
     assert cards[0]["total"] == {"amount": 1000.0, "currency": "USD"}
     assert cards[0]["left"] == {"amount": 600.0, "currency": "USD"}  # 60% left
+
+
+def test_overview_warehouse_hr_wallets_blocks(admin_api):
+    from hr.models import Employee
+    from oauth.models import TelegramMember, TelegramRole
+    from warehouse.models import Product
+
+    Product.objects.create(name="Plita", unit="dona", min_quantity=5)
+    Employee.objects.create(telegram_id=1001, number=1, name="Ali")
+    TelegramMember.objects.create(telegram_id=2001, name="Vali", role=TelegramRole.STAFF)
+
+    data = admin_api.get("/api/v1/dashboard/overview/").data
+    assert data["warehouse"]["products"] == 1
+    assert data["warehouse"]["low_count"] == 1  # 0 left, minimum 5
+    assert data["warehouse"]["low_stock"][0]["name"] == "Plita"
+    assert "expected" in data["hr"] and "attention" in data["hr"]
+    assert data["wallets"]["count"] == 1
+    assert data["wallets"]["rows"][0]["balance"] == 0
+
+
+def test_overview_new_blocks_need_their_permissions(api):
+    data = api("order.view_order").get("/api/v1/dashboard/overview/").data
+    assert data["warehouse"] is None
+    assert data["hr"] is None
+    assert data["wallets"] is None

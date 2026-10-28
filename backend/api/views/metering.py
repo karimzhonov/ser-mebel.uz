@@ -123,7 +123,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         metering = self.get_object()
         if not metering_is_editable(metering):
-            raise PermissionDenied("Arxivdagi o'lchovni tahrirlab bo'lmaydi.")
+            raise PermissionDenied("Bajarilgan o'lchovni tahrirlab bo'lmaydi.")
         kwargs["partial"] = True
         super().update(request, *args, **kwargs)
         return self._detail(metering)
