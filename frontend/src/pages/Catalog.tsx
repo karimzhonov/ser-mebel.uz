@@ -20,6 +20,7 @@ import {
   Select,
 } from "@/components/ui";
 import { money } from "@/lib/format";
+import { RoomTypesCard } from "./RoomTypes";
 
 type TypeForm = { id?: number; name: string; type: string; ordering: string };
 type InvForm = { id?: number; name: string; type: number; price: { amount: number | string; currency: string } };
@@ -155,6 +156,8 @@ export default function CatalogPage() {
           </div>
         </>
       )}
+
+      <RoomTypesCard objects={objects} />
 
       <Modal
         open={!!typeForm}

@@ -33,6 +33,12 @@ class Price(models.Model):
     )
 
     desc = models.TextField(blank=True, null=True, verbose_name="Описание")
+    # Commercial offer (PDF): how the client is addressed («Хурматли …») and the
+    # variant name on the total page («Премиум»). Empty = the client's name / nothing.
+    client_title = models.CharField(
+        max_length=255, blank=True, default="", verbose_name="Murojaat (PDF)"
+    )
+    variant = models.CharField(max_length=64, blank=True, default="", verbose_name="Variant")
 
     history = HistoricalRecords()
 
@@ -65,9 +71,77 @@ class ObjectType(models.Model):
         return self.name
 
 
+class RoomType(models.Model):
+    """Oshxona, Yotoqxona, Sanuzel … — what a price calculation starts from.
+    `object_types` = which furniture fits this room; empty = any."""
+
+    name = models.CharField(max_length=255, unique=True, verbose_name="Nomi")
+    icon = models.CharField(max_length=8, blank=True, default="", verbose_name="Belgi")
+    ordering = models.IntegerField(default=0, verbose_name="Tartib")
+    object_types = models.ManyToManyField(
+        ObjectType, blank=True, related_name="room_types", verbose_name="Mos mebellar"
+    )
+
+    class Meta:
+        ordering = ["ordering", "name"]
+        verbose_name = "Xona turi"
+        verbose_name_plural = "Xona turlari"
+
+    def __str__(self):
+        return self.name
+
+
+class Room(models.Model):
+    """One room of one calculation: «Yotoqxona 2». Its furniture are Calculate rows."""
+
+    price = models.ForeignKey(
+        Price, models.CASCADE, related_name="rooms", verbose_name="Hisob-kitob"
+    )
+    room_type = models.ForeignKey(
+        RoomType, models.PROTECT, related_name="rooms", verbose_name="Xona turi"
+    )
+    name = models.CharField(max_length=255, verbose_name="Nomi")
+    ordering = models.IntegerField(default=0, verbose_name="Tartib")
+
+    class Meta:
+        ordering = ["ordering", "id"]
+        verbose_name = "Xona"
+        verbose_name_plural = "Xonalar"
+
+    def __str__(self):
+        return self.name
+
+
+class RoomImage(models.Model):
+    """A render / drawing shown on the room's page of the offer PDF (a filer image
+    stored in the calculation's folder)."""
+
+    room = models.ForeignKey(Room, models.CASCADE, related_name="images", verbose_name="Xona")
+    file = models.ForeignKey("filer.Image", models.CASCADE, related_name="+", verbose_name="Rasm")
+    ordering = models.IntegerField(default=0, verbose_name="Tartib")
+
+    class Meta:
+        ordering = ["ordering", "id"]
+        verbose_name = "Xona rasmi"
+        verbose_name_plural = "Xona rasmlari"
+
+    def __str__(self):
+        return f"{self.room} — {self.file_id}"
+
+
 class Calculate(models.Model):
     name = models.CharField(max_length=255, verbose_name="Название")
     price = models.ForeignKey(Price, models.CASCADE, verbose_name="Цена")
+    # null = made before rooms existed (shown as «Boshqa»)
+    room = models.ForeignKey(
+        Room,
+        models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="calculations",
+        verbose_name="Xona",
+    )
+    note = models.TextField(blank=True, default="", verbose_name="Qo'shimcha")
     amount = MoneyField(max_digits=12, blank=True, null=True, verbose_name="Сумма (Итого)")
     count = models.FloatField(null=True, verbose_name="Кв. м. / Пог м.")
     obj = models.ForeignKey(ObjectType, models.CASCADE, verbose_name="Объект")

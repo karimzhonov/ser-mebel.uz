@@ -168,6 +168,7 @@ export interface InventoryType {
 export interface CalculationItem {
   id: number;
   inventory_type: number;
+  inventory_type_name: string;
   inventory: number;
   inventory_name: string;
   count: number;
@@ -179,8 +180,64 @@ export interface Calculation {
   name: string;
   count: number | null;
   obj: number;
+  room: number | null;
+  note: string;
   amount: Money | null;
   items: CalculationItem[];
+}
+
+export interface RoomType {
+  id: number;
+  name: string;
+  icon: string;
+  ordering: number;
+  /** empty = any furniture fits */
+  object_types: number[];
+}
+
+export interface RoomImage {
+  id: number;
+  file: number;
+  name: string;
+  thumbnail: string | null;
+}
+
+export interface Room {
+  id: number;
+  name: string;
+  room_type: number;
+  room_type_name: string;
+  icon: string;
+  ordering: number;
+  images: RoomImage[];
+}
+
+/** The offer exactly as the Excel / PDF print it. */
+export interface OfferSheet {
+  client: string;
+  estimator: string;
+  date: string;
+  variant: string;
+  currency: string;
+  total: number;
+  rooms: {
+    id: number | null;
+    name: string;
+    room_type: string;
+    icon: string;
+    images: number;
+    total: number;
+    items: {
+      id: number;
+      name: string;
+      object: string;
+      count: number | null;
+      count_text: string;
+      note: string;
+      amount: number;
+      params: { label: string; value: string }[];
+    }[];
+  }[];
 }
 
 export interface Price {
@@ -193,7 +250,11 @@ export interface Price {
   folder: number | null;
   user_detail: UserShort | null;
   order: OrderSummary | null;
+  client_title: string;
+  variant: string;
   calculations?: Calculation[];
+  rooms?: Room[];
+  sheet?: OfferSheet;
   actions?: { edit: boolean; done: boolean };
 }
 

@@ -11,6 +11,8 @@ from metering.price.models import (
     InventoryType,
     ObjectType,
     Price,
+    Room,
+    RoomType,
 )
 from metering.services import ASSIGNABLE_STATUSES, metering_is_editable
 from oauth.constants import METERING_PERMISSION
@@ -244,12 +246,21 @@ class InventoryTypeSerializer(serializers.ModelSerializer):
 
 class CalculationItemSerializer(serializers.ModelSerializer):
     inventory_type = serializers.IntegerField(source="inventory.type_id", read_only=True)
+    inventory_type_name = serializers.CharField(source="inventory.type.name", read_only=True)
     inventory_name = serializers.CharField(source="inventory.name", read_only=True)
     price = MoneyField(read_only=True)
 
     class Meta:
         model = InventoryInCalculate
-        fields = ["id", "inventory_type", "inventory", "inventory_name", "count", "price"]
+        fields = [
+            "id",
+            "inventory_type",
+            "inventory_type_name",
+            "inventory",
+            "inventory_name",
+            "count",
+            "price",
+        ]
 
 
 class CalculationSerializer(serializers.ModelSerializer):
@@ -258,7 +269,43 @@ class CalculationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Calculate
-        fields = ["id", "name", "count", "obj", "amount", "items"]
+        fields = ["id", "name", "count", "obj", "room", "note", "amount", "items"]
+
+
+class RoomTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RoomType
+        fields = ["id", "name", "icon", "ordering", "object_types"]
+
+
+def _room_image(img):
+    from ..views.files import _thumbnail
+
+    f = img.file
+    return {
+        "id": img.id,
+        "file": f.pk,
+        "name": f.original_filename or f.label or "",
+        "thumbnail": _thumbnail(f),
+    }
+
+
+class RoomSerializer(serializers.ModelSerializer):
+    room_type_name = serializers.CharField(source="room_type.name", read_only=True)
+    icon = serializers.CharField(source="room_type.icon", read_only=True)
+    images = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Room
+        fields = ["id", "name", "room_type", "room_type_name", "icon", "ordering", "images"]
+
+    def get_images(self, obj):
+        return [_room_image(i) for i in obj.images.all()]
+
+
+class RoomInputSerializer(serializers.Serializer):
+    room_type = serializers.PrimaryKeyRelatedField(queryset=RoomType.objects.all())
+    name = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
 
 class CalculationItemInputSerializer(serializers.Serializer):
@@ -272,6 +319,8 @@ class CalculationInputSerializer(serializers.Serializer):
     count = serializers.FloatField(min_value=0)
     object_type = serializers.PrimaryKeyRelatedField(queryset=ObjectType.objects.all())
     items = CalculationItemInputSerializer(many=True, required=False)
+    room = serializers.IntegerField(required=False, allow_null=True)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class PriceSerializer(serializers.ModelSerializer):
@@ -292,6 +341,8 @@ class PriceSerializer(serializers.ModelSerializer):
             "folder",
             "user_detail",
             "order",
+            "client_title",
+            "variant",
         ]
         read_only_fields = ["metering", "price", "done", "created_at", "folder"]
 
@@ -301,16 +352,35 @@ class PriceSerializer(serializers.ModelSerializer):
 
 class PriceDetailSerializer(PriceSerializer):
     calculations = serializers.SerializerMethodField()
+    rooms = serializers.SerializerMethodField()
+    sheet = serializers.SerializerMethodField()
     actions = serializers.SerializerMethodField()
 
     class Meta(PriceSerializer.Meta):
-        fields = PriceSerializer.Meta.fields + ["calculations", "actions"]
+        fields = PriceSerializer.Meta.fields + ["calculations", "rooms", "sheet", "actions"]
+
+    def get_rooms(self, obj):
+        qs = (
+            Room.objects.filter(price=obj)
+            .select_related("room_type")
+            .prefetch_related("images__file")
+        )
+        return RoomSerializer(qs, many=True).data
+
+    def get_sheet(self, obj):
+        """The offer exactly as the Excel/PDF print it (the page's «Excel» view)."""
+        from metering.price.services import offer_data
+
+        data = offer_data(obj)
+        for r in data["rooms"]:
+            r["images"] = len(r["images"])
+        return data
 
     def get_calculations(self, obj):
         qs = (
             Calculate.objects.filter(price=obj)
             .select_related("obj")
-            .prefetch_related("inventoryincalculate_set__inventory")
+            .prefetch_related("inventoryincalculate_set__inventory__type")
             .order_by("id")
         )
         return CalculationSerializer(qs, many=True, context=self.context).data

@@ -1,10 +1,14 @@
+import os
+
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.db.models import Count, Prefetch
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import MethodNotAllowed, PermissionDenied
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
 from call_center.models import Invoice
@@ -14,9 +18,27 @@ from metering.constants import MeteringStatus
 from metering.design.models import Design, DesignType
 from metering.design.services import add_design_type, mark_design_done
 from metering.models import Metering
-from metering.price.excel import download_inlines_excel
-from metering.price.models import Calculate, Inventory, InventoryType, ObjectType, Price
-from metering.price.services import delete_calculation, mark_price_done, save_calculation
+from metering.price.models import (
+    Calculate,
+    Inventory,
+    InventoryType,
+    ObjectType,
+    Price,
+    Room,
+    RoomImage,
+    RoomType,
+)
+from metering.price.services import (
+    add_room,
+    add_room_images,
+    delete_calculation,
+    delete_room,
+    delete_room_image,
+    mark_price_done,
+    rename_room,
+    reorder_rooms,
+    save_calculation,
+)
 from metering.services import (
     assign_metering_tasks,
     create_metering,
@@ -31,7 +53,7 @@ from metering.services import (
 )
 from oauth.constants import METERING_PERMISSION
 
-from ..permissions import ModelPermissions, require_perm
+from ..permissions import IsStaffUser, ModelPermissions, require_perm
 from ..serializers.common import UserShortSerializer
 from ..serializers.metering import (
     AssignTasksSerializer,
@@ -48,6 +70,8 @@ from ..serializers.metering import (
     OtherDaySerializer,
     PriceDetailSerializer,
     PriceSerializer,
+    RoomInputSerializer,
+    RoomTypeSerializer,
     can_assign_tasks,
 )
 from ..utils import apply_period, csv_values, int_param, timeseries
@@ -270,7 +294,11 @@ class PriceViewSet(viewsets.ModelViewSet):
     search_fields = ["metering__client__fio", "metering__client__phone", "desc"]
     ordering_fields = ["created_at"]
     ordering = ["-created_at"]
-    http_method_names = ["get", "post", "patch", "head", "options"]
+    # DELETE is only for the nested calculations / rooms / images, never the price itself
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def destroy(self, request, *args, **kwargs):
+        raise MethodNotAllowed("DELETE")
 
     def get_serializer_class(self):
         if self.action in ("retrieve", "create", "partial_update", "update"):
@@ -300,8 +328,99 @@ class PriceViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def excel(self, request, pk=None):
+        from metering.price.excel import build_offer_xlsx
+
         price = self.get_object()
-        return download_inlines_excel(None, request, price.pk)
+        resp = HttpResponse(
+            build_offer_xlsx(price),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        resp["Content-Disposition"] = f'attachment; filename="hisob-{price.pk}.xlsx"'
+        return resp
+
+    @action(detail=True, methods=["get"])
+    def pdf(self, request, pk=None):
+        """The commercial offer («Тижорат таклифи») for the client."""
+        from metering.price.offer_pdf import build_offer_pdf
+
+        price = self.get_object()
+        resp = HttpResponse(build_offer_pdf(price), content_type="application/pdf")
+        resp["Content-Disposition"] = f'inline; filename="taklif-{price.pk}.pdf"'
+        return resp
+
+    # --- rooms ---------------------------------------------------------------------
+
+    def _editable_price(self, request):
+        require_perm(
+            request.user, "price.change_price", "price.add_calculate", "price.change_calculate"
+        )
+        return self.get_object()
+
+    def _room_of(self, price, room_id):
+        if room_id in (None, ""):
+            return None
+        return get_object_or_404(Room.objects.select_related("room_type"), pk=room_id, price=price)
+
+    @action(detail=True, methods=["post"], url_path="rooms", serializer_class=RoomInputSerializer)
+    def add_room(self, request, pk=None):
+        price = self._editable_price(request)
+        s = RoomInputSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        add_room(price, s.validated_data["room_type"], s.validated_data.get("name", ""))
+        return self._detail(price)
+
+    @action(detail=True, methods=["post"], url_path="rooms/reorder")
+    def reorder_rooms(self, request, pk=None):
+        price = self._editable_price(request)
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            raise ServiceError("ids: xona id'lari ro'yxati kerak")
+        reorder_rooms(price, ids)
+        return self._detail(price)
+
+    @action(detail=True, methods=["patch", "delete"], url_path=r"rooms/(?P<room_id>\d+)")
+    def room(self, request, pk=None, room_id=None):
+        price = self._editable_price(request)
+        room = self._room_of(price, room_id)
+        if request.method == "DELETE":
+            require_perm(request.user, "price.delete_calculate")
+            delete_room(room)
+        else:
+            rename_room(room, request.data.get("name", ""))
+        return self._detail(price)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"rooms/(?P<room_id>\d+)/images",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def room_images(self, request, pk=None, room_id=None):
+        from .files import IMAGE_EXTENSIONS, _normalize_upload_name
+
+        price = self._editable_price(request)
+        room = self._room_of(price, room_id)
+        uploads = request.FILES.getlist("file")
+        if not uploads:
+            raise ServiceError("Rasm tanlanmagan")
+        for up in uploads:
+            name = _normalize_upload_name(up, lambda: "")
+            if not name or os.path.splitext(name)[1].lower() not in IMAGE_EXTENSIONS:
+                raise ServiceError(f"«{up.name}» rasm emas (JPG, PNG, WEBP …)")
+            up.name = name
+        add_room_images(request.user, room, uploads)
+        return self._detail(price)
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"rooms/(?P<room_id>\d+)/images/(?P<image_id>\d+)",
+    )
+    def room_image(self, request, pk=None, room_id=None, image_id=None):
+        price = self._editable_price(request)
+        room = self._room_of(price, room_id)
+        delete_room_image(get_object_or_404(RoomImage, pk=image_id, room=room))
+        return self._detail(price)
 
     @action(
         detail=True,
@@ -321,6 +440,8 @@ class PriceViewSet(viewsets.ModelViewSet):
             name=data["name"],
             count=data["count"],
             items=data.get("items", []),
+            room=self._room_of(price, data.get("room")),
+            note=data.get("note", ""),
         )
         return self._detail(price)
 
@@ -351,6 +472,8 @@ class PriceViewSet(viewsets.ModelViewSet):
             count=data["count"],
             items=data.get("items", []),
             calculation=calc,
+            room=self._room_of(price, data.get("room")),
+            note=data.get("note", ""),
         )
         return self._detail(price)
 
@@ -361,6 +484,31 @@ class ObjectTypeViewSet(viewsets.ModelViewSet):
     permission_classes = [ModelPermissions]
     pagination_class = None
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+
+class RoomTypeViewSet(viewsets.ModelViewSet):
+    """Xona turlari. Everyone who calculates prices reads them; managing them needs
+    the price.*_roomtype permissions (superusers)."""
+
+    queryset = RoomType.objects.prefetch_related("object_types").order_by("ordering", "name")
+    serializer_class = RoomTypeSerializer
+    permission_classes = [ModelPermissions]
+    pagination_class = None
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_permissions(self):
+        if self.request.method in ("GET", "HEAD", "OPTIONS"):
+            return [IsStaffUser()]
+        return super().get_permissions()
+
+    def list(self, request, *args, **kwargs):
+        require_perm(request.user, "price.view_price")
+        return super().list(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        if instance.rooms.exists():
+            raise ServiceError("Bu xona turi hisob-kitoblarda ishlatilgan — o'chirib bo'lmaydi")
+        instance.delete()
 
 
 class InventoryTypeViewSet(viewsets.ModelViewSet):

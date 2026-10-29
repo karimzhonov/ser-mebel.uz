@@ -215,7 +215,7 @@ def _thumbnail(file):
     try:
         from easy_thumbnails.files import get_thumbnailer
 
-        return get_thumbnailer(file.file)({"size": (320, 320), "crop": True}).url
+        return get_thumbnailer(file.file).get_thumbnail({"size": (320, 320), "crop": True}).url
     except Exception:  # a broken/missing image must not take the whole folder down
         return None
 
