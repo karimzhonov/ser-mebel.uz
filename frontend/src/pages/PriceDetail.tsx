@@ -467,9 +467,9 @@ function RoomImages({ priceId, room, canEdit }: { priceId: number; room: Room; c
   const input = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<RoomImage | null>(null);
   const upload = useAction(
-    (files: FileList) => {
+    (files: File[]) => {
       const form = new FormData();
-      Array.from(files).forEach((f) => form.append("file", f));
+      files.forEach((f) => form.append("file", f));
       return api.post(`/prices/${priceId}/rooms/${room.id}/images/`, form);
     },
     { success: "Rasm qo'shildi", invalidate: INV },
@@ -513,8 +513,10 @@ function RoomImages({ priceId, room, canEdit }: { priceId: number; room: Room; c
           multiple
           hidden
           onChange={(e) => {
-            if (e.target.files?.length) upload.mutate(e.target.files);
+            // copy first: the FileList is live and clearing the input empties it
+            const files = Array.from(e.target.files ?? []);
             e.target.value = "";
+            if (files.length) upload.mutate(files);
           }}
         />
       </div>
