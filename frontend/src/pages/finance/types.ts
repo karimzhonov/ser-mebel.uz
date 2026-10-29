@@ -266,3 +266,47 @@ export interface ManualOrder {
   opened: string | null;
   closed: string | null;
 }
+
+export interface WorkerListItem {
+  name: string;
+  group: string;
+  position: string;
+  is_active: boolean;
+  in_catalog: boolean;
+  total: number;
+  count: number;
+}
+
+export interface WorkerCard {
+  name: string;
+  group: string;
+  position: string;
+  in_catalog: boolean;
+  advance: number;
+  salary: number;
+  other: number;
+  total: number;
+  all_time: number;
+  count: number;
+  last_date: string | null;
+  by_giver: { name: string; amount: number; count: number }[];
+  rows: {
+    id: number;
+    number: number;
+    date: string;
+    time: string;
+    amount: number;
+    currency: string;
+    orig_amount: number | null;
+    member: string;
+    comment: string;
+    pay_type: string;
+  }[];
+}
+
+export interface WorkerCardResponse {
+  date_from: string;
+  date_to: string;
+  workers: WorkerListItem[];
+  card: WorkerCard | null;
+}
