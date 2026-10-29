@@ -20,6 +20,7 @@ import { FinanceOrdersPage, FinanceWalletsPage } from "@/pages/finance/Wallets";
 import { HrJournalPage, HrTodayPage } from "@/pages/hr/Today";
 import { WarehouseMovementsPage, WarehouseSettingsPage, WarehouseStockPage } from "@/pages/warehouse/Warehouse";
 import { HrCalendarPage, HrEmployeesPage, HrRatingPage, HrSettingsPage } from "@/pages/hr/People";
+import FinanceWorkerCardPage from "@/pages/finance/WorkerCard";
 import { FinanceChecksPage, FinanceFollowupPage, FinanceReportsPage, FinanceRequestsPage } from "@/pages/finance/Tasks";
 import UsersPage from "@/pages/Users";
 import FolderPage from "@/pages/Folder";
@@ -64,6 +65,7 @@ export default function App() {
         <Route path="finance/orders" element={<FinanceOrdersPage />} />
         <Route path="finance/requests" element={<FinanceRequestsPage />} />
         <Route path="finance/reports" element={<FinanceReportsPage />} />
+        <Route path="finance/worker-card" element={<FinanceWorkerCardPage />} />
         <Route path="finance/followup" element={<FinanceFollowupPage />} />
         <Route path="finance/checks" element={<FinanceChecksPage />} />
         <Route path="finance/settings" element={<FinanceSettingsPage />} />

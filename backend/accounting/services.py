@@ -41,6 +41,7 @@ from .constants import (
     CAT_TRANSFER,
     CategoryKind,
     OpKind,
+    PayType,
 )
 from .models import (
     ClientFeedback,
@@ -53,6 +54,7 @@ from .models import (
     OrderBonus,
     SiteEntryTask,
     WarrantyLetter,
+    Worker,
 )
 from .text import (
     add_months,
@@ -975,6 +977,98 @@ def summary(start: date | None, end: date | None, member: TelegramMember | None 
         "income_by_category": group(lambda t: is_company_income(t, scope_all)),
         "salary_by_worker": sorted(salary.items(), key=lambda kv: -kv[1]),
         "count": len(rows),
+    }
+
+
+NO_WORKER = "— (ism yozilmagan)"
+
+
+def _worker_key(name: str) -> str:
+    return "" if name == NO_WORKER else " ".join(str(name or "").split()).lower()
+
+
+def salary_ops(start: date | None = None, end: date | None = None):
+    """Every salary/advance paid out (the «Ishchi kartasi» sheet's SUMIFS base)."""
+    qs = Operation.objects.filter(
+        is_deleted=False, kind=OpKind.EXPENSE, category__code=CAT_SALARY
+    ).select_related("member")
+    if start:
+        qs = qs.filter(date__gte=start)
+    if end:
+        qs = qs.filter(date__lte=end)
+    return qs
+
+
+def worker_list(start: date | None, end: date | None) -> list[dict]:
+    """The worker picker of «Ishchi kartasi»: the «Ishchilar» catalog plus anyone a
+    salary was written to by hand, with what each got in the period."""
+    out: dict[str, dict] = {}
+    for w in Worker.objects.all():
+        out.setdefault(
+            _worker_key(w.name),
+            {
+                "name": w.name,
+                "group": w.group,
+                "position": w.position,
+                "is_active": w.is_active,
+                "in_catalog": True,
+                "total": ZERO,
+                "count": 0,
+            },
+        )
+    for name, amount in salary_ops(start, end).values_list("worker", "amount"):
+        k = _worker_key(name)
+        if not k:
+            name = NO_WORKER
+        x = out.setdefault(
+            k,
+            {
+                "name": name,
+                "group": "",
+                "position": "",
+                "is_active": True,
+                "in_catalog": False,
+                "total": ZERO,
+                "count": 0,
+            },
+        )
+        x["total"] += amount
+        x["count"] += 1
+    # people paid by hand but missing from the catalog still show up for the period
+    return [x for x in out.values() if x["in_catalog"] or x["count"]]
+
+
+def worker_card(name: str, start: date | None, end: date | None) -> dict:
+    """«👷 Ishchi kartasi»: what one worker got in a period — advance, salary, who paid
+    and every payment, newest first."""
+    key = _worker_key(name)
+    every = [t for t in salary_ops() if _worker_key(t.worker) == key]
+    rows = [t for t in every if (not start or t.date >= start) and (not end or t.date <= end)]
+    rows.sort(key=lambda t: (t.date, t.time or time.min, t.id), reverse=True)
+
+    def total(pred=lambda t: True):
+        return sum((t.amount for t in rows if pred(t)), ZERO)
+
+    givers: dict[str, dict] = {}
+    for t in rows:
+        g = givers.setdefault(t.member.name, {"name": t.member.name, "sum": ZERO, "count": 0})
+        g["sum"] += t.amount
+        g["count"] += 1
+    w = Worker.objects.filter(name__iexact=" ".join(name.split())).first()
+    return {
+        "name": w.name if w else name,
+        "group": w.group if w else "",
+        "position": w.position if w else "",
+        "in_catalog": bool(w),
+        "advance": total(lambda t: t.pay_type == PayType.ADVANCE),
+        "salary": total(lambda t: t.pay_type == PayType.SALARY),
+        "other": total(lambda t: t.pay_type not in (PayType.ADVANCE, PayType.SALARY)),
+        "total": total(),
+        "count": len(rows),
+        "last_date": max((t.date for t in every), default=None),
+        "all_time": sum((t.amount for t in every), ZERO),
+        "by_giver": sorted(givers.values(), key=lambda g: -g["sum"]),
+        "rows": rows,
     }
 
 

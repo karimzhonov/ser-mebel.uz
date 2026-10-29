@@ -69,6 +69,7 @@ v1 = [
     path("files/<int:file_id>/", FileView.as_view(), name="api-file"),
     path("finance/summary/", finance.FinanceSummaryView.as_view(), name="api-finance-summary"),
     path("finance/wallets/", finance.WalletsView.as_view(), name="api-finance-wallets"),
+    path("finance/worker-card/", finance.WorkerCardView.as_view(), name="api-finance-worker-card"),
     path("finance/orders/", finance.FinanceOrdersView.as_view(), name="api-finance-orders"),
     path(
         "finance/orders/<str:ref>/",
