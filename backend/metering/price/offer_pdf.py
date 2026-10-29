@@ -21,6 +21,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
+from .services import client_measure_text as measure_text
 from .services import offer_data, offer_lines
 
 log = logging.getLogger(__name__)
@@ -105,6 +106,9 @@ def _register_fonts():
         return
     pdfmetrics.registerFont(TTFont("Mont", str(FONTS / "Montserrat-Regular.ttf")))
     pdfmetrics.registerFont(TTFont("Mont-Bold", str(FONTS / "Montserrat-Bold.ttf")))
+    # body text of the text pages: a touch heavier than Regular reads better on grey
+    pdfmetrics.registerFont(TTFont("Mont-Medium", str(HERE / "fonts" / "Montserrat-Medium.ttf")))
+    pdfmetrics.registerFont(TTFont("Mont-Semi", str(HERE / "fonts" / "Montserrat-SemiBold.ttf")))
     _fonts_ready = True
 
 
@@ -137,12 +141,25 @@ class Offer:
         self.c.setFillColor(color)
         self.c.rect(0, 0, W, H, stroke=0, fill=1)
 
-    def text(self, x, top, s, *, size, bold=False, color=DARK, align="l", space=0.0, max_w=None):
-        font = "Mont-Bold" if bold else "Mont"
+    def text(
+        self,
+        x,
+        top,
+        s,
+        *,
+        size,
+        bold=False,
+        color=DARK,
+        align="l",
+        space=0.0,
+        max_w=None,
+        font=None,
+    ):
+        font = font or ("Mont-Bold" if bold else "Mont")
         s = str(s)
-        while max_w and size > 8 and self.width(s, size, bold, space) > max_w:
+        while max_w and size > 8 and self.width(s, size, bold, space, font) > max_w:
             size -= 1
-        w = self.width(s, size, bold, space)
+        w = self.width(s, size, bold, space, font)
         if align == "c":
             x -= w / 2
         elif align == "r":
@@ -183,37 +200,49 @@ class Offer:
         self.c.line(ROOM_X, self.y(ROOM_TOP + 22), ROOM_X + 70, self.y(ROOM_TOP + 22))
 
     @staticmethod
-    def width(s, size, bold=False, space=0.0):
-        font = "Mont-Bold" if bold else "Mont"
+    def width(s, size, bold=False, space=0.0, font=None):
+        font = font or ("Mont-Bold" if bold else "Mont")
         return pdfmetrics.stringWidth(str(s), font, size) + space * max(len(str(s)) - 1, 0)
 
-    def paragraphs(self, x, top, width, paras, *, size=16, leading=None, gap=8, color=DARK):
-        """Plain paragraphs; «**bold:**» at the start of one is drawn bold."""
-        leading = leading or size * 1.35
+    def paragraphs(self, x, top, width, paras, *, size=T_BODY, leading=None, gap=10, color=DARK):
+        """Text-page paragraphs in Montserrat Medium; a «**lead-in:**» is SemiBold and a
+        «— item» line is indented like a list."""
+        leading = leading or size * 1.5
+        body, semi = "Mont-Medium", "Mont-Semi"
         cy = top
         for p in paras:
-            bold_head = ""
+            px, pw = x, width
+            if p.startswith("— "):
+                self.text(x + 4, cy, "•", size=size, font=semi, color=GREEN)
+                px, pw, p = x + 24, width - 24, p[2:]
+            head = ""
             if p.startswith("**"):
                 end = p.find("**", 2)
-                bold_head, p = p[2:end], p[end + 2 :].lstrip()
-            first = True
-            if bold_head:
-                hw = self.text(x, cy, bold_head, size=size, bold=True, color=color)
-                rest_w = width - hw - size * 0.3
-                if p:
-                    head_lines = simpleSplit(p, "Mont", size, rest_w)
-                    self.text(x + hw + size * 0.3, cy, head_lines[0], size=size, color=color)
-                    p = p[len(head_lines[0]) :].lstrip()
+                head, p = p[2:end], p[end + 2 :].lstrip()
+            lines = simpleSplit(p, body, size, pw) if p else []
+            if head:
+                hw = self.text(px, cy, head, size=size, font=semi, color=color) + size * 0.3
+                first = simpleSplit(p, body, size, pw - hw)[:1] if p else []
+                if first:
+                    self.text(px + hw, cy, first[0], size=size, font=body, color=color)
+                    rest = p[len(first[0]) :].lstrip()
+                    lines = simpleSplit(rest, body, size, pw) if rest else []
+                else:
+                    lines = []
                 cy += leading
-                first = False
-            for line in simpleSplit(p, "Mont", size, width) if p else []:
-                self.text(x, cy, line, size=size, color=color)
-                cy += leading
-                first = False
-            if first:
+            for line in lines:
+                self.text(px, cy, line, size=size, font=body, color=color)
                 cy += leading
             cy += gap
         return cy
+
+    def logo(self, x, top, w):
+        """The crisp logo over where the template's blurry one was (erased from the
+        backgrounds)."""
+        img = ImageReader(str(HERE / "logo.png"))
+        iw, ih = img.getSize()
+        h = w * ih / iw
+        self.c.drawImage(img, x, self.y(top + h), w, h, mask="auto")
 
     def url_box(self, x, top, w, h=50):
         c = self.c
@@ -232,6 +261,7 @@ class Offer:
     def cover(self):
         d = self.data
         self.bg("bg_cover.png")
+        self.logo(81, 40, 140)
         self.text(1385, 60, "СМЕТАЧИ", size=T_LABEL, color=MUTED, align="r", space=1)
         self.text(
             1385, 88, (d["estimator"] or "SERMEBEL").upper(), size=T_BODY, bold=True, align="r"
@@ -244,8 +274,9 @@ class Offer:
 
     def about(self):
         self.bg("bg_about.png")
+        self.logo(81, 30, 110)
         self.heading(82, 172, "БИЗ", "ҲАҚИМИЗДА")
-        self.paragraphs(82, 228, 580, ABOUT, size=T_BODY, gap=12)
+        self.paragraphs(82, 236, 590, ABOUT, size=T_BODY + 1, gap=16)
         self.url_box(98, 700, 495)
 
     @staticmethod
@@ -372,7 +403,7 @@ class Offer:
             lab = simpleSplit(ln["label"].upper(), "Mont", T_LABEL, self.LABEL_W - 16)
             val = simpleSplit(str(ln["value"]), "Mont", T_VALUE, info_w - self.LABEL_W)
             rows.append((lab, val))
-        h = 28 + len(name_lines) * 27 + (22 if it["count_text"] else 0) + 12
+        h = 28 + len(name_lines) * 27 + (22 if measure_text(it) else 0) + 12
         h += sum(max(len(a), len(b)) * 20 + 8 for a, b in rows)
         h += 84  # price strip
         return h, name_lines, rows
@@ -420,8 +451,8 @@ class Offer:
         for ln in name_lines:
             self.text(x0, y, ln, size=T_ITEM + 4, bold=True)
             y += 27
-        if it["count_text"]:
-            self.text(x0, y - 4, it["count_text"], size=T_LABEL + 1, color=MUTED)
+        if measure_text(it):
+            self.text(x0, y - 4, measure_text(it), size=T_LABEL + 1, color=MUTED)
             y += 22
         y += 10
         bottom = top + h - 84
@@ -483,7 +514,7 @@ class Offer:
             )
             rows.append((label_lines, value_lines))
         h = self.PAD * 2 + len(name_lines) * 22
-        if it["count_text"]:
+        if measure_text(it):
             h += 20
         for lab, val in rows:
             h += max(len(lab), len(val)) * self.ROW_H * 0.8 + 6
@@ -537,11 +568,11 @@ class Offer:
             for ln in name_lines:
                 self.text(tx + self.C1 / 2, y, ln, size=T_ITEM, bold=True, color=DARK, align="c")
                 y += 22
-            if it["count_text"]:
+            if measure_text(it):
                 self.text(
                     tx + self.C1 / 2,
                     y - 2,
-                    f"({it['count_text']})",
+                    f"({measure_text(it)})",
                     size=T_LABEL,
                     color=MUTED,
                     align="c",
@@ -597,6 +628,7 @@ class Offer:
     def total(self):
         d = self.data
         self.bg("bg_total.png")
+        self.logo(81, 30, 110)
         top = 175
         self.heading(W / 2, top, "УМУМИЙ", "ЖАМИ", align="c")
         if d["variant"]:
@@ -640,19 +672,22 @@ class Offer:
 
     def delivery(self):
         self.bg("bg_delivery.png")
+        self.logo(81, 30, 110)
         self.text(758, 150, "ЕТКАЗИБ БЕРИШ", size=T_PAGE, bold=True, color=FOREST, max_w=620)
         self.text(758, 222, "ВА ЎРНАТИШ", size=T_PAGE, color=DARK, max_w=620)
-        self.paragraphs(758, 285, 600, DELIVERY, size=T_BODY - 1, gap=8)
+        self.paragraphs(758, 290, 600, DELIVERY, size=T_BODY, gap=8)
         self.text(800, 720, f"http://{SITE}", size=17, bold=True)
 
     def terms(self):
         self.bg("bg_terms.png")
+        self.logo(81, 30, 110)
         self.text(98, 172, "ТАЙЁРЛАШ", size=T_PAGE, bold=True, color=FOREST)
         self.text(98, 240, "МУДДАТИ", size=T_PAGE, color=DARK)
-        self.paragraphs(98, 290, 590, TERMS, size=T_BODY - 1, gap=8)
+        self.paragraphs(98, 296, 600, TERMS, size=T_BODY, gap=7)
 
     def thanks(self):
         self.bg("bg_thanks.png")
+        self.logo(81, 22, 140)
         c = self.c
         c.setFillColor(white)  # hide the contacts baked into the background (old phone)
         c.rect(140, self.y(740), 420, 175, stroke=0, fill=1)

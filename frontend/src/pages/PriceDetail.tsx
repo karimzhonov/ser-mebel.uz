@@ -51,6 +51,16 @@ import { useUrlState } from "@/lib/useUrlState";
 const PdfViewer = lazy(() => import("@/components/PdfViewer"));
 const INV = ["prices", "meterings", "orders"];
 const usd = (amount: number) => money({ amount, currency: "USD" });
+const UNIT_LABEL = { kv: "Kv. m", pog: "Pog. m" } as const;
+
+/** kv. m = height × width, pog. m = width (mm) — the same rule as the server. */
+function sizeCount(unit: "kv" | "pog", h: string, w: string): number | null {
+  const H = Number(h) || 0;
+  const Wd = Number(w) || 0;
+  if (unit === "pog" && Wd) return Math.round(Wd) / 1000;
+  if (unit === "kv" && Wd && H) return Math.round((H * Wd) / 1000) / 1000;
+  return null;
+}
 
 /* =================================================================== page */
 export function PriceDetailPage() {
@@ -439,7 +449,8 @@ function CalcList({
                 {obj && <Badge dot={false}>{obj.name}</Badge>}
                 {!!c.count && (
                   <span className="muted text-xs tabular-nums">
-                    {num(c.count)} {obj?.count_label}
+                    {num(c.count)} {c.unit ? UNIT_LABEL[c.unit] : obj?.count_label}
+                    {(c.height || c.width || c.depth) && ` · ${[c.height, c.width, c.depth].filter(Boolean).join(" × ")} mm`}
                   </span>
                 )}
               </div>
@@ -473,6 +484,7 @@ function CalcList({
                         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">🧩</span>
                       )}
                       <span>
+                        {a.type_name && <span className="muted">{a.type_name}: </span>}
                         {a.name}
                         {a.count !== 1 && <span className="muted"> × {num(a.count)}</span>}
                       </span>
@@ -950,7 +962,15 @@ function CalculationEditor({
 }) {
   const { data: types } = useAll<InventoryType>("inventory-types", { obj: objectType.id });
   const [name, setName] = useState(calc?.name ?? objectType.name);
-  const [count, setCount] = useState(calc?.count != null ? String(calc.count) : "");
+  const [typedCount, setCount] = useState(calc?.count != null ? String(calc.count) : "");
+  const [unit, setUnit] = useState<"kv" | "pog">(calc?.unit || (objectType.count_name === "pog" ? "pog" : "kv"));
+  const [size, setSize] = useState({
+    height: calc?.height ? String(calc.height) : "",
+    width: calc?.width ? String(calc.width) : "",
+    depth: calc?.depth ? String(calc.depth) : "",
+  });
+  const fromSize = sizeCount(unit, size.height, size.width);
+  const count = fromSize !== null ? String(fromSize) : typedCount;
   const [note, setNote] = useState(calc?.note ?? "");
   const [color, setColor] = useState(calc?.color ?? "");
   const [manual, setManual] = useState(calc?.manual_amount != null ? String(Number(calc.manual_amount)) : "");
@@ -982,6 +1002,11 @@ function CalculationEditor({
       const body = {
         name,
         count: Number(count || 0),
+        // the object type's own unit is sent as "" so a later change of its default still applies
+        unit: unit === (objectType.count_name === "pog" ? "pog" : "kv") ? "" : unit,
+        height: size.height ? Number(size.height) : null,
+        width: size.width ? Number(size.width) : null,
+        depth: size.depth ? Number(size.depth) : null,
         object_type: objectType.id,
         room: roomId ? Number(roomId) : null,
         note,
@@ -1033,12 +1058,9 @@ function CalculationEditor({
         </div>
       }
     >
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nomi (PDF'da shunday chiqadi)">
           <Input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="Под ТВ" />
-        </Field>
-        <Field label={objectType.count_label}>
-          <Input type="number" inputMode="decimal" value={count} onChange={(e) => setCount(e.target.value)} />
         </Field>
         <Field label="Xona">
           <Select value={roomId} onChange={(e) => setRoomId(e.target.value)}>
@@ -1050,6 +1072,37 @@ function CalculationEditor({
             ))}
           </Select>
         </Field>
+      </div>
+      <div className="mt-4 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <span className="label">O'lcham</span>
+          <Segmented
+            value={unit}
+            onChange={(v) => setUnit(v as "kv" | "pog")}
+            options={[
+              { value: "kv", label: "Kv. m" },
+              { value: "pog", label: "Pog. m" },
+            ]}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Field label="Bo'yi, mm" hint={unit === "kv" ? "kv. m = bo'yi × eni" : undefined}>
+            <Input type="number" inputMode="numeric" min={0} value={size.height} onChange={(e) => setSize({ ...size, height: e.target.value })} placeholder="2400" />
+          </Field>
+          <Field label="Eni, mm" hint={unit === "pog" ? "pog. m = eni" : undefined}>
+            <Input type="number" inputMode="numeric" min={0} value={size.width} onChange={(e) => setSize({ ...size, width: e.target.value })} placeholder="1800" />
+          </Field>
+          <Field label="Chuqurligi, mm" hint="PDF'da o'lcham sifatida chiqadi">
+            <Input type="number" inputMode="numeric" min={0} value={size.depth} onChange={(e) => setSize({ ...size, depth: e.target.value })} placeholder="600" />
+          </Field>
+          <Field label={UNIT_LABEL[unit]} hint={fromSize !== null ? "o'lchamdan hisoblandi" : "yoki qo'lda yozing"}>
+            {fromSize !== null ? (
+              <div className="flex h-10 items-center rounded-xl bg-slate-50 px-3 font-semibold tabular-nums dark:bg-slate-800">{num(fromSize)}</div>
+            ) : (
+              <Input type="number" inputMode="decimal" value={typedCount} onChange={(e) => setCount(e.target.value)} />
+            )}
+          </Field>
+        </div>
       </div>
       <div className="mt-5 space-y-3">
         {!types && <PageLoader />}
@@ -1074,18 +1127,18 @@ function CalculationEditor({
                   <Input type="number" inputMode="decimal" value={line.count} onChange={(e) => setLines({ ...lines, [t.id]: { ...line, count: e.target.value } })} />
                 </Field>
               ) : (
-                <div className="muted pb-2 text-xs">× {objectType.count_label}</div>
+                <div className="muted pb-2 text-xs">× {UNIT_LABEL[unit]}</div>
               )}
               <div className="pb-2 text-right text-sm font-medium tabular-nums">{inv?.price ? money({ amount: qty * inv.price.amount, currency: inv.price.currency }) : "—"}</div>
             </div>
           );
         })}
         {types && !types.length && <Empty title="Bu mebel uchun parametrlar yo'q" text="Ularni «Mahsulotlar» bo'limida qo'shing." />}
-        <Field label="Rang" hint="To'ldirilsa PDF'da «Цвет» bo'lib chiqadi">
+        <Field label="Rang" hint="To'ldirilsa PDF'da «Ранги» bo'lib chiqadi">
           <Input value={color} onChange={(e) => setColor(e.target.value)} placeholder="Masalan: oq matoviy, yong'oq" />
         </Field>
-        <AccessoriesEditor priceId={priceId} rows={accs} onChange={setAccs} />
-        <Field label="Qo'shimcha (PDF'da «Допол.» bo'lib chiqadi)" hint="Masalan: подсветка, зеркало + пуфик">
+        <AccessoriesEditor priceId={priceId} types={types ?? []} rows={accs} onChange={setAccs} />
+        <Field label="Qo'shimcha (PDF'da «Қўшимча» bo'lib chiqadi)" hint="Masalan: подсветка, зеркало + пуфик">
           <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
         <div className="grid items-end gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50 sm:grid-cols-2">
@@ -1103,16 +1156,27 @@ function CalculationEditor({
 }
 
 /* =================================================================== accessories */
-type AccRow = Omit<Accessory, "count" | "price" | "amount" | "id"> & { id?: number; key: string; count: string; price: string };
+type AccRow = Omit<Accessory, "count" | "price" | "amount" | "id" | "type_name"> & { type_name?: string; id?: number; key: string; count: string; price: string };
 
-function AccessoriesEditor({ priceId, rows, onChange }: { priceId: number; rows: AccRow[]; onChange: (rows: AccRow[]) => void }) {
-  const { data: catalog } = useAll<Inventory>("inventories");
-  const { data: types } = useAll<InventoryType>("inventory-types");
+/** Accessories of one piece of furniture. The catalog list holds only this furniture's
+ * own products: anything else (a sofa, a worktop…) is a separate piece in the room. */
+function AccessoriesEditor({
+  priceId,
+  types,
+  rows,
+  onChange,
+}: {
+  priceId: number;
+  types: InventoryType[];
+  rows: AccRow[];
+  onChange: (rows: AccRow[]) => void;
+}) {
+  const catalog: Inventory[] = types.flatMap((t) => t.inventories);
   const [uploading, setUploading] = useState<string | null>(null);
   const set = (key: string, patch: Partial<AccRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const add = () =>
     onChange([...rows, { key: `n${Date.now()}`, inventory: null, name: "", count: "1", price: "", image: null, thumbnail: null }]);
-  const typeName = (id: number) => types?.find((t) => t.id === id)?.name ?? "";
+  const typeName = (id: number) => types.find((t) => t.id === id)?.name ?? "";
 
   async function upload(key: string, file: File) {
     setUploading(key);
@@ -1136,7 +1200,11 @@ function AccessoriesEditor({ priceId, rows, onChange }: { priceId: number; rows:
           Aksessuar
         </Button>
       </div>
-      {!rows.length && <p className="muted text-xs">Yo'q. Katalogdan tanlang yoki nomi va narxini qo'lda yozing — rasm ham qo'shish mumkin.</p>}
+      {!rows.length && (
+        <p className="muted text-xs">
+          Yo'q. Shu mebelning katalogidan tanlang yoki nomi va narxini qo'lda yozing — rasm ham qo'shish mumkin. Boshqa mebel (divan, stoleshnitsa…) xonaga «Mebel qo'shish» orqali alohida qo'shiladi.
+        </p>
+      )}
       <div className="space-y-2">
         {rows.map((r) => (
           <div key={r.key} className="grid items-center gap-2 sm:grid-cols-[48px_1fr_1fr_70px_90px_70px_32px]">
@@ -1161,7 +1229,9 @@ function AccessoriesEditor({ priceId, rows, onChange }: { priceId: number; rows:
               }}
             >
               <option value="">— katalogdan (ixtiyoriy) —</option>
-              {catalog?.map((i) => (
+              {/* picked before this rule, from another furniture: keep it visible */}
+              {r.inventory !== null && !catalog.some((i) => i.id === r.inventory) && <option value={r.inventory}>{r.name}</option>}
+              {catalog.map((i) => (
                 <option key={i.id} value={i.id}>
                   {typeName(i.type)}: {i.name} — {money(i.price)}
                 </option>

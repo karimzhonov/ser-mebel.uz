@@ -220,7 +220,7 @@ class ObjectTypeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ObjectType
-        fields = ["id", "name", "count_name", "count_label"]
+        fields = ["id", "name", "count_name", "count_label", "show_area"]
 
 
 class InventorySerializer(serializers.ModelSerializer):
@@ -278,6 +278,10 @@ class CalculationSerializer(serializers.ModelSerializer):
             "room",
             "note",
             "color",
+            "unit",
+            "height",
+            "width",
+            "depth",
             "auto_amount",
             "manual_amount",
             "amount",
@@ -292,6 +296,7 @@ class CalculationSerializer(serializers.ModelSerializer):
             {
                 "id": a.id,
                 "inventory": a.inventory_id,
+                "type_name": a.inventory.type.name if a.inventory_id else "",
                 "name": a.name,
                 "count": a.count,
                 "price": float(a.unit_price),
@@ -369,6 +374,12 @@ class CalculationInputSerializer(serializers.Serializer):
         max_digits=12, decimal_places=2, min_value=0, required=False, allow_null=True, default=None
     )
     accessories = AccessoryInputSerializer(many=True, required=False, default=list)
+    unit = serializers.ChoiceField(choices=["", "kv", "pog"], required=False, default="")
+    height = serializers.IntegerField(
+        min_value=0, max_value=100000, required=False, allow_null=True
+    )
+    width = serializers.IntegerField(min_value=0, max_value=100000, required=False, allow_null=True)
+    depth = serializers.IntegerField(min_value=0, max_value=100000, required=False, allow_null=True)
 
 
 class PriceSerializer(serializers.ModelSerializer):
@@ -465,7 +476,11 @@ class PriceDetailSerializer(PriceSerializer):
         qs = (
             Calculate.objects.filter(price=obj)
             .select_related("obj")
-            .prefetch_related("inventoryincalculate_set__inventory__type", "accessories__image")
+            .prefetch_related(
+                "inventoryincalculate_set__inventory__type",
+                "accessories__image",
+                "accessories__inventory__type",
+            )
             .order_by("id")
         )
         return CalculationSerializer(qs, many=True, context=self.context).data

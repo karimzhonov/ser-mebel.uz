@@ -146,6 +146,8 @@ export interface ObjectType {
   name: string;
   count_name: string;
   count_label: string;
+  /** decor: the client's PDF shows m²; other furniture shows its size */
+  show_area: boolean;
 }
 
 export interface Inventory {
@@ -183,6 +185,12 @@ export interface Calculation {
   room: number | null;
   note: string;
   color: string;
+  /** "" = the object type's own unit */
+  unit: "" | "kv" | "pog";
+  /** size in mm */
+  height: number | null;
+  width: number | null;
+  depth: number | null;
   /** decimals come as strings */
   auto_amount: string | null;
   manual_amount: string | null;
@@ -194,6 +202,8 @@ export interface Calculation {
 export interface Accessory {
   id: number;
   inventory: number | null;
+  /** the catalog type («Musor yashik») when picked from the catalog */
+  type_name: string;
   name: string;
   count: number;
   price: number;
@@ -260,6 +270,7 @@ export interface OfferSheet {
       object: string;
       count: number | null;
       count_text: string;
+      size_text: string;
       note: string;
       color: string;
       manual: boolean;

@@ -65,7 +65,7 @@ def build_offer_xlsx(price) -> bytes:
 
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
-    from .services import offer_data, offer_lines
+    from .services import measure_text, offer_data, offer_lines
 
     data = offer_data(price)
     wb = Workbook()
@@ -115,7 +115,7 @@ def build_offer_xlsx(price) -> bytes:
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=4)
         row(["Мебел", "Параметр", "Материал", "Нархи"], bold=True, fill=grey)
         for it in room["items"]:
-            title = it["name"] + (f" ({it['count_text']})" if it["count_text"] else "")
+            title = it["name"] + (f" ({measure_text(it)})" if measure_text(it) else "")
             lines = offer_lines(it)
             first = ws.max_row + 1
             if not lines:

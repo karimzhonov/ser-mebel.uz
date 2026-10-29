@@ -34,7 +34,7 @@ export default function CatalogPage() {
   const { data: types, isLoading } = useAll<InventoryType>("inventory-types", { obj: current }, !!current);
   const [typeForm, setTypeForm] = useState<TypeForm | null>(null);
   const [invForm, setInvForm] = useState<InvForm | null>(null);
-  const [objForm, setObjForm] = useState<{ name: string; count_name: string } | null>(null);
+  const [objForm, setObjForm] = useState<{ id?: number; name: string; count_name: string; show_area: boolean } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const inv = ["inventory-types", "object-types", "inventories"];
@@ -52,7 +52,7 @@ export default function CatalogPage() {
     },
     { success: "Saqlandi", invalidate: inv, onSuccess: () => setInvForm(null) },
   );
-  const saveObj = useAction(() => api.post("/object-types/", objForm), {
+  const saveObj = useAction(() => (objForm!.id ? api.patch(`/object-types/${objForm!.id}/`, objForm) : api.post("/object-types/", objForm)), {
     success: "Obyekt qo'shildi",
     invalidate: inv,
     onSuccess: () => setObjForm(null),
@@ -61,6 +61,7 @@ export default function CatalogPage() {
   const delInv = useAction((id: number) => api.delete(`/inventories/${id}/`), { success: "O'chirildi", invalidate: inv });
 
   if (!objects) return <PageLoader />;
+  const currentObj = objects.find((o) => String(o.id) === current);
   return (
     <div>
       <PageHeader
@@ -69,8 +70,17 @@ export default function CatalogPage() {
         actions={
           <>
             {can("price.add_objecttype") && (
-              <Button variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setObjForm({ name: "", count_name: "kv" })}>
+              <Button variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setObjForm({ name: "", count_name: "kv", show_area: false })}>
                 Obyekt
+              </Button>
+            )}
+            {can("price.change_objecttype") && currentObj && (
+              <Button
+                variant="outline"
+                icon={<Pencil className="h-4 w-4" />}
+                onClick={() => setObjForm({ id: currentObj.id, name: currentObj.name, count_name: currentObj.count_name, show_area: currentObj.show_area })}
+              >
+                {currentObj.name}
               </Button>
             )}
             {can("price.add_inventorytype") && current && (
@@ -205,7 +215,7 @@ export default function CatalogPage() {
       <Modal
         open={!!objForm}
         onClose={() => setObjForm(null)}
-        title="Yangi obyekt"
+        title={objForm?.id ? "Obyektni tahrirlash" : "Yangi obyekt"}
         size="sm"
         footer={<Button loading={saveObj.isPending} onClick={() => saveObj.mutate()}>Saqlash</Button>}
       >
@@ -221,6 +231,13 @@ export default function CatalogPage() {
                 ))}
               </Select>
             </Field>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" className="mt-0.5" checked={objForm.show_area} onChange={(e) => setObjForm({ ...objForm, show_area: e.target.checked })} />
+              <span>
+                Dekor — PDF'da kv. m ko'rsatilsin
+                <span className="muted block text-xs">Belgilanmasa, mijozga beriladigan PDF'da kv. m o'rniga mebel o'lchami (bo'yi × eni × chuqurligi) chiqadi. Narx baribir kv. m bo'yicha hisoblanadi.</span>
+              </span>
+            </label>
           </div>
         )}
       </Modal>

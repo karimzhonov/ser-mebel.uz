@@ -241,6 +241,9 @@ def test_accessories_colour_and_manual_price(admin_api, price, catalog, settings
     lines = r.data["sheet"]["rooms"][0]["items"][0]["lines"]
     assert {"label": "Ранги", "value": "Оқ матовий"} in lines
     assert {"label": "Аксессуар", "value": "Ручка золото × 8"} in lines
+    # from the catalog: the line says what it is (its catalog type), not just «Аксессуар»
+    assert {"label": "Механизм", "value": "BLUM × 3"} in lines
+    assert calc["accessories"][0]["type_name"] == "Механизм"
 
     # final price by hand; the accessory rows are updated in place, one removed
     body["manual_amount"] = "1200"
@@ -341,3 +344,65 @@ def test_room_picture_can_be_attached_to_furniture(admin_api, price, catalog, se
     )
     assert r.data["rooms"][0]["images"][0]["calculate"] == calc_id
     assert admin_api.get(url(price, "pdf/")).content.startswith(b"%PDF")
+
+
+def test_unit_and_sizes_give_the_count(admin_api, price, catalog):
+    r = admin_api.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json")
+    room_id = r.data["rooms"][0]["id"]
+    body = {
+        "name": "Шкаф",
+        "count": 0,
+        "object_type": catalog["kitchen"].pk,  # pog by default
+        "room": room_id,
+        "unit": "kv",
+        "height": 2400,
+        "width": 1500,
+        "depth": 600,
+        "items": [{"inventory_type": catalog["facade"].pk, "inventory": catalog["mdf"].pk}],
+    }
+    r = admin_api.post(url(price, "calculations/"), body, format="json")
+    assert r.status_code == 200, r.data
+    calc = r.data["calculations"][0]
+    assert calc["count"] == 3.6 and calc["unit"] == "kv"  # 2,4 × 1,5
+    assert r.data["price"]["amount"] == 1080  # 3,6 × 300
+    item = r.data["sheet"]["rooms"][0]["items"][0]
+    assert item["count_text"] == "3,6 м²" and item["size_text"] == "2400 × 1500 × 600 мм"
+
+    body.update(unit="pog", height=None)  # running metres: the width only
+    r = admin_api.patch(url(price, f"calculations/{calc['id']}/"), body, format="json")
+    assert r.data["calculations"][0]["count"] == 1.5
+    assert r.data["sheet"]["rooms"][0]["items"][0]["count_text"] == "1,5 п.м."
+
+    body.update(unit="", width=None, depth=None, count=2)  # no sizes: the typed figure
+    r = admin_api.patch(url(price, f"calculations/{calc['id']}/"), body, format="json")
+    assert r.data["calculations"][0]["count"] == 2
+    assert admin_api.get(url(price, "pdf/")).content.startswith(b"%PDF")
+
+
+def test_client_pdf_shows_size_and_only_decor_keeps_m2():
+    from metering.price.services import client_measure_text
+
+    base = {"count_text": "3,6 м²", "size_text": "2400 × 1500 × 600 мм", "unit": "kv"}
+    assert client_measure_text({**base, "show_area": False}) == "2400 × 1500 × 600 мм"
+    assert client_measure_text({**base, "show_area": True}) == "3,6 м² · 2400 × 1500 × 600 мм"
+    # no size typed: m² is better than nothing
+    assert client_measure_text({**base, "size_text": "", "show_area": False}) == "3,6 м²"
+    pog = {"count_text": "4,19 п.м.", "size_text": "", "unit": "pog", "show_area": False}
+    assert client_measure_text(pog) == "4,19 п.м."
+
+
+def test_accessory_from_another_furniture_is_refused(admin_api, price, catalog):
+    sofa = ObjectType.objects.create(name="Диван", count_name="pog")
+    soft = InventoryType.objects.create(name="Материал", obj=sofa, type=InventoryType.TYPE_KV)
+    velvet = Inventory.objects.create(name="Велюр", type=soft, price=Money(50, "USD"))
+    r = admin_api.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json")
+    body = {
+        "name": "Кухня",
+        "count": 4,
+        "object_type": catalog["kitchen"].pk,
+        "room": r.data["rooms"][0]["id"],
+        "accessories": [{"inventory": velvet.pk, "count": 1}],
+    }
+    r = admin_api.post(url(price, "calculations/"), body, format="json")
+    assert r.status_code == 400
+    assert "alohida mebel" in r.data["detail"]

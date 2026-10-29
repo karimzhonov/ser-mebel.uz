@@ -91,6 +91,10 @@ def save_calculation(
     color: str = "",
     manual_amount=None,
     accessories: list | None = None,
+    unit: str = "",
+    height: int | None = None,
+    width: int | None = None,
+    depth: int | None = None,
 ):
     """Create or update one Calculate row, its inventory lines and accessories.
 
@@ -116,6 +120,9 @@ def save_calculation(
     from .models import Calculate, Inventory, InventoryInCalculate, InventoryType
 
     assert_editable(price)
+    if unit not in ("", "kv", "pog"):
+        raise ServiceError("O'lchov birligi: kv yoki pog")
+    count = size_count(unit or object_type.count_name, height, width, count)
     by_type = {}
     for item in items or []:
         type_id = int(item["inventory_type"])
@@ -143,6 +150,8 @@ def save_calculation(
         calc.room = room
         calc.note = (note or "").strip()
         calc.color = (color or "").strip()
+        calc.unit = unit
+        calc.height, calc.width, calc.depth = height or None, width or None, depth or None
         calc.manual_amount = manual_amount
         calc.save()
 
@@ -179,6 +188,36 @@ def save_calculation(
     return calc
 
 
+def size_count(unit: str, height, width, typed):
+    """kv. m = height × width, pog. m = width (sizes in mm). Without the sizes it needs,
+    the typed figure stays."""
+    if width and unit == "pog":
+        return round(width / 1000, 3)
+    if width and height and unit == "kv":
+        return round(height * width / 1_000_000, 3)
+    return typed
+
+
+def measure_text(item: dict) -> str:
+    """«3,15 м² · 2400 × 1800 × 600 мм» — what the offer prints under a furniture name."""
+    return " · ".join(t for t in (item.get("count_text"), item.get("size_text")) if t)
+
+
+def client_measure_text(item: dict) -> str:
+    """What the client's PDF prints under a furniture name: running metres stay in
+    p.m., decor stays in m², other furniture shows its size instead of m² (falling back
+    to m² when no size was entered). Pricing is unaffected."""
+    if item.get("unit") == "kv" and not item.get("show_area") and item.get("size_text"):
+        return item["size_text"]
+    return measure_text(item)
+
+
+def size_text(height, width, depth) -> str:
+    """2400 × 1800 × 600 мм (only the sizes that were given)."""
+    parts = [str(v) for v in (height, width, depth) if v]
+    return f"{' × '.join(parts)} мм" if parts else ""
+
+
 def _save_accessories(price, calc, rows: list) -> float:
     from decimal import Decimal
 
@@ -194,9 +233,13 @@ def _save_accessories(price, calc, rows: list) -> float:
         acc = existing.get(row.get("id")) or CalcAccessory(calculate=calc)
         inv = None
         if row.get("inventory"):
-            inv = Inventory.objects.filter(pk=row["inventory"]).first()
+            inv = Inventory.objects.select_related("type").filter(pk=row["inventory"]).first()
             if inv is None:
                 raise ServiceError("Katalogdagi mahsulot topilmadi")
+            if inv.type.obj_id != calc.obj_id and acc.inventory_id != inv.pk:
+                raise ServiceError(
+                    f"«{inv.name}» bu mebelga tegishli emas — uni xonaga alohida mebel qilib qo'shing"
+                )
         name = (row.get("name") or (inv.name if inv else "")).strip()
         if not name:
             raise ServiceError("Aksessuar nomini kiriting")
@@ -382,7 +425,9 @@ def offer_data(price) -> dict:
     calcs_qs = (
         Calculate.objects.select_related("obj")
         .prefetch_related(
-            Prefetch("inventoryincalculate_set", queryset=lines_qs), "accessories__image"
+            Prefetch("inventoryincalculate_set", queryset=lines_qs),
+            "accessories__image",
+            "accessories__inventory__type",
         )
         .order_by("id")
     )
@@ -396,7 +441,7 @@ def offer_data(price) -> dict:
     )
 
     def item(c):
-        unit = "м²" if c.obj.count_name == "kv" else "п.м."
+        unit = "м²" if (c.unit or c.obj.count_name) == "kv" else "п.м."
         params = []
         for ic in c.inventoryincalculate_set.all():
             t = ic.inventory.type
@@ -406,6 +451,8 @@ def offer_data(price) -> dict:
             params.append({"label": t.name, "value": value})
         accessories = [
             {
+                # «Musor yashik» — the catalog type says what the item is
+                "type": a.inventory.type.name if a.inventory_id else "",
                 "name": a.name,
                 "count": a.count,
                 "count_text": _num(a.count),
@@ -420,6 +467,9 @@ def offer_data(price) -> dict:
             "object": c.obj.name,
             "count": c.count,
             "count_text": f"{_num(c.count)} {unit}" if c.count else "",
+            "size_text": size_text(c.height, c.width, c.depth),
+            "unit": c.unit or c.obj.count_name,
+            "show_area": c.obj.show_area,
             "params": params,
             "color": c.color,
             "accessories": accessories,
@@ -486,7 +536,7 @@ def offer_lines(item: dict) -> list[dict]:
         lines.append({"label": "Ранги", "value": item["color"]})
     for a in item.get("accessories") or []:
         value = a["name"] + (f" × {a['count_text']}" if a["count"] and a["count"] != 1 else "")
-        lines.append({"label": "Аксессуар", "value": value})
+        lines.append({"label": a.get("type") or "Аксессуар", "value": value})
     if item.get("note"):
         lines.append({"label": "Қўшимча", "value": item["note"]})
     return lines

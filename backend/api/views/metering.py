@@ -505,6 +505,10 @@ class PriceViewSet(viewsets.ModelViewSet):
             color=data.get("color", ""),
             manual_amount=data.get("manual_amount"),
             accessories=data.get("accessories", []),
+            unit=data.get("unit", ""),
+            height=data.get("height"),
+            width=data.get("width"),
+            depth=data.get("depth"),
         )
         return self._detail(price)
 
@@ -540,6 +544,10 @@ class PriceViewSet(viewsets.ModelViewSet):
             color=data.get("color", ""),
             manual_amount=data.get("manual_amount"),
             accessories=data.get("accessories", []),
+            unit=data.get("unit", ""),
+            height=data.get("height"),
+            width=data.get("width"),
+            depth=data.get("depth"),
         )
         return self._detail(price)
 

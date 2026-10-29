@@ -66,6 +66,9 @@ class ObjectType(models.Model):
     count_name = models.CharField(
         max_length=255, choices=COUNT_NAMES, default="kv", verbose_name="Кол-во тип"
     )
+    # Decor is sold by the square metre and the client sees m²; other furniture is
+    # priced by m² too, but the offer shows its size (height × width × depth) instead.
+    show_area = models.BooleanField(default=False, verbose_name="PDF'da kv. m (dekor)")
 
     def __str__(self):
         return self.name
@@ -153,6 +156,18 @@ class Calculate(models.Model):
     )
     note = models.TextField(blank=True, default="", verbose_name="Qo'shimcha")
     color = models.CharField(max_length=255, blank=True, default="", verbose_name="Rang")
+    # kv / pog chosen for this piece ("" = the object type's default) and its size in mm:
+    # kv. m = height × width, pog. m = width; depth is only printed
+    unit = models.CharField(
+        max_length=8,
+        blank=True,
+        default="",
+        choices=ObjectType.COUNT_NAMES,
+        verbose_name="O'lchov birligi",
+    )
+    height = models.PositiveIntegerField(null=True, blank=True, verbose_name="Bo'yi (mm)")
+    width = models.PositiveIntegerField(null=True, blank=True, verbose_name="Eni (mm)")
+    depth = models.PositiveIntegerField(null=True, blank=True, verbose_name="Chuqurligi (mm)")
     # amount = manual_amount when set, else auto_amount (catalog lines + accessories)
     auto_amount = models.DecimalField(
         max_digits=12, decimal_places=2, null=True, blank=True, verbose_name="Avtomatik narx"
