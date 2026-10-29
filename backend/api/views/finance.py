@@ -402,6 +402,49 @@ class FinanceSummaryView(APIView):
         )
 
 
+class WorkerCardView(APIView):
+    """«👷 Ishchi kartasi»: the worker list for a period and, with ?worker=, one worker's
+    advances / salaries, who paid them and every payment. Company-wide pay, so only
+    for those who see every wallet."""
+
+    permission_classes = [ModelPermissions]
+    queryset = Operation.objects.none()
+
+    def get(self, request):
+        require_perm(request.user, VIEW_ALL)
+        start, end = _period(request)
+        workers = [{**w, "total": f(w["total"])} for w in S.worker_list(start, end)]
+        name = str(request.query_params.get("worker") or "").strip()
+        card = None
+        if name:
+            c = S.worker_card(name, start, end)
+            card = {
+                **{k: c[k] for k in ("name", "group", "position", "in_catalog", "count")},
+                **{k: f(c[k]) for k in ("advance", "salary", "other", "total", "all_time")},
+                "last_date": c["last_date"],
+                "by_giver": [
+                    {"name": g["name"], "amount": f(g["sum"]), "count": g["count"]}
+                    for g in c["by_giver"]
+                ],
+                "rows": [
+                    {
+                        "id": t.id,
+                        "number": t.number,
+                        "date": t.date,
+                        "time": t.time.strftime("%H:%M") if t.time else "",
+                        "amount": f(t.amount),
+                        "currency": t.currency,
+                        "orig_amount": f(t.orig_amount) if t.orig_amount is not None else None,
+                        "member": t.member.name,
+                        "comment": t.comment,
+                        "pay_type": t.pay_type,
+                    }
+                    for t in c["rows"]
+                ],
+            }
+        return Response({"date_from": start, "date_to": end, "workers": workers, "card": card})
+
+
 class WalletsView(APIView):
     permission_classes = [ModelPermissions]
     queryset = Operation.objects.none()
