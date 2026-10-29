@@ -65,7 +65,7 @@ export function PricesPage() {
             onChange={(v) => set({ done: v })}
             options={[
               { value: "false", label: "Faol" },
-              { value: "true", label: "Arxiv" },
+              { value: "true", label: "Bajarilgan" },
               { value: "", label: "Barchasi" },
             ]}
           />
@@ -295,7 +295,7 @@ export function PriceDetailPage() {
         open={confirmDone}
         onClose={() => setConfirmDone(false)}
         title="Hisob-kitob yakunlansinmi?"
-        text="Hisob-kitob arxivga o'tadi."
+        text="Hisob-kitob «Bajarilgan» bo'limiga o'tadi."
         variant="success"
         loading={done.isPending}
         onConfirm={() => done.mutate()}

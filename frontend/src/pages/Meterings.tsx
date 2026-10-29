@@ -74,7 +74,7 @@ export function MeteringsPage() {
           onChange={(v) => set({ status: v === "active" ? ACTIVE : v === "archive" ? ARCHIVE : "" })}
           options={[
             { value: "active", label: "Faol" },
-            { value: "archive", label: "Arxiv" },
+            { value: "archive", label: "Bajarilgan" },
             { value: "all", label: "Barchasi", count: stats?.total },
           ]}
         />
@@ -398,7 +398,7 @@ export function MeteringDetailPage() {
         open={!!confirm}
         onClose={() => setConfirm(null)}
         title={confirm === "dont_need" ? "O'lchov bekor qilinsinmi?" : "O'lchov bajarilgan deb belgilansinmi?"}
-        text={confirm === "dont_need" ? "O'lchov arxivga o'tadi — keyin uni o'zgartirib bo'lmaydi." : "Shundan keyin dizayn va narx hisoblashni boshlash mumkin."}
+        text={confirm === "dont_need" ? "O'lchov «Bajarilgan» bo'limiga o'tadi — keyin uni o'zgartirib bo'lmaydi." : "Shundan keyin dizayn va narx hisoblashni boshlash mumkin."}
         variant={confirm === "dont_need" ? "danger" : "success"}
         loading={run.isPending}
         onConfirm={() =>

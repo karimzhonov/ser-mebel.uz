@@ -3,7 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useGet } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
-import { Badge, Button, Card, DataTable, Field, IconButton, Input, Modal, PageHeader, SearchInput, Segmented, Select } from "@/components/ui";
+import { Badge, Button, Card, Confirm, DataTable, Field, IconButton, Input, Modal, PageHeader, SearchInput, Segmented, Select } from "@/components/ui";
 import { useUrlState } from "@/lib/useUrlState";
 import { RoleBadge, som, useCategories, useMembers } from "./shared";
 import type { Car, FinCategory, ManualOrder, Member, Role, Worker } from "./types";
@@ -103,7 +103,9 @@ function MembersTab() {
 }
 
 function MemberModal({ m, onClose }: { m: Member; onClose: () => void }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const [askDel, setAskDel] = useState(false);
+  const remove = useAction(() => api.delete(`/finance/members/${m.id}/`), { success: "O'chirildi", invalidate: ["finance"], onSuccess: onClose });
   const { data: users } = useAll<{ id: number; name: string | null; phone: string }>("users", { page_size: 500 }, can("oauth.view_user"));
   const [f, setF] = useState({ ...m, user: m.user });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -122,7 +124,22 @@ function MemberModal({ m, onClose }: { m: Member; onClose: () => void }) {
   );
   const userList = Array.isArray(users) ? users : ((users as unknown as { results?: typeof users })?.results ?? []);
   return (
-    <Modal open onClose={onClose} title={`${m.name} · ${m.telegram_id}`} size="sm" footer={<Button loading={save.isPending} onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>Saqlash</Button>}>
+    <Modal
+      open
+      onClose={onClose}
+      title={`${m.name} · ${m.telegram_id}`}
+      size="sm"
+      footer={
+        <>
+          {user?.is_superuser && (
+            <Button variant="ghost" className="mr-auto text-rose-600" icon={<Trash2 className="h-4 w-4" />} onClick={() => setAskDel(true)}>
+              O'chirish
+            </Button>
+          )}
+          <Button loading={save.isPending} onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>Saqlash</Button>
+        </>
+      }
+    >
       <div className="space-y-4">
         <Field label="Ism" error={errors.name}>
           <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} />
@@ -158,6 +175,20 @@ function MemberModal({ m, onClose }: { m: Member; onClose: () => void }) {
           </Field>
         )}
       </div>
+      <Confirm
+        open={askDel}
+        onClose={() => setAskDel(false)}
+        onConfirm={() => remove.mutate()}
+        loading={remove.isPending}
+        variant="danger"
+        confirmLabel="O'chirish"
+        title="A'zoni o'chirish"
+        text={
+          <>
+            <b>{m.name}</b> ro'yxatdan o'chiriladi. Agar u botga qayta yozsa, yana «Tasdiq kutmoqda» bo'lib tushadi. Amallari bor a'zoni o'chirib bo'lmaydi — uni «Bloklangan» qiling.
+          </>
+        }
+      />
     </Modal>
   );
 }

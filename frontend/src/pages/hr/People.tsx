@@ -3,7 +3,7 @@ import { Plus, Trash2, Trophy } from "lucide-react";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useGet, useList } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
-import { Badge, Button, Card, DataTable, Field, IconButton, Input, Modal, PageHeader, SearchInput, Segmented, Select } from "@/components/ui";
+import { Badge, Button, Card, Confirm, DataTable, Field, IconButton, Input, Modal, PageHeader, SearchInput, Segmented, Select } from "@/components/ui";
 import { date } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 import { WD, type Employee, type Group, type StatRow } from "./shared";
@@ -180,7 +180,10 @@ export function HrEmployeesPage() {
 }
 
 function EmployeeModal({ e, onClose }: { e: Employee; onClose: () => void }) {
+  const { user } = useAuth();
   const { data: groups } = useAll<Group>("hr/groups");
+  const [askDel, setAskDel] = useState(false);
+  const remove = useAction(() => api.delete(`/hr/employees/${e.id}/`), { success: "O'chirildi", invalidate: ["hr"], onSuccess: onClose });
   const [f, setF] = useState({ name: e.name, is_active: e.is_active, group: e.group, work_start: e.work_start, work_end: e.work_end, own_off: !!e.off_days, off: e.off_days ?? [] });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useAction(
@@ -197,7 +200,22 @@ function EmployeeModal({ e, onClose }: { e: Employee; onClose: () => void }) {
   );
   const toggle = (d: number) => setF({ ...f, off: f.off.includes(d) ? f.off.filter((x) => x !== d) : [...f.off, d].sort() });
   return (
-    <Modal open onClose={onClose} title={`#${e.number} ${e.name}`} size="sm" footer={<Button loading={save.isPending} onClick={() => save.mutateAsync().catch((x) => setErrors(fieldErrors(x)))}>Saqlash</Button>}>
+    <Modal
+      open
+      onClose={onClose}
+      title={`#${e.number} ${e.name}`}
+      size="sm"
+      footer={
+        <>
+          {user?.is_superuser && (
+            <Button variant="ghost" className="mr-auto text-rose-600" icon={<Trash2 className="h-4 w-4" />} onClick={() => setAskDel(true)}>
+              O'chirish
+            </Button>
+          )}
+          <Button loading={save.isPending} onClick={() => save.mutateAsync().catch((x) => setErrors(fieldErrors(x)))}>Saqlash</Button>
+        </>
+      }
+    >
       <div className="space-y-3">
         <Field label="Ism" error={errors.name}>
           <Input value={f.name} onChange={(x) => setF({ ...f, name: x.target.value })} />
@@ -235,6 +253,20 @@ function EmployeeModal({ e, onClose }: { e: Employee; onClose: () => void }) {
           <input type="checkbox" checked={f.is_active} onChange={(x) => setF({ ...f, is_active: x.target.checked })} /> Faol (davomat kuzatiladi)
         </label>
       </div>
+      <Confirm
+        open={askDel}
+        onClose={() => setAskDel(false)}
+        onConfirm={() => remove.mutate()}
+        loading={remove.isPending}
+        variant="danger"
+        confirmLabel="O'chirish"
+        title="Xodimni o'chirish"
+        text={
+          <>
+            <b>{e.name}</b> va uning butun davomat tarixi (kelish-ketish, ballar, ta'tillar) o'chiriladi. Faqat ishdan ketgan bo'lsa, «Faol» belgisini olib qo'yish kifoya.
+          </>
+        }
+      />
     </Modal>
   );
 }

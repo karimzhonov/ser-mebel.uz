@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowDownToLine, ArrowUpFromLine, Download, Pencil, Plus, Undo2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useGet, useList } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
@@ -74,6 +75,27 @@ function useKeeper() {
   return !!user?.is_warehouse_keeper;
 }
 
+/** Shown instead of the Kirim/Chiqim buttons: only the omborchi books, so say why. */
+function KeeperNote({ keeper }: { keeper?: Summary["keeper"] }) {
+  const { user } = useAuth();
+  if (user?.is_warehouse_keeper) return null;
+  return (
+    <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+      {keeper
+        ? `Kirim va chiqimni faqat omborchi — ${keeper.name || keeper.phone} — kiritadi. Siz faqat ko'rasiz.`
+        : "Omborchi hali tayinlanmagan, shuning uchun kirim va chiqim kiritib bo'lmaydi."}
+      {user?.is_superuser && (
+        <>
+          {" "}
+          <Link to="/warehouse/settings" className="font-medium underline">
+            {keeper ? "Omborchini almashtirish" : "Omborchi tayinlash"} →
+          </Link>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- stock
 export function WarehouseStockPage() {
   const isKeeper = useKeeper();
@@ -106,6 +128,7 @@ export function WarehouseStockPage() {
           </>
         }
       />
+      {s && <KeeperNote keeper={s.keeper} />}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="📦 Mahsulotlar" value={s?.products ?? 0} tone="primary" />
         <StatTile
@@ -349,6 +372,7 @@ export function WarehouseMovementsPage() {
   const { state, page, set } = useUrlState({ date_from: monthStartISO(), date_to: iso(new Date()), kind: "", search: "", cancelled: "0" });
   const { data, isFetching } = useList<Movement>("warehouse/movements", { ...state, page });
   const [move, setMove] = useState<"in" | "out" | null>(null);
+  const { data: sm } = useGet<Summary>("/warehouse/summary/");
   const cancel = useAction((id: number) => api.post(`/warehouse/movements/${id}/cancel/`), { success: "Bekor qilindi", invalidate: ["warehouse"] });
   const totals = (data?.results ?? []).reduce((acc, m) => ((acc[m.kind] += Number(m.total)), acc), { in: 0, out: 0 } as Record<string, number>);
   return (
@@ -364,6 +388,7 @@ export function WarehouseMovementsPage() {
           )
         }
       />
+      {sm && <KeeperNote keeper={sm.keeper} />}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
         <Segmented value={state.kind} onChange={(kind) => set({ kind })} options={[{ value: "", label: "Hammasi" }, { value: "in", label: "📥 Kirim" }, { value: "out", label: "📤 Chiqim" }]} />
