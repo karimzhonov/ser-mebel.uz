@@ -12,41 +12,34 @@ def download_inlines_excel(modeladmin, request, object_id):
 
     for calc in queryset:
         # Заголовки
-        ws.append([
-            calc.name,
-        ])
-        ws.append([
-            "Тип",
-            calc.obj.name
-        ])
-        ws.append([
-            calc.obj.count_name,
-            calc.count
-        ])
-        
+        ws.append(
+            [
+                calc.name,
+            ]
+        )
+        ws.append(["Тип", calc.obj.name])
+        ws.append([calc.obj.count_name, calc.count])
+
         # Per-inventory prices (unit price and line total) are deliberately left out
         # of the накладной — only the per-calculation "Итого" carries money.
-        inventories = InventoryInCalculate.objects.filter(
-            calculate=calc
-        ).select_related('inventory__type').order_by('id')
+        inventories = (
+            InventoryInCalculate.objects.filter(calculate=calc)
+            .select_related("inventory__type")
+            .order_by("id")
+        )
         for ic in inventories:
             if ic.inventory.type.type == InventoryType.TYPE_KV:
-                ws.append([
-                    ic.inventory.type.name,
-                    ic.inventory.name,
-                ])
+                ws.append(
+                    [
+                        ic.inventory.type.name,
+                        ic.inventory.name,
+                    ]
+                )
 
             elif ic.inventory.type.type == InventoryType.TYPE_COUNT:
-                ws.append([
-                    ic.inventory.type.name,
-                    ic.inventory.name,
-                    ic.count
-                ])
+                ws.append([ic.inventory.type.name, ic.inventory.name, ic.count])
 
-        ws.append([
-            "Итого",
-            str(calc.amount)
-        ])
+        ws.append(["Итого", str(calc.amount)])
 
         ws.append([""])
         ws.append([""])
@@ -59,8 +52,8 @@ def download_inlines_excel(modeladmin, request, object_id):
     wb.save(response)
     return response
 
-download_inlines_excel.short_description = "📥 Скачать накладной (Excel)"
 
+download_inlines_excel.short_description = "📥 Скачать накладной (Excel)"
 
 
 # --- The offer as a spreadsheet (REST API: GET /prices/{id}/excel/) -------------------
@@ -72,7 +65,7 @@ def build_offer_xlsx(price) -> bytes:
 
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
-    from .services import offer_data
+    from .services import offer_data, offer_lines
 
     data = offer_data(price)
     wb = Workbook()
@@ -90,7 +83,9 @@ def build_offer_xlsx(price) -> bytes:
     ws.append(["ТИЖОРАТ ТАКЛИФИ"])
     ws["A1"].font = Font(size=16, bold=True, color=dark)
     ws.append([f"Мижоз: {data['client']}"])
-    ws.append([f"Сметчик: {data['estimator'] or '—'}", "", "Сана:", data["date"].strftime("%d.%m.%Y")])
+    ws.append(
+        [f"Сметачи: {data['estimator'] or '—'}", "", "Сана:", data["date"].strftime("%d.%m.%Y")]
+    )
     if data["variant"]:
         ws.append([f"Вариант: {data['variant']}"])
     ws.append([])
@@ -110,28 +105,53 @@ def build_offer_xlsx(price) -> bytes:
         return r
 
     for room in data["rooms"]:
-        r = row([f"{room['icon']} {room['name']}".strip(), "", "", ""], bold=True, fill=dark, color="FFFFFF", size=12)
+        r = row(
+            [f"{room['icon']} {room['name']}".strip(), "", "", ""],
+            bold=True,
+            fill=dark,
+            color="FFFFFF",
+            size=12,
+        )
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=4)
-        row(["Мебель", "Параметр", "Материал", "Стоимость"], bold=True, fill=grey)
+        row(["Мебел", "Параметр", "Материал", "Нархи"], bold=True, fill=grey)
         for it in room["items"]:
             title = it["name"] + (f" ({it['count_text']})" if it["count_text"] else "")
-            lines = it["params"] + ([{"label": "Допол.", "value": it["note"]}] if it["note"] else [])
+            lines = offer_lines(it)
             first = ws.max_row + 1
             if not lines:
                 lines = [{"label": "", "value": ""}]
             for i, ln in enumerate(lines):
-                row([title if i == 0 else "", ln["label"], ln["value"], it["amount"] if i == 0 else None], bold=False)
+                row(
+                    [
+                        title if i == 0 else "",
+                        ln["label"],
+                        ln["value"],
+                        it["amount"] if i == 0 else None,
+                    ],
+                    bold=False,
+                )
             ws.cell(first, 1).font = Font(bold=True)
             ws.cell(first, 4).font = Font(bold=True)
             if len(lines) > 1:
                 ws.merge_cells(start_row=first, start_column=1, end_row=ws.max_row, end_column=1)
                 ws.merge_cells(start_row=first, start_column=4, end_row=ws.max_row, end_column=4)
                 ws.cell(first, 1).alignment = Alignment(vertical="top", wrap_text=True)
-        r = row(["Итого", "", "", room["total"]], bold=True, color=green)
+        r = row(["Жами", "", "", room["total"]], bold=True, color=green)
         ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=3)
         ws.append([])
 
-    r = row(["ОБЩИЙ ИТОГ" + (f" — {data['variant']}" if data["variant"] else ""), "", "", data["total"]], bold=True, fill=dark, color="FFFFFF", size=13)
+    r = row(
+        [
+            "УМУМИЙ ЖАМИ" + (f" — {data['variant']}" if data["variant"] else ""),
+            "",
+            "",
+            data["total"],
+        ],
+        bold=True,
+        fill=dark,
+        color="FFFFFF",
+        size=13,
+    )
     ws.merge_cells(start_row=r, start_column=1, end_row=r, end_column=3)
 
     buf = io.BytesIO()

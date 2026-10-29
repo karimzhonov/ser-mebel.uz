@@ -10,18 +10,22 @@ import {
   FileText,
   ImageOff,
   ImagePlus,
+  History,
   LayoutGrid,
+  Lock,
   Pencil,
   Plus,
   Sofa,
   Table2,
   Trash2,
+  Undo2,
   X,
 } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, downloadFile, errorMessage, fetchBlob } from "@/api/client";
 import { useAction, useAll, useGet } from "@/api/hooks";
-import type { Calculation, InventoryType, ObjectType, OfferSheet, Price, Room, RoomImage, RoomType } from "@/api/types";
+import type { Accessory, Calculation, Inventory, InventoryType, ObjectType, OfferSheet, Price, PriceVersion, Room, RoomImage, RoomType } from "@/api/types";
 import { BackLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink } from "@/components/domain";
 import {
   Badge,
@@ -41,7 +45,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { money, num, phone } from "@/lib/format";
+import { dateTime, money, num, phone } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 
 const PdfViewer = lazy(() => import("@/components/PdfViewer"));
@@ -96,6 +100,12 @@ export function PriceDetailPage() {
         }
       />
 
+      {p.locked && (
+        <div className="mb-4 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <Lock className="h-4 w-4 shrink-0" />
+          Buyurtma detalirovkaga o'tgan — hisob-kitob qulflangan. Taklifni ko'rish va yuklab olish mumkin.
+        </div>
+      )}
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
         <div className="min-w-0 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -184,6 +194,7 @@ export function PriceDetailPage() {
           </Card>
 
           <OfferCard price={p} canEdit={canEdit} onPreview={() => setPdfOpen(true)} pdfName={pdfName} />
+          <VersionsCard price={p} title={title} />
 
           {p.metering && (
             <Card title="O'lchov">
@@ -351,11 +362,11 @@ function RoomCard({
         </div>
       </header>
 
-      <RoomImages priceId={priceId} room={room} canEdit={canEdit} />
+      <RoomImages priceId={priceId} room={room} calcs={calcs} canEdit={canEdit} />
 
       <div className="border-t border-slate-100 dark:border-slate-800">
         {!calcs.length && <p className="muted px-5 py-4 text-sm">Bu xonada hali mebel yo'q.</p>}
-        <CalcList priceId={priceId} calcs={calcs} objects={objects} canEdit={canEdit} onEdit={onEdit} />
+        <CalcList priceId={priceId} room={room} calcs={calcs} objects={objects} canEdit={canEdit} onEdit={onEdit} />
       </div>
 
       {canEdit && (
@@ -402,12 +413,14 @@ function RoomCard({
 /* =================================================================== furniture list */
 function CalcList({
   priceId,
+  room,
   calcs,
   objects,
   canEdit,
   onEdit,
 }: {
   priceId: number;
+  room?: Room;
   calcs: Calculation[];
   objects: ObjectType[];
   canEdit: boolean;
@@ -444,10 +457,42 @@ function CalcList({
                   ))}
                 </dl>
               )}
+              {c.color && (
+                <p className="mt-1 text-sm">
+                  <span className="muted text-xs">Rang: </span>
+                  {c.color}
+                </p>
+              )}
+              {!!c.accessories.length && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {c.accessories.map((a) => (
+                    <span key={a.id} className="flex items-center gap-2 rounded-xl border border-slate-200 py-1 pl-1 pr-2.5 text-xs dark:border-slate-700">
+                      {a.thumbnail ? (
+                        <img src={a.thumbnail} alt="" className="h-8 w-8 rounded-lg object-cover" />
+                      ) : (
+                        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800">🧩</span>
+                      )}
+                      <span>
+                        {a.name}
+                        {a.count !== 1 && <span className="muted"> × {num(a.count)}</span>}
+                      </span>
+                      <span className="muted tabular-nums">{usd(a.amount)}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
               {c.note && <p className="muted mt-1 text-xs">➕ {c.note}</p>}
+              {room && <FurnitureImages priceId={priceId} room={room} calc={c} canEdit={canEdit} />}
             </div>
             <div className="flex items-start justify-end gap-1">
-              <span className="mr-1 whitespace-nowrap pt-1 font-semibold tabular-nums">{money(c.amount)}</span>
+              <span className="mr-1 whitespace-nowrap pt-1 text-right font-semibold tabular-nums">
+                {money(c.amount)}
+                {c.manual_amount !== null && c.auto_amount !== null && (
+                  <span className="muted block text-xs font-normal" title="Katalog bo'yicha avtomatik narx">
+                    avto <s>{usd(Number(c.auto_amount))}</s>
+                  </span>
+                )}
+              </span>
               {canEdit && obj && (
                 <>
                   <IconButton label="Tahrirlash" onClick={() => onEdit(c, obj)}><Pencil className="h-4 w-4" /></IconButton>
@@ -463,7 +508,12 @@ function CalcList({
 }
 
 /* =================================================================== room images */
-function RoomImages({ priceId, room, canEdit }: { priceId: number; room: Room; canEdit: boolean }) {
+function RoomImages({ priceId, room, calcs, canEdit }: { priceId: number; room: Room; calcs: Calculation[]; canEdit: boolean }) {
+  const images = room.images.filter((i) => i.calculate === null);
+  const attach = useAction(
+    (v: { image: number; calculate: number }) => api.patch(`/prices/${priceId}/rooms/${room.id}/images/${v.image}/`, { calculate: v.calculate }),
+    { success: "Mebelga biriktirildi", invalidate: INV },
+  );
   const input = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<RoomImage | null>(null);
   const upload = useAction(
@@ -475,24 +525,40 @@ function RoomImages({ priceId, room, canEdit }: { priceId: number; room: Room; c
     { success: "Rasm qo'shildi", invalidate: INV },
   );
   const remove = useAction((imageId: number) => api.delete(`/prices/${priceId}/rooms/${room.id}/images/${imageId}/`), { invalidate: INV });
-  if (!room.images.length && !canEdit) return null;
+  if (!images.length && !canEdit) return null;
   return (
     <div className="px-5 py-3">
-      <div className="muted mb-2 text-xs">Rasmlar va chizmalar — PDF'da xona sahifasiga chiqadi</div>
+      <div className="muted mb-2 text-xs">Xonaning umumiy rasmlari va chizmalari — PDF'da xona sahifasiga chiqadi. Mebel rasmini mebelning o'ziga biriktiring.</div>
       <div className="flex gap-2 overflow-x-auto pb-1">
-        {room.images.map((img) => (
-          <div key={img.id} className="group relative h-24 w-32 shrink-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800">
-            <button className="h-full w-full" onClick={() => setPreview(img)}>
-              <Thumb img={img} />
-            </button>
-            {canEdit && (
-              <button
-                title="Olib tashlash"
-                onClick={() => remove.mutate(img.id)}
-                className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition group-hover:opacity-100"
-              >
-                <X className="h-3.5 w-3.5" />
+        {images.map((img) => (
+          <div key={img.id} className="w-32 shrink-0">
+            <div className="group relative h-24 w-32 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800">
+              <button className="h-full w-full" onClick={() => setPreview(img)}>
+                <Thumb img={img} />
               </button>
+              {canEdit && (
+                <button
+                  title="Olib tashlash"
+                  onClick={() => remove.mutate(img.id)}
+                  className="absolute right-1 top-1 rounded-full bg-black/60 p-1 text-white opacity-0 transition group-hover:opacity-100"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {canEdit && calcs.length > 0 && (
+              <select
+                className="mt-1 w-full truncate rounded-lg border border-slate-200 bg-white px-1.5 py-1 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                value=""
+                onChange={(e) => e.target.value && attach.mutate({ image: img.id, calculate: Number(e.target.value) })}
+              >
+                <option value="">→ mebelga biriktirish</option>
+                {calcs.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             )}
           </div>
         ))}
@@ -520,6 +586,70 @@ function RoomImages({ priceId, room, canEdit }: { priceId: number; room: Room; c
           }}
         />
       </div>
+      {preview && <ImagePreview img={preview} onClose={() => setPreview(null)} />}
+    </div>
+  );
+}
+
+/** Pictures of one piece of furniture: in the PDF they sit next to its materials and price. */
+function FurnitureImages({ priceId, room, calc, canEdit }: { priceId: number; room: Room; calc: Calculation; canEdit: boolean }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<RoomImage | null>(null);
+  const images = room.images.filter((i) => i.calculate === calc.id);
+  const base = `/prices/${priceId}/rooms/${room.id}/images/`;
+  const upload = useAction(
+    (files: File[]) => {
+      const form = new FormData();
+      files.forEach((f) => form.append("file", f));
+      form.append("calculate", String(calc.id));
+      return api.post(base, form);
+    },
+    { success: "Rasm qo'shildi", invalidate: INV },
+  );
+  const detach = useAction((id: number) => api.patch(`${base}${id}/`, { calculate: null }), { invalidate: INV });
+  const remove = useAction((id: number) => api.delete(`${base}${id}/`), { invalidate: INV });
+  if (!images.length && !canEdit) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {images.map((img) => (
+        <div key={img.id} className="group relative h-16 w-20 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 dark:border-slate-700 dark:bg-slate-800">
+          <button className="h-full w-full" onClick={() => setPreview(img)}>
+            <Thumb img={img} />
+          </button>
+          {canEdit && (
+            <span className="absolute right-0.5 top-0.5 flex gap-0.5 opacity-0 transition group-hover:opacity-100">
+              <button title="Xonaning umumiy rasmlariga qaytarish" onClick={() => detach.mutate(img.id)} className="rounded-full bg-black/60 p-1 text-white">
+                <Undo2 className="h-3 w-3" />
+              </button>
+              <button title="Olib tashlash" onClick={() => remove.mutate(img.id)} className="rounded-full bg-black/60 p-1 text-white">
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          )}
+        </div>
+      ))}
+      {canEdit && (
+        <button
+          onClick={() => input.current?.click()}
+          disabled={upload.isPending}
+          className="flex h-16 w-20 flex-col items-center justify-center gap-0.5 rounded-lg border border-dashed border-slate-300 text-[11px] text-slate-500 hover:border-brand-400 hover:text-brand-700 dark:border-slate-700"
+        >
+          {upload.isPending ? <Spinner /> : <ImagePlus className="h-4 w-4" />}
+          Mebel rasmi
+        </button>
+      )}
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        multiple
+        hidden
+        onChange={(e) => {
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          if (files.length) upload.mutate(files);
+        }}
+      />
       {preview && <ImagePreview img={preview} onClose={() => setPreview(null)} />}
     </div>
   );
@@ -626,7 +756,7 @@ function RoomRows({ room, cell }: { room: OfferSheet["rooms"][number]; cell: str
         </td>
       </tr>
       {room.items.map((it) => {
-        const lines = [...it.params, ...(it.note ? [{ label: "Qo'shimcha", value: it.note }] : [])];
+        const lines = it.lines;
         const rows = lines.length ? lines : [{ label: "", value: "" }];
         return rows.map((ln, i) => (
           <tr key={`${it.id}-${i}`} className={i === 0 ? "border-t-2 border-slate-300 dark:border-slate-600" : undefined}>
@@ -663,6 +793,7 @@ function OfferCard({ price, canEdit, onPreview, pdfName }: { price: Price; canEd
   const dirty = f.client_title !== price.client_title || f.variant !== price.variant;
   const save = useAction(() => api.patch(`/prices/${price.id}/`, f), { success: "Saqlandi", invalidate: INV });
   const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
   return (
     <Card title={<span className="flex items-center gap-2"><FileText className="h-4 w-4 text-slate-400" /> Tijorat taklifi (PDF)</span>}>
       <div className="space-y-3">
@@ -687,7 +818,14 @@ function OfferCard({ price, canEdit, onPreview, pdfName }: { price: Price; canEd
             disabled={dirty}
             onClick={() => {
               setBusy(true);
-              downloadFile(`/prices/${price.id}/pdf/`, pdfName)
+              // what is handed to the client is kept as a version (no new one if unchanged)
+              api
+                .post<Price>(`/prices/${price.id}/versions/`, {})
+                .then(({ data }) => {
+                  const v = data.versions?.[0];
+                  qc.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).includes("prices") });
+                  return downloadFile(v ? `/prices/${price.id}/versions/${v.id}/pdf/` : `/prices/${price.id}/pdf/`, pdfName);
+                })
                 .catch((e) => toast.error(errorMessage(e)))
                 .finally(() => setBusy(false));
             }}
@@ -697,6 +835,82 @@ function OfferCard({ price, canEdit, onPreview, pdfName }: { price: Price; canEd
         </div>
         {dirty && <p className="muted text-xs">Avval o'zgarishni saqlang.</p>}
       </div>
+    </Card>
+  );
+}
+
+function VersionsCard({ price, title }: { price: Price; title: string }) {
+  const versions = price.versions ?? [];
+  const [open, setOpen] = useState<PriceVersion | null>(null);
+  const [label, setLabel] = useState("");
+  const save = useAction(() => api.post(`/prices/${price.id}/versions/`, { label }), {
+    success: "Versiya saqlandi",
+    invalidate: INV,
+    onSuccess: () => setLabel(""),
+  });
+  const current = Number(price.price?.amount ?? 0);
+  return (
+    <Card title={<span className="flex items-center gap-2"><History className="h-4 w-4 text-slate-400" /> Taklif versiyalari</span>} padded={false}>
+      <p className="muted px-5 pt-3 text-xs">«PDF» bosilganda mijozga berilgan taklif shu yerda saqlanadi. Narx o'zgarsa, eski versiyalar o'zgarmaydi.</p>
+      {!versions.length ? (
+        <p className="muted px-5 py-3 text-sm">Hali versiya yo'q.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-slate-100 dark:divide-slate-800">
+          {versions.map((v, i) => {
+            const prev = versions[i + 1];
+            const delta = prev ? v.total - prev.total : null;
+            return (
+              <li key={v.id} className="flex items-center justify-between gap-2 px-5 py-2.5 text-sm">
+                <button className="min-w-0 text-left" onClick={() => setOpen(v)} title="PDF'ni ko'rish">
+                  <span className="block truncate font-medium text-brand-700 hover:underline dark:text-brand-300">
+                    v{v.number} · {v.label}
+                  </span>
+                  <span className="muted block text-xs">
+                    {dateTime(v.created_at)}
+                    {v.created_by ? ` · ${v.created_by}` : ""}
+                  </span>
+                </button>
+                <span className="whitespace-nowrap text-right tabular-nums">
+                  <b>{usd(v.total)}</b>
+                  {delta !== null && delta !== 0 && (
+                    <span className={cn("block text-xs", delta > 0 ? "text-rose-600" : "text-emerald-600")}>
+                      {delta > 0 ? "+" : "−"}
+                      {usd(Math.abs(delta))}
+                    </span>
+                  )}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {!!versions.length && versions[0].total !== current && (
+        <p className="border-t border-slate-100 px-5 py-2 text-xs text-amber-700 dark:border-slate-800 dark:text-amber-300">
+          Joriy narx ({usd(current)}) oxirgi versiyadan farq qiladi.
+        </p>
+      )}
+      <form
+        className="flex gap-2 border-t border-slate-100 px-5 py-3 dark:border-slate-800"
+        onSubmit={(e) => {
+          e.preventDefault();
+          save.mutate();
+        }}
+      >
+        <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Izoh: masalan «Yakuniy»" />
+        <Button size="sm" type="submit" variant="outline" loading={save.isPending}>
+          Saqlash
+        </Button>
+      </form>
+      {open && (
+        <Suspense fallback={null}>
+          <PdfViewer
+            url={`/prices/${price.id}/versions/${open.id}/pdf/`}
+            name={`v${open.number} — ${title}.pdf`}
+            downloadName={`Taklif v${open.number} — ${title}.pdf`}
+            onClose={() => setOpen(null)}
+          />
+        </Suspense>
+      )}
     </Card>
   );
 }
@@ -738,6 +952,11 @@ function CalculationEditor({
   const [name, setName] = useState(calc?.name ?? objectType.name);
   const [count, setCount] = useState(calc?.count != null ? String(calc.count) : "");
   const [note, setNote] = useState(calc?.note ?? "");
+  const [color, setColor] = useState(calc?.color ?? "");
+  const [manual, setManual] = useState(calc?.manual_amount != null ? String(Number(calc.manual_amount)) : "");
+  const [accs, setAccs] = useState<AccRow[]>(() =>
+    (calc?.accessories ?? []).map((a) => ({ ...a, key: String(a.id), count: String(a.count), price: String(a.price) })),
+  );
   const [roomId, setRoomId] = useState(room !== null ? String(room) : "");
   const [lines, setLines] = useState<Record<number, Line>>(() => {
     const init: Record<number, Line> = {};
@@ -745,6 +964,7 @@ function CalculationEditor({
     return init;
   });
 
+  const accTotal = accs.reduce((sum, a) => sum + Number(a.count || 0) * Number(a.price || 0), 0);
   const total = useMemo(() => {
     if (!types) return 0;
     return types.reduce((sum, t) => {
@@ -755,6 +975,7 @@ function CalculationEditor({
       return sum + qty * inv.price.amount;
     }, 0);
   }, [types, lines, count]);
+  const auto = total + accTotal;
 
   const save = useAction(
     () => {
@@ -764,6 +985,16 @@ function CalculationEditor({
         object_type: objectType.id,
         room: roomId ? Number(roomId) : null,
         note,
+        color,
+        manual_amount: manual.trim() === "" ? null : manual,
+        accessories: accs.map((a) => ({
+          id: a.id ?? null,
+          inventory: a.inventory,
+          name: a.name,
+          count: Number(a.count || 0),
+          price: a.price === "" ? null : a.price,
+          image: a.image,
+        })),
         items: (types ?? []).map((t) => ({
           inventory_type: t.id,
           inventory: lines[t.id]?.inventory ? Number(lines[t.id].inventory) : null,
@@ -784,7 +1015,16 @@ function CalculationEditor({
       footer={
         <div className="flex w-full items-center justify-between gap-3">
           <div className="text-sm">
-            Narx: <b className="text-lg tabular-nums">{usd(total)}</b>
+            {manual.trim() !== "" ? (
+              <>
+                Narx: <b className="text-lg tabular-nums">{usd(Number(manual))}</b>
+                <span className="muted ml-2 text-xs">avto <s>{usd(auto)}</s></span>
+              </>
+            ) : (
+              <>
+                Narx: <b className="text-lg tabular-nums">{usd(auto)}</b>
+              </>
+            )}
           </div>
           <div className="flex gap-2">
             <Button variant="ghost" onClick={onClose}>Bekor qilish</Button>
@@ -841,10 +1081,102 @@ function CalculationEditor({
           );
         })}
         {types && !types.length && <Empty title="Bu mebel uchun parametrlar yo'q" text="Ularni «Mahsulotlar» bo'limida qo'shing." />}
+        <Field label="Rang" hint="To'ldirilsa PDF'da «Цвет» bo'lib chiqadi">
+          <Input value={color} onChange={(e) => setColor(e.target.value)} placeholder="Masalan: oq matoviy, yong'oq" />
+        </Field>
+        <AccessoriesEditor priceId={priceId} rows={accs} onChange={setAccs} />
         <Field label="Qo'shimcha (PDF'da «Допол.» bo'lib chiqadi)" hint="Masalan: подсветка, зеркало + пуфик">
           <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
+        <div className="grid items-end gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-800/50 sm:grid-cols-2">
+          <div className="text-sm">
+            <div className="muted text-xs">Avtomatik narx (katalog + aksessuarlar)</div>
+            <div className="text-lg font-semibold tabular-nums">{usd(auto)}</div>
+          </div>
+          <Field label="Yakuniy narx, $ (ixtiyoriy)" hint="Yaxlitlash yoki chegirma uchun. Bo'sh — avtomatik narx">
+            <Input type="number" inputMode="decimal" min={0} value={manual} onChange={(e) => setManual(e.target.value)} placeholder={String(Math.round(auto))} />
+          </Field>
+        </div>
       </div>
     </Modal>
+  );
+}
+
+/* =================================================================== accessories */
+type AccRow = Omit<Accessory, "count" | "price" | "amount" | "id"> & { id?: number; key: string; count: string; price: string };
+
+function AccessoriesEditor({ priceId, rows, onChange }: { priceId: number; rows: AccRow[]; onChange: (rows: AccRow[]) => void }) {
+  const { data: catalog } = useAll<Inventory>("inventories");
+  const { data: types } = useAll<InventoryType>("inventory-types");
+  const [uploading, setUploading] = useState<string | null>(null);
+  const set = (key: string, patch: Partial<AccRow>) => onChange(rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  const add = () =>
+    onChange([...rows, { key: `n${Date.now()}`, inventory: null, name: "", count: "1", price: "", image: null, thumbnail: null }]);
+  const typeName = (id: number) => types?.find((t) => t.id === id)?.name ?? "";
+
+  async function upload(key: string, file: File) {
+    setUploading(key);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const { data } = await api.post<{ image: number; thumbnail: string | null }>(`/prices/${priceId}/accessory-images/`, form);
+      set(key, { image: data.image, thumbnail: data.thumbnail });
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="label">Aksessuarlar</span>
+        <Button size="sm" variant="ghost" icon={<Plus className="h-4 w-4" />} onClick={add}>
+          Aksessuar
+        </Button>
+      </div>
+      {!rows.length && <p className="muted text-xs">Yo'q. Katalogdan tanlang yoki nomi va narxini qo'lda yozing — rasm ham qo'shish mumkin.</p>}
+      <div className="space-y-2">
+        {rows.map((r) => (
+          <div key={r.key} className="grid items-center gap-2 sm:grid-cols-[48px_1fr_1fr_70px_90px_70px_32px]">
+            <label className="relative flex h-12 w-12 cursor-pointer items-center justify-center overflow-hidden rounded-lg border border-dashed border-slate-300 text-slate-400 hover:border-brand-400 dark:border-slate-600" title="Rasm">
+              {uploading === r.key ? <Spinner /> : r.thumbnail ? <img src={r.thumbnail} alt="" className="h-full w-full object-cover" /> : <ImagePlus className="h-5 w-5" />}
+              <input
+                type="file"
+                accept="image/*"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) upload(r.key, f);
+                }}
+              />
+            </label>
+            <Select
+              value={r.inventory ?? ""}
+              onChange={(e) => {
+                const inv = catalog?.find((i) => i.id === Number(e.target.value));
+                set(r.key, inv ? { inventory: inv.id, name: inv.name, price: inv.price ? String(inv.price.amount) : r.price } : { inventory: null });
+              }}
+            >
+              <option value="">— katalogdan (ixtiyoriy) —</option>
+              {catalog?.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {typeName(i.type)}: {i.name} — {money(i.price)}
+                </option>
+              ))}
+            </Select>
+            <Input value={r.name} placeholder="Nomi" onChange={(e) => set(r.key, { name: e.target.value })} />
+            <Input type="number" inputMode="decimal" min={0} value={r.count} placeholder="Soni" onChange={(e) => set(r.key, { count: e.target.value })} />
+            <Input type="number" inputMode="decimal" min={0} value={r.price} placeholder="Narx, $" onChange={(e) => set(r.key, { price: e.target.value })} />
+            <span className="text-right text-sm font-medium tabular-nums">{usd(Number(r.count || 0) * Number(r.price || 0))}</span>
+            <IconButton label="O'chirish" onClick={() => onChange(rows.filter((x) => x.key !== r.key))}>
+              <Trash2 className="h-4 w-4" />
+            </IconButton>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

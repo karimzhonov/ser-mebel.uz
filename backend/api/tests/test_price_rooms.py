@@ -160,7 +160,7 @@ def test_excel_and_pdf(admin_api, price, catalog, settings, tmp_path):
         for c in row
         if c is not None
     ]
-    assert "🍳 Oshxona" in flat and "МДФ краш" in flat and "Итого" in flat
+    assert "🍳 Oshxona" in flat and "МДФ краш" in flat and "Жами" in flat
 
     pdf = admin_api.get(url(price, "pdf/"))
     assert pdf.status_code == 200
@@ -199,3 +199,145 @@ def test_calculation_delete_works_but_price_delete_does_not(admin_api, price, ca
     assert r.status_code == 200 and r.data["calculations"] == []
     assert admin_api.delete(url(price)).status_code == 405
     assert Price.objects.filter(pk=price.pk).exists()
+
+
+# --- colour, accessories, manual price, versions, the detailing lock ---------------
+
+
+def _png(name="acc.png"):
+    buf = io.BytesIO()
+    Image.new("RGB", (300, 300), "orange").save(buf, "PNG")
+    buf.seek(0)
+    buf.name = name
+    return buf
+
+
+def test_accessories_colour_and_manual_price(admin_api, price, catalog, settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path
+    r = admin_api.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json")
+    room_id = r.data["rooms"][0]["id"]
+    img = admin_api.post(url(price, "accessory-images/"), {"file": _png()}, format="multipart")
+    assert img.status_code == 200, img.data
+    body = {
+        "name": "Кухня",
+        "count": 4,
+        "object_type": catalog["kitchen"].pk,
+        "room": room_id,
+        "color": "Оқ матовий",
+        "items": [{"inventory_type": catalog["facade"].pk, "inventory": catalog["mdf"].pk}],
+        "accessories": [
+            {"inventory": catalog["blum"].pk, "count": 3},  # catalog price 10
+            {"name": "Ручка золото", "count": 8, "price": "5", "image": img.data["image"]},
+        ],
+    }
+    r = admin_api.post(url(price, "calculations/"), body, format="json")
+    assert r.status_code == 200, r.data
+    calc = r.data["calculations"][0]
+    # 4 × 300 + 3 × 10 + 8 × 5
+    assert float(calc["auto_amount"]) == 1270 and r.data["price"]["amount"] == 1270
+    assert [a["name"] for a in calc["accessories"]] == ["BLUM", "Ручка золото"]
+    assert calc["accessories"][1]["thumbnail"]
+
+    lines = r.data["sheet"]["rooms"][0]["items"][0]["lines"]
+    assert {"label": "Ранги", "value": "Оқ матовий"} in lines
+    assert {"label": "Аксессуар", "value": "Ручка золото × 8"} in lines
+
+    # final price by hand; the accessory rows are updated in place, one removed
+    body["manual_amount"] = "1200"
+    body["accessories"] = [dict(calc["accessories"][1], price=5)]
+    r = admin_api.patch(url(price, f"calculations/{calc['id']}/"), body, format="json")
+    assert r.status_code == 200, r.data
+    calc2 = r.data["calculations"][0]
+    assert r.data["price"]["amount"] == 1200
+    assert float(calc2["auto_amount"]) == 1240
+    assert [a["id"] for a in calc2["accessories"]] == [calc["accessories"][1]["id"]]
+
+    pdf = admin_api.get(url(price, "pdf/"))
+    assert pdf.content.startswith(b"%PDF")
+
+
+def test_no_colour_no_accessories_no_lines(admin_api, price, catalog):
+    r = admin_api.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json")
+    r = add_kitchen(admin_api, price, r.data["rooms"][0]["id"], catalog)
+    labels = [ln["label"] for ln in r.data["sheet"]["rooms"][0]["items"][0]["lines"]]
+    assert "Ранги" not in labels and "Аксессуар" not in labels
+
+
+def test_versions_are_kept_and_deduplicated(admin_api, price, catalog):
+    r = admin_api.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json")
+    room_id = r.data["rooms"][0]["id"]
+    add_kitchen(admin_api, price, room_id, catalog)
+    r = admin_api.post(url(price, "versions/"), {}, format="json")
+    assert [(v["number"], v["label"], v["total"]) for v in r.data["versions"]] == [
+        (1, "Taxminiy narx", 1250)
+    ]
+    r = admin_api.post(url(price, "versions/"), {}, format="json")  # nothing changed
+    assert len(r.data["versions"]) == 1
+
+    add_kitchen(admin_api, price, room_id, catalog, count=5)
+    r = admin_api.post(url(price, "versions/"), {}, format="json")
+    assert [(v["number"], v["total"]) for v in r.data["versions"]] == [(2, 2800), (1, 1250)]
+
+    v1 = r.data["versions"][1]["id"]
+    pdf = admin_api.get(url(price, f"versions/{v1}/pdf/"))
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+
+
+def test_price_is_locked_once_the_order_is_in_detailing(
+    admin_api, db_client, catalog, order_factory
+):
+    from datetime import datetime
+
+    from metering.design.models import Design
+    from metering.models import Metering
+    from order.constants import OrderStatus
+
+    metering = Metering.objects.create(client=db_client, date_time=datetime(2026, 10, 1, 10))
+    Design.objects.get_or_create(metering=metering)
+    price = Price.objects.create(metering=metering)
+    r = admin_api.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json")
+    room_id = r.data["rooms"][0]["id"]
+    order = order_factory(metering=metering)
+    assert admin_api.get(url(price)).data["locked"] is False  # «Yaratildi»: still editable
+
+    order.status = OrderStatus.DETAILING
+    order.save(update_fields=["status"])
+    data = admin_api.get(url(price)).data
+    assert data["locked"] is True and data["actions"]["edit"] is False
+    for resp in (
+        add_kitchen(admin_api, price, room_id, catalog),
+        admin_api.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json"),
+        admin_api.delete(url(price, f"rooms/{room_id}/")),
+    ):
+        assert resp.status_code == 400 and "detalirovka" in resp.data["detail"]
+    # the offer can still be saved / printed
+    assert admin_api.post(url(price, "versions/"), {}, format="json").status_code == 200
+
+
+def test_room_picture_can_be_attached_to_furniture(admin_api, price, catalog, settings, tmp_path):
+    settings.MEDIA_ROOT = tmp_path
+    r = admin_api.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json")
+    room_id = r.data["rooms"][0]["id"]
+    r = add_kitchen(admin_api, price, room_id, catalog)
+    calc_id = r.data["calculations"][0]["id"]
+    # uploaded straight onto the furniture
+    r = admin_api.post(
+        url(price, f"rooms/{room_id}/images/"),
+        {"file": _png("k.png"), "calculate": calc_id},
+        format="multipart",
+    )
+    assert r.status_code == 200, r.data
+    img = r.data["rooms"][0]["images"][0]
+    assert img["calculate"] == calc_id
+    sheet_room = r.data["sheet"]["rooms"][0]
+    assert sheet_room["images"] == 0 and sheet_room["items"][0]["images"] == 1
+    # detached back to the room, then attached again
+    r = admin_api.patch(
+        url(price, f"rooms/{room_id}/images/{img['id']}/"), {"calculate": None}, format="json"
+    )
+    assert r.data["rooms"][0]["images"][0]["calculate"] is None
+    r = admin_api.patch(
+        url(price, f"rooms/{room_id}/images/{img['id']}/"), {"calculate": calc_id}, format="json"
+    )
+    assert r.data["rooms"][0]["images"][0]["calculate"] == calc_id
+    assert admin_api.get(url(price, "pdf/")).content.startswith(b"%PDF")

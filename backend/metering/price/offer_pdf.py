@@ -21,7 +21,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
-from .services import offer_data
+from .services import offer_data, offer_lines
 
 log = logging.getLogger(__name__)
 
@@ -36,11 +36,24 @@ GREY_BG = HexColor("#D9D9D9")  # room pages
 LINE = HexColor("#C9CFCC")
 MUTED = HexColor("#5B6B66")
 HEAD = HexColor("#1F3B33")
+CARD_LINE = HexColor("#1B1B1B")
+
+# One type scale for the whole offer (Montserrat Regular / Bold only)
+T_HERO = 66  # cover title
+T_PAGE = 56  # headings of the text pages
+T_ROOM = 46  # room page titles
+T_ITEM = 18  # furniture name
+T_BODY = 16  # running text
+T_VALUE = 15  # materials
+T_LABEL = 13  # «ФАСАД МАТЕРИАЛ:» labels, captions
+T_PRICE = 22  # a furniture price
+T_TOTAL = 26  # a room total
+ROOM_X, ROOM_TOP = 80, 112  # where every room page starts
 
 PHONE = "+99899 000 60 09"
 TELEGRAM = "T.ME/SERMEBEL"
 INSTAGRAM = "SERMEBEL_UZ"
-ADDRESS = "МАЛАЯ КОЛЬЦЕВАЯ ДОРОГА 2/А"
+ADDRESS = "КИЧИК ҲАЛҚА ЙЎЛИ, 2/А"
 SITE = "myurls.co/sermebel"
 
 ABOUT = [
@@ -104,9 +117,9 @@ def money(v) -> str:
 
 
 class Offer:
-    def __init__(self, price):
+    def __init__(self, price=None, data=None):
         _register_fonts()
-        self.data = offer_data(price)
+        self.data = data if data is not None else offer_data(price)
         self.buf = io.BytesIO()
         self.c = canvas.Canvas(self.buf, pagesize=(W, H))
         self.c.setTitle(f"Тижорат таклифи — {self.data['client']}")
@@ -138,6 +151,36 @@ class Offer:
         self.c.setFont(font, size)
         self.c.drawString(x, self.y(top), s, charSpace=space)
         return w
+
+    def heading(
+        self, x, top, bold_part, rest="", *, size=T_PAGE, align="l", color=FOREST, max_w=None
+    ):
+        """«БИЗ ҲАҚИМИЗДА»-style title: the first word bold, the rest regular."""
+        gap = size * 0.28 if rest else 0
+        while (
+            max_w
+            and size > 20
+            and (self.width(bold_part, size, True) + gap + self.width(rest, size) > max_w)
+        ):
+            size -= 2
+            gap = size * 0.28 if rest else 0
+        wa, wb = self.width(bold_part, size, True), self.width(rest, size) if rest else 0
+        x0 = x - (wa + gap + wb) / 2 if align == "c" else x
+        self.text(x0, top, bold_part, size=size, bold=True, color=color)
+        if rest:
+            self.text(x0 + wa + gap, top, rest, size=size, color=DARK)
+        return wa + gap + wb
+
+    def room_title(self, room, rest="", cont=False):
+        """Every room page starts the same way: grey page, title top-left, a short rule."""
+        self.fill_page(GREY_BG)
+        rest = (rest + (" (давоми)" if cont else "")).strip()
+        self.heading(
+            ROOM_X, ROOM_TOP, room["name"].upper(), rest, size=T_ROOM, max_w=W - 2 * ROOM_X
+        )
+        self.c.setStrokeColor(GREEN)
+        self.c.setLineWidth(4)
+        self.c.line(ROOM_X, self.y(ROOM_TOP + 22), ROOM_X + 70, self.y(ROOM_TOP + 22))
 
     @staticmethod
     def width(s, size, bold=False, space=0.0):
@@ -189,59 +232,85 @@ class Offer:
     def cover(self):
         d = self.data
         self.bg("bg_cover.png")
-        self.text(1385, 60, "СМЕТЧИК", size=16, align="r")
-        self.text(1385, 90, (d["estimator"] or "SERMEBEL").upper(), size=17, bold=True, align="r")
-        self.text(1385, 119, d["date"].strftime("%d.%m.%Y"), size=16, align="r")
-        a, b = "ТИЖОРАТ ", "ТАКЛИФИ"
-        wa, wb = self.width(a, 66, True), self.width(b, 66)
-        x0 = W / 2 - (wa + wb) / 2
-        self.text(x0, 262, a, size=66, bold=True)
-        self.text(x0 + wa, 262, b, size=66)
-        self.text(W / 2, 305, "ХУРМАТЛИ", size=31, align="c", space=7)
+        self.text(1385, 60, "СМЕТАЧИ", size=T_LABEL, color=MUTED, align="r", space=1)
+        self.text(
+            1385, 88, (d["estimator"] or "SERMEBEL").upper(), size=T_BODY, bold=True, align="r"
+        )
+        self.text(1385, 114, d["date"].strftime("%d.%m.%Y"), size=T_LABEL, color=MUTED, align="r")
+        self.heading(W / 2, 262, "ТИЖОРАТ", "ТАКЛИФИ", size=T_HERO, align="c", color=DARK)
+        self.text(W / 2, 308, "ХУРМАТЛИ", size=30, align="c", space=7)
         if d["client"]:
-            self.text(W / 2, 352, d["client"].upper(), size=31, align="c", space=7, max_w=900)
+            self.text(W / 2, 354, d["client"].upper(), size=30, align="c", space=7, max_w=900)
 
     def about(self):
         self.bg("bg_about.png")
-        w = self.text(95, 172, "БИЗ ", size=60, bold=True, color=FOREST)
-        self.text(95 + w, 172, "ҲАҚИМИЗДА", size=60)
-        self.paragraphs(82, 222, 580, ABOUT, size=16.5, gap=10)
+        self.heading(82, 172, "БИЗ", "ҲАҚИМИЗДА")
+        self.paragraphs(82, 228, 580, ABOUT, size=T_BODY, gap=12)
         self.url_box(98, 700, 495)
 
+    @staticmethod
+    def photos(room):
+        """Renders / drawings of the whole room (furniture pictures go to their cards)."""
+        return [(f, "") for f in room["images"]]
+
+    @staticmethod
+    def item_photos(it):
+        """A furniture card's pictures: its own, then its accessories' (captioned)."""
+        out = [(f, "") for f in it.get("images") or []]
+        for a in it.get("accessories") or []:
+            if a.get("image"):
+                out.append((a["image"], a["name"]))
+        return out
+
     def room_photos(self, room):
-        imgs = [r for r in (self._load(f) for f in room["images"]) if r]
+        imgs = []
+        for f, caption in self.photos(room):
+            loaded = self._load(f)
+            if loaded:
+                imgs.append((*loaded, caption))
         for start in range(0, len(imgs), 6):
             chunk = imgs[start : start + 6]
-            self.fill_page(GREY_BG)
-            title = room["name"].upper() + (" (давоми)" if start else "")
-            self.text(W / 2, 92, title, size=54, bold=True, color=FOREST, align="c", max_w=1200)
+            self.room_title(room, cont=bool(start))
             n = len(chunk)
             split = {1: [1], 2: [2], 3: [3], 4: [2, 2], 5: [3, 2]}.get(n, [3, 3])
             rows, i = [], 0
             for k in split:
                 rows.append(chunk[i : i + k])
                 i += k
-            # every row: same height for all its pictures, as wide as the page allows
-            aw, ah, gap, top = W - 120, H - 140 - 45, 24, 140
-            row_ah = (ah - gap * (len(rows) - 1)) / len(rows)
+            # every row: same height for all its pictures, as wide as the page allows;
+            # a row with captions keeps room for one line of text under the pictures
+            aw, ah, gap, top = W - 2 * ROOM_X, H - 160 - 50, 24, 160
+            caps = [32 if any(x[3] for x in r) else 0 for r in rows]
+            row_ah = (ah - gap * (len(rows) - 1) - sum(caps)) / len(rows)
             heights = [
-                min(row_ah, (aw - gap * (len(r) - 1)) / sum(iw / ih for _, iw, ih in r))
+                min(row_ah, (aw - gap * (len(r) - 1)) / sum(iw / ih for _, iw, ih, _ in r))
                 for r in rows
             ]
-            cy = top + (ah - sum(heights) - gap * (len(rows) - 1)) / 2
+            used = sum(heights) + sum(caps) + gap * (len(rows) - 1)
+            cy = top + (ah - used) / 2
             c = self.c
-            for r, h in zip(rows, heights):
-                widths = [h * iw / ih for _, iw, ih in r]
+            for r, h, cap in zip(rows, heights, caps):
+                widths = [h * iw / ih for _, iw, ih, _ in r]
                 cx = (W - sum(widths) - gap * (len(r) - 1)) / 2
-                for (reader, _, _), w in zip(r, widths):
+                for (reader, _, _, caption), w in zip(r, widths):
                     c.saveState()
                     p = c.beginPath()
                     p.roundRect(cx, self.y(cy + h), w, h, 14)
                     c.clipPath(p, stroke=0, fill=0)
                     c.drawImage(reader, cx, self.y(cy + h), w, h)
                     c.restoreState()
+                    if caption:
+                        self.text(
+                            cx + w / 2,
+                            cy + h + 24,
+                            caption.upper(),
+                            size=T_LABEL,
+                            bold=True,
+                            align="c",
+                            max_w=w,
+                        )
                     cx += w + gap
-                cy += h + gap
+                cy += h + cap + gap
             self.c.showPage()
 
     def _load(self, f):
@@ -259,7 +328,130 @@ class Offer:
             log.warning("offer pdf: image %s could not be read", getattr(f, "pk", "?"))
             return None
 
-    # The price table: МЕБЕЛЬ | МАТЕРИАЛ | СТОИМОСТЬ, one block per furniture item,
+    # Furniture cards: a piece of furniture with pictures gets its own row — the pictures
+    # on the left, what it is made of and its price on the right.
+    CARD_W, IMG_W, LABEL_W = W - 2 * ROOM_X, 600, 200
+    BODY_TOP = 165
+
+    def item_cards(self, room):
+        cards = []
+        for it in room["items"]:
+            imgs = []
+            for f, caption in self.item_photos(it):
+                loaded = self._load(f)
+                if loaded:
+                    imgs.append((*loaded, caption))
+            if imgs:
+                info = self._card_info(it)
+                cards.append((it, imgs, info))
+        if not cards:
+            return
+        limit, gap = H - self.BODY_TOP - 40, 24
+        pages, cur, used = [], [], 0
+        for it, imgs, info in cards:
+            h = max(290, min(info[0], limit))
+            if cur and used + h > limit:
+                pages.append(cur)
+                cur, used = [], 0
+            cur.append((it, imgs, info, h))
+            used += h + gap
+        pages.append(cur)
+        for pi, chunk in enumerate(pages):
+            self.room_title(room, "МЕБЕЛЛАР", cont=pi > 0)
+            cy = self.BODY_TOP
+            for it, imgs, info, h in chunk:
+                self._card(it, imgs, info, cy, h)
+                cy += h + gap
+            self.c.showPage()
+
+    def _card_info(self, it):
+        info_w = self.CARD_W - self.IMG_W - 94
+        name_lines = simpleSplit(it["name"].upper(), "Mont-Bold", T_ITEM + 4, info_w)
+        rows = []
+        for ln in offer_lines(it):
+            lab = simpleSplit(ln["label"].upper(), "Mont", T_LABEL, self.LABEL_W - 16)
+            val = simpleSplit(str(ln["value"]), "Mont", T_VALUE, info_w - self.LABEL_W)
+            rows.append((lab, val))
+        h = 28 + len(name_lines) * 27 + (22 if it["count_text"] else 0) + 12
+        h += sum(max(len(a), len(b)) * 20 + 8 for a, b in rows)
+        h += 84  # price strip
+        return h, name_lines, rows
+
+    def _card(self, it, imgs, info, top, h):
+        c = self.c
+        x, cw = ROOM_X, self.CARD_W
+        _, name_lines, rows = info
+        c.setFillColor(white)
+        c.setStrokeColor(LINE)
+        c.setLineWidth(1)
+        c.roundRect(x, self.y(top + h), cw, h, 14, stroke=1, fill=1)
+        # pictures: one row, same height, centred in the left part
+        pad, gap = 20, 14
+        aw, ah = self.IMG_W, h - 2 * pad
+        cap = 24 if any(i[3] for i in imgs) else 0
+        imgs = imgs[:4]
+        rh = min(ah - cap, (aw - gap * (len(imgs) - 1)) / sum(iw / ih for _, iw, ih, _ in imgs))
+        widths = [rh * iw / ih for _, iw, ih, _ in imgs]
+        ix = x + pad + (aw - sum(widths) - gap * (len(imgs) - 1)) / 2
+        iy = top + pad + (ah - rh - cap) / 2
+        for (reader, _, _, caption), w in zip(imgs, widths):
+            c.saveState()
+            p = c.beginPath()
+            p.roundRect(ix, self.y(iy + rh), w, rh, 10)
+            c.clipPath(p, stroke=0, fill=0)
+            c.drawImage(reader, ix, self.y(iy + rh), w, rh)
+            c.restoreState()
+            if caption:
+                self.text(
+                    ix + w / 2,
+                    iy + rh + 18,
+                    caption.upper(),
+                    size=T_LABEL - 1,
+                    bold=True,
+                    align="c",
+                    max_w=w,
+                )
+            ix += w + gap
+        # info
+        x0 = x + pad + self.IMG_W + 34
+        c.setStrokeColor(LINE)
+        c.line(x0 - 17, self.y(top + pad), x0 - 17, self.y(top + h - pad))
+        y = top + 28 + 20
+        for ln in name_lines:
+            self.text(x0, y, ln, size=T_ITEM + 4, bold=True)
+            y += 27
+        if it["count_text"]:
+            self.text(x0, y - 4, it["count_text"], size=T_LABEL + 1, color=MUTED)
+            y += 22
+        y += 10
+        bottom = top + h - 84
+        for lab, val in rows:
+            if y + 14 > bottom:
+                break
+            ly = y
+            for t in lab:
+                self.text(x0, ly, t, size=T_LABEL, color=MUTED)
+                ly += 20
+            vy = y
+            for t in val:
+                self.text(x0 + self.LABEL_W, vy, t, size=T_VALUE)
+                vy += 20
+            y = max(ly, vy) + 8
+        # price strip
+        c.setStrokeColor(LINE)
+        c.line(x0, self.y(top + h - 70), x + cw - pad, self.y(top + h - 70))
+        self.text(x0, top + h - 30, "НАРХИ", size=T_LABEL, color=MUTED, space=1)
+        self.text(
+            x + cw - 30,
+            top + h - 26,
+            money(it["amount"]),
+            size=T_TOTAL + 4,
+            bold=True,
+            color=GREEN,
+            align="r",
+        )
+
+    # The price table: МЕБЕЛ | МАТЕРИАЛЛАР | НАРХИ, one block per furniture item,
     # every «label: material» on its own aligned row.
     TX, TW = 80, 1280
     C1, C2 = 400, 1040  # column borders (x from TX)
@@ -268,7 +460,7 @@ class Offer:
     def room_prices(self, room):
         blocks = [self._block(it) for it in room["items"]]
         page_blocks, cur, used = [], [], 0
-        room_h = H - 205 - 60 - 64  # table body space: header 56 + total row 64 + margins
+        room_h = H - self.BODY_TOP - 56 - 64 - 40  # header 56, total row 64, bottom margin
         for b in blocks:
             if cur and used + b[0] > room_h:
                 page_blocks.append(cur)
@@ -282,11 +474,13 @@ class Offer:
 
     def _block(self, it):
         name = it["name"].upper()
-        name_lines = simpleSplit(name, "Mont-Bold", 17, self.C1 - 30)
+        name_lines = simpleSplit(name, "Mont-Bold", T_ITEM, self.C1 - 30)
         rows = []
-        for p in it["params"] + ([{"label": "Допол.", "value": it["note"]}] if it["note"] else []):
-            label_lines = simpleSplit(f"{p['label'].upper()}:", "Mont", 14, self.C1 - 30)
-            value_lines = simpleSplit(str(p["value"]).upper(), "Mont", 16, self.C2 - self.C1 - 40)
+        for p in offer_lines(it):
+            label_lines = simpleSplit(f"{p['label'].upper()}:", "Mont", T_LABEL, self.C1 - 30)
+            value_lines = simpleSplit(
+                str(p["value"]).upper(), "Mont", T_VALUE, self.C2 - self.C1 - 40
+            )
             rows.append((label_lines, value_lines))
         h = self.PAD * 2 + len(name_lines) * 22
         if it["count_text"]:
@@ -297,32 +491,37 @@ class Offer:
 
     def _price_page(self, room, blocks, last, cont):
         c = self.c
-        self.fill_page(GREY_BG)
-        w = self.text(115, 160, room["name"].upper(), size=50, bold=True, color=FOREST, max_w=760)
-        self.text(115 + w + 30, 160, "ЦЕНА" + (" (давоми)" if cont else ""), size=50)
+        self.room_title(room, "НАРХИ", cont=cont)
         tx, tw = self.TX, self.TW
-        top = 195
+        top = self.BODY_TOP
         body_h = sum(b[0] for b in blocks) + (64 if last else 0)
         # card
         c.setFillColor(white)
-        c.setStrokeColor(HexColor("#1B1B1B"))
-        c.setLineWidth(1.5)
-        c.roundRect(tx, self.y(top + 56 + body_h), tw, 56 + body_h, 10, stroke=1, fill=1)
+        c.setStrokeColor(LINE)
+        c.setLineWidth(1)
+        c.roundRect(tx, self.y(top + 56 + body_h), tw, 56 + body_h, 14, stroke=1, fill=1)
         # header
         c.saveState()
         p = c.beginPath()
-        p.roundRect(tx, self.y(top + 56 + body_h), tw, 56 + body_h, 10)
+        p.roundRect(tx, self.y(top + 56 + body_h), tw, 56 + body_h, 14)
         c.clipPath(p, stroke=0, fill=0)
         c.setFillColor(HEAD)
         c.rect(tx, self.y(top + 56), tw, 56, stroke=0, fill=1)
         c.restoreState()
         for label, x0, x1 in (
-            ("МЕБЕЛЬ", 0, self.C1),
-            ("МАТЕРИАЛ", self.C1, self.C2),
-            ("СТОИМОСТЬ", self.C2, tw),
+            ("МЕБЕЛ", 0, self.C1),
+            ("МАТЕРИАЛЛАР", self.C1, self.C2),
+            ("НАРХИ", self.C2, tw),
         ):
             self.text(
-                tx + (x0 + x1) / 2, top + 35, label, size=17, color=white, align="c", space=1.5
+                tx + (x0 + x1) / 2,
+                top + 35,
+                label,
+                size=T_LABEL + 2,
+                bold=True,
+                color=white,
+                align="c",
+                space=2,
             )
         # column lines
         c.setStrokeColor(LINE)
@@ -336,14 +535,14 @@ class Offer:
                 c.line(tx, self.y(cy), tx + tw, self.y(cy))
             y = cy + self.PAD + 17
             for ln in name_lines:
-                self.text(tx + self.C1 / 2, y, ln, size=17, bold=True, color=DARK, align="c")
+                self.text(tx + self.C1 / 2, y, ln, size=T_ITEM, bold=True, color=DARK, align="c")
                 y += 22
             if it["count_text"]:
                 self.text(
                     tx + self.C1 / 2,
                     y - 2,
                     f"({it['count_text']})",
-                    size=14,
+                    size=T_LABEL,
                     color=MUTED,
                     align="c",
                 )
@@ -352,18 +551,20 @@ class Offer:
             for lab, val in rows:
                 ly = y
                 for ln in lab:
-                    self.text(tx + self.C1 / 2, ly, ln, size=14, color=MUTED, align="c")
+                    self.text(tx + self.C1 / 2, ly, ln, size=T_LABEL, color=MUTED, align="c")
                     ly += self.ROW_H * 0.8
                 vy = y
                 for ln in val:
-                    self.text(tx + (self.C1 + self.C2) / 2, vy, ln, size=16, color=DARK, align="c")
+                    self.text(
+                        tx + (self.C1 + self.C2) / 2, vy, ln, size=T_VALUE, color=DARK, align="c"
+                    )
                     vy += self.ROW_H * 0.8
                 y = max(ly, vy) + 6
             self.text(
                 tx + (self.C2 + tw) / 2,
                 cy + h / 2 + 8,
                 money(it["amount"]),
-                size=22,
+                size=T_PRICE,
                 bold=True,
                 align="c",
             )
@@ -372,21 +573,21 @@ class Offer:
             c.setFillColor(HexColor("#EEF7F1"))
             c.saveState()
             p = c.beginPath()
-            p.roundRect(tx, self.y(top + 56 + body_h), tw, 56 + body_h, 10)
+            p.roundRect(tx, self.y(top + 56 + body_h), tw, 56 + body_h, 14)
             c.clipPath(p, stroke=0, fill=0)
             c.rect(tx, self.y(cy + 64), tw, 64, stroke=0, fill=1)
             c.restoreState()
-            c.setStrokeColor(HexColor("#1B1B1B"))
-            c.setLineWidth(1.5)
+            c.setStrokeColor(LINE)
+            c.setLineWidth(1)
             c.line(tx, self.y(cy), tx + tw, self.y(cy))
             self.text(
-                tx + self.C2 - 30, cy + 41, "ИТОГО:", size=22, bold=True, color=GREEN, align="r"
+                tx + self.C2 - 30, cy + 41, "ЖАМИ:", size=T_PRICE, bold=True, color=GREEN, align="r"
             )
             self.text(
                 tx + (self.C2 + tw) / 2,
                 cy + 42,
                 money(room["total"]),
-                size=26,
+                size=T_TOTAL,
                 bold=True,
                 color=GREEN,
                 align="c",
@@ -397,21 +598,22 @@ class Offer:
         d = self.data
         self.bg("bg_total.png")
         top = 175
-        self.text(W / 2, top, "ОБЩИЙ ИТОГ", size=56, bold=True, color=FOREST, align="c")
+        self.heading(W / 2, top, "УМУМИЙ", "ЖАМИ", align="c")
         if d["variant"]:
             top += 70
             self.text(
                 W / 2,
                 top,
                 d["variant"].upper(),
-                size=48,
+                size=T_ROOM,
                 bold=True,
                 color=FOREST,
                 align="c",
+                space=4,
                 max_w=1100,
             )
         rooms = [r for r in d["rooms"] if r["items"]]
-        size = 20 if len(rooms) <= 10 else 15
+        size = T_BODY + 2 if len(rooms) <= 10 else T_LABEL + 1
         lead = size * 1.75
         x0, x1 = 440, 1000
         cy = top + 60
@@ -429,8 +631,8 @@ class Offer:
         self.text(
             W / 2,
             cy + 13,
-            f"ИТОГ — {money(d['total'])}",
-            size=34,
+            f"ЖАМИ — {money(d['total'])}",
+            size=32,
             bold=True,
             color=white,
             align="c",
@@ -438,27 +640,28 @@ class Offer:
 
     def delivery(self):
         self.bg("bg_delivery.png")
-        self.text(730, 140, "ЕТКАЗИБ БЕРИШ ВА", size=56, bold=True, color=FOREST, max_w=680)
-        self.text(730, 222, "ЎРНАТИШ", size=56, bold=True, color=DARK)
-        self.paragraphs(758, 285, 600, DELIVERY, size=15, gap=6)
+        self.text(758, 150, "ЕТКАЗИБ БЕРИШ", size=T_PAGE, bold=True, color=FOREST, max_w=620)
+        self.text(758, 222, "ВА ЎРНАТИШ", size=T_PAGE, color=DARK, max_w=620)
+        self.paragraphs(758, 285, 600, DELIVERY, size=T_BODY - 1, gap=8)
         self.text(800, 720, f"http://{SITE}", size=17, bold=True)
 
     def terms(self):
         self.bg("bg_terms.png")
-        self.text(98, 170, "ТАЙЁРЛАШ", size=62, bold=True, color=FOREST)
-        self.text(98, 236, "МУДДАТИ", size=62, bold=True, color=DARK)
-        self.paragraphs(98, 278, 590, TERMS, size=15, gap=7)
+        self.text(98, 172, "ТАЙЁРЛАШ", size=T_PAGE, bold=True, color=FOREST)
+        self.text(98, 240, "МУДДАТИ", size=T_PAGE, color=DARK)
+        self.paragraphs(98, 290, 590, TERMS, size=T_BODY - 1, gap=8)
 
     def thanks(self):
         self.bg("bg_thanks.png")
         c = self.c
         c.setFillColor(white)  # hide the contacts baked into the background (old phone)
         c.rect(140, self.y(740), 420, 175, stroke=0, fill=1)
-        self.text(90, 312, "СПАСИБО,", size=72, bold=True)
-        for i, line in enumerate(("ЧТО ВЫБИРАЕТЕ", "КАЧЕСТВО И СТИЛЬ", "ВМЕСТЕ С НАМИ")):
-            self.text(90, 382 + i * 57, line, size=40)
+        self.text(90, 312, "РАҲМАТ,", size=T_HERO + 4, bold=True)
+        for i, line in enumerate(("СИФАТ ВА УСЛУБНИ", "БИЗ БИЛАН", "ТАНЛАГАНИНГИЗ УЧУН")):
+            # the sofa's circle starts at ~x 560: keep the lines left of it
+            self.text(90, 378 + i * 50, line, size=34, max_w=440)
         for top, s in ((581, TELEGRAM), (622, INSTAGRAM), (664, PHONE), (707, ADDRESS)):
-            self.text(150, top, s, size=14)
+            self.text(150, top, s, size=T_LABEL + 1)
         self.text(167, 777, f"http://{SITE}", size=18, bold=True)
 
     def build(self) -> bytes:
@@ -466,8 +669,9 @@ class Offer:
             page()
             self.c.showPage()
         for room in self.data["rooms"]:
-            if room["images"]:
+            if self.photos(room):
                 self.room_photos(room)
+            self.item_cards(room)
             if room["items"]:
                 self.room_prices(room)
         for page in (self.total, self.delivery, self.terms, self.thanks):
@@ -477,5 +681,6 @@ class Offer:
         return self.buf.getvalue()
 
 
-def build_offer_pdf(price) -> bytes:
-    return Offer(price).build()
+def build_offer_pdf(price=None, data=None) -> bytes:
+    """`data`: a saved version (services.version_offer_data) instead of the live price."""
+    return Offer(price, data).build()

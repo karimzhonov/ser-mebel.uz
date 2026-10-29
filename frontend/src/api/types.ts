@@ -182,8 +182,33 @@ export interface Calculation {
   obj: number;
   room: number | null;
   note: string;
+  color: string;
+  /** decimals come as strings */
+  auto_amount: string | null;
+  manual_amount: string | null;
   amount: Money | null;
   items: CalculationItem[];
+  accessories: Accessory[];
+}
+
+export interface Accessory {
+  id: number;
+  inventory: number | null;
+  name: string;
+  count: number;
+  price: number;
+  amount: number;
+  image: number | null;
+  thumbnail: string | null;
+}
+
+export interface PriceVersion {
+  id: number;
+  number: number;
+  label: string;
+  total: number;
+  created_at: string;
+  created_by: string | null;
 }
 
 export interface RoomType {
@@ -198,6 +223,8 @@ export interface RoomType {
 export interface RoomImage {
   id: number;
   file: number;
+  /** the furniture this picture shows; null = the whole room */
+  calculate: number | null;
   name: string;
   thumbnail: string | null;
 }
@@ -234,8 +261,14 @@ export interface OfferSheet {
       count: number | null;
       count_text: string;
       note: string;
+      color: string;
+      manual: boolean;
+      auto_amount: number | null;
       amount: number;
       params: { label: string; value: string }[];
+      /** params + colour / accessories / extra, as the PDF prints them */
+      lines: { label: string; value: string }[];
+      images: number;
     }[];
   }[];
 }
@@ -255,6 +288,9 @@ export interface Price {
   calculations?: Calculation[];
   rooms?: Room[];
   sheet?: OfferSheet;
+  versions?: PriceVersion[];
+  /** the order is in detailing or later: nothing can change */
+  locked?: boolean;
   actions?: { edit: boolean; done: boolean };
 }
 

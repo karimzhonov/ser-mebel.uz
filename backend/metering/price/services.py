@@ -52,6 +52,32 @@ def recompute_price_total(price) -> None:
         )
 
 
+# --- Lock: the calculation can change until the order goes to detailing -------------
+
+EDITABLE_ORDER_STATUSES = ("waiting", "created")
+LOCKED_MESSAGE = "Buyurtma detalirovkaga o'tgan — hisob-kitobni endi o'zgartirib bo'lmaydi"
+
+
+def price_locked(price) -> bool:
+    """True once the order made from this calculation's metering has reached
+    detailing (or any later stage)."""
+    from order.models import Order
+
+    if not price.metering_id:
+        return False
+    status = (
+        Order.objects.filter(metering_id=price.metering_id).values_list("status", flat=True).first()
+    )
+    return status is not None and status not in EDITABLE_ORDER_STATUSES
+
+
+def assert_editable(price) -> None:
+    from core.exceptions import ServiceError
+
+    if price_locked(price):
+        raise ServiceError(LOCKED_MESSAGE)
+
+
 def save_calculation(
     *,
     price,
@@ -62,8 +88,17 @@ def save_calculation(
     calculation=None,
     room=None,
     note: str = "",
+    color: str = "",
+    manual_amount=None,
+    accessories: list | None = None,
 ):
-    """Create or update one Calculate row and its inventory lines.
+    """Create or update one Calculate row, its inventory lines and accessories.
+
+    `accessories`: [{"id"?, "inventory"?, "name", "count", "price", "image"?}] — the
+    whole list (rows left out are deleted). `price` is the unit price in USD; picked
+    from the catalog it defaults to the catalog price. `image` is a filer image id
+    uploaded with add_accessory_image(). amount = manual_amount when given, else the
+    catalog lines + accessories (auto_amount).
 
     `items` is a list of {"inventory_type": id, "inventory": id | None, "count": float | None}
     — at most one inventory per InventoryType, same as the admin form. For a TYPE_KV
@@ -80,6 +115,7 @@ def save_calculation(
 
     from .models import Calculate, Inventory, InventoryInCalculate, InventoryType
 
+    assert_editable(price)
     by_type = {}
     for item in items or []:
         type_id = int(item["inventory_type"])
@@ -106,6 +142,8 @@ def save_calculation(
         calc.count = count
         calc.room = room
         calc.note = (note or "").strip()
+        calc.color = (color or "").strip()
+        calc.manual_amount = manual_amount
         calc.save()
 
         amount = 0.0
@@ -132,14 +170,84 @@ def save_calculation(
             )
             amount += line_amount
 
-        calc.amount = Money(amount, currency="USD")
+        amount += _save_accessories(price, calc, accessories or [])
+        calc.auto_amount = round(amount, 2)
+        final = float(manual_amount) if manual_amount is not None else amount
+        calc.amount = Money(final, currency="USD")
         calc.save()
         recompute_price_total(price)
     return calc
 
 
+def _save_accessories(price, calc, rows: list) -> float:
+    from decimal import Decimal
+
+    from filer.models import Image
+
+    from core.exceptions import ServiceError
+
+    from .models import CalcAccessory, Inventory
+
+    existing = {a.pk: a for a in calc.accessories.all()}
+    keep, total = set(), 0.0
+    for i, row in enumerate(rows, start=1):
+        acc = existing.get(row.get("id")) or CalcAccessory(calculate=calc)
+        inv = None
+        if row.get("inventory"):
+            inv = Inventory.objects.filter(pk=row["inventory"]).first()
+            if inv is None:
+                raise ServiceError("Katalogdagi mahsulot topilmadi")
+        name = (row.get("name") or (inv.name if inv else "")).strip()
+        if not name:
+            raise ServiceError("Aksessuar nomini kiriting")
+        unit = row.get("price")
+        if unit in (None, "") and inv is not None and inv.price is not None:
+            unit = inv.price.amount
+        image = None
+        if row.get("image"):
+            image = Image.objects.filter(pk=row["image"]).first()
+            if image is None or not _in_price_folder(price, image):
+                raise ServiceError("Aksessuar rasmi topilmadi")
+        acc.inventory = inv
+        acc.name = name[:255]
+        acc.count = float(row.get("count") or 1)
+        acc.unit_price = Decimal(str(unit or 0))
+        acc.image = image
+        acc.ordering = i
+        acc.save()
+        keep.add(acc.pk)
+        total += acc.amount
+    calc.accessories.exclude(pk__in=keep).delete()
+    return total
+
+
+def _in_price_folder(price, file) -> bool:
+    root = price.folder_id
+    folder = file.folder
+    while folder is not None:
+        if folder.pk == root:
+            return True
+        folder = folder.parent
+    return False
+
+
+def add_accessory_image(user, price, upload):
+    """An accessory picture goes to «<price folder>/Aksessuarlar»; the calculation
+    editor then sends its id with the accessory row."""
+    from filer.models import Image
+
+    assert_editable(price)
+    folder, _ = Folder.objects.get_or_create(
+        name="Aksessuarlar", parent=price_folder(price), defaults={"owner": user}
+    )
+    img = Image(folder=folder, owner=user, original_filename=upload.name, file=upload)
+    img.save()
+    return img
+
+
 def delete_calculation(calculation) -> None:
     price = calculation.price
+    assert_editable(price)
     with transaction.atomic():
         calculation.delete()
         recompute_price_total(price)
@@ -154,6 +262,7 @@ def add_room(price, room_type, name: str = ""):
 
     from .models import Room
 
+    assert_editable(price)
     name = (name or "").strip()
     if not name:
         same = Room.objects.filter(price=price, room_type=room_type).count()
@@ -167,6 +276,7 @@ def add_room(price, room_type, name: str = ""):
 def rename_room(room, name: str):
     from core.exceptions import ServiceError
 
+    assert_editable(room.price)
     name = (name or "").strip()
     if not name:
         raise ServiceError("Xona nomini kiriting")
@@ -180,6 +290,7 @@ def reorder_rooms(price, ids: list[int]) -> None:
 
     from .models import Room
 
+    assert_editable(price)
     rooms = {r.pk: r for r in Room.objects.filter(price=price)}
     if set(ids) != set(rooms):
         raise ServiceError("Xonalar ro'yxati eskirgan — sahifani yangilang")
@@ -193,6 +304,7 @@ def reorder_rooms(price, ids: list[int]) -> None:
 def delete_room(room) -> None:
     """The room's furniture goes with it; the total is recomputed."""
     price = room.price
+    assert_editable(price)
     with transaction.atomic():
         room.delete()  # CASCADE: its Calculate rows and image links
         recompute_price_total(price)
@@ -208,7 +320,7 @@ def price_folder(price):
     return folder
 
 
-def add_room_images(user, room, uploads) -> list:
+def add_room_images(user, room, uploads, calculate=None) -> list:
     """`uploads` are already checked to be images (the API normalises their names).
     Stored as filer images in «<price folder>/<room name>»."""
     from django.db.models import Max
@@ -216,6 +328,7 @@ def add_room_images(user, room, uploads) -> list:
 
     from .models import RoomImage
 
+    assert_editable(room.price)
     with transaction.atomic():
         folder, _ = Folder.objects.get_or_create(
             name=room.name[:255], parent=price_folder(room.price), defaults={"owner": user}
@@ -225,12 +338,28 @@ def add_room_images(user, room, uploads) -> list:
         for i, upload in enumerate(uploads, start=1):
             img = Image(folder=folder, owner=user, original_filename=upload.name, file=upload)
             img.save()
-            out.append(RoomImage.objects.create(room=room, file=img, ordering=last + i))
+            out.append(
+                RoomImage.objects.create(
+                    room=room, file=img, ordering=last + i, calculate=calculate
+                )
+            )
     return out
+
+
+def set_image_furniture(image, calculate) -> None:
+    """Attach a room picture to one of the room's furniture (None = the whole room)."""
+    from core.exceptions import ServiceError
+
+    assert_editable(image.room.price)
+    if calculate is not None and calculate.room_id != image.room_id:
+        raise ServiceError("Bu mebel shu xonada emas")
+    image.calculate = calculate
+    image.save(update_fields=["calculate"])
 
 
 def delete_room_image(image) -> None:
     """Drops the picture from the offer; the file stays in the folder."""
+    assert_editable(image.room.price)
     image.delete()
 
 
@@ -252,13 +381,18 @@ def offer_data(price) -> dict:
     )
     calcs_qs = (
         Calculate.objects.select_related("obj")
-        .prefetch_related(Prefetch("inventoryincalculate_set", queryset=lines_qs))
+        .prefetch_related(
+            Prefetch("inventoryincalculate_set", queryset=lines_qs), "accessories__image"
+        )
         .order_by("id")
     )
     rooms = list(
         Room.objects.filter(price=price)
         .select_related("room_type")
-        .prefetch_related(Prefetch("calculations", queryset=calcs_qs), "images__file")
+        .prefetch_related(
+            Prefetch("calculations", queryset=calcs_qs.prefetch_related("images__file")),
+            "images__file",
+        )
     )
 
     def item(c):
@@ -270,6 +404,16 @@ def offer_data(price) -> dict:
             if t.type == t.TYPE_COUNT and ic.count and ic.count != 1:
                 value = f"{value} × {_num(ic.count)}"
             params.append({"label": t.name, "value": value})
+        accessories = [
+            {
+                "name": a.name,
+                "count": a.count,
+                "count_text": _num(a.count),
+                "amount": a.amount,
+                "image": a.image,
+            }
+            for a in c.accessories.all()
+        ]
         return {
             "id": c.id,
             "name": c.name,
@@ -277,7 +421,12 @@ def offer_data(price) -> dict:
             "count": c.count,
             "count_text": f"{_num(c.count)} {unit}" if c.count else "",
             "params": params,
+            "color": c.color,
+            "accessories": accessories,
+            "images": [im.file for im in c.images.all()],
             "note": c.note,
+            "auto_amount": float(c.auto_amount) if c.auto_amount is not None else None,
+            "manual": c.manual_amount is not None,
             "amount": round(float(c.amount.amount), 2) if c.amount is not None else 0.0,
         }
 
@@ -290,7 +439,8 @@ def offer_data(price) -> dict:
                 "name": r.name,
                 "room_type": r.room_type.name,
                 "icon": r.room_type.icon,
-                "images": [im.file for im in r.images.all()],
+                # the whole room; furniture pictures travel with their item
+                "images": [im.file for im in r.images.all() if im.calculate_id is None],
                 "items": items,
                 "total": round(sum(i["amount"] for i in items), 2),
             }
@@ -326,6 +476,98 @@ def _num(v) -> str:
     v = float(v or 0)
     s = f"{v:.2f}".rstrip("0").rstrip(".")
     return s.replace(".", ",")
+
+
+def offer_lines(item: dict) -> list[dict]:
+    """Every «label: value» line of one furniture item as the offer prints it: the
+    catalog parameters, then colour / accessories / extra — only when filled in."""
+    lines = list(item["params"])
+    if item.get("color"):
+        lines.append({"label": "Ранги", "value": item["color"]})
+    for a in item.get("accessories") or []:
+        value = a["name"] + (f" × {a['count_text']}" if a["count"] and a["count"] != 1 else "")
+        lines.append({"label": "Аксессуар", "value": value})
+    if item.get("note"):
+        lines.append({"label": "Қўшимча", "value": item["note"]})
+    return lines
+
+
+# --- Versions: what was given to the client, kept as it was ------------------------
+
+
+def offer_snapshot(price) -> dict:
+    """offer_data() made JSON-safe (dates as ISO, pictures as filer ids)."""
+    data = offer_data(price)
+    data["date"] = data["date"].isoformat()
+    for r in data["rooms"]:
+        r["images"] = [f.pk for f in r["images"]]
+        for it in r["items"]:
+            it["images"] = [f.pk for f in it["images"]]
+            for a in it["accessories"]:
+                a["image"] = a["image"].pk if a["image"] else None
+    return data
+
+
+def _comparable(data: dict) -> dict:
+    return {k: v for k, v in data.items() if k != "date"}
+
+
+def save_version(user, price, label: str = ""):
+    """Freezes the current offer as the next version — unless nothing changed since
+    the last one (then that one is returned)."""
+    from decimal import Decimal
+
+    from django.db.models import Max
+
+    from .models import PriceVersion
+
+    data = offer_snapshot(price)
+    with transaction.atomic():
+        last = (
+            PriceVersion.objects.select_for_update().filter(price=price).order_by("-number").first()
+        )
+        if last is not None and _comparable(last.data) == _comparable(data) and not label:
+            return last
+        number = (PriceVersion.objects.filter(price=price).aggregate(m=Max("number"))["m"] or 0) + 1
+        if not label:
+            label = "Taxminiy narx" if number == 1 else f"{number}-taklif"
+        return PriceVersion.objects.create(
+            price=price,
+            number=number,
+            label=label[:255],
+            total=Decimal(str(data["total"])),
+            data=data,
+            created_by=user if getattr(user, "pk", None) else None,
+        )
+
+
+def version_offer_data(version) -> dict:
+    """A saved version back in offer_data() shape, for the PDF (pictures that were
+    deleted since are skipped)."""
+    import copy
+    from datetime import date
+
+    from filer.models import Image
+
+    data = copy.deepcopy(version.data)
+    ids = {i for r in data["rooms"] for i in r["images"]}
+    ids |= {
+        a["image"]
+        for r in data["rooms"]
+        for it in r["items"]
+        for a in it.get("accessories", [])
+        if a.get("image")
+    }
+    ids |= {i for r in data["rooms"] for it in r["items"] for i in it.get("images", [])}
+    files = Image.objects.in_bulk(ids)
+    data["date"] = date.fromisoformat(data["date"])
+    for r in data["rooms"]:
+        r["images"] = [files[i] for i in r["images"] if i in files]
+        for it in r["items"]:
+            it["images"] = [files[i] for i in it.get("images", []) if i in files]
+            for a in it.get("accessories", []):
+                a["image"] = files.get(a.get("image"))
+    return data
 
 
 def mark_price_done(price):

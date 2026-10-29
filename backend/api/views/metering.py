@@ -24,11 +24,13 @@ from metering.price.models import (
     InventoryType,
     ObjectType,
     Price,
+    PriceVersion,
     Room,
     RoomImage,
     RoomType,
 )
 from metering.price.services import (
+    add_accessory_image,
     add_room,
     add_room_images,
     delete_calculation,
@@ -38,6 +40,9 @@ from metering.price.services import (
     rename_room,
     reorder_rooms,
     save_calculation,
+    save_version,
+    set_image_furniture,
+    version_offer_data,
 )
 from metering.services import (
     assign_metering_tasks,
@@ -348,6 +353,56 @@ class PriceViewSet(viewsets.ModelViewSet):
         resp["Content-Disposition"] = f'inline; filename="taklif-{price.pk}.pdf"'
         return resp
 
+    # --- versions: the offer as given to the client ----------------------------------
+
+    @action(detail=True, methods=["post"], url_path="versions")
+    def add_version(self, request, pk=None):
+        require_perm(request.user, "price.change_price")
+        price = self.get_object()
+        save_version(request.user, price, (request.data.get("label") or "").strip())
+        return self._detail(price)
+
+    @action(detail=True, methods=["get"], url_path=r"versions/(?P<version_id>\d+)/pdf")
+    def version_pdf(self, request, pk=None, version_id=None):
+        from metering.price.offer_pdf import build_offer_pdf
+
+        price = self.get_object()
+        v = get_object_or_404(PriceVersion, pk=version_id, price=price)
+        resp = HttpResponse(
+            build_offer_pdf(data=version_offer_data(v)), content_type="application/pdf"
+        )
+        resp["Content-Disposition"] = f'inline; filename="taklif-{price.pk}-v{v.number}.pdf"'
+        return resp
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="accessory-images",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def accessory_image(self, request, pk=None):
+        """One picture for an accessory row; the editor sends its id back on save."""
+        from .files import _thumbnail
+
+        price = self._editable_price(request)
+        up = request.FILES.get("file")
+        if up is None:
+            raise ServiceError("Rasm tanlanmagan")
+        self._check_image(up)
+        img = add_accessory_image(request.user, price, up)
+        return Response(
+            {"image": img.pk, "thumbnail": _thumbnail(img), "name": img.original_filename}
+        )
+
+    @staticmethod
+    def _check_image(up):
+        from .files import IMAGE_EXTENSIONS, _normalize_upload_name
+
+        name = _normalize_upload_name(up, lambda: "")
+        if not name or os.path.splitext(name)[1].lower() not in IMAGE_EXTENSIONS:
+            raise ServiceError(f"«{up.name}» rasm emas (JPG, PNG, WEBP …)")
+        up.name = name
+
     # --- rooms ---------------------------------------------------------------------
 
     def _editable_price(self, request):
@@ -396,30 +451,35 @@ class PriceViewSet(viewsets.ModelViewSet):
         parser_classes=[MultiPartParser, FormParser],
     )
     def room_images(self, request, pk=None, room_id=None):
-        from .files import IMAGE_EXTENSIONS, _normalize_upload_name
-
         price = self._editable_price(request)
         room = self._room_of(price, room_id)
         uploads = request.FILES.getlist("file")
         if not uploads:
             raise ServiceError("Rasm tanlanmagan")
         for up in uploads:
-            name = _normalize_upload_name(up, lambda: "")
-            if not name or os.path.splitext(name)[1].lower() not in IMAGE_EXTENSIONS:
-                raise ServiceError(f"«{up.name}» rasm emas (JPG, PNG, WEBP …)")
-            up.name = name
-        add_room_images(request.user, room, uploads)
+            self._check_image(up)
+        calc = None
+        if request.data.get("calculate"):
+            calc = get_object_or_404(Calculate, pk=request.data["calculate"], room=room)
+        add_room_images(request.user, room, uploads, calc)
         return self._detail(price)
 
     @action(
         detail=True,
-        methods=["delete"],
+        methods=["patch", "delete"],
         url_path=r"rooms/(?P<room_id>\d+)/images/(?P<image_id>\d+)",
     )
     def room_image(self, request, pk=None, room_id=None, image_id=None):
+        """PATCH {"calculate": id | null}: which furniture the picture shows."""
         price = self._editable_price(request)
         room = self._room_of(price, room_id)
-        delete_room_image(get_object_or_404(RoomImage, pk=image_id, room=room))
+        image = get_object_or_404(RoomImage, pk=image_id, room=room)
+        if request.method == "DELETE":
+            delete_room_image(image)
+        else:
+            calc_id = request.data.get("calculate")
+            calc = get_object_or_404(Calculate, pk=calc_id, room=room) if calc_id else None
+            set_image_furniture(image, calc)
         return self._detail(price)
 
     @action(
@@ -442,6 +502,9 @@ class PriceViewSet(viewsets.ModelViewSet):
             items=data.get("items", []),
             room=self._room_of(price, data.get("room")),
             note=data.get("note", ""),
+            color=data.get("color", ""),
+            manual_amount=data.get("manual_amount"),
+            accessories=data.get("accessories", []),
         )
         return self._detail(price)
 
@@ -474,6 +537,9 @@ class PriceViewSet(viewsets.ModelViewSet):
             calculation=calc,
             room=self._room_of(price, data.get("room")),
             note=data.get("note", ""),
+            color=data.get("color", ""),
+            manual_amount=data.get("manual_amount"),
+            accessories=data.get("accessories", []),
         )
         return self._detail(price)
 
