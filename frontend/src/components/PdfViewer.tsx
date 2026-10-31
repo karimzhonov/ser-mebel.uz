@@ -15,11 +15,14 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
  * The bytes come from the API (`/files/<id>/`), never from a bare /media/ link. */
 export default function PdfViewer({
   fileId,
+  url,
   name,
   downloadName,
   onClose,
 }: {
-  fileId: number;
+  /** a filer file, or any API url that returns a PDF */
+  fileId?: number;
+  url?: string;
   name: string;
   downloadName?: string | null;
   onClose: () => void;
@@ -35,7 +38,7 @@ export default function PdfViewer({
     let cancelled = false;
     let loaded: PDFDocumentProxy | null = null;
     let task: ReturnType<typeof pdfjs.getDocument> | null = null;
-    fetchBlob(`/files/${fileId}/`)
+    fetchBlob(url ?? `/files/${fileId}/`)
       .then(async (b) => {
         if (cancelled) return;
         setBlob(b);
@@ -61,7 +64,7 @@ export default function PdfViewer({
       task?.destroy();
       loaded?.destroy();
     };
-  }, [fileId]);
+  }, [fileId, url]);
 
   useEffect(() => {
     const measure = () => setWidth(Math.min((scroller.current?.clientWidth ?? 800) - 32, 1000));

@@ -11,6 +11,8 @@ from metering.price.models import (
     InventoryType,
     ObjectType,
     Price,
+    Room,
+    RoomType,
 )
 from metering.services import ASSIGNABLE_STATUSES, metering_is_editable
 from oauth.constants import METERING_PERMISSION
@@ -218,7 +220,7 @@ class ObjectTypeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ObjectType
-        fields = ["id", "name", "count_name", "count_label"]
+        fields = ["id", "name", "count_name", "count_label", "show_area"]
 
 
 class InventorySerializer(serializers.ModelSerializer):
@@ -244,21 +246,103 @@ class InventoryTypeSerializer(serializers.ModelSerializer):
 
 class CalculationItemSerializer(serializers.ModelSerializer):
     inventory_type = serializers.IntegerField(source="inventory.type_id", read_only=True)
+    inventory_type_name = serializers.CharField(source="inventory.type.name", read_only=True)
     inventory_name = serializers.CharField(source="inventory.name", read_only=True)
     price = MoneyField(read_only=True)
 
     class Meta:
         model = InventoryInCalculate
-        fields = ["id", "inventory_type", "inventory", "inventory_name", "count", "price"]
+        fields = [
+            "id",
+            "inventory_type",
+            "inventory_type_name",
+            "inventory",
+            "inventory_name",
+            "count",
+            "price",
+        ]
 
 
 class CalculationSerializer(serializers.ModelSerializer):
     amount = MoneyField(read_only=True)
     items = CalculationItemSerializer(source="inventoryincalculate_set", many=True, read_only=True)
+    accessories = serializers.SerializerMethodField()
 
     class Meta:
         model = Calculate
-        fields = ["id", "name", "count", "obj", "amount", "items"]
+        fields = [
+            "id",
+            "name",
+            "count",
+            "obj",
+            "room",
+            "note",
+            "color",
+            "unit",
+            "height",
+            "width",
+            "depth",
+            "auto_amount",
+            "manual_amount",
+            "amount",
+            "items",
+            "accessories",
+        ]
+
+    def get_accessories(self, obj):
+        from ..views.files import _thumbnail
+
+        return [
+            {
+                "id": a.id,
+                "inventory": a.inventory_id,
+                "type_name": a.inventory.type.name if a.inventory_id else "",
+                "name": a.name,
+                "count": a.count,
+                "price": float(a.unit_price),
+                "amount": a.amount,
+                "image": a.image_id,
+                "thumbnail": _thumbnail(a.image) if a.image_id else None,
+            }
+            for a in obj.accessories.all()
+        ]
+
+
+class RoomTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RoomType
+        fields = ["id", "name", "icon", "ordering", "object_types"]
+
+
+def _room_image(img):
+    from ..views.files import _thumbnail
+
+    f = img.file
+    return {
+        "id": img.id,
+        "file": f.pk,
+        "calculate": img.calculate_id,
+        "name": f.original_filename or f.label or "",
+        "thumbnail": _thumbnail(f),
+    }
+
+
+class RoomSerializer(serializers.ModelSerializer):
+    room_type_name = serializers.CharField(source="room_type.name", read_only=True)
+    icon = serializers.CharField(source="room_type.icon", read_only=True)
+    images = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Room
+        fields = ["id", "name", "room_type", "room_type_name", "icon", "ordering", "images"]
+
+    def get_images(self, obj):
+        return [_room_image(i) for i in obj.images.all()]
+
+
+class RoomInputSerializer(serializers.Serializer):
+    room_type = serializers.PrimaryKeyRelatedField(queryset=RoomType.objects.all())
+    name = serializers.CharField(max_length=255, required=False, allow_blank=True)
 
 
 class CalculationItemInputSerializer(serializers.Serializer):
@@ -267,11 +351,35 @@ class CalculationItemInputSerializer(serializers.Serializer):
     count = serializers.FloatField(required=False, allow_null=True, min_value=0)
 
 
+class AccessoryInputSerializer(serializers.Serializer):
+    id = serializers.IntegerField(required=False, allow_null=True)
+    inventory = serializers.IntegerField(required=False, allow_null=True)
+    name = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    count = serializers.FloatField(min_value=0, required=False, default=1)
+    price = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=0, required=False, allow_null=True
+    )
+    image = serializers.IntegerField(required=False, allow_null=True)
+
+
 class CalculationInputSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=255)
     count = serializers.FloatField(min_value=0)
     object_type = serializers.PrimaryKeyRelatedField(queryset=ObjectType.objects.all())
     items = CalculationItemInputSerializer(many=True, required=False)
+    room = serializers.IntegerField(required=False, allow_null=True)
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+    color = serializers.CharField(max_length=255, required=False, allow_blank=True, default="")
+    manual_amount = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=0, required=False, allow_null=True, default=None
+    )
+    accessories = AccessoryInputSerializer(many=True, required=False, default=list)
+    unit = serializers.ChoiceField(choices=["", "kv", "pog"], required=False, default="")
+    height = serializers.IntegerField(
+        min_value=0, max_value=100000, required=False, allow_null=True
+    )
+    width = serializers.IntegerField(min_value=0, max_value=100000, required=False, allow_null=True)
+    depth = serializers.IntegerField(min_value=0, max_value=100000, required=False, allow_null=True)
 
 
 class PriceSerializer(serializers.ModelSerializer):
@@ -292,6 +400,8 @@ class PriceSerializer(serializers.ModelSerializer):
             "folder",
             "user_detail",
             "order",
+            "client_title",
+            "variant",
         ]
         read_only_fields = ["metering", "price", "done", "created_at", "folder"]
 
@@ -301,16 +411,76 @@ class PriceSerializer(serializers.ModelSerializer):
 
 class PriceDetailSerializer(PriceSerializer):
     calculations = serializers.SerializerMethodField()
+    rooms = serializers.SerializerMethodField()
+    sheet = serializers.SerializerMethodField()
     actions = serializers.SerializerMethodField()
 
     class Meta(PriceSerializer.Meta):
-        fields = PriceSerializer.Meta.fields + ["calculations", "actions"]
+        fields = PriceSerializer.Meta.fields + [
+            "calculations",
+            "rooms",
+            "sheet",
+            "versions",
+            "locked",
+            "actions",
+        ]
+
+    versions = serializers.SerializerMethodField()
+    locked = serializers.SerializerMethodField()
+
+    def get_locked(self, obj):
+        from metering.price.services import price_locked
+
+        if not hasattr(self, "_locked"):
+            self._locked = price_locked(obj)
+        return self._locked
+
+    def get_versions(self, obj):
+        return [
+            {
+                "id": v.id,
+                "number": v.number,
+                "label": v.label,
+                "total": float(v.total),
+                "created_at": v.created_at,
+                "created_by": (
+                    (v.created_by.name or str(v.created_by.phone)) if v.created_by else None
+                ),
+            }
+            for v in obj.versions.select_related("created_by").order_by("-number")
+        ]
+
+    def get_rooms(self, obj):
+        qs = (
+            Room.objects.filter(price=obj)
+            .select_related("room_type")
+            .prefetch_related("images__file")
+        )
+        return RoomSerializer(qs, many=True).data
+
+    def get_sheet(self, obj):
+        """The offer exactly as the Excel/PDF print it (the page's «Excel» view)."""
+        from metering.price.services import offer_data, offer_lines
+
+        data = offer_data(obj)
+        for r in data["rooms"]:
+            r["images"] = len(r["images"])
+            for it in r["items"]:
+                it["lines"] = offer_lines(it)
+                it["images"] = len(it["images"])
+                for a in it["accessories"]:
+                    a["image"] = a["image"].pk if a["image"] else None
+        return data
 
     def get_calculations(self, obj):
         qs = (
             Calculate.objects.filter(price=obj)
             .select_related("obj")
-            .prefetch_related("inventoryincalculate_set__inventory")
+            .prefetch_related(
+                "inventoryincalculate_set__inventory__type",
+                "accessories__image",
+                "accessories__inventory__type",
+            )
             .order_by("id")
         )
         return CalculationSerializer(qs, many=True, context=self.context).data
@@ -320,7 +490,8 @@ class PriceDetailSerializer(PriceSerializer):
         can_change = user.has_perm("price.change_price")
         return {
             "edit": can_change
-            and user.has_perms(["price.add_calculate", "price.change_calculate"]),
+            and user.has_perms(["price.add_calculate", "price.change_calculate"])
+            and not self.get_locked(obj),
             "done": can_change and not obj.done,
         }
 

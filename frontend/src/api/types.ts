@@ -146,6 +146,8 @@ export interface ObjectType {
   name: string;
   count_name: string;
   count_label: string;
+  /** decor: the client's PDF shows m²; other furniture shows its size */
+  show_area: boolean;
 }
 
 export interface Inventory {
@@ -168,6 +170,7 @@ export interface InventoryType {
 export interface CalculationItem {
   id: number;
   inventory_type: number;
+  inventory_type_name: string;
   inventory: number;
   inventory_name: string;
   count: number;
@@ -179,8 +182,106 @@ export interface Calculation {
   name: string;
   count: number | null;
   obj: number;
+  room: number | null;
+  note: string;
+  color: string;
+  /** "" = the object type's own unit */
+  unit: "" | "kv" | "pog";
+  /** size in mm */
+  height: number | null;
+  width: number | null;
+  depth: number | null;
+  /** decimals come as strings */
+  auto_amount: string | null;
+  manual_amount: string | null;
   amount: Money | null;
   items: CalculationItem[];
+  accessories: Accessory[];
+}
+
+export interface Accessory {
+  id: number;
+  inventory: number | null;
+  /** the catalog type («Musor yashik») when picked from the catalog */
+  type_name: string;
+  name: string;
+  count: number;
+  price: number;
+  amount: number;
+  image: number | null;
+  thumbnail: string | null;
+}
+
+export interface PriceVersion {
+  id: number;
+  number: number;
+  label: string;
+  total: number;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface RoomType {
+  id: number;
+  name: string;
+  icon: string;
+  ordering: number;
+  /** empty = any furniture fits */
+  object_types: number[];
+}
+
+export interface RoomImage {
+  id: number;
+  file: number;
+  /** the furniture this picture shows; null = the whole room */
+  calculate: number | null;
+  name: string;
+  thumbnail: string | null;
+}
+
+export interface Room {
+  id: number;
+  name: string;
+  room_type: number;
+  room_type_name: string;
+  icon: string;
+  ordering: number;
+  images: RoomImage[];
+}
+
+/** The offer exactly as the Excel / PDF print it. */
+export interface OfferSheet {
+  client: string;
+  estimator: string;
+  date: string;
+  variant: string;
+  currency: string;
+  total: number;
+  rooms: {
+    id: number | null;
+    name: string;
+    room_type: string;
+    icon: string;
+    images: number;
+    total: number;
+    items: {
+      id: number;
+      name: string;
+      object: string;
+      count: number | null;
+      count_text: string;
+      size_text: string;
+      note: string;
+      color: string;
+      manual: boolean;
+      auto_amount: number | null;
+      amount: number;
+      params: { label: string; value: string }[];
+      /** params + colour / accessories / extra, as the PDF prints them */
+      lines: { label: string; value: string }[];
+      images: number;
+    }[];
+  }[];
 }
 
 export interface Price {
@@ -193,7 +294,14 @@ export interface Price {
   folder: number | null;
   user_detail: UserShort | null;
   order: OrderSummary | null;
+  client_title: string;
+  variant: string;
   calculations?: Calculation[];
+  rooms?: Room[];
+  sheet?: OfferSheet;
+  versions?: PriceVersion[];
+  /** the order is in detailing or later: nothing can change */
+  locked?: boolean;
   actions?: { edit: boolean; done: boolean };
 }
 

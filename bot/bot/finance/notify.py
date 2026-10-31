@@ -250,6 +250,26 @@ async def month_submitted(n: Notifier, d: dict):
         d,
         f"📤 {esc(m['name'])} — {month_full(d['month'])} hisobi topshirildi. Qoldiq: {money(d['closing'])}",
     )
+    # the full month as xlsx: every operation, by category, by order
+    ym = d["month"]
+    for chat in dict.fromkeys(d.get("admins") or []):
+        try:
+            res = await backend.request(
+                "GET",
+                "finance/month-report/excel/",
+                actor=chat,
+                params={"month": ym, "member": m["telegram_id"]},
+                raw=True,
+            )
+        except BackendError as e:
+            logger.warning("month report excel %s/%s failed: %s", m["telegram_id"], ym, e)
+            continue
+        await n.document(
+            chat,
+            res.content,
+            f"{m['name'].replace('/', '-')} {ym}.xlsx",
+            f"📥 {m['name']} — {month_full(ym)} hisobi (Excel)",
+        )
 
 
 # ------------------------------------------------------------------ orders

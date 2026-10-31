@@ -34,6 +34,7 @@ urlpatterns = [
     path("finance/checks/", finance.ChecksView.as_view()),
     path("finance/excel/", finance.ExcelView.as_view()),
     path("finance/month-report/", finance.MonthReportView.as_view()),
+    path("finance/month-report/excel/", finance.MonthReportExcelView.as_view()),
     path("finance/handover/", finance.HandoverListView.as_view()),
     path("finance/handover/<int:number>/accept/", finance.HandoverAcceptView.as_view()),
     path("finance/handover/<int:number>/drop/", finance.HandoverDropView.as_view()),

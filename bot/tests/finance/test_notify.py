@@ -63,9 +63,32 @@ async def test_every_finance_fixture_renders(be):
     for f in glob.glob(str(CONTRACT / "event.finance.*.json")):
         env = json.load(open(f, encoding="utf-8"))
         assert env["event"] in events(), env["event"]
-        if env["event"] in ("finance.ready_card", "finance.month_excel"):
+        if env["event"] in ("finance.ready_card", "finance.month_excel", "finance.month_submitted"):
             continue  # need the backend (card.png / excel)
         n = env["data"].get("request", {}).get("number")
         if n:
             be.routes[("POST", f"finance/requests/{n}/admin-messages/")] = None
         await dispatch(env, fake_bot())
+
+
+async def test_month_submitted_sends_member_excel(be):
+    from bot.backend.client import BackendError, RawResponse
+
+    env = fx("event.finance.month_submitted")
+    d = env["data"]
+    be.routes[("GET", "finance/month-report/excel/")] = RawResponse(
+        b"PK", "application/xlsx", "x.xlsx"
+    )
+    bot = fake_bot()
+    bot.send_document = AsyncMock(return_value=SimpleNamespace(message_id=2))
+    await dispatch(env, bot)
+    calls = [c for c in be.calls if c[1] == "finance/month-report/excel/"]
+    assert calls and calls[0][3] == {"month": d["month"], "member": d["member"]["telegram_id"]}
+    assert bot.send_document.await_count == len(set(d["admins"]))
+
+    # the backend failing still leaves the text message delivered
+    be.routes[("GET", "finance/month-report/excel/")] = BackendError("boom", 500)
+    bot = fake_bot()
+    bot.send_document = AsyncMock()
+    delivered = await dispatch({**env, "id": "other"}, bot)
+    assert delivered and bot.send_document.await_count == 0
