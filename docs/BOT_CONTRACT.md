@@ -128,6 +128,7 @@ Actor comes from `X-Bot-Actor`. Every role rule is enforced server-side.
 | GET | `finance/checks/` (admin) | `[issue]` | `S.checks` |
 | GET | `finance/excel/?month=` (admin) | xlsx bytes + `Content-Disposition` | `month_xlsx` |
 | GET | `finance/month-report/` | `{month, opening, income, expense, closing, count, submitted}` | `month_start` `:1641`; month choice → new `S.month_report_target(member)` |
+| GET | `finance/month-report/excel/?month=&member=<tg>` | xlsx bytes + `Content-Disposition`; admins any member, staff only themselves | `month_submitted` notify (sent to each admin) |
 | GET | `finance/handover/` (admin) | `[Operation]` | `S.handover_pending` |
 | GET | `finance/warranty/?given=0` (receiver/admin) | `[Warranty]` | `:1861` |
 | GET | `finance/tasks/` | `{site_entry: [Task], feedback: [Feedback]}`, scoped by duties | `tasks_view` `:1910` |
@@ -224,7 +225,7 @@ Every event carries computed recipients (`to` / `admins` / `channel_id` / `group
 | finance.duty_assigned | `member, duty` | bot `/saytchi`, `/fikrchi` |
 | finance.request_created | `request, admins` (bot then POSTs `admin-messages`) | bot |
 | finance.request_answered | `request, status: given\|rejected, by_name, from_site, operation\|null, balance, post_to_channel, channel_id` | bot give/reject; site `:756`, `:774` (site: `post_to_channel=false`) |
-| finance.month_submitted | `member, month, summary, note, closing, admins, channel_id` | bot |
+| finance.month_submitted | `member, month, summary, note, closing, admins, channel_id` (bot then GETs `finance/month-report/excel/` per admin) | bot |
 | finance.manual_order_created / manual_order_closed | `order, spent, channel_id` | bot |
 | finance.handover_requested | `operation, who, ref, client, sum_text, rest_text, admins` | bot collect |
 | finance.handover_resolved | `operation, action, client, sum_text, member_balance` | bot |
@@ -310,6 +311,7 @@ section 1, this section wins.
 - `POST finance/bonuses/{ref}/collect/`: `{amount_text, full}` -> `{bonus, rest, full, operation, task}` where `rest` is a formatted-by-bot decimal string and `full` says the order closed.
 - `POST finance/handover/{n}/accept/` and `/drop/` -> `{operation, client, sum_text, member_balance}`.
 - `GET finance/excel/?month=YYYY-MM`: body is the xlsx; `Content-Disposition: attachment; filename="..."`.
+- `GET finance/month-report/excel/?month=YYYY-MM&member=<tg>`: one person's month as xlsx (sheets «Hisobot»: totals, by category, by order, salaries; «Amallar»: every operation with the running balance). `member` omitted = the actor; a non-admin asking for someone else gets 403. `month` omitted = `month_report_target(member)`.
 - `GET finance/bonuses/{ref}/card.png`: PNG of the payment sheet (`or_temp=1` builds it for an order without a bonus row).
 - `POST finance/feedback/{ref}/`: multipart fields `file` (jpeg/png bytes), `file_id`, `caption`.
 - Response shapes the plan left open: `finance/summary/` -> `{month, scope, member, summary: DaySummary + expense_by_category[{code,name,emoji,sum,n}] + income_by_category + salary_by_worker[{name,sum}], member_balance}`; `finance/operations/` -> `{month, scope, rows}`; `finance/months/` -> `{scope, member, series[{month,label,income,expense}]}`; `finance/wallets/` rows -> `{member, balance, last_day (ISO|null), reported, month_spent}`; `finance/orders/closed-manual/` -> OrderBrief list (`ready_date` = closed date); `finance/bonuses/{ref}/collect/` also returns `rest_text` and `sum_text` (ready-made "5 000 000 so'm" strings); `hr/cant-come/` -> `{result, day, employee?}`; `hr/holidays/{day}/decision/` GET -> `{day, name, decided, days}`; `hr/points/` -> `{employee, value, reason}`.

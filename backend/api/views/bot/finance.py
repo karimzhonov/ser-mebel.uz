@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from accounting import events as E
 from accounting import followup
 from accounting import services as S
-from accounting.excel import month_xlsx
+from accounting.excel import member_month_xlsx, month_xlsx
 from accounting.images import card_values, report_card_png
 from accounting.models import (
     ClientFeedback,
@@ -467,13 +467,33 @@ class ChecksView(BotAPIView):
 class ExcelView(BotAPIView):
     def get(self, request):
         self.require_admin()
-        content, name = month_xlsx(_ym(request))
-        resp = HttpResponse(
-            content,
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        resp["Content-Disposition"] = f'attachment; filename="{name}"'
-        return resp
+        return _xlsx_response(*month_xlsx(_ym(request)))
+
+
+def _xlsx_response(content: bytes, name: str) -> HttpResponse:
+    resp = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    resp["Content-Disposition"] = f'attachment; filename="{name}"'
+    return resp
+
+
+class MonthReportExcelView(BotAPIView):
+    """One person's month as xlsx (sent to the admins with «📤 Oylik hisob»).
+    Admins may ask for anyone; staff only get their own."""
+
+    def get(self, request):
+        me = self.require_active()
+        raw = request.query_params.get("member")
+        if not raw or str(raw) == str(me.telegram_id):
+            member = me
+        elif me.is_admin:
+            member = _member_or_404(raw)
+        else:
+            raise PermissionDenied("Bu amal faqat rahbar uchun.")
+        ym = _ym(request, S.month_report_target(member))
+        return _xlsx_response(*member_month_xlsx(member, ym))
 
 
 class MonthReportView(BotAPIView):

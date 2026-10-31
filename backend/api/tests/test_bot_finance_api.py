@@ -977,3 +977,26 @@ def test_rahbar_category_cannot_be_edited_in_or_out(bot_client, members, bot_eve
     )
     with pytest.raises(ServiceError):
         S.update_operation(other, {"category_code": "rahbar"}, actor_admin=True)
+
+
+def test_month_report_excel(bot_client, members):
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    S.create_operation(member=members[1], kind="income", amount=1000, category_code="boshqa_kirim")
+    ym = f"{date.today():%Y-%m}"
+    x = bot_client.get(f"finance/month-report/excel/?month={ym}&member={ALI}", actor=BOSS)
+    assert x.status_code == 200 and x["Content-Disposition"].endswith('.xlsx"')
+    wb = load_workbook(BytesIO(x.content))
+    assert wb.sheetnames == ["Hisobot", "Amallar"]
+    assert wb["Hisobot"]["B6"].value == 1000 and wb["Hisobot"]["D6"].value == 1000
+    assert wb["Amallar"]["D3"].value == 1000 and wb["Amallar"]["F3"].value == 1000
+    # staff: own file only
+    assert bot_client.get(f"finance/month-report/excel/?month={ym}", actor=ALI).status_code == 200
+    assert (
+        bot_client.get(
+            f"finance/month-report/excel/?month={ym}&member={BOSS}", actor=ALI
+        ).status_code
+        == 403
+    )
