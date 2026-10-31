@@ -25,9 +25,17 @@ def catalog(db):
         "mech": mech,
         "mdf": Inventory.objects.create(name="МДФ краш", type=facade, price=Money(300, "USD")),
         "blum": Inventory.objects.create(name="BLUM", type=mech, price=Money(10, "USD")),
-        "oshxona": RoomType.objects.create(name="Oshxona", icon="🍳"),
-        "yotoq": RoomType.objects.create(name="Yotoqxona", icon="🛏"),
+        "oshxona": _room("Oshxona", "🍳"),
+        "yotoq": _room("Yotoqxona", "🛏"),
     }
+
+
+def _room(name, icon):
+    """Migration 0017 already seeds the room types: reuse it, with an empty list
+    (= every piece of furniture), as the tests expect."""
+    room, _ = RoomType.objects.update_or_create(name=name, defaults={"icon": icon})
+    room.object_types.clear()
+    return room
 
 
 @pytest.fixture
