@@ -107,6 +107,23 @@ export default function CatalogPage() {
                 {currentObj.name}
               </Button>
             )}
+            {can("price.delete_objecttype") && currentObj && (
+              <Button
+                variant="outline"
+                className="text-red-600"
+                icon={<Trash2 className="h-4 w-4" />}
+                loading={delObj.isPending}
+                onClick={() => {
+                  if (types?.length) {
+                    toast.error(`«${currentObj.name}» ichida ${types.length} ta mahsulot turi bor — avval ularni ⇄ tugmasi bilan boshqa obyektga ko'chiring yoki o'chiring`);
+                    return;
+                  }
+                  if (confirm(`«${currentObj.name}» o'chirilsinmi? Eski hisob-kitoblarda bo'lsa, arxivga o'tadi (ular o'zgarmaydi).`)) delObj.mutate(currentObj.id);
+                }}
+              >
+                O'chirish
+              </Button>
+            )}
             {can("price.add_inventorytype") && current && (
               <Button icon={<Plus className="h-4 w-4" />} onClick={() => setTypeForm({ name: "", type: "2", ordering: "0" })}>
                 Mahsulot turi
