@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
-import { HardHat, Search } from "lucide-react";
+import { FileSpreadsheet, HardHat, Search } from "lucide-react";
 import { useGet } from "@/api/hooks";
 import { DateRangeFilter, iso, monthStartISO, rangeLabel } from "@/components/DateRangeFilter";
-import { Badge, Card, Empty, Input, PageHeader, Select, Skeleton, StatTile } from "@/components/ui";
+import { Badge, Button, Card, Empty, Input, PageHeader, Select, Skeleton, StatTile } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
+import { SalaryModal } from "./SalaryModal";
 import { som, usd } from "./shared";
 import type { WorkerCard, WorkerCardResponse, WorkerListItem } from "./types";
 
@@ -172,8 +173,10 @@ function GiversTable({ card }: { card: WorkerCard }) {
 
 /* ------------------------------------------------------------------ one worker */
 function CardView({ card, period }: { card: WorkerCard; period: string }) {
+  const [salary, setSalary] = useState(false);
   return (
     <div className="space-y-4">
+      {salary && <SalaryModal card={card} onClose={() => setSalary(false)} />}
       <div className="card flex flex-wrap items-center gap-4 p-5">
         <div className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-brand-500 text-lg font-bold text-white">{initials(card.name)}</div>
         <div className="min-w-0 flex-1">
@@ -186,7 +189,13 @@ function CardView({ card, period }: { card: WorkerCard; period: string }) {
           {!card.in_catalog && <Badge tone="warn">«Ishchilar» ro'yxatida yo'q</Badge>}
           <span className="muted text-xs">📅 {period}</span>
           <span className="muted text-xs">Butun davr: {som(card.all_time)}</span>
+          {card.pay_day && <span className="muted text-xs">🗓 Oylik kuni: har oyning {card.pay_day}-sanasi</span>}
         </div>
+        {card.worker_id && (
+          <Button icon={<FileSpreadsheet className="h-4 w-4" />} onClick={() => setSalary(true)}>
+            Oylik chiqarish
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">

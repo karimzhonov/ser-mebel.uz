@@ -1,0 +1,21 @@
+{
+  "id": "00000000-0000-0000-0000-000000001036",
+  "event": "finance.salary_due",
+  "data": {
+    "workers": [
+      {
+        "id": 7,
+        "name": "Akmal usta",
+        "group": "Sex",
+        "position": "Usta",
+        "pay_date": "2026-11-05",
+        "has_template": true
+      }
+    ],
+    "to": [
+      111222333
+    ],
+    "fallback": false,
+    "fallback_who": "Bugalter"
+  }
+}

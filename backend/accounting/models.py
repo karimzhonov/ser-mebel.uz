@@ -48,6 +48,17 @@ class Worker(models.Model):
     position = models.CharField(max_length=128, blank=True, default="", verbose_name="Lavozim")
     ordering = models.PositiveIntegerField(default=0, verbose_name="Tartib")
     is_active = models.BooleanField(default=True, verbose_name="Faol")
+    # «Oylik chiqarish»: the day of the month the salary is paid (the accountant is
+    # reminded the day before) and this person's own Excel template (fixed / bonus /
+    # task pay differ). The template is kept in the DB, not in public /media.
+    pay_day = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name="Oylik kuni (oyning sanasi)"
+    )
+    salary_template = models.BinaryField(null=True, blank=True, editable=False)
+    salary_template_name = models.CharField(
+        max_length=255, blank=True, default="", verbose_name="Oylik shabloni"
+    )
+    salary_template_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["ordering", "id"]

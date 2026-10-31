@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from urllib.parse import quote
 
 from constance import config
 from django.conf import settings
@@ -22,10 +23,12 @@ from django.http import HttpResponse
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounting import events as E
+from accounting import salary as SAL
 from accounting import services as S
 from accounting.excel import build_xlsx
 from accounting.models import (
@@ -111,8 +114,94 @@ class FinanceCategoryViewSet(_CatalogViewSet):
 
 
 class WorkerViewSet(_CatalogViewSet):
-    queryset = Worker.objects.all()
+    """«Ishchilar» + «Oylik chiqarish»: each worker's Excel template and the sheet
+    with their advances filled in (accounting/salary.py)."""
+
+    queryset = Worker.objects.defer("salary_template")
     serializer_class = WorkerSerializer
+
+    def _worker(self):
+        return Worker.objects.get(pk=self.get_object().pk)  # with the template bytes
+
+    @action(
+        detail=True,
+        methods=["get", "post", "delete"],
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def template(self, request, pk=None):
+        """GET = download (a starter one when none is uploaded); POST file = upload;
+        DELETE = remove."""
+        w = self._worker()
+        if request.method == "GET":
+            require_perm(request.user, VIEW_ALL)
+            return _xlsx(*SAL.template_file(w))
+        require_perm(request.user, "accounting.change_worker")
+        if request.method == "DELETE":
+            SAL.remove_template(w)
+        else:
+            f = request.FILES.get("file")
+            if not f:
+                raise ServiceError("Faylni tanlang.")
+            if f.size > SAL.MAX_TEMPLATE:
+                raise ServiceError("Fayl juda katta (5 MB gacha).")
+            SAL.save_template(w, f.name, f.read())
+        w.salary_template = None
+        return Response(WorkerSerializer(w).data)
+
+    @action(detail=True, methods=["get"])
+    def salary(self, request, pk=None):
+        """?month=YYYY-MM (default: the next pay day): pay date, period and advances."""
+        require_perm(request.user, VIEW_ALL)
+        w = self.get_object()
+        sh = SAL.salary_info(w, _month_param(request))
+        return Response(
+            {
+                "month": sh.ym,
+                "pay_date": sh.pay_date,
+                "date_from": sh.start,
+                "date_to": sh.end,
+                "advance_total": f(sh.total),
+                "advances": [
+                    {
+                        "id": t.id,
+                        "date": t.date,
+                        "amount": f(t.amount),
+                        "member": t.member.name,
+                        "comment": t.comment,
+                    }
+                    for t in sh.rows
+                ],
+            }
+        )
+
+    @action(detail=True, methods=["get"], url_path="salary/excel")
+    def salary_excel(self, request, pk=None):
+        require_perm(request.user, VIEW_ALL)
+        return _xlsx(*SAL.salary_xlsx(self._worker(), _month_param(request)))
+
+
+def _month_param(request) -> str | None:
+    ym = str(request.query_params.get("month") or "").strip()
+    if not ym:
+        return None
+    try:
+        y, m = (int(x) for x in ym.split("-"))
+        date(y, m, 1)
+    except ValueError as e:
+        raise ValidationError({"month": "YYYY-MM"}) from e
+    return f"{y:04d}-{m:02d}"
+
+
+def _xlsx(content: bytes, name: str) -> HttpResponse:
+    resp = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    ascii_name = name.encode("ascii", "ignore").decode() or "oylik.xlsx"
+    resp["Content-Disposition"] = (
+        f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"
+    )
+    return resp
 
 
 class FinanceCarViewSet(_CatalogViewSet):
@@ -419,7 +508,19 @@ class WorkerCardView(APIView):
         if name:
             c = S.worker_card(name, start, end)
             card = {
-                **{k: c[k] for k in ("name", "group", "position", "in_catalog", "count")},
+                **{
+                    k: c[k]
+                    for k in (
+                        "worker_id",
+                        "pay_day",
+                        "template_name",
+                        "name",
+                        "group",
+                        "position",
+                        "in_catalog",
+                        "count",
+                    )
+                },
                 **{k: f(c[k]) for k in ("advance", "salary", "other", "total", "all_time")},
                 "last_date": c["last_date"],
                 "by_giver": [

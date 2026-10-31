@@ -42,6 +42,7 @@ class TelegramMemberSerializer(serializers.ModelSerializer):
             "is_feedback",
             "is_bonus_receiver",
             "is_deadline_receiver",
+            "is_accountant",
             "is_task_only",
             "has_wallet",
             "joined_at",
@@ -94,9 +95,31 @@ class FinanceCategorySerializer(serializers.ModelSerializer):
 
 
 class WorkerSerializer(serializers.ModelSerializer):
+    has_template = serializers.SerializerMethodField()
+
     class Meta:
         model = Worker
-        fields = ["id", "group", "name", "position", "ordering", "is_active"]
+        fields = [
+            "id",
+            "group",
+            "name",
+            "position",
+            "ordering",
+            "is_active",
+            "pay_day",
+            "has_template",
+            "salary_template_name",
+            "salary_template_at",
+        ]
+        read_only_fields = ["salary_template_name", "salary_template_at"]
+
+    def get_has_template(self, w) -> bool:
+        return bool(w.salary_template_name)
+
+    def validate_pay_day(self, v):
+        if v is not None and not 1 <= v <= 31:
+            raise serializers.ValidationError("Oyning kuni: 1 dan 31 gacha.")
+        return v
 
 
 class FinanceCarSerializer(serializers.ModelSerializer):

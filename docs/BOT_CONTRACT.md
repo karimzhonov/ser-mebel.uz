@@ -239,6 +239,7 @@ Every event carries computed recipients (`to` / `admins` / `channel_id` / `group
 | finance.feedback_ask / feedback_remind | `feedback, to, fallback` | `followup.feedback_check` |
 | finance.site_entry_remind | `task, to, fallback` | `followup.site_entry_remind` |
 | finance.deadline | `order{ref, client, end_date, status_label, phone, address}, left_days, key, to, fallback` | `followup.deadline_reminders` |
+| finance.salary_due | `workers[{id, name, group, position, pay_date, has_template}], to, fallback, fallback_who` — tomorrow is these workers' pay day: «oylik chiqarish kerak» to the accountant (`is_accountant`; the admins when nobody is) | `salary.remind` (celery `accounting.tasks.salary_reminder`, 10:00, once per worker + pay date) |
 | finance.daily_reminder | `member, balance` (one event per person) | `jobs.daily_reminder` |
 | finance.month_end_reminder / month_late | `member, left_days\|month, balance` | `jobs.month_job` |
 | finance.month_late_admins | `month, names, admins` | `jobs.month_job` |
