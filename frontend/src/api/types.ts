@@ -148,6 +148,8 @@ export interface ObjectType {
   count_label: string;
   /** decor: the client's PDF shows m²; other furniture shows its size */
   show_area: boolean;
+  /** hidden from the catalog and from new furniture; old calculations keep it */
+  archived: boolean;
 }
 
 export interface Inventory {

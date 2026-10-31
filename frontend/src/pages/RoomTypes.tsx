@@ -84,7 +84,7 @@ export function RoomTypesCard({ objects }: { objects: ObjectType[] }) {
             </div>
             <Field label="Mos mebellar" hint="Hech biri tanlanmasa — barcha mebellar">
               <div className="flex flex-wrap gap-2">
-                {objects.map((o) => {
+                {objects.filter((o) => !o.archived || form.object_types.includes(o.id)).map((o) => {
                   const on = form.object_types.includes(o.id);
                   return (
                     <button

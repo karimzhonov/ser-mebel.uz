@@ -69,6 +69,8 @@ class ObjectType(models.Model):
     # Decor is sold by the square metre and the client sees m²; other furniture is
     # priced by m² too, but the offer shows its size (height × width × depth) instead.
     show_area = models.BooleanField(default=False, verbose_name="PDF'da kv. m (dekor)")
+    # hidden from the catalog and from new calculations; old calculations keep it
+    archived = models.BooleanField(default=False, verbose_name="Arxivda")
 
     def __str__(self):
         return self.name

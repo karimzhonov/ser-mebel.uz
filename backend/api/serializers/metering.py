@@ -220,7 +220,7 @@ class ObjectTypeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ObjectType
-        fields = ["id", "name", "count_name", "count_label", "show_area"]
+        fields = ["id", "name", "count_name", "count_label", "show_area", "archived"]
 
 
 class InventorySerializer(serializers.ModelSerializer):
@@ -238,6 +238,11 @@ class InventoryTypeSerializer(serializers.ModelSerializer):
         return uz.INVENTORY_KIND.get(obj.type, obj.get_type_display())
 
     inventories = InventorySerializer(source="inventory_set", many=True, read_only=True)
+
+    def validate_obj(self, obj):
+        if obj is not None and obj.archived:
+            raise serializers.ValidationError(f"«{obj.name}» arxivda")
+        return obj
 
     class Meta:
         model = InventoryType
