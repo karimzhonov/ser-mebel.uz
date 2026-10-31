@@ -315,13 +315,21 @@ export function SearchInput({
 
 /* --------------------------------------------------------- Overlay: modal */
 
-function useLockScroll(open: boolean) {
+// How many overlays (modal, PDF viewer…) are open. The page scrolls again only when the
+// last one closes — saving/restoring body.style per overlay left the page stuck
+// unscrollable when nested overlays unmounted together (e.g. «Back» with a PDF open
+// over the files modal).
+let scrollLocks = 0;
+
+export function useLockScroll(open: boolean) {
   useEffect(() => {
     if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
+    if (scrollLocks++ === 0) document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = prev;
+      if (--scrollLocks <= 0) {
+        scrollLocks = 0;
+        document.body.style.overflow = "";
+      }
     };
   }, [open]);
 }

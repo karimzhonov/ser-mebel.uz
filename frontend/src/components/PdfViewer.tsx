@@ -6,6 +6,7 @@ import * as pdfjs from "pdfjs-dist/legacy/build/pdf";
 import workerUrl from "pdfjs-dist/legacy/build/pdf.worker.min.js?url";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { errorMessage, fetchBlob, saveBlob } from "@/api/client";
+import { useLockScroll } from "@/components/ui";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -33,6 +34,10 @@ export default function PdfViewer({
   const [blob, setBlob] = useState<Blob | null>(null);
   const [width, setWidth] = useState(0);
   const scroller = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
+  useLockScroll(true);
+  useBackCloses(close);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,16 +75,13 @@ export default function PdfViewer({
     const measure = () => setWidth(Math.min((scroller.current?.clientWidth ?? 800) - 32, 1000));
     measure();
     window.addEventListener("resize", measure);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && close.current();
     window.addEventListener("keydown", esc);
     return () => {
       window.removeEventListener("resize", measure);
       window.removeEventListener("keydown", esc);
-      document.body.style.overflow = prev;
     };
-  }, [onClose]);
+  }, []);
 
   const btn =
     "inline-flex h-9 w-9 items-center justify-center rounded-xl text-white/80 transition hover:bg-white/10 hover:text-white disabled:opacity-40";
@@ -123,6 +125,37 @@ export default function PdfViewer({
     </div>,
     document.body,
   );
+}
+
+/** The phone's / browser's «Back» closes the viewer instead of leaving the page: one
+ * history entry is added while it is open and taken back when it closes another way. */
+function useBackCloses(close: { current: () => void }) {
+  const pushed = useRef(false);
+  const alive = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    if (!pushed.current) {
+      // keep the router's own state (idx/key): same location, nothing re-renders
+      window.history.pushState({ ...window.history.state, pdfViewer: true }, "");
+      pushed.current = true;
+    }
+    const onPop = () => {
+      pushed.current = false;
+      close.current();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => {
+      alive.current = false;
+      window.removeEventListener("popstate", onPop);
+      // StrictMode re-runs the effect right away: step back only when really closed
+      setTimeout(() => {
+        if (!alive.current && pushed.current) {
+          pushed.current = false;
+          if (window.history.state?.pdfViewer) window.history.back();
+        }
+      });
+    };
+  }, [close]);
 }
 
 /** One page, rendered only when it scrolls near the screen (big PDFs stay fast). */
