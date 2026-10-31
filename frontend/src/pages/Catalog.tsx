@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Pencil, Plus, Split, Trash2 } from "lucide-react";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useMeta } from "@/api/hooks";
 import type { Inventory, InventoryType, ObjectType } from "@/api/types";
@@ -19,6 +19,7 @@ import {
   Segmented,
   Select,
 } from "@/components/ui";
+import { toast } from "sonner";
 import { money } from "@/lib/format";
 import { RoomTypesCard } from "./RoomTypes";
 
@@ -28,13 +29,16 @@ type InvForm = { id?: number; name: string; type: number; price: { amount: numbe
 export default function CatalogPage() {
   const { can } = useAuth();
   const { data: meta } = useMeta();
-  const { data: objects } = useAll<ObjectType>("object-types");
+  const { data: allObjects } = useAll<ObjectType>("object-types");
+  // archived objects only live on in old calculations
+  const objects = allObjects?.filter((o) => !o.archived);
   const [tab, setTab] = useState("");
-  const current = tab || String(objects?.[0]?.id ?? "");
+  const current = objects?.some((o) => String(o.id) === tab) ? tab : String(objects?.[0]?.id ?? "");
   const { data: types, isLoading } = useAll<InventoryType>("inventory-types", { obj: current }, !!current);
   const [typeForm, setTypeForm] = useState<TypeForm | null>(null);
   const [invForm, setInvForm] = useState<InvForm | null>(null);
   const [objForm, setObjForm] = useState<{ id?: number; name: string; count_name: string; show_area: boolean } | null>(null);
+  const [moving, setMoving] = useState<{ id: number; name: string; obj: string } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const inv = ["inventory-types", "object-types", "inventories"];
@@ -57,6 +61,26 @@ export default function CatalogPage() {
     invalidate: inv,
     onSuccess: () => setObjForm(null),
   });
+  const moveType = useAction(() => api.post(`/inventory-types/${moving!.id}/move/`, { obj: Number(moving!.obj) }), {
+    success: "Ko'chirildi",
+    invalidate: inv,
+    onSuccess: () => setMoving(null),
+  });
+  const splitType = useAction((id: number) => api.post<ObjectType>(`/inventory-types/${id}/split/`), {
+    invalidate: inv,
+    onSuccess: (r) => {
+      toast.success(`«${r.data.name}» alohida obyekt bo'ldi`);
+      setTab(String(r.data.id));
+    },
+  });
+  const delObj = useAction((id: number) => api.delete<{ detail?: string }>(`/object-types/${id}/`), {
+    invalidate: inv,
+    onSuccess: (r) => {
+      toast.success(r.data?.detail || "Obyekt o'chirildi");
+      setObjForm(null);
+      setTab("");
+    },
+  });
   const delType = useAction((id: number) => api.delete(`/inventory-types/${id}/`), { success: "O'chirildi", invalidate: inv });
   const delInv = useAction((id: number) => api.delete(`/inventories/${id}/`), { success: "O'chirildi", invalidate: inv });
 
@@ -74,13 +98,30 @@ export default function CatalogPage() {
                 Obyekt
               </Button>
             )}
-            {can("price.change_objecttype") && currentObj && (
+            {(can("price.change_objecttype") || can("price.delete_objecttype")) && currentObj && (
               <Button
                 variant="outline"
                 icon={<Pencil className="h-4 w-4" />}
                 onClick={() => setObjForm({ id: currentObj.id, name: currentObj.name, count_name: currentObj.count_name, show_area: currentObj.show_area })}
               >
                 {currentObj.name}
+              </Button>
+            )}
+            {can("price.delete_objecttype") && currentObj && (
+              <Button
+                variant="outline"
+                className="text-red-600"
+                icon={<Trash2 className="h-4 w-4" />}
+                loading={delObj.isPending}
+                onClick={() => {
+                  if (types?.length) {
+                    toast.error(`«${currentObj.name}» ichida ${types.length} ta mahsulot turi bor — avval ularni ⇄ tugmasi bilan boshqa obyektga ko'chiring yoki o'chiring`);
+                    return;
+                  }
+                  if (confirm(`«${currentObj.name}» o'chirilsinmi? Eski hisob-kitoblarda bo'lsa, arxivga o'tadi (ular o'zgarmaydi).`)) delObj.mutate(currentObj.id);
+                }}
+              >
+                O'chirish
               </Button>
             )}
             {can("price.add_inventorytype") && current && (
@@ -116,6 +157,21 @@ export default function CatalogPage() {
                 }
                 actions={
                   <>
+                    {can("price.change_inventorytype") && objects.length > 1 && (
+                      <IconButton label="Boshqa obyektga ko'chirish" onClick={() => setMoving({ id: t.id, name: t.name, obj: "" })}>
+                        <ArrowRightLeft className="h-4 w-4" />
+                      </IconButton>
+                    )}
+                    {can("price.change_inventorytype") && can("price.add_objecttype") && (
+                      <IconButton
+                        label="Alohida obyekt qilish"
+                        onClick={() =>
+                          confirm(`«${t.name}» alohida obyekt bo'lsinmi? Ichidagi mahsulotlar narxlari bilan birga o'tadi.`) && splitType.mutate(t.id)
+                        }
+                      >
+                        <Split className="h-4 w-4" />
+                      </IconButton>
+                    )}
                     {can("price.change_inventorytype") && (
                       <IconButton label="Tahrirlash" onClick={() => setTypeForm({ id: t.id, name: t.name, type: String(t.type), ordering: String(t.ordering) })}>
                         <Pencil className="h-4 w-4" />
@@ -167,7 +223,7 @@ export default function CatalogPage() {
         </>
       )}
 
-      <RoomTypesCard objects={objects} />
+      <RoomTypesCard objects={allObjects ?? objects} />
 
       <Modal
         open={!!typeForm}
@@ -217,7 +273,25 @@ export default function CatalogPage() {
         onClose={() => setObjForm(null)}
         title={objForm?.id ? "Obyektni tahrirlash" : "Yangi obyekt"}
         size="sm"
-        footer={<Button loading={saveObj.isPending} onClick={() => saveObj.mutate()}>Saqlash</Button>}
+        footer={
+          <>
+            {objForm?.id && can("price.delete_objecttype") && (
+              <Button
+                variant="ghost"
+                className="mr-auto text-red-600"
+                loading={delObj.isPending}
+                onClick={() =>
+                  confirm(`«${objForm.name}» o'chirilsinmi? Eski hisob-kitoblarda bo'lsa, arxivga o'tadi (ular o'zgarmaydi).`) && delObj.mutate(objForm.id!)
+                }
+              >
+                O'chirish
+              </Button>
+            )}
+            {(objForm?.id ? can("price.change_objecttype") : can("price.add_objecttype")) && (
+              <Button loading={saveObj.isPending} onClick={() => saveObj.mutate()}>Saqlash</Button>
+            )}
+          </>
+        }
       >
         {objForm && (
           <div className="space-y-4">
@@ -238,6 +312,29 @@ export default function CatalogPage() {
                 <span className="muted block text-xs">Belgilanmasa, mijozga beriladigan PDF'da kv. m o'rniga mebel o'lchami (bo'yi × eni × chuqurligi) chiqadi. Narx baribir kv. m bo'yicha hisoblanadi.</span>
               </span>
             </label>
+          </div>
+        )}
+      </Modal>
+      <Modal
+        open={!!moving}
+        onClose={() => setMoving(null)}
+        title={`«${moving?.name ?? ""}» ni ko'chirish`}
+        size="sm"
+        footer={<Button disabled={!moving?.obj} loading={moveType.isPending} onClick={() => moveType.mutate()}>Ko'chirish</Button>}
+      >
+        {moving && (
+          <div className="space-y-3">
+            <Field label="Qaysi obyektga">
+              <Select value={moving.obj} onChange={(e) => setMoving({ ...moving, obj: e.target.value })}>
+                <option value="">— tanlang —</option>
+                {objects
+                  .filter((o) => String(o.id) !== current)
+                  .map((o) => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+              </Select>
+            </Field>
+            <p className="muted text-xs">Ichidagi mahsulotlar narxlari bilan birga o'tadi. Eski hisob-kitoblar o'zgarmaydi.</p>
           </div>
         )}
       </Modal>

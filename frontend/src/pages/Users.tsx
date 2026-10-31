@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Pencil, Plus, Send, Trash2 } from "lucide-react";
+import { KeyRound, Pencil, Plus, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api, fieldErrors } from "@/api/client";
-import { useAction, useAll, useList } from "@/api/hooks";
-import type { StaffUser } from "@/api/types";
+import { useAction, useAll, useGet, useList } from "@/api/hooks";
+import type { AccessLevel, StaffUser, UserAccess } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { PhoneLink } from "@/components/domain";
-import { Badge, Button, Card, Confirm, DataTable, Empty, Field, IconButton, Input, Modal, PageHeader, Pagination, SearchInput } from "@/components/ui";
+import { Badge, Button, Card, Confirm, DataTable, Empty, Field, IconButton, Input, Modal, PageHeader, PageLoader, Pagination, SearchInput, Segmented } from "@/components/ui";
 import { dateTime } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 
@@ -20,6 +20,7 @@ export default function UsersPage() {
   const [form, setForm] = useState<Form | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [del, setDel] = useState<StaffUser | null>(null);
+  const [rights, setRights] = useState<StaffUser | null>(null);
   const remove = useAction((id: number) => api.delete(`/users/${id}/`), {
     success: "O'chirildi",
     invalidate: ["users"],
@@ -81,6 +82,11 @@ export default function UsersPage() {
               header: "",
               cell: (r) => (
                 <div className="flex justify-end gap-1">
+                  {!r.is_superuser && (
+                    <IconButton label="Bo'limlar huquqi" onClick={() => setRights(r)}>
+                      <KeyRound className="h-4 w-4" />
+                    </IconButton>
+                  )}
                   <IconButton label="Test xabari" onClick={() => test.mutate(r.id)}><Send className="h-4 w-4" /></IconButton>
                   <IconButton
                     label="Tahrirlash"
@@ -137,6 +143,7 @@ export default function UsersPage() {
           </div>
         )}
       </Modal>
+      {rights && <AccessModal user={rights} onClose={() => setRights(null)} />}
       <Confirm
         open={!!del}
         onClose={() => setDel(null)}
@@ -152,5 +159,87 @@ export default function UsersPage() {
         }
       />
     </div>
+  );
+}
+
+const LEVEL_LABEL: Record<string, string> = { none: "Yo'q", view: "Ko'rish", edit: "O'zgartirish", custom: "Qo'lda sozlangan" };
+
+/** Per-section access: none / view / edit, saved as the person's own permissions. */
+function AccessModal({ user, onClose }: { user: StaffUser; onClose: () => void }) {
+  const { data } = useGet<UserAccess>(`/users/${user.id}/access/`);
+  const [changed, setChanged] = useState<Record<string, AccessLevel>>({});
+  const save = useAction(() => api.post(`/users/${user.id}/access/`, { levels: changed }), {
+    success: "Huquqlar saqlandi",
+    invalidate: ["users"],
+    onSuccess: onClose,
+  });
+  const titles = data ? [...new Set(data.sections.map((s) => s.title))] : [];
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Bo'limlar huquqi — ${user.name || user.phone}`}
+      size="lg"
+      footer={
+        <Button disabled={!Object.keys(changed).length || data?.is_keeper} loading={save.isPending} onClick={() => save.mutate()}>
+          Saqlash
+        </Button>
+      }
+    >
+      {!data ? (
+        <PageLoader />
+      ) : data.is_keeper ? (
+        <Empty title="Bu xodim — omborchi" text="Uning huquqlari Ombor → Omborchi sahifasida boshqariladi." />
+      ) : (
+        <div className="space-y-5">
+          <p className="muted text-xs">
+            «Ko'rish» — bo'limni ochadi, lekin hech narsani o'zgartira olmaydi. «O'zgartirish» — qo'shish, tahrirlash va o'chirish ham mumkin. Guruhdan kelgan
+            huquqlar shu yerda o'zgarmaydi — ular yonida ko'rsatilgan.
+          </p>
+          {titles.map((title) => (
+            <section key={title}>
+              <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</h4>
+              <ul className="divide-y divide-slate-100 rounded-xl border border-slate-100 dark:divide-slate-800 dark:border-slate-800">
+                {data.sections
+                  .filter((s) => s.title === title)
+                  .map((s) => {
+                    const value: string = (changed[s.key] as AccessLevel | undefined) ?? s.level;
+                    const options = [
+                      { value: "none", label: "Yo'q" },
+                      { value: "view", label: "Ko'rish" },
+                      ...(s.can_edit ? [{ value: "edit", label: "O'zgartirish" }] : []),
+                    ];
+                    return (
+                      <li key={s.key} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium">{s.label}</div>
+                          <div className="muted flex flex-wrap gap-x-2 text-xs">
+                            {s.hint && <span>{s.hint}</span>}
+                            {s.from_groups !== "none" && <span className="text-brand-700 dark:text-brand-300">guruhdan: {LEVEL_LABEL[s.from_groups]}</span>}
+                            {value === "custom" && <span className="text-amber-700">qo'lda sozlangan — tanlasangiz almashtiriladi</span>}
+                          </div>
+                        </div>
+                        <Segmented
+                          value={value}
+                          options={options}
+                          onChange={(v) =>
+                            setChanged((c) => {
+                              const next = { ...c };
+                              if (v === s.level) delete next[s.key];
+                              else next[s.key] = v as AccessLevel;
+                              return next;
+                            })
+                          }
+                        />
+                      </li>
+                    );
+                  })}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }

@@ -148,6 +148,8 @@ export interface ObjectType {
   count_label: string;
   /** decor: the client's PDF shows m²; other furniture shows its size */
   show_area: boolean;
+  /** hidden from the catalog and from new furniture; old calculations keep it */
+  archived: boolean;
 }
 
 export interface Inventory {
@@ -485,6 +487,27 @@ export interface StaffUser {
   is_superuser: boolean;
   groups: number[];
   last_login: string | null;
+}
+
+export type AccessLevel = "none" | "view" | "edit";
+
+export interface AccessSection {
+  key: string;
+  /** menu group: Sotuv, O'lchov, HR … */
+  title: string;
+  label: string;
+  hint: string;
+  /** false = view-only here (e.g. the warehouse: only the keeper books) */
+  can_edit: boolean;
+  /** the person's own level; "custom" = set by hand in the old admin */
+  level: AccessLevel | "custom";
+  from_groups: AccessLevel | "custom";
+}
+
+export interface UserAccess {
+  is_superuser: boolean;
+  is_keeper: boolean;
+  sections: AccessSection[];
 }
 
 export interface Overview {

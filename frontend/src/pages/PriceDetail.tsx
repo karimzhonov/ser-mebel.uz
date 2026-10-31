@@ -335,7 +335,8 @@ function RoomCard({
     },
     { invalidate: INV },
   );
-  const allowed = roomType?.object_types.length ? objects.filter((o) => roomType.object_types.includes(o.id)) : objects;
+  const active = objects.filter((o) => !o.archived);
+  const allowed = roomType?.object_types.length ? active.filter((o) => roomType.object_types.includes(o.id)) : active;
 
   return (
     <Card padded={false}>
@@ -960,7 +961,13 @@ function CalculationEditor({
   rooms: Room[];
   onClose: () => void;
 }) {
-  const { data: types } = useAll<InventoryType>("inventory-types", { obj: objectType.id });
+  // the object's cards + the ones this piece already uses (a card moved to another
+  // object since then stays editable here)
+  const { data: allTypes } = useAll<InventoryType>("inventory-types");
+  const types = useMemo(() => {
+    const used = new Set(calc?.items.map((it) => it.inventory_type));
+    return allTypes?.filter((t) => t.obj === objectType.id || used.has(t.id));
+  }, [allTypes, calc, objectType.id]);
   const [name, setName] = useState(calc?.name ?? objectType.name);
   const [typedCount, setCount] = useState(calc?.count != null ? String(calc.count) : "");
   const [unit, setUnit] = useState<"kv" | "pog">(calc?.unit || (objectType.count_name === "pog" ? "pog" : "kv"));

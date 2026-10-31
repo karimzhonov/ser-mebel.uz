@@ -113,6 +113,7 @@ def save_calculation(
     its old line instead of silently keeping it (the admin kept a stale line that was
     still printed in the Excel but no longer counted in the total).
     """
+    from django.db.models import Q
     from djmoney.money import Money
 
     from core.exceptions import ServiceError
@@ -130,6 +131,9 @@ def save_calculation(
             raise ServiceError("Har bir tur uchun bitta mahsulot tanlanadi")
         by_type[type_id] = item
 
+    if object_type.archived and (calculation is None or calculation.obj_id != object_type.pk):
+        raise ServiceError(f"«{object_type.name}» arxivda — boshqa mebel tanlang")
+
     if room is not None:
         if room.price_id != price.pk:
             raise ServiceError("Xona bu hisob-kitobga tegishli emas")
@@ -137,7 +141,14 @@ def save_calculation(
         if allowed and object_type.pk not in allowed:
             raise ServiceError(f"«{object_type.name}» «{room.room_type.name}» xonasiga mos emas")
 
-    inv_types = {t.pk: t for t in InventoryType.objects.filter(obj=object_type)}
+    # + the cards this piece already uses: a card moved to another object since then
+    # stays editable here (and its line is not silently dropped from the total)
+    used = (
+        InventoryInCalculate.objects.filter(calculate=calculation).values("inventory__type_id")
+        if calculation is not None
+        else InventoryInCalculate.objects.none().values("inventory__type_id")
+    )
+    inv_types = {t.pk: t for t in InventoryType.objects.filter(Q(obj=object_type) | Q(pk__in=used))}
     unknown = set(by_type) - set(inv_types)
     if unknown:
         raise ServiceError("Mahsulot turi bu obyektga tegishli emas")
@@ -294,6 +305,73 @@ def delete_calculation(calculation) -> None:
     with transaction.atomic():
         calculation.delete()
         recompute_price_total(price)
+
+
+# --- Catalog («Mahsulotlar»): object types and their cards -------------------------
+
+
+def move_inventory_type(inv_type, obj) -> None:
+    """Move a card (mahsulot turi) with all its products to another object. Old
+    calculations keep their lines: they point at the products, not at the object."""
+    from core.exceptions import ServiceError
+
+    if obj.archived:
+        raise ServiceError(f"«{obj.name}» arxivda")
+    if inv_type.obj_id == obj.pk:
+        raise ServiceError(f"«{inv_type.name}» allaqachon «{obj.name}» ichida")
+    inv_type.obj = obj
+    inv_type.save(update_fields=["obj"])
+
+
+def split_inventory_type(inv_type):
+    """Turn a card into its own object («Komod» card of «Spalnya» → «Komod» object):
+    the card moves into it with its products; the new object gets the old one's unit
+    and rooms. An object with that name already there is reused."""
+    from core.exceptions import ServiceError
+
+    from .models import ObjectType, RoomType
+
+    old = inv_type.obj
+    name = inv_type.name.strip()
+    with transaction.atomic():
+        obj = ObjectType.objects.filter(name__iexact=name).first()
+        if obj is None:
+            obj = ObjectType.objects.create(
+                name=name,
+                count_name=old.count_name if old else "kv",
+                show_area=old.show_area if old else False,
+            )
+        elif obj.pk == inv_type.obj_id:
+            raise ServiceError(f"«{name}» allaqachon alohida obyekt")
+        elif obj.archived:
+            obj.archived = False
+            obj.save(update_fields=["archived"])
+        if old is not None:
+            for rt in RoomType.objects.filter(object_types=old):
+                rt.object_types.add(obj)
+        inv_type.obj = obj
+        inv_type.save(update_fields=["obj"])
+    return obj
+
+
+def retire_object_type(obj) -> str:
+    """Delete an object type, or archive it when old calculations use it.
+    Refused while it still has cards — move or delete them first."""
+    from core.exceptions import ServiceError
+
+    from .models import Calculate, InventoryType
+
+    n = InventoryType.objects.filter(obj=obj).count()
+    if n:
+        raise ServiceError(
+            f"«{obj.name}» ichida {n} ta mahsulot turi bor — avval ularni ko'chiring yoki o'chiring"
+        )
+    if Calculate.objects.filter(obj=obj).exists():
+        obj.archived = True
+        obj.save(update_fields=["archived"])
+        return "archived"
+    obj.delete()
+    return "deleted"
 
 
 # --- Rooms (xonalar) --------------------------------------------------------------

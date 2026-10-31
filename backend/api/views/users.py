@@ -1,8 +1,11 @@
 from django.contrib.auth.models import Group
 from rest_framework import mixins, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
+from oauth.access import access as section_access
+from oauth.access import set_access
 from oauth.models import User
 from oauth.services import TEST_MESSAGE_TEXT, delete_user, send_test_telegram_messages
 
@@ -21,6 +24,18 @@ class UserViewSet(viewsets.ModelViewSet):
 
     def perform_destroy(self, instance):
         delete_user(self.request.user, instance)
+
+    @action(detail=True, methods=["get", "post"])
+    def access(self, request, pk=None):
+        """Section levels (none / view / edit). POST {levels: {section: level}} sets
+        only the sections sent."""
+        user = self.get_object()
+        if request.method == "POST":
+            levels = request.data.get("levels")
+            if not isinstance(levels, dict):
+                raise ValidationError({"levels": "Bo'limlar ro'yxati kerak"})
+            return Response(set_access(user, levels))
+        return Response(section_access(user))
 
     @action(detail=True, methods=["post"], url_path="test-message")
     def test_message(self, request, pk=None):

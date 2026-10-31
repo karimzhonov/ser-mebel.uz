@@ -37,11 +37,14 @@ from metering.price.services import (
     delete_room,
     delete_room_image,
     mark_price_done,
+    move_inventory_type,
     rename_room,
     reorder_rooms,
+    retire_object_type,
     save_calculation,
     save_version,
     set_image_furniture,
+    split_inventory_type,
     version_offer_data,
 )
 from metering.services import (
@@ -553,11 +556,20 @@ class PriceViewSet(viewsets.ModelViewSet):
 
 
 class ObjectTypeViewSet(viewsets.ModelViewSet):
+    """Archived objects are listed too (old calculations show their name); the UI
+    hides them from the catalog and from new furniture."""
+
     queryset = ObjectType.objects.order_by("pk")
     serializer_class = ObjectTypeSerializer
     permission_classes = [ModelPermissions]
     pagination_class = None
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def destroy(self, request, *args, **kwargs):
+        result = retire_object_type(self.get_object())
+        if result == "archived":
+            return Response({"result": result, "detail": "Eski hisob-kitoblarda bor — arxivlandi"})
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class RoomTypeViewSet(viewsets.ModelViewSet):
@@ -599,6 +611,23 @@ class InventoryTypeViewSet(viewsets.ModelViewSet):
         if obj is not None:
             qs = qs.filter(obj_id=obj)
         return qs
+
+    @action(detail=True, methods=["post"])
+    def move(self, request, pk=None):
+        """Move the card with its products to another object: {obj}."""
+        require_perm(request.user, "price.change_inventorytype")
+        inv_type = self.get_object()
+        obj = get_object_or_404(ObjectType, pk=int_param(request.data, "obj") or 0)
+        move_inventory_type(inv_type, obj)
+        return Response(self.get_serializer(inv_type).data)
+
+    @action(detail=True, methods=["post"])
+    def split(self, request, pk=None):
+        """Make the card its own object (its products move along)."""
+        require_perm(request.user, "price.change_inventorytype")
+        require_perm(request.user, "price.add_objecttype")
+        obj = split_inventory_type(self.get_object())
+        return Response(ObjectTypeSerializer(obj).data)
 
 
 class InventoryViewSet(viewsets.ModelViewSet):
