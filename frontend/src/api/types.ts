@@ -489,6 +489,27 @@ export interface StaffUser {
   last_login: string | null;
 }
 
+export type AccessLevel = "none" | "view" | "edit";
+
+export interface AccessSection {
+  key: string;
+  /** menu group: Sotuv, O'lchov, HR … */
+  title: string;
+  label: string;
+  hint: string;
+  /** false = view-only here (e.g. the warehouse: only the keeper books) */
+  can_edit: boolean;
+  /** the person's own level; "custom" = set by hand in the old admin */
+  level: AccessLevel | "custom";
+  from_groups: AccessLevel | "custom";
+}
+
+export interface UserAccess {
+  is_superuser: boolean;
+  is_keeper: boolean;
+  sections: AccessSection[];
+}
+
 export interface Overview {
   range: { from: string | null; to: string | null };
   monthly: boolean;
