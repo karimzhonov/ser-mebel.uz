@@ -53,5 +53,13 @@ def order_ready(self, ref: str):
 
 
 @shared_task
+def salary_reminder():
+    """The day before a worker's pay day: remind the accountant (accounting/salary.py)."""
+    from . import salary
+
+    return salary.remind()
+
+
+@shared_task
 def cleanup():
     jobs.cleanup()

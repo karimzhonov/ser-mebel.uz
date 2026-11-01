@@ -131,6 +131,9 @@ class TelegramMember(models.Model):
     is_deadline_receiver = models.BooleanField(
         default=False, verbose_name="Srok eslatmalari oluvchi"
     )
+    is_accountant = models.BooleanField(
+        default=False, verbose_name="Bugalter (oylik eslatmalari)"
+    )
     joined_at = models.DateTimeField(auto_now_add=True, verbose_name="Qo'shilgan")
     updated_at = models.DateTimeField(auto_now=True)
 

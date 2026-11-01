@@ -15,6 +15,7 @@ export interface Member {
   is_feedback: boolean;
   is_bonus_receiver: boolean;
   is_deadline_receiver: boolean;
+  is_accountant: boolean;
   is_task_only: boolean;
   has_wallet: boolean;
   joined_at: string;
@@ -247,6 +248,10 @@ export interface Worker {
   position: string;
   ordering: number;
   is_active: boolean;
+  pay_day: number | null;
+  has_template: boolean;
+  salary_template_name: string;
+  salary_template_at: string | null;
 }
 
 export interface Car {
@@ -278,6 +283,9 @@ export interface WorkerListItem {
 }
 
 export interface WorkerCard {
+  worker_id: number | null;
+  pay_day: number | null;
+  template_name: string;
   name: string;
   group: string;
   position: string;
@@ -309,4 +317,24 @@ export interface WorkerCardResponse {
   date_to: string;
   workers: WorkerListItem[];
   card: WorkerCard | null;
+}
+
+/** GET /finance/workers/{id}/salary/?month= — what «Oylik chiqarish» fills in. */
+export interface SalaryInfo {
+  month: string;
+  pay_day: number | null;
+  pay_date: string;
+  date_from: string;
+  date_to: string;
+  advance_total: number;
+  advances: SalaryPayment[];
+  untyped: SalaryPayment[];
+}
+
+export interface SalaryPayment {
+  id: number;
+  date: string;
+  amount: number;
+  member: string;
+  comment: string;
 }

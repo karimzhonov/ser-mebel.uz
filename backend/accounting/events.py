@@ -27,6 +27,7 @@ WHO_SITE = "Saytga kirituvchi menejer"
 WHO_FEEDBACK = "Mijoz fikri menejeri"
 WHO_DEADLINE = "Srok xodimi"
 WHO_DEADLINE_BONUS = "Srok va bonus xodimlari"
+WHO_ACCOUNTANT = "Bugalter"
 
 
 def _safe(fn):
@@ -400,6 +401,29 @@ def deadline(info, left_days: int, key: str, receivers: list[TelegramMember], wh
             "to": to,
             "fallback": fallback,
             "fallback_who": who,
+        },
+    )
+
+
+@_safe
+def salary_due(due: list):
+    """«Ertaga oylik»: `due` = [(Worker, pay_date)] — to the accountant (the admins
+    when nobody is marked «Bugalter»)."""
+    emit(
+        "finance.salary_due",
+        {
+            "workers": [
+                {
+                    "id": w.pk,
+                    "name": w.name,
+                    "group": w.group,
+                    "position": w.position,
+                    "pay_date": dto.iso(d),
+                    "has_template": bool(w.salary_template_name),
+                }
+                for w, d in due
+            ],
+            **duty_target("is_accountant", WHO_ACCOUNTANT),
         },
     )
 

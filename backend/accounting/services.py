@@ -123,7 +123,8 @@ def staff():
 
 
 def duty_members(duty: str):
-    """duty: is_site_entry / is_feedback / is_bonus_receiver / is_deadline_receiver."""
+    """duty: is_site_entry / is_feedback / is_bonus_receiver / is_deadline_receiver /
+    is_accountant."""
     return list(
         TelegramMember.objects.filter(
             **{duty: True}, role__in=[TelegramRole.ADMIN, TelegramRole.STAFF]
@@ -1003,7 +1004,7 @@ def worker_list(start: date | None, end: date | None) -> list[dict]:
     """The worker picker of «Ishchi kartasi»: the «Ishchilar» catalog plus anyone a
     salary was written to by hand, with what each got in the period."""
     out: dict[str, dict] = {}
-    for w in Worker.objects.all():
+    for w in Worker.objects.defer("salary_template"):
         out.setdefault(
             _worker_key(w.name),
             {
@@ -1054,8 +1055,11 @@ def worker_card(name: str, start: date | None, end: date | None) -> dict:
         g = givers.setdefault(t.member.name, {"name": t.member.name, "sum": ZERO, "count": 0})
         g["sum"] += t.amount
         g["count"] += 1
-    w = Worker.objects.filter(name__iexact=" ".join(name.split())).first()
+    w = Worker.objects.defer("salary_template").filter(name__iexact=" ".join(name.split())).first()
     return {
+        "worker_id": w.pk if w else None,
+        "pay_day": w.pay_day if w else None,
+        "template_name": w.salary_template_name if w else "",
         "name": w.name if w else name,
         "group": w.group if w else "",
         "position": w.position if w else "",

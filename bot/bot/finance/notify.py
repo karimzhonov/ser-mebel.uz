@@ -490,6 +490,28 @@ async def deadline(n: Notifier, d: dict):
     await duty(n, d, text)
 
 
+@on("finance.salary_due")
+async def salary_due(n: Notifier, d: dict):
+    """The day before a pay day: the accountant issues these workers' salary."""
+    lines = []
+    for w in d.get("workers") or []:
+        role = " · ".join(x for x in (w.get("group"), w.get("position")) if x)
+        lines.append(
+            f"• <b>{esc(w['name'])}</b>"
+            + (f" ({esc(role)})" if role else "")
+            + ("" if w.get("has_template") else " — <i>shablon yuklanmagan</i>")
+        )
+    if not lines:
+        return
+    day = ddmm(d["workers"][0].get("pay_date"))
+    text = (
+        f"🧾 <b>Ertaga ({day}) oylik kuni — oylik chiqarish kerak</b>\n\n"
+        + "\n".join(lines)
+        + "\n\n💻 Saytda: Moliya → 👷 Ishchi kartasi → «Oylik chiqarish»"
+    )
+    await duty(n, d, text)
+
+
 # ------------------------------------------------------------------ scheduled jobs
 @on("finance.daily_reminder")
 async def daily_reminder(n: Notifier, d: dict):

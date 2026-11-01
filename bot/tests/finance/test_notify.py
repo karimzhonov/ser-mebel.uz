@@ -92,3 +92,12 @@ async def test_month_submitted_sends_member_excel(be):
     bot.send_document = AsyncMock()
     delivered = await dispatch({**env, "id": "other"}, bot)
     assert delivered and bot.send_document.await_count == 0
+
+
+async def test_salary_due_reminds_the_accountant(be):
+    env = fx("event.finance.salary_due")
+    bot = fake_bot()
+    delivered = await dispatch(env, bot)
+    assert {x["chat_id"] for x in delivered} == set(env["data"]["to"])
+    text = bot.send_message.call_args.args[1]
+    assert env["data"]["workers"][0]["name"] in text and "oylik chiqarish kerak" in text

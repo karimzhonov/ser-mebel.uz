@@ -144,8 +144,12 @@ def replace_order_folders(sender: Type[Order], instance: Order, created, **kwarg
 
     if instance.metering is None:
         return
-    instance.metering.design.confirm = True
-    instance.metering.design.save(update_fields=["confirm"])
+    # A metering may have no design (none was assigned, or an old order made in the
+    # admin): saving such an order must not fail.
+    design = getattr(instance.metering, "design", None)
+    if design is not None:
+        design.confirm = True
+        design.save(update_fields=["confirm"])
     if not created:
         return
     folder = create_folder(instance, "Заказ")

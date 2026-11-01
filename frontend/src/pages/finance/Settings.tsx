@@ -45,6 +45,7 @@ const DUTIES: [keyof Member, string][] = [
   ["is_deadline_receiver", "⏰ Srok eslatmalari"],
   ["is_site_entry", "🌐 Saytga kirituvchi"],
   ["is_feedback", "💬 Mijoz fikri"],
+  ["is_accountant", "🧮 Bugalter (oylik eslatmasi)"],
 ];
 
 function MembersTab() {
@@ -119,6 +120,7 @@ function MemberModal({ m, onClose }: { m: Member; onClose: () => void }) {
         is_feedback: f.is_feedback,
         is_bonus_receiver: f.is_bonus_receiver,
         is_deadline_receiver: f.is_deadline_receiver,
+        is_accountant: f.is_accountant,
       }),
     { success: "Saqlandi", invalidate: ["finance"], onSuccess: onClose },
   );
