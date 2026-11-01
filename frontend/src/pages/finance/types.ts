@@ -322,9 +322,19 @@ export interface WorkerCardResponse {
 /** GET /finance/workers/{id}/salary/?month= — what «Oylik chiqarish» fills in. */
 export interface SalaryInfo {
   month: string;
+  pay_day: number | null;
   pay_date: string;
   date_from: string;
   date_to: string;
   advance_total: number;
-  advances: { id: number; date: string; amount: number; member: string; comment: string }[];
+  advances: SalaryPayment[];
+  untyped: SalaryPayment[];
+}
+
+export interface SalaryPayment {
+  id: number;
+  date: string;
+  amount: number;
+  member: string;
+  comment: string;
 }

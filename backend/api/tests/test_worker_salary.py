@@ -71,6 +71,9 @@ def test_pay_dates_and_period():
     assert SAL.next_month(w, date(2026, 11, 6)) == "2026-12"
     w.pay_day = None
     assert SAL.period(w, "2026-11") == (date(2026, 11, 1), date(2026, 11, 30))
+    # no pay day: the month just ended, the current one from the 25th
+    assert SAL.next_month(w, date(2026, 11, 1)) == "2026-10"
+    assert SAL.next_month(w, date(2026, 11, 25)) == "2026-11"
 
 
 def test_upload_and_fill_template(admin_api, worker):
@@ -237,3 +240,27 @@ def test_office_template_usd_row(admin_api, members, monkeypatch):
     ws = load_workbook(io.BytesIO(r.content))["Oylik"]
     assert (ws["E24"].value, ws["F24"].value, ws["G24"].value) == ("USD", 100, 12500)
     assert ws["B25"].value is None
+
+
+def test_own_period_and_untyped_payments(admin_api, worker, members):
+    old = S.create_operation(
+        member=members[0],
+        kind="expense",
+        amount=70_000,
+        category_code="oylik",
+        worker="Akmal",
+        on_date=date(2026, 10, 10),
+        actor_admin=True,
+    )
+    type(old).objects.filter(pk=old.pk).update(pay_type="")  # an imported row
+    base = f"/api/v1/finance/workers/{worker.pk}/salary/"
+    r = admin_api.get(base + "?month=2026-11&date_from=2026-10-01&date_to=2026-10-31")
+    assert (r.data["date_from"], r.data["date_to"]) == (date(2026, 10, 1), date(2026, 10, 31))
+    assert r.data["advance_total"] == 501_000  # 5, 6 and 20 Oct
+    assert [x["amount"] for x in r.data["untyped"]] == [70_000]
+    assert admin_api.get(base + "?date_from=2026-10-01").status_code == 400
+    r = admin_api.get(
+        f"/api/v1/finance/workers/{worker.pk}/salary/excel/"
+        "?month=2026-11&date_from=2026-10-01&date_to=2026-10-31"
+    )
+    assert load_workbook(io.BytesIO(r.content))["Avanslar"]["C7"].value == 501_000

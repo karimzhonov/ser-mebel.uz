@@ -150,34 +150,48 @@ class WorkerViewSet(_CatalogViewSet):
 
     @action(detail=True, methods=["get"])
     def salary(self, request, pk=None):
-        """?month=YYYY-MM (default: the next pay day): pay date, period and advances."""
+        """?month=YYYY-MM (default: the next pay day), optional date_from/date_to:
+        pay date, period, the advances that go into the sheet and untyped payments."""
         require_perm(request.user, VIEW_ALL)
         w = self.get_object()
-        sh = SAL.salary_info(w, _month_param(request))
+        sh = SAL.salary_info(w, _month_param(request), *_period_override(request))
+
+        def row(t):
+            return {
+                "id": t.id,
+                "date": t.date,
+                "amount": f(t.amount),
+                "member": t.member.name,
+                "comment": t.comment,
+            }
+
         return Response(
             {
                 "month": sh.ym,
+                "pay_day": w.pay_day,
                 "pay_date": sh.pay_date,
                 "date_from": sh.start,
                 "date_to": sh.end,
                 "advance_total": f(sh.total),
-                "advances": [
-                    {
-                        "id": t.id,
-                        "date": t.date,
-                        "amount": f(t.amount),
-                        "member": t.member.name,
-                        "comment": t.comment,
-                    }
-                    for t in sh.rows
-                ],
+                "advances": [row(t) for t in sh.rows],
+                "untyped": [row(t) for t in SAL.untyped(w, sh.start, sh.end)],
             }
         )
 
     @action(detail=True, methods=["get"], url_path="salary/excel")
     def salary_excel(self, request, pk=None):
         require_perm(request.user, VIEW_ALL)
-        return _xlsx(*SAL.salary_xlsx(self._worker(), _month_param(request)))
+        return _xlsx(
+            *SAL.salary_xlsx(self._worker(), _month_param(request), *_period_override(request))
+        )
+
+
+def _period_override(request) -> tuple[date | None, date | None]:
+    """date_from + date_to (both or neither) — the accountant's own period."""
+    start, end = date_range(request.query_params)
+    if bool(start) != bool(end):
+        raise ValidationError({"date_from": "Davr boshi va oxirini birga kiriting."})
+    return start, end
 
 
 def _month_param(request) -> str | None:

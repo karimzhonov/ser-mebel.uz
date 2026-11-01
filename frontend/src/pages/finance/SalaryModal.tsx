@@ -29,11 +29,26 @@ export function SalaryModal({ card, onClose }: { card: WorkerCard; onClose: () =
   const id = card.worker_id!;
   const canEdit = can("accounting.change_worker");
   const [month, setMonth] = useState("");
+  // the accountant's own period; empty = worked out from the pay day
+  const [range, setRange] = useState({ date_from: "", date_to: "" });
+  const custom = !!(range.date_from && range.date_to);
   const [payDay, setPayDay] = useState(card.pay_day ? String(card.pay_day) : "");
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const { data: info, isLoading } = useGet<SalaryInfo>(`/finance/workers/${id}/salary/`, { month });
+  const { data: info, isLoading } = useGet<SalaryInfo>(`/finance/workers/${id}/salary/`, {
+    month,
+    ...(custom ? range : {}),
+  });
   const ym = month || info?.month || "";
+  const excelUrl =
+    `/finance/workers/${id}/salary/excel/?month=${ym}` +
+    (custom ? `&date_from=${range.date_from}&date_to=${range.date_to}` : "");
+  const editRange = (key: "date_from" | "date_to", value: string) =>
+    setRange((r) => ({
+      date_from: r.date_from || info?.date_from || "",
+      date_to: r.date_to || info?.date_to || "",
+      [key]: value,
+    }));
 
   const savePayDay = useAction(
     () => api.patch(`/finance/workers/${id}/`, { pay_day: payDay ? Number(payDay) : null }),
@@ -79,7 +94,7 @@ export function SalaryModal({ card, onClose }: { card: WorkerCard; onClose: () =
             loading={busy}
             disabled={!info}
             onClick={() =>
-              download(`/finance/workers/${id}/salary/excel/?month=${ym}`, `Oylik_${ym}_${card.name}.xlsx`)
+              download(excelUrl, `Oylik_${ym}_${card.name}.xlsx`)
             }
           >
             Excel yuklab olish
@@ -90,7 +105,14 @@ export function SalaryModal({ card, onClose }: { card: WorkerCard; onClose: () =
       <div className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Oylik beriladigan oy" hint="Bo'sh — keyingi oylik kuni">
-            <Input type="month" value={ym} onChange={(e) => setMonth(e.target.value)} />
+            <Input
+              type="month"
+              value={ym}
+              onChange={(e) => {
+                setMonth(e.target.value);
+                setRange({ date_from: "", date_to: "" });
+              }}
+            />
           </Field>
           <Field label="Oylik kuni (oyning sanasi)" hint="Bir kun oldin bugalterga botda eslatma keladi">
             <div className="flex gap-2">
@@ -122,10 +144,37 @@ export function SalaryModal({ card, onClose }: { card: WorkerCard; onClose: () =
             <Skeleton className="h-16" />
           ) : (
             <>
+              {!info.pay_day && (
+                <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+                  Oylik kuni kiritilmagan — avanslar tanlangan oyning 1-sanasidan oxirigacha olinadi va bot eslatmasi
+                  kelmaydi. Oylik kunini yuqorida kiriting.
+                </div>
+              )}
+              <div className="mb-3 flex flex-wrap items-end gap-2">
+                <Field label="Avanslar davri">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={range.date_from || info.date_from}
+                      onChange={(e) => editRange("date_from", e.target.value)}
+                    />
+                    <span className="muted">—</span>
+                    <Input
+                      type="date"
+                      value={range.date_to || info.date_to}
+                      onChange={(e) => editRange("date_to", e.target.value)}
+                    />
+                  </div>
+                </Field>
+                {custom && (
+                  <Button variant="ghost" size="sm" onClick={() => setRange({ date_from: "", date_to: "" })}>
+                    Oylik kuni bo'yicha
+                  </Button>
+                )}
+              </div>
               <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
                 <div className="text-sm">
                   📅 Oylik sanasi: <b>{date(info.pay_date)}</b>
-                  <span className="muted"> · avanslar {date(info.date_from)} — {date(info.date_to)}</span>
                 </div>
                 <div className="text-sm">
                   💵 Avans jami: <b>{som(info.advance_total)}</b>
@@ -147,7 +196,20 @@ export function SalaryModal({ card, onClose }: { card: WorkerCard; onClose: () =
                   </table>
                 </div>
               ) : (
-                <Empty title="Bu davrda avans berilmagan" />
+                <Empty title="Bu davrda avans berilmagan" text="Davrni o'zgartirib ko'ring." />
+              )}
+              {info.untyped.length > 0 && (
+                <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800/60">
+                  <div className="mb-1 font-medium">
+                    ⚠️ Turi (Avans / Oylik) yozilmagan {info.untyped.length} ta to'lov — shablonga qo'shilmadi:
+                  </div>
+                  {info.untyped.map((a) => (
+                    <div key={a.id} className="muted">
+                      {date(a.date)} · {som(a.amount)} · {a.member}
+                      {a.comment ? ` · ${a.comment}` : ""}
+                    </div>
+                  ))}
+                </div>
               )}
             </>
           )}

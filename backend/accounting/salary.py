@@ -65,21 +65,38 @@ def period(worker: Worker, ym: str) -> tuple[date, date]:
 
 
 def next_month(worker: Worker, on: date | None = None) -> str:
-    """The month whose pay day is next (today included)."""
+    """The month to issue now. With a pay day: the one whose pay day is next (today
+    included). Without one the salary is for a calendar month: the one just ended,
+    or the current one from the 25th on."""
     t = on or today()
     ym = t.strftime("%Y-%m")
+    if not worker.pay_day:
+        return ym if t.day >= 25 else add_months(ym, -1)
     return ym if pay_date(worker, ym) >= t else add_months(ym, 1)
 
 
-def advances(worker: Worker, start: date, end: date) -> list:
+def _payments(worker: Worker, start: date, end: date) -> list:
     key = S._worker_key(worker.name)
-    rows = [
-        t
-        for t in S.salary_ops(start, end).filter(pay_type=PayType.ADVANCE)
-        if S._worker_key(t.worker) == key
-    ]
+    rows = [t for t in S.salary_ops(start, end) if S._worker_key(t.worker) == key]
     rows.sort(key=lambda t: (t.date, t.time or time.min, t.id))
     return rows
+
+
+def advances(worker: Worker, start: date, end: date) -> list:
+    return [t for t in _payments(worker, start, end) if t.pay_type == PayType.ADVANCE]
+
+
+def untyped(worker: Worker, start: date, end: date) -> list:
+    """Payments booked without «Avans / Oylik» (old rows, imports): not put into the
+    sheet, but shown so the accountant can check them."""
+    return [
+        t
+        for t in _payments(worker, start, end)
+        if t.pay_type not in (PayType.ADVANCE, PayType.SALARY)
+    ]
+
+
+MAX_PERIOD_DAYS = 400
 
 
 @dataclass
@@ -96,9 +113,18 @@ class Sheet:
         return sum((t.amount for t in self.rows), S.ZERO)
 
 
-def salary_info(worker: Worker, ym: str | None = None) -> Sheet:
+def salary_info(
+    worker: Worker, ym: str | None = None, start: date | None = None, end: date | None = None
+) -> Sheet:
+    """`start`/`end` (both) replace the period worked out from the pay day."""
     ym = ym or next_month(worker)
-    start, end = period(worker, ym)
+    if start and end:
+        if start > end:
+            raise ServiceError("Davr boshi oxiridan keyin bo'lmasin.")
+        if (end - start).days > MAX_PERIOD_DAYS:
+            raise ServiceError("Davr juda uzun (ko'pi bilan bir yil).")
+    else:
+        start, end = period(worker, ym)
     return Sheet(worker, ym, pay_date(worker, ym), start, end, advances(worker, start, end))
 
 
@@ -482,9 +508,11 @@ def _rate() -> Decimal | None:
     return r if r and r > 0 else None
 
 
-def salary_xlsx(worker: Worker, ym: str | None = None) -> tuple[bytes, str]:
+def salary_xlsx(
+    worker: Worker, ym: str | None = None, start: date | None = None, end: date | None = None
+) -> tuple[bytes, str]:
     """The worker's template with the name and advances of `ym` filled in."""
-    sh = salary_info(worker, ym)
+    sh = salary_info(worker, ym, start, end)
     content, _ = template_file(worker)
     wb = load_workbook(io.BytesIO(content))
     values = _values(sh)
