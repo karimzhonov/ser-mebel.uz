@@ -12,6 +12,7 @@ from .views.overview import OverviewView
 router = DefaultRouter()
 router.register("clients", call_center.ClientViewSet, basename="client")
 router.register("invoices", call_center.InvoiceViewSet, basename="invoice")
+router.register("invoice-tasks", call_center.InvoiceTaskViewSet, basename="invoicetask")
 router.register("meterings", metering.MeteringViewSet, basename="metering")
 router.register("designs", metering.DesignViewSet, basename="design")
 router.register("design-types", metering.DesignTypeViewSet, basename="designtype")
@@ -86,7 +87,9 @@ v1 = [
     path("finance/settings/", finance.FinanceSettingsView.as_view(), name="api-finance-settings"),
     path("finance/handover/", finance.HandoverView.as_view(), name="api-finance-handover"),
     path("finance/me/", finance.MeFinanceView.as_view(), name="api-finance-me"),
-    path("warehouse/summary/", warehouse.WarehouseSummaryView.as_view(), name="api-warehouse-summary"),
+    path(
+        "warehouse/summary/", warehouse.WarehouseSummaryView.as_view(), name="api-warehouse-summary"
+    ),
     path("warehouse/keeper/", warehouse.KeeperView.as_view(), name="api-warehouse-keeper"),
     path("warehouse/export/", warehouse.WarehouseExportView.as_view(), name="api-warehouse-export"),
     path("hr/day/", hr.HrDayView.as_view(), name="api-hr-day"),

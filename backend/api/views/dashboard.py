@@ -4,7 +4,7 @@ from djmoney import settings as dj_settings
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from call_center.constants import SolutionChoice
+from call_center.constants import LeadSource, SolutionChoice
 from metering.constants import MeteringStatus
 from metering.price.models import InventoryType, ObjectType
 from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
@@ -64,6 +64,9 @@ class MetaView(APIView):
                         "icon": SolutionChoice.icon(s),
                     }
                     for s in SolutionChoice
+                ],
+                "lead_sources": [
+                    {"value": s.value, "label": uz.lead_source(s.value)} for s in LeadSource
                 ],
                 "inventory_type_kinds": [
                     {"value": v, "label": uz.INVENTORY_KIND.get(v, label)}

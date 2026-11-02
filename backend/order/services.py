@@ -252,7 +252,7 @@ def _order_card(order, *, show_price: bool) -> dict:
 # --- Write services (used by the REST API; mirror OrderAddForm / OrderActions) ---
 
 
-def create_order(*, count_days=None, **fields):
+def create_order(*, count_days=None, author=None, **fields):
     """Mirrors OrderAddForm.save + OrderAdmin.get_changeform_initial_data.
 
     - end_date = reception_date + count_days when count_days is given (else the order
@@ -301,8 +301,12 @@ def create_order(*, count_days=None, **fields):
             metering.status = MeteringStatus.sold_out
             metering.save()
             if metering.invoice:
+                from call_center.services import log_solution
+
+                old = metering.invoice.solution
                 metering.invoice.solution = SolutionChoice.sold_out
                 metering.invoice.save()
+                log_solution(metering.invoice, old, int(SolutionChoice.sold_out), author)
         order = Order(**fields)
         order.save()
     return order

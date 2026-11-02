@@ -133,6 +133,17 @@ def users_with_perm(app_label: str, codename: str):
     return User.objects.filter(is_active=True).filter(perm | models.Q(is_superuser=True)).distinct()
 
 
+def user_by_telegram(telegram_id):
+    """The active panel user linked to this Telegram account (bot -> site identity)."""
+    from .models import User
+
+    try:
+        tg = int(telegram_id)
+    except (TypeError, ValueError):
+        return None
+    return User.objects.filter(telegram_id=tg, is_active=True, is_staff=True).order_by("pk").first()
+
+
 def notify_user(user, *, url, telegram_text, sms_template=None, sms_context=None) -> None:
     """Telegram + SMS to ONE person (the assigned executor), not to a whole role.
     A failed send is logged, never raised: the task itself is already saved."""

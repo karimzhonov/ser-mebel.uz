@@ -179,7 +179,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                         raise ServiceError("Yangi mijoz uchun F.I.Sh. kiriting")
                     client = Client.objects.create(phone=phone, fio=fio)
                 data["client"] = client
-            order = create_order(**data)
+            order = create_order(author=request.user, **data)
         return self._detail(order, status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):

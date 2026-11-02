@@ -1,0 +1,9 @@
+{
+  "name": "Ali Valiyev",
+  "phone": "+998901112244",
+  "source": "telegram",
+  "note": "Oshxona mebeli kerak",
+  "remind": {
+    "preset": "tomorrow"
+  }
+}

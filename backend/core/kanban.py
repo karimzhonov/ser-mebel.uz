@@ -15,6 +15,7 @@ card lists — neither the aggregate nor the card query de-duplicates.
 """
 
 from dataclasses import dataclass
+from typing import Callable
 
 from django.db.models import Count, Q, QuerySet
 
@@ -51,8 +52,16 @@ class Column:
     more_label: str = ""
 
 
-def build_board(queryset: QuerySet, columns: list[Column], to_card) -> list[dict]:
-    """Render-ready columns for `queryset`, split by each Column's filters."""
+def build_board(
+    queryset: QuerySet,
+    columns: list[Column],
+    to_card,
+    limit: "int | Callable[[Column], int] | None" = None,
+) -> list[dict]:
+    """Render-ready columns for `queryset`, split by each Column's filters.
+
+    `limit` caps the cards per column: a number, or a function of the Column. Default:
+    CARDS_PER_COLUMN (CARDS_PER_COLLAPSED_COLUMN for collapsed columns)."""
     keys = [column.key for column in columns]
     assert len(set(keys)) == len(keys), f"duplicate kanban column keys: {keys}"
 
@@ -64,9 +73,12 @@ def build_board(queryset: QuerySet, columns: list[Column], to_card) -> list[dict
     board = []
     for column in columns:
         total = counts[f"col_{column.key}"]
-        limit = CARDS_PER_COLLAPSED_COLUMN if column.collapsed else CARDS_PER_COLUMN
-        rows = queryset.filter(column.filters)[:limit]
-        more = max(total - limit, 0)
+        if limit is None:
+            cap = CARDS_PER_COLLAPSED_COLUMN if column.collapsed else CARDS_PER_COLUMN
+        else:
+            cap = limit(column) if callable(limit) else limit
+        rows = queryset.filter(column.filters)[:cap]
+        more = max(total - cap, 0)
 
         board.append(
             {

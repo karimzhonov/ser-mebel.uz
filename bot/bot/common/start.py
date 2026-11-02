@@ -13,6 +13,8 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import Message
 
 from bot.common.actor import Actor
+from bot.crm import keyboards as crm_kb
+from bot.crm import texts as crm_texts
 from bot.finance import finance_start
 from bot.hr import employee_start
 
@@ -31,6 +33,8 @@ async def start_davomat(message: Message, actor: Actor):
 @router.message(F.text.regexp(PLAIN))
 async def start_plain(message: Message, state: FSMContext, actor: Actor, bot: Bot):
     if actor.active and await finance_start(message, state, actor, bot):
+        if actor.can_add_lead:
+            await message.answer(crm_texts.FIN_HINT)
         return
     if actor.pending:
         await finance_start(message, state, actor, bot)
@@ -39,5 +43,9 @@ async def start_plain(message: Message, state: FSMContext, actor: Actor, bot: Bo
         return
     if actor.blocked:
         return  # silence
+    if actor.member is None and actor.can_add_lead:
+        # a call-center person with no other role: the lead form instead of the join screen
+        await message.answer(crm_texts.START_HINT, reply_markup=crm_kb.menu_kb())
+        return
     if actor.member is None:
         await finance_start(message, state, actor, bot)

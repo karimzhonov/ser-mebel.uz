@@ -4,7 +4,8 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { PageLoader } from "@/components/ui";
 import LoginPage from "@/pages/Login";
 import DashboardPage from "@/pages/Dashboard";
-import CallCenterPage from "@/pages/CallCenter";
+import CallCenterPage from "@/pages/callcenter";
+import MyTasksPage from "@/pages/callcenter/MyTasks";
 import { ClientDetailPage, ClientsPage } from "@/pages/Clients";
 import { MeteringDetailPage, MeteringsPage } from "@/pages/Meterings";
 import { DesignDetailPage, DesignsPage } from "@/pages/Designs";
@@ -45,6 +46,7 @@ export default function App() {
       <Route element={<AppLayout />}>
         <Route index element={user.is_warehouse_keeper && !user.is_superuser ? <Navigate to="/warehouse" replace /> : <DashboardPage />} />
         <Route path="call-center" element={<CallCenterPage />} />
+        <Route path="call-center/tasks" element={<MyTasksPage />} />
         <Route path="clients" element={<ClientsPage />} />
         <Route path="clients/:phone" element={<ClientDetailPage />} />
         <Route path="meterings" element={<MeteringsPage />} />

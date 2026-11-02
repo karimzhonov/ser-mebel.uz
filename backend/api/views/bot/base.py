@@ -58,6 +58,21 @@ class BotAPIView(APIView):
     def employee(self):
         return HR.emp(self.actor_tg) if self.actor_tg else None
 
+    @cached_property
+    def site_user(self):
+        """The panel account this Telegram user is linked to (oauth.User.telegram_id)."""
+        from oauth.services import user_by_telegram
+
+        return user_by_telegram(self.actor_tg) if self.actor_tg else None
+
+    def require_site_perm(self, perm: str):
+        self.require_actor()
+        if self.site_user is None:
+            raise PermissionDenied("Telegram saytdagi profilingizga ulanmagan")
+        if not self.site_user.has_perm(perm):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+        return self.site_user
+
     def require_actor(self) -> int:
         if not self.actor_tg:
             raise PermissionDenied("actor required")

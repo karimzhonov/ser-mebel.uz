@@ -149,7 +149,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
                 if not fio:
                     raise ServiceError("Yangi mijoz uchun F.I.Sh. kiriting")
                 client = Client.objects.create(phone=phone, fio=fio)
-            metering = create_metering(client=client, invoice=invoice, **data)
+            metering = create_metering(client=client, invoice=invoice, author=request.user, **data)
         return self._detail(metering, status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):

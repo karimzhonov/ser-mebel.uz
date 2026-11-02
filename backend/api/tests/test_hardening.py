@@ -217,7 +217,9 @@ def test_extensionless_xlsx_gets_download_name_and_downloads(
 
     settings.MEDIA_ROOT = str(tmp_path)
     f = File.objects.create(
-        folder=order_folder, original_filename="xlsx", file=SimpleUploadedFile("xlsx", _xlsx_bytes())
+        folder=order_folder,
+        original_filename="xlsx",
+        file=SimpleUploadedFile("xlsx", _xlsx_bytes()),
     )
     files = admin_api.get(f"/api/v1/folders/{order_folder.pk}/").data["files"]
     assert files[0]["download_name"] == "xlsx.xlsx"

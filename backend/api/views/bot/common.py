@@ -37,6 +37,13 @@ class WhoAmIView(BotAPIView):
                     "employee": D.employee_dto(e) if e else None,
                     "is_admin": bool(m and m.is_admin),
                 },
+                "crm": {
+                    "can_add_lead": bool(
+                        self.site_user
+                        and self.site_user.has_perm("call_center.add_invoice")
+                        and self.site_user.has_perm("call_center.view_invoice")
+                    )
+                },
             }
         )
 

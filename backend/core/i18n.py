@@ -36,6 +36,15 @@ SOLUTION = {
     6: "Sotildi",
 }
 
+LEAD_SOURCE = {
+    "telegram": "Telegram",
+    "instagram": "Instagram",
+    "phone": "Telefon qo'ng'iroq",
+    "showroom": "Do'konga keldi (showroom)",
+    "recommendation": "Tavsiya",
+    "other": "Boshqa",
+}
+
 INVENTORY_KIND = {1: "Kv. / pog. m", 2: "Soni"}
 COUNT_NAME = {"kv": "Kv. m", "pog": "Pog. m"}
 
@@ -84,6 +93,10 @@ def order_status(value) -> str:
 
 def metering_status(value) -> str:
     return METERING_STATUS.get(str(value), str(value))
+
+
+def lead_source(value):
+    return None if not value else LEAD_SOURCE.get(str(value), str(value))
 
 
 def solution(value):

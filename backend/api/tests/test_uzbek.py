@@ -64,7 +64,12 @@ def test_auth_errors_are_uzbek(db):
 def test_staff_entered_data_is_untouched(admin_api):
     resp = admin_api.post(
         "/api/v1/invoices/",
-        {"fio": "Алишер Навоий", "phone": "+998901119911", "desc": "Кухня"},
+        {
+            "fio": "Алишер Навоий",
+            "phone": "+998901119911",
+            "desc": "Кухня",
+            "source": "other",
+        },
         format="json",
     )
     assert resp.data["client"]["fio"] == "Алишер Навоий" and resp.data["desc"] == "Кухня"

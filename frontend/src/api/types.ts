@@ -61,6 +61,8 @@ export interface Meta {
   site_title: string;
   /** The site bot's @username (TELEGRAM_BOT_USERNAME), without the @. */
   telegram_bot: string;
+  /** CRM: where a lead came from (Telegram, Instagram, …) — required on a new ariza. */
+  lead_sources?: { value: string; label: string }[];
 }
 
 export interface Deadline {
@@ -88,6 +90,81 @@ export interface Invoice {
   solution_label: string | null;
   is_editable: boolean;
   metering_id: number | null;
+  source: string | null;
+  source_label: string | null;
+  assigned_to: UserRef | null;
+  created_by: UserRef | null;
+  next_task: { id: number; text: string; due_at: string } | null;
+  open_tasks: number;
+  /** an active lead (new / re-phone / info / location) with no open task */
+  needs_task: boolean;
+}
+
+/* ---------------------------------------------------------------- CRM */
+
+export interface UserRef {
+  id: number;
+  name: string;
+}
+
+export interface Assignee extends UserRef {
+  has_telegram: boolean;
+}
+
+/** The lead a task belongs to (InvoiceTaskSerializer.invoice). */
+export interface TaskLead {
+  id: number;
+  client: ClientShort;
+  source: string | null;
+  source_label: string | null;
+  solution: number | null;
+  solution_label: string | null;
+}
+
+export interface InvoiceTask {
+  id: number;
+  text: string;
+  due_at: string;
+  is_done: boolean;
+  done_at: string | null;
+  created_at: string;
+  assigned: UserRef | null;
+  invoice: TaskLead;
+  created_by: UserRef | null;
+}
+
+export interface TimelineEntry {
+  type: "created" | "note" | "task_created" | "task_done" | "metering" | "order";
+  at: string;
+  author: UserRef | null;
+  /** for type=note: note | solution | assigned | source */
+  kind: string | null;
+  text: string;
+  meta: Record<string, unknown>;
+  task: { id: number; text: string; due_at: string; is_done: boolean; assigned: UserRef | null } | null;
+  link: { kind: "metering" | "order"; id: number } | null;
+}
+
+export interface LeadBoardColumn {
+  key: string;
+  title: string;
+  tone: Tone;
+  /** the solution a card gets when dropped here (null = «Yangi») */
+  solution: number | null;
+  droppable: boolean;
+  collapsed: boolean;
+  count: number;
+  cards: Invoice[];
+}
+
+export interface LeadBoard {
+  columns: LeadBoardColumn[];
+}
+
+export interface TaskAgenda {
+  overdue: InvoiceTask[];
+  today: InvoiceTask[];
+  upcoming: InvoiceTask[];
 }
 
 export interface MeteringShort {

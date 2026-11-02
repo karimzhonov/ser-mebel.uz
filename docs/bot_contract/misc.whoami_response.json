@@ -38,5 +38,8 @@
       "off_label": "Yakshanba"
     },
     "is_admin": false
+  },
+  "crm": {
+    "can_add_lead": true
   }
 }

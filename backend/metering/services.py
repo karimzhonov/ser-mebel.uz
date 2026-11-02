@@ -138,7 +138,9 @@ def metering_is_editable(metering) -> bool:
     return metering.status not in MeteringStatus.archive_statuses()
 
 
-def create_metering(*, client, date_time, address=None, address_link=None, desc=None, invoice=None):
+def create_metering(
+    *, client, date_time, address=None, address_link=None, desc=None, invoice=None, author=None
+):
     """Mirrors MeteringCreateForm.save: linking an invoice marks it "Замерга борилади"."""
     from django.db import transaction
 
@@ -163,8 +165,12 @@ def create_metering(*, client, date_time, address=None, address_link=None, desc=
             invoice=invoice,
         )
         if invoice is not None:
+            from call_center.services import log_solution
+
+            old = invoice.solution
             invoice.solution = SolutionChoice.go_for_measured
             invoice.save()
+            log_solution(invoice, old, int(SolutionChoice.go_for_measured), author)
     return metering
 
 

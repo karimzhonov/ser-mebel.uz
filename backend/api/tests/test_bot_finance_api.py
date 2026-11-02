@@ -52,7 +52,11 @@ def test_whoami_refreshes_username_and_strangers_get_null(bot_client, members):
     boss = bot_client.post("whoami/", actor=BOSS, data={"user": {"id": BOSS}})
     assert boss.data["hr"]["is_admin"] is True
     stranger = bot_client.post("whoami/", actor=777, data={"user": {"id": 777}})
-    assert stranger.data == {"finance_member": None, "hr": {"employee": None, "is_admin": False}}
+    assert stranger.data == {
+        "finance_member": None,
+        "hr": {"employee": None, "is_admin": False},
+        "crm": {"can_add_lead": False},
+    }
     assert bot_client.post("whoami/", actor=ALI, data={"user": {"id": 999}}).status_code == 403
 
 
@@ -770,7 +774,9 @@ def test_collect_full_books_money_opens_site_task_and_asks_for_handover(
     site_order = Order.objects.get(order_number=406)
     assert site_order.lost_money.amount == 1000 and str(site_order.lost_money.currency) == "USD"
     task = SiteEntryTask.objects.get(order_ref="406")
-    assert task.is_done is True and task.done_by == "Avtomatik" and r.data["task"]["code"] == task.code
+    assert (
+        task.is_done is True and task.done_by == "Avtomatik" and r.data["task"]["code"] == task.code
+    )
     assert not bot_events.of("finance.site_entry_created")  # nothing to enter by hand
     ho = bot_events.one("finance.handover_requested")
     assert ho["admins"] == [BOSS] and ho["ref"] == "406" and ho["operation"]["number"] == op.number
@@ -932,11 +938,20 @@ def test_money_request_given_by_boss_leaves_his_wallet(bot_client, members, bot_
     assert S.balance(members_by(ALI)) == 300000 and S.balance(members_by(BOSS)) == -300000
 
 
-def test_collect_without_site_figure_starts_from_bot_bookings(bot_client, ready, members, bot_events):
+def test_collect_without_site_figure_starts_from_bot_bookings(
+    bot_client, ready, members, bot_events
+):
     Order.objects.filter(order_number=406).update(lost_money=None)
     S.create_operation(
-        member=members_by(ALI), kind="income", amount=1200000, category_code="avans",
-        currency="USD", orig_amount=100, rate=12000, order_ref="406", internal=True,
+        member=members_by(ALI),
+        kind="income",
+        amount=1200000,
+        category_code="avans",
+        currency="USD",
+        orig_amount=100,
+        rate=12000,
+        order_ref="406",
+        internal=True,
     )
     r = bot_client.post("finance/bonuses/406/collect/", actor=VALI, data={"amount_text": "200$"})
     assert r.status_code == 200, r.data
@@ -973,7 +988,11 @@ def test_rahbar_category_cannot_be_edited_in_or_out(bot_client, members, bot_eve
     with pytest.raises(ServiceError):
         S.update_operation(op, {"category_code": "boshqa_kirim"}, actor_admin=True)
     other = S.create_operation(
-        member=members_by(ALI), kind="income", amount=1000, category_code="boshqa_kirim", internal=True
+        member=members_by(ALI),
+        kind="income",
+        amount=1000,
+        category_code="boshqa_kirim",
+        internal=True,
     )
     with pytest.raises(ServiceError):
         S.update_operation(other, {"category_code": "rahbar"}, actor_admin=True)

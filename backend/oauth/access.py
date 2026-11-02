@@ -66,6 +66,14 @@ HR_READS = (
 
 SECTIONS: tuple[Section, ...] = (
     Section("call_center", "Sotuv", "Call-center", ("call_center.invoice",)),
+    Section(
+        "call_center_manager",
+        "Sotuv",
+        "Call-center — barcha xodimlar ishlari",
+        (),
+        edit=False,
+        hint="Hamma xodimlarning vazifalarini ko'radi va filtrlaydi",
+    ),
     Section("clients", "Sotuv", "Mijozlar", ("client.client",)),
     Section(
         "meterings",
@@ -187,7 +195,11 @@ SECTIONS: tuple[Section, ...] = (
 )
 
 # view-only sections that are one custom permission
-_SINGLE = {"order_price": "order.view_order_price", "finance_all": "accounting.view_all_operations"}
+_SINGLE = {
+    "order_price": "order.view_order_price",
+    "finance_all": "accounting.view_all_operations",
+    "call_center_manager": "call_center.manage_invoice",
+}
 
 
 def _view(sec: Section) -> set[str]:

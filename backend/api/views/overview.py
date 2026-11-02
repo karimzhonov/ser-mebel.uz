@@ -329,7 +329,12 @@ class OverviewView(APIView):
         bal = finance.balances()
         rows = sorted(
             (
-                {"id": m.id, "name": m.name, "role": m.role, "balance": round(float(bal.get(m.id, 0)), 2)}
+                {
+                    "id": m.id,
+                    "name": m.name,
+                    "role": m.role,
+                    "balance": round(float(bal.get(m.id, 0)), 2),
+                }
                 for m in finance.wallets()
             ),
             key=lambda r: -r["balance"],

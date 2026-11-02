@@ -7,7 +7,7 @@ under `/api/v1/bot/...`. The backend tells the bot what to send through Celery
 
 Reference implementation: `backend/core/bot_signing.py` (signing), `backend/core/bot_notify.py`
 (`emit`, `send_event_sync`, `fetch_file`), `backend/api/views/bot/*` (endpoints),
-`backend/accounting/events.py` and `backend/hr/events.py` (event payload builders).
+`backend/accounting/events.py`, `backend/hr/events.py` and `backend/call_center/events.py` (event payload builders).
 
 Example JSON fixtures: `docs/bot_contract/`.
 - `dto.<name>.<n>.json` - one example of each DTO (section 1.2).
@@ -91,6 +91,9 @@ Decimals are strings like `"250000.00"`; dates ISO.
 - **Feedback** `{order_ref, client, phone, status, ready_date, asked_date}` · **Warranty** `{order_ref, client, given}`
 - **Employee** `{telegram_id, number, name, username, is_active, can_dm, group: {chat_id, title}|null, work_start, work_end, hours_label, ontime_until, off_days, off_days_effective, off_label}`
 - **WorkGroup** `{chat_id, title, is_active}`
+- **UserRef** `{id, name}` (a panel user: `oauth.User` pk and name, or the phone when unnamed)
+- **LeadBrief** `{id, client: {fio, phone}, source: str\|null, source_label: str\|null, solution: int\|null, solution_label: str\|null, assigned: UserRef\|null, last_note}` (`last_note` = the lead's latest note, at most 300 chars; `source` is one of `telegram, instagram, phone, showroom, recommendation, other`)
+- **CrmTask** `{id, text, due_at, is_done, assigned: UserRef}` (`due_at`: naive local `YYYY-MM-DDTHH:MM:SS`)
 
 ### 1.3 Backend endpoints (`/api/v1/bot/`), all signed
 
@@ -100,8 +103,18 @@ Actor comes from `X-Bot-Actor`. Every role rule is enforced server-side.
 
 | Method | Path | Request | Response | Notes |
 |---|---|---|---|---|
-| POST | `whoami/` | `{user: {id, username, first_name, last_name}}` | `{finance_member: Member\|null, hr: {employee: Employee\|null, is_admin: bool}}` | Side effect: new `accounting.services.touch_member_username(tg, username)` (replaces `_sync_profile`, `router.py:357`) |
+| POST | `whoami/` | `{user: {id, username, first_name, last_name}}` | `{finance_member: Member\|null, hr: {employee: Employee\|null, is_admin: bool}, crm: {can_add_lead: bool}}` | `crm.can_add_lead` = linked user has both `call_center.add_invoice` and `view_invoice`. Side effect: new `accounting.services.touch_member_username(tg, username)` (replaces `_sync_profile`, `router.py:357`) |
 | POST | `link/` | `{token, telegram_id}` | `{linked, user}` / 404 | `oauth.services.link_telegram` (verifies signed token; Owner decisions #1) |
+
+**CRM (call-centre leads)** - the actor is the panel user whose `oauth.User.telegram_id` is the `X-Bot-Actor` (active staff only). No linked user: 403 `{detail: "Telegram saytdagi profilingizga ulanmagan"}`; missing permission: 403. `ServiceError` = 400 `{detail}` (a CRM 400 may also carry `field`: `name|phone|source|remind`, additive).
+
+| Method | Path | Request | Response | Rule |
+|---|---|---|---|---|
+| GET | `crm/clients/?phone=` | - | `{exists, fio\|null, invoices_count, open_invoice: LeadBrief\|null}`; 400 `{detail, field: "phone"}` for a bad number | `call_center.view_invoice`; `call_center.services.lookup_client` (open = not closed by an answer) |
+| POST | `crm/due/parse/` | `{text}` (`HH:MM`, `dd.mm`, `dd.mm HH:MM`, `dd.mm.yyyy HH:MM`) | `{due_at}`; 400 `{detail, field: "remind"}` when unreadable or in the past | `call_center.add_invoice`; `services.parse_due` (a date without a time = 10:00) |
+| POST | `crm/leads/` | `{name, phone, source, note, remind: {preset: "today"\|"tomorrow"\|"none"} \| {at: "YYYY-MM-DDTHH:MM"}}` | 201 `{invoice: LeadBrief, task: CrmTask\|null, client_existed, url}`; **200 with the same body plus `"duplicate": true`** when the same linked user already created a lead for this client in the last 10 minutes (a retried POST - nothing is created; additive); 400 `{detail, field?}` (an unparsable phone is a 400 with `field: "phone"`; a non-object body is a 400) | `call_center.add_invoice`; `services.create_invoice(author=assigned=the linked user)`; an existing client keeps its name; `remind` missing = none; the task text is the default «Mijozga qo'ng'iroq qilish» |
+| POST | `crm/tasks/{id}/done/` | `{note?}` | `{task: CrmTask, by_name}`; 409 already done; 403 not the actor's task; 404 | `call_center.view_invoice` + `services.can_manage_task` (assignee / creator / `call_center.manage_invoice` / superuser); `services.complete_task` |
+| POST | `crm/tasks/{id}/snooze/` | `{preset: "1h"\|"tomorrow"}` | `{task: CrmTask}`; 409 already done; 403; 404 | same rule; `services.snooze_task` (`1h` = now + 1 hour, `tomorrow` = 10:00 tomorrow) |
 
 **Finance: reads**
 
@@ -260,6 +273,7 @@ Every event carries computed recipients (`to` / `admins` / `channel_id` / `group
 | hr.points_added | `employee, value, reason, from_site` | bot `/ball`; site `PointAdjustmentViewSet.perform_create` (`hr.py:204`) |
 | hr.winner_announced | `kind, period, employee, pts, disc, groups` | bot `ann`; site `WinnerViewSet.announce` (`hr.py:245`) |
 | hr.holiday_applied | `hol_day, name, n, days, admins, groups` | bot |
+| crm.task_due | `task: CrmTask, invoice: LeadBrief, to: [tg], url` | Celery `call_center.tasks.task_reminders` (every minute): every open, not yet notified task whose `due_at` has come, once per task + reschedule (`accounting.services.once` keyed `cc:task:{id}:{remind_seq}`); `to` = the assignee's Telegram id; `url` = `{ADMIN_BASE_URL}/call-center?open={invoice id}` |
 | hr.day_off_set / leave_added / hours_set / off_days_set | `employee, ...` | bot admin commands |
 
 How events are sent:
