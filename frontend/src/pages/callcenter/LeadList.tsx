@@ -1,7 +1,6 @@
 import { useGet, useList, useMeta } from "@/api/hooks";
 import type { Invoice, StatusStats } from "@/api/types";
 import { PhoneLink, SolutionBadge, TimelineChart } from "@/components/domain";
-import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Card, Chip, DataTable, Pagination } from "@/components/ui";
 import { relative } from "@/lib/format";
 import { DueText, NoTaskBadge, SourceBadge } from "./shared";
@@ -20,24 +19,20 @@ function NextTask({ r }: { r: Invoice }) {
 export function LeadList({
   filters,
   solution,
-  dateFrom,
-  dateTo,
   page,
   set,
   onOpen,
 }: {
   filters: Record<string, string>;
   solution: string;
-  dateFrom: string;
-  dateTo: string;
   page: number;
   set: (patch: Record<string, string | number | undefined>) => void;
   onOpen: (id: number) => void;
 }) {
   const { data: meta } = useMeta();
-  const params = { ...filters, solution, date_from: dateFrom, date_to: dateTo, page };
+  const params = { ...filters, solution, page };
   const { data, isFetching } = useList<Invoice>("invoices", params);
-  const { data: stats } = useGet<StatusStats>("/invoices/stats/", { ...filters, date_from: dateFrom, date_to: dateTo });
+  const { data: stats } = useGet<StatusStats>("/invoices/stats/", filters);
 
   const counts = Object.fromEntries((stats?.by_solution ?? []).map((s) => [s.key, s.count]));
   const selected = solution.split(",").filter(Boolean);
@@ -62,9 +57,6 @@ export function LeadList({
 
       <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
         <Card padded={false}>
-          <div className="flex justify-end border-b border-slate-100 p-3 dark:border-slate-800">
-            <DateRangeFilter from={dateFrom} to={dateTo} onChange={(date_from, date_to) => set({ date_from, date_to })} />
-          </div>
           <DataTable
             rows={data?.results}
             loading={isFetching}

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Columns3, List, ListTodo, Plus } from "lucide-react";
 import { useAuth } from "@/auth/AuthContext";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Button, Chip, PageHeader, SearchInput, Segmented, Select } from "@/components/ui";
 import { useUrlState } from "@/lib/useUrlState";
 import { LeadBoard } from "./LeadBoard";
@@ -29,7 +30,13 @@ export default function CallCenterPage() {
   const openId = searchParams.get("open");
   const open = (id: number) => setSearchParams((p) => (p.set("open", String(id)), p));
 
-  const filters = { search: state.search, assigned_to: state.assigned_to, source: state.source };
+  const filters = {
+    search: state.search,
+    assigned_to: state.assigned_to,
+    source: state.source,
+    date_from: state.date_from,
+    date_to: state.date_to,
+  };
   const selectedSources = state.source.split(",").filter(Boolean);
   const toggleSource = (key: string) =>
     set({
@@ -75,6 +82,7 @@ export default function CallCenterPage() {
             </option>
           ))}
         </Select>
+        <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
       </div>
 
       {sources.length > 0 && (
@@ -95,8 +103,6 @@ export default function CallCenterPage() {
         <LeadList
           filters={filters}
           solution={state.solution}
-          dateFrom={state.date_from}
-          dateTo={state.date_to}
           page={page}
           set={set}
           onOpen={open}
