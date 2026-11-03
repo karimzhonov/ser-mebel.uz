@@ -18,7 +18,7 @@ from call_center import events as E
 from call_center import services as S
 from call_center.constants import LeadSource
 from call_center.models import Invoice, InvoiceTask
-from core.exceptions import ServiceError
+from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden
 from core.geo import UNSET, make_point, obj_map_url
 from metering.models import Metering
 from metering.services import set_metering_location
@@ -157,10 +157,14 @@ class LocationSetView(BotAPIView):
 
 
 class DueParseView(BotAPIView):
-    """POST {text} -> {due_at}; 400 {detail, field: "remind"} when it can't be read."""
+    """POST {text} -> {due_at} (add_invoice or view_invoice); 400 {detail, field: "remind"} when it can't be read."""
 
     def post(self, request):
-        self.require_site_perm("call_center.add_invoice")
+        user = self.require_linked_user()
+        if not (
+            user.has_perm("call_center.add_invoice") or user.has_perm("call_center.view_invoice")
+        ):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
         data = _dict_body(request)
         try:
             due = S.parse_due(data.get("text"), S._now())
@@ -281,15 +285,72 @@ class _TaskView(BotAPIView):
         return task
 
 
+class TaskDetailView(_TaskView):
+    """GET -> {task, invoice: LeadBrief, outcomes, next_required, url}: what the bot
+    needs to ask "which stage next?"; 409 already done, 403 not the user's task."""
+
+    def get(self, request, pk):
+        user = self.require_site_perm("call_center.view_invoice")
+        task = (
+            InvoiceTask.objects.select_related(
+                "assigned_to", "invoice__client", "invoice__assigned_to"
+            )
+            .filter(pk=pk)
+            .first()
+        )
+        if task is None:
+            raise NotFound()
+        if task.done_at is not None:
+            raise ServiceConflict("Allaqachon bajarilgan")
+        if not S.can_manage_task(user, task):
+            raise ServiceForbidden("Bu vazifa sizniki emas")
+        return Response(
+            {
+                "task": dto.task_dto(task),
+                "invoice": dto.lead_brief(task.invoice),
+                "outcomes": S.task_outcomes(task.invoice, user),
+                "next_required": ["re_phone"],
+                "url": E.lead_url(task.invoice_id),
+            }
+        )
+
+
 class TaskDoneView(_TaskView):
-    """POST {note?} -> {task, by_name}; 409 already done, 403 not the user's task."""
+    """POST {note?, outcome?, next_task?} -> {task, by_name, invoice, next_task,
+    closed_tasks}; 409 already done, 403 not the user's task, 400 {detail, field}."""
 
     def post(self, request, pk):
         user = self.require_site_perm("call_center.view_invoice")
-        task = S.complete_task(
-            self.get_task(pk), by=user, note=str(_dict_body(request).get("note") or "")
+        data = _dict_body(request)
+        outcome = data.get("outcome")
+        if outcome is not None and not isinstance(outcome, str):
+            return _bad("Keyingi bosqich noto'g'ri", "outcome")
+        next_task = data.get("next_task")
+        if next_task is not None:
+            if not isinstance(next_task, dict):
+                return _bad("Qayta qo'ng'iroq vaqti noto'g'ri", "next_task")
+            next_task = dict(next_task)
+            if next_task.get("due_at") is not None:
+                try:
+                    next_task["due_at"] = datetime.fromisoformat(str(next_task["due_at"]))
+                except ValueError:
+                    return _bad("Qayta qo'ng'iroq vaqti noto'g'ri", "next_task")
+        res = S.complete_task(
+            self.get_task(pk),
+            by=user,
+            note=str(data.get("note") or ""),
+            outcome=outcome,
+            next_task=next_task,
         )
-        return Response({"task": dto.task_dto(task), "by_name": dto.user_ref(user)["name"]})
+        return Response(
+            {
+                "task": dto.task_dto(res.task),
+                "by_name": dto.user_ref(user)["name"],
+                "invoice": dto.lead_brief(res.invoice),
+                "next_task": dto.task_dto(res.next_task) if res.next_task else None,
+                "closed_tasks": res.closed_tasks,
+            }
+        )
 
 
 class TaskSnoozeView(_TaskView):

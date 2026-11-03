@@ -65,6 +65,28 @@ LOC_BUSY = (
 )
 LOC_SAME = "ℹ️ Xuddi shu nuqta avvaldan bor edi."
 
+# task completion: next-stage picker
+PICK_STAGE = "Keyingi bosqichni tanlang"
+ASK_DUE = "⏰ Qachon qayta qo'ng'iroq qilamiz?"
+ASK_DUE_OPT = "⏰ Eslatma kerakmi?"
+ASK_DUE_CUSTOM = (
+    "⏰ Vaqtni yozing: <code>15:30</code> (bugun), <code>05.11</code> yoki "
+    "<code>05.11 14:00</code>."
+)
+CLOSE_WARN = "Ariza yopiladi, boshqa ochiq vazifalar ham yopiladi"
+CLOSE_ASK = "❓ Arizani yopamizmi? Boshqa ochiq vazifalar ham yopiladi."
+TASK_BUSY = "Hozir boshqa amal ochiq. Uni tugating yoki /bekor ni bosing."
+SAVED_OK = "✅ Saqlandi"
+STAGE_BTNS = {
+    "re_phone": "📞 Qayta telefon qilish",
+    "given_info": "ℹ️ Ma'lumot berildi",
+    "given_location": "📍 Lokatsiya berildi",
+    "price_problem": "💰 Narx muammosi",
+    "dont_need": "🚫 Kerak emas",
+    "declined": "❌ Rad etildi",
+}
+ZAMER_BTN = "📐 Zamerga — panelda"
+
 
 def dt_short(iso: str | None) -> str:
     """'2026-11-05T10:00:00' -> '05.11 10:00'."""
@@ -72,6 +94,23 @@ def dt_short(iso: str | None) -> str:
     if len(s) >= 16 and s[4] == "-":
         return f"{s[8:10]}.{s[5:7]} {s[11:16]}"
     return s or "—"
+
+
+def task_done_line(res: dict) -> str:
+    """Status lines on top of the reminder after the task was completed."""
+    res = res or {}
+    inv = res.get("invoice") or {}
+    name = res.get("by_name") or ""
+    rows = [f"✅ Bajarildi — {esc(name)}" if name else "✅ Bajarildi"]
+    if inv.get("solution_label"):
+        rows.append(f"➡️ {esc(inv['solution_label'])}")
+    nt = res.get("next_task")
+    if nt:
+        rows.append(f"⏰ Keyingi qo'ng'iroq: {esc(dt_short(nt.get('due_at')))}")
+    n = int(res.get("closed_tasks") or 0)
+    if n:
+        rows.append(f"🗂 {n} ta vazifa yopildi")
+    return "\n".join(rows)
 
 
 def remind_label(remind: dict | None) -> str:

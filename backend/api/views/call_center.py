@@ -169,7 +169,9 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         serializer = InvoiceSolutionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         set_invoice_solution(invoice, serializer.validated_data["solution"], author=request.user)
-        return Response(self._data(invoice))
+        # re-fetch with the task annotations: a closing answer just closed the open tasks
+        fresh = CC.with_task_annotations(self.base_queryset()).get(pk=invoice.pk)
+        return Response(self._data(fresh))
 
     @action(detail=True, methods=["post"])
     def location(self, request, pk=None):
@@ -313,8 +315,23 @@ class InvoiceTaskViewSet(viewsets.GenericViewSet):
         task = self.get_object()
         serializer = TaskDoneSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        task = CC.complete_task(task, by=request.user, note=serializer.validated_data["note"])
-        return Response(InvoiceTaskSerializer(task).data)
+        data = serializer.validated_data
+        next_task = data.get("next_task")
+        if next_task is not None:
+            next_task = {k: v for k, v in next_task.items() if k in ("due_at", "preset", "text")}
+        result = CC.complete_task(
+            task,
+            by=request.user,
+            note=data["note"],
+            outcome=data.get("outcome"),
+            next_task=next_task,
+        )
+        body = dict(InvoiceTaskSerializer(result.task).data)
+        body["next_task"] = (
+            InvoiceTaskSerializer(result.next_task).data if result.next_task else None
+        )
+        body["closed_tasks"] = result.closed_tasks
+        return Response(body)
 
     @action(detail=True, methods=["post"])
     def reschedule(self, request, pk=None):

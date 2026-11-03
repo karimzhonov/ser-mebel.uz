@@ -150,7 +150,7 @@ class Env:
             c["last_name"] = last
         return await self.feed(message=self._msg(uid, contact=c))
 
-    async def cb(self, data, uid=UID, text="old"):
+    async def cb(self, data, uid=UID, text="old", markup=None):
         return await self.feed(
             callback_query={
                 "id": str(next(_ids)),
@@ -162,6 +162,7 @@ class Env:
                     "date": 1700000000,
                     "chat": {"id": uid, "type": "private"},
                     "text": text,
+                    **({"reply_markup": markup} if markup else {}),
                 },
             }
         )

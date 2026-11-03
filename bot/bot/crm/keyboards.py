@@ -1,7 +1,9 @@
 """Inline keyboards of the CRM part. callback_data (stable): crm:name:use|client,
 crm:phone:use, crm:src:{key}, crm:note:skip, crm:rem:today|tomorrow|custom|none,
 crm:save, crm:cancel, crm:done:{task}, crm:sn:1h|tm:{task},
-crm:loc:i:{invoice_id}, crm:loc:m:{metering_id}, crm:loc:new, crm:loc:x."""
+crm:loc:i:{invoice_id}, crm:loc:m:{metering_id}, crm:loc:new, crm:loc:x.
+Task completion: crm:done:{task} (also «back to the picker»), crm:do:{rp|gi|gl|pp|dn|dc}:{task},
+crm:dt:{rp|gi|gl}:{1h|td|tm|cu|no}:{task}, crm:dy:{pp|dn|dc}:{task}, crm:dx:{task}, crm:dq."""
 
 from __future__ import annotations
 
@@ -100,3 +102,61 @@ def loc_done_kb(map_url: str = "", url: str = ""):
     if url:
         rows.append([url_button(OPEN_PANEL, url)])
     return ik(rows) if rows else None
+
+
+OUTCOME_CODES = {
+    "re_phone": "rp",
+    "given_info": "gi",
+    "given_location": "gl",
+    "price_problem": "pp",
+    "dont_need": "dn",
+    "declined": "dc",
+}
+CODE_OUTCOME = {v: k for k, v in OUTCOME_CODES.items()}
+PRESET_CODES = {"1h": "1h", "td": "today", "tm": "tomorrow"}
+
+
+def _link_rows(url: str, map_url: str) -> list:
+    rows = []
+    if url:
+        rows.append([url_button(OPEN_PANEL, url)])
+    if map_url:
+        rows.append([url_button(MAP_BTN, map_url)])
+    return rows
+
+
+def outcome_kb(task_id: int, outcomes: list[str], url: str = "", map_url: str = ""):
+    """The next-stage picker: only the stages the backend allowed, in its order."""
+    rows = _link_rows(url, map_url)
+    for key in outcomes:
+        if key in OUTCOME_CODES:
+            rows.append([b(T.STAGE_BTNS[key], f"crm:do:{OUTCOME_CODES[key]}:{task_id}")])
+        elif key == "go_for_measured" and url:
+            rows.append([url_button(T.ZAMER_BTN, url)])
+    rows.append([b("↩️ Bekor", f"crm:dx:{task_id}")])
+    return ik(rows)
+
+
+def due_kb(code: str, task_id: int, optional: bool, url: str = "", map_url: str = ""):
+    """Next-call time: +1 hour / today / tomorrow / typed; «Eslatmasiz» only when optional."""
+    rows = _link_rows(url, map_url)
+    t = task_id
+    rows.append([b("⏰ +1 soat", f"crm:dt:{code}:1h:{t}"), b("Bugun", f"crm:dt:{code}:td:{t}")])
+    rows.append(
+        [b("🌅 Ertaga", f"crm:dt:{code}:tm:{t}"), b("🕒 Vaqtni yozaman", f"crm:dt:{code}:cu:{t}")]
+    )
+    if optional:
+        rows.append([b("Eslatmasiz", f"crm:dt:{code}:no:{t}")])
+    rows.append([b("↩️ Orqaga", f"crm:done:{t}")])
+    return ik(rows)
+
+
+def close_kb(code: str, task_id: int, url: str = "", map_url: str = ""):
+    rows = _link_rows(url, map_url)
+    rows.append([b("✅ Ha, yopish", f"crm:dy:{code}:{task_id}")])
+    rows.append([b("↩️ Orqaga", f"crm:done:{task_id}")])
+    return ik(rows)
+
+
+def due_cancel_kb():
+    return ik([[b("❌ Bekor qilish", "crm:dq")]])

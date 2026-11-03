@@ -1,0 +1,43 @@
+{
+  "task": {
+    "id": 41,
+    "text": "Mijozga qo'ng'iroq qilish",
+    "due_at": "2026-11-03T09:00:00",
+    "is_done": false,
+    "assigned": {
+      "id": 3,
+      "name": "Dilfuza Karimova"
+    }
+  },
+  "invoice": {
+    "id": 128,
+    "client": {
+      "fio": "Ali Valiyev",
+      "phone": "+998901112244"
+    },
+    "source": "telegram",
+    "source_label": "Telegram",
+    "solution": null,
+    "solution_label": null,
+    "assigned": {
+      "id": 3,
+      "name": "Dilfuza Karimova"
+    },
+    "last_note": "Oshxona mebeli kerak, o'lcham 3x2.5 m",
+    "has_point": true,
+    "map_url": "https://yandex.uz/maps/?ll=69.279737,41.311081&pt=69.279737,41.311081&z=17&l=map"
+  },
+  "outcomes": [
+    "re_phone",
+    "given_info",
+    "given_location",
+    "go_for_measured",
+    "price_problem",
+    "dont_need",
+    "declined"
+  ],
+  "next_required": [
+    "re_phone"
+  ],
+  "url": "https://ser-mebel.uz/call-center?open=128"
+}

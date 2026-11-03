@@ -2,11 +2,13 @@
 
 import logging
 import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from django.db import transaction
 from django.db.models import Q
 from django.urls import reverse
+from django.utils import timezone
 
 from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden
 from core.geo import UNSET
@@ -15,6 +17,11 @@ from core.kanban import DANGER, IDLE, INFO, OK, PRIMARY, WARN, Column, build_boa
 from .constants import ACTIVE_SOLUTIONS, LeadSource, NoteKind, SolutionChoice
 
 log = logging.getLogger("call_center")
+
+# Lock order (deadlock rule): Invoice row FIRST, then its InvoiceTask rows. Every
+# transaction that locks/updates tasks of a lead (complete_task, update_lead, the
+# closing answer in _apply_solution) takes the invoice lock before touching tasks.
+# reschedule_task / due_task_reminders lock tasks only and never lock an invoice after.
 
 
 def call_center_board(to_card=None) -> list[dict]:
@@ -139,6 +146,25 @@ CLOSED_SOLUTIONS = [
 # (InvoiceActions.get_unfold_action).
 SERVED_SOLUTIONS = [SolutionChoice.sold_out, SolutionChoice.go_for_measured]
 
+# Answers that end the sales conversation: open reminders of the lead are closed with them.
+CLOSING_SOLUTIONS = (
+    SolutionChoice.price_problem,
+    SolutionChoice.dont_need,
+    SolutionChoice.declined,
+)
+
+# "Which stage does the lead go to?" when a task is completed (keys = lead_board columns).
+KEEP = "keep"
+OUTCOME_SOLUTION = {
+    "re_phone": SolutionChoice.re_phone,
+    "given_info": SolutionChoice.given_info,
+    "given_location": SolutionChoice.given_location,
+    "price_problem": SolutionChoice.price_problem,
+    "dont_need": SolutionChoice.dont_need,
+    "declined": SolutionChoice.declined,
+}
+OUTCOME_KEYS = (*OUTCOME_SOLUTION, "go_for_measured", KEEP)
+
 DEFAULT_TASK_TEXT = "Mijozga qo'ng'iroq qilish"
 TOMORROW_HOUR = 10
 TODAY_EVENING_HOUR = 18
@@ -212,11 +238,12 @@ def add_note(invoice, *, author, text, kind=NoteKind.note, meta=None, task=None)
     return note
 
 
-def log_solution(invoice, old, new, author=None):
-    """History line for an answer change (also called by metering/order creation)."""
+def log_solution(invoice, old, new, author=None, extra=None):
+    """History line for an answer change (also called by metering/order creation).
+    `extra` is merged into the line's meta (e.g. {"closed_tasks": 2})."""
     if old == new:
         return None
-    return _log(invoice, NoteKind.solution, author, meta={"from": old, "to": new})
+    return _log(invoice, NoteKind.solution, author, meta={"from": old, "to": new, **(extra or {})})
 
 
 def create_invoice(
@@ -281,6 +308,25 @@ def create_invoice(
     return invoice
 
 
+def _close_open_tasks(invoice, by, now) -> int:
+    """Mark every still-open reminder of the lead done (the lead is closed: no more calls)."""
+    return invoice.tasks.filter(done_at__isnull=True).update(done_at=now, done_by=by)
+
+
+def _apply_solution(invoice, solution, author) -> int:
+    """Write the new answer + its history line (caller holds the lead lock, in a
+    transaction). A closing answer also closes the lead's open tasks and records how
+    many in the history line. Returns the number of tasks closed."""
+    old = invoice.solution
+    invoice.solution = solution
+    invoice.save()
+    closed = 0
+    if old != int(solution) and solution in CLOSING_SOLUTIONS:
+        closed = _close_open_tasks(invoice, author, _now())
+    log_solution(invoice, old, int(solution), author, {"closed_tasks": closed} if closed else None)
+    return closed
+
+
 def set_invoice_solution(invoice, solution: int, *, author=None):
     """Record the call-centre answer for an invoice.
 
@@ -304,16 +350,15 @@ def set_invoice_solution(invoice, solution: int, *, author=None):
         )
         if invoice.solution in SERVED_SOLUTIONS:
             raise ServiceError(f"Mijozga ({invoice.client.fio}) xizmat ko'rsatilgan")
-        old = invoice.solution
-        invoice.solution = solution
-        invoice.save()
-        log_solution(invoice, old, int(solution), author)
+        _apply_solution(invoice, solution, author)
     return invoice
 
 
 def update_lead(invoice, *, by, assigned_to=UNSET, source=UNSET):
     """Reassign the lead / fix its source. Allowed on closed leads too."""
     with transaction.atomic():
+        # canonical order: invoice lock before the tasks are updated below
+        type(invoice).objects.select_for_update(of=("self",)).get(pk=invoice.pk)
         if assigned_to is not UNSET and (assigned_to.pk if assigned_to else None) != (
             invoice.assigned_to_id
         ):
@@ -535,15 +580,98 @@ def _locked_open_task(task, by):
     return fresh
 
 
-def complete_task(task, *, by, note=""):
+def task_outcomes(invoice, user) -> list[str]:
+    """Stages the lead may go to when `user` completes one of its tasks. ["keep"] =
+    no choice (closed lead, or the user may not move leads); otherwise the stage is
+    required. Staying on the current stage means picking it (`keep` is not offered)."""
+    if invoice.solution in CLOSED_SOLUTIONS or not user.has_perm("call_center.change_invoice"):
+        return [KEEP]
+    out = ["re_phone", "given_info", "given_location"]
+    if user.has_perm("metering.add_metering"):
+        out.append("go_for_measured")
+    return [*out, "price_problem", "dont_need", "declined"]
+
+
+def _next_due(next_task, now) -> tuple[datetime, str | None]:
+    """{preset} or {due_at, text?} (exactly one of preset/due_at) -> (due, text)."""
+    bad = "Qayta qo'ng'iroq vaqti noto'g'ri"
+    if not isinstance(next_task, dict):
+        raise ServiceError(bad, "next_task")
+    preset, due_at = next_task.get("preset"), next_task.get("due_at")
+    if bool(preset) == bool(due_at):
+        raise ServiceError(bad, "next_task")
+    text = next_task.get("text")
+    if text is not None and not isinstance(text, str):
+        raise ServiceError(bad, "next_task")
+    if preset:
+        try:
+            return due_preset(preset, now), text
+        except ServiceError:
+            raise ServiceError(bad, "next_task")
+    if not isinstance(due_at, datetime):
+        raise ServiceError(bad, "next_task")
+    if due_at.tzinfo is not None:  # USE_TZ is off: store naive local time
+        due_at = timezone.make_naive(due_at)
+    if due_at <= now:
+        raise ServiceError("O'tgan vaqt — kelajakdagi vaqtni kiriting", "next_task")
+    return due_at, text
+
+
+@dataclass
+class TaskCompletion:
+    task: object
+    invoice: object
+    next_task: object = None
+    closed_tasks: int = 0
+
+
+def complete_task(task, *, by, note="", outcome=None, next_task=None) -> TaskCompletion:
+    """Finish a task and move its lead to the stage the user chose (`outcome`, see
+    task_outcomes). re_phone requires `next_task` (the next call); given_info /
+    given_location accept one; closing answers and `keep` refuse one. A closing
+    answer closes the lead's other open tasks."""
+    from .models import Invoice
+
     with transaction.atomic():
+        # canonical order: invoice first, then the task (see top of module)
+        invoice = (
+            Invoice.objects.select_for_update(of=("self",))
+            .select_related("client", "assigned_to")
+            .get(pk=task.invoice_id)
+        )
         task = _locked_open_task(task, by)
-        task.done_at = _now()
+        allowed = task_outcomes(invoice, by)
+        if outcome == "go_for_measured":
+            raise ServiceError("O'lchov yarating — javob kodi avtomatik o'zgaradi", "outcome")
+        if outcome is None and allowed == [KEEP]:
+            outcome = KEEP
+        if outcome is None:
+            raise ServiceError("Keyingi bosqichni tanlang", "outcome")
+        if outcome not in allowed:
+            raise ServiceError("Bu bosqichni tanlab bo'lmaydi", "outcome")
+        now = _now()
+        due = text = None
+        if outcome == "re_phone" and next_task is None:
+            raise ServiceError("Qayta qo'ng'iroq vaqtini ko'rsating", "next_task")
+        if next_task is not None:
+            if outcome in ("re_phone", "given_info", "given_location"):
+                due, text = _next_due(next_task, now)
+            else:
+                raise ServiceError("Yopilgan arizaga vazifa qo'shib bo'lmaydi", "next_task")
+
+        task.done_at = now
         task.done_by = by
         task.save(update_fields=["done_at", "done_by"])
         if (note or "").strip():
-            add_note(task.invoice, author=by, text=note, task=task)
-    return task
+            add_note(invoice, author=by, text=note, task=task)
+        closed = 0
+        if outcome in OUTCOME_SOLUTION:
+            closed = _apply_solution(invoice, OUTCOME_SOLUTION[outcome], by)
+        created = None
+        if due is not None:
+            created = create_task(invoice, text=text, due_at=due, by=by, assigned_to=None)
+    task.invoice = invoice
+    return TaskCompletion(task=task, invoice=invoice, next_task=created, closed_tasks=closed)
 
 
 def reschedule_task(task, *, by, due_at):

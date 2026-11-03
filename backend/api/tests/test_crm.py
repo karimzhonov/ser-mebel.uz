@@ -95,11 +95,11 @@ def test_tasks_lifecycle_and_rights(api, seller, make_staff):
     task = CC.create_task(inv, text="", due_at=NOW + timedelta(hours=1), by=seller)
     assert task.text == "Mijozga qo'ng'iroq qilish" and task.assigned_to == seller
     with pytest.raises(ServiceForbidden):
-        CC.complete_task(task, by=other)
+        CC.complete_task(task, by=other, outcome="given_info")
     boss = make_staff("call_center.manage_invoice", *PERMS)
-    CC.complete_task(task, by=boss, note="Gaplashdik")
+    CC.complete_task(task, by=boss, note="Gaplashdik", outcome="given_info")
     with pytest.raises(ServiceConflict):
-        CC.complete_task(task, by=seller)
+        CC.complete_task(task, by=seller, outcome="given_info")
     inv.refresh_from_db()
     assert inv.desc == "Gaplashdik"
     timeline = CC.lead_timeline(inv)
@@ -124,7 +124,10 @@ def test_task_api_agenda_and_reschedule(api, seller, make_staff):
     other = api(*PERMS)
     assert other.get(f"/api/v1/invoice-tasks/agenda/?assigned_to={seller.pk}").status_code == 403
     assert (
-        other.post(f"/api/v1/invoice-tasks/{past.pk}/done/", {}, format="json").status_code == 400
+        other.post(
+            f"/api/v1/invoice-tasks/{past.pk}/done/", {"outcome": "given_info"}, format="json"
+        ).status_code
+        == 400
     )
     r = c.post(
         f"/api/v1/invoice-tasks/{past.pk}/reschedule/", {"preset": "tomorrow"}, format="json"
@@ -134,10 +137,19 @@ def test_task_api_agenda_and_reschedule(api, seller, make_staff):
         c.post(f"/api/v1/invoice-tasks/{past.pk}/reschedule/", {}, format="json").status_code == 400
     )
     assert (
-        c.post(f"/api/v1/invoice-tasks/{past.pk}/done/", {"note": "ok"}, format="json").status_code
+        c.post(
+            f"/api/v1/invoice-tasks/{past.pk}/done/",
+            {"note": "ok", "outcome": "given_info"},
+            format="json",
+        ).status_code
         == 200
     )
-    assert c.post(f"/api/v1/invoice-tasks/{past.pk}/done/", {}, format="json").status_code == 400
+    assert (
+        c.post(
+            f"/api/v1/invoice-tasks/{past.pk}/done/", {"outcome": "given_info"}, format="json"
+        ).status_code
+        == 400
+    )
 
 
 def test_board_and_solution_history(api, seller):
@@ -220,14 +232,24 @@ def test_bot_crm_flow(bot_client, seller, bot_events):
     tid = r.data["task"]["id"]
     snoozed = bot_client.post(f"crm/tasks/{tid}/snooze/", actor=4001, data={"preset": "1h"})
     assert snoozed.status_code == 200
-    done = bot_client.post(f"crm/tasks/{tid}/done/", actor=4001, data={})
+    done = bot_client.post(f"crm/tasks/{tid}/done/", actor=4001, data={"outcome": "given_info"})
     assert (
         done.status_code == 200
         and done.data["task"]["is_done"]
         and done.data["by_name"] == "Dilfuza"
     )
-    assert bot_client.post(f"crm/tasks/{tid}/done/", actor=4001, data={}).status_code == 409
-    assert bot_client.post("crm/tasks/99999/done/", actor=4001, data={}).status_code == 404
+    assert (
+        bot_client.post(
+            f"crm/tasks/{tid}/done/", actor=4001, data={"outcome": "given_info"}
+        ).status_code
+        == 409
+    )
+    assert (
+        bot_client.post(
+            "crm/tasks/99999/done/", actor=4001, data={"outcome": "given_info"}
+        ).status_code
+        == 404
+    )
 
 
 def test_dtos_match_fixtures(seller):
@@ -544,28 +566,28 @@ def test_task_rights_matrix(seller, make_staff):
 
     t = fresh()
     with pytest.raises(ServiceForbidden):
-        CC.complete_task(t, by=stranger)
+        CC.complete_task(t, by=stranger, outcome="given_info")
     with pytest.raises(ServiceForbidden):
         CC.reschedule_task(t, by=stranger, due_at=NOW)
     assert not CC.can_manage_task(None, t)
     for user in (creator, seller, manager, boss):
         assert CC.can_manage_task(user, t)
-        assert CC.complete_task(fresh(), by=user).done_by == user
+        assert CC.complete_task(fresh(), by=user, outcome="given_info").task.done_by == user
 
 
 def test_complete_task_conflict_and_forbidden_precedence(seller, make_staff):
     inv = lead(seller)
     stranger = make_staff(*PERMS)
     t = CC.create_task(inv, text="t", due_at=NOW, by=seller)
-    CC.complete_task(t, by=seller)
+    CC.complete_task(t, by=seller, outcome="given_info")
     with pytest.raises(ServiceConflict):
-        CC.complete_task(t, by=seller)
+        CC.complete_task(t, by=seller, outcome="given_info")
     with pytest.raises(ServiceConflict):
         CC.reschedule_task(t, by=seller, due_at=NOW + timedelta(hours=1))
     # note not written when the completion is refused
     t2 = CC.create_task(inv, text="t2", due_at=NOW, by=seller)
     with pytest.raises(ServiceForbidden):
-        CC.complete_task(t2, by=stranger, note="hack")
+        CC.complete_task(t2, by=stranger, note="hack", outcome="given_info")
     assert not inv.notes.filter(text="hack").exists()
 
 
@@ -614,7 +636,12 @@ def test_task_api_matrix(api, seller, make_staff, clock):
     )
     assert r.status_code == 403
     # view_invoice is enough to reach it; not the viewer's task -> ServiceForbidden (400 here)
-    assert viewer.post(f"/api/v1/invoice-tasks/{t.pk}/done/", {}, format="json").status_code == 400
+    assert (
+        viewer.post(
+            f"/api/v1/invoice-tasks/{t.pk}/done/", {"outcome": "given_info"}, format="json"
+        ).status_code
+        == 400
+    )
     assert viewer.get("/api/v1/invoice-tasks/agenda/").status_code == 200
     # not staff -> 403, anonymous -> 401
     from rest_framework.test import APIClient
@@ -625,7 +652,10 @@ def test_task_api_matrix(api, seller, make_staff, clock):
     # other staff with change but unrelated: 403 (not 409/400)
     stranger = api(*PERMS)
     assert (
-        stranger.post(f"/api/v1/invoice-tasks/{t.pk}/done/", {}, format="json").status_code == 400
+        stranger.post(
+            f"/api/v1/invoice-tasks/{t.pk}/done/", {"outcome": "given_info"}, format="json"
+        ).status_code
+        == 400
     )  # ServiceForbidden is a 400 on the site API
     mgr = api("call_center.manage_invoice", *PERMS)
     r = mgr.get(f"/api/v1/invoice-tasks/agenda/?assigned_to={seller.pk}")
@@ -656,7 +686,7 @@ def test_agenda_buckets_with_fixed_clock(api, seller, clock):
     mk("t2", NOW)  # exactly now -> today bucket (>= now)
     mk("u", datetime(2026, 11, 4, 0, 0))
     done = mk("d", NOW - timedelta(days=1))
-    CC.complete_task(done, by=seller)
+    CC.complete_task(done, by=seller, outcome="given_info")
     c = api(*PERMS)
     c.force_authenticate(seller)
     r = c.get("/api/v1/invoice-tasks/agenda/")
@@ -679,7 +709,7 @@ def test_reminders_skip_inactive_and_future_and_done(seller, bot_events, make_st
     CC.create_task(inv, text="inactive", due_at=past, by=seller, assigned_to=gone, check=False)
     CC.create_task(inv, text="future", due_at=NOW + timedelta(minutes=1), by=seller)
     done = CC.create_task(inv, text="done", due_at=past, by=seller)
-    CC.complete_task(done, by=seller)
+    CC.complete_task(done, by=seller, outcome="given_info")
     assert CC.due_task_reminders(NOW) == 0
     assert bot_events.of("crm.task_due") == []
 
@@ -731,7 +761,7 @@ def test_list_annotations_filters_and_needs_task(api, seller, make_staff):
     late = CC.create_task(a, text="late", due_at=NOW + timedelta(days=2), by=seller)
     CC.create_task(a, text="early", due_at=NOW + timedelta(days=1), by=seller)
     done = CC.create_task(a, text="done", due_at=NOW - timedelta(days=1), by=seller)
-    CC.complete_task(done, by=seller)
+    CC.complete_task(done, by=seller, outcome="given_info")
     c = api(*PERMS)
 
     def rows(qs=""):
@@ -754,7 +784,7 @@ def test_list_annotations_filters_and_needs_task(api, seller, make_staff):
     }
     assert set(rows("?source=instagram")) == set()
     assert set(rows("?solution=new")) == {c2.pk}
-    assert set(rows("?solution=1,4")) == {a.pk, b.pk}
+    assert set(rows("?solution=2,4")) == {a.pk, b.pk}  # a moved to given_info by the done
     assert late.pk  # silence unused
 
 
@@ -815,10 +845,10 @@ def test_timeline_order_and_content(api, seller):
     InvoiceNote.objects.filter(invoice=inv).update(created_at=base + timedelta(minutes=1))
     task = CC.create_task(inv, text="Qo'ng'iroq", due_at=base + timedelta(days=1), by=seller)
     InvoiceTask.objects.filter(pk=task.pk).update(created_at=base + timedelta(hours=1))
-    CC.complete_task(task, by=seller, note="Gaplashdik")
+    CC.complete_task(task, by=seller, note="Gaplashdik", outcome="given_info")
     InvoiceTask.objects.filter(pk=task.pk).update(done_at=base + timedelta(hours=3))
     InvoiceNote.objects.filter(task=task).update(created_at=base + timedelta(hours=3))
-    CC.set_invoice_solution(inv, 1, author=seller)
+    # completing the task moved the lead to "given_info" (its history line: hour 2)
     InvoiceNote.objects.filter(kind=NoteKind.solution).update(created_at=base + timedelta(hours=2))
     create_metering(
         client=inv.client, date_time=base + timedelta(days=5), invoice=inv, author=seller
@@ -839,7 +869,7 @@ def test_timeline_order_and_content(api, seller):
         ("note", "solution"),  # -> 5, hour 4
         ("metering", None),  # hour 4 (stable sort keeps note first)
         ("task_done", None),
-        ("note", "solution"),  # -> 1, hour 2
+        ("note", "solution"),  # -> 2 (task outcome), hour 2
         ("task_created", None),
         ("note", "note"),
         ("created", None),
@@ -942,7 +972,14 @@ def test_bot_whoami_and_permission_matrix(bot_client, seller, make_staff):
     }
     r = bot_client.post("crm/leads/", actor=4002, data=body)
     assert r.status_code == 403
-    assert bot_client.post("crm/due/parse/", actor=4002, data={"text": "10:00"}).status_code == 403
+    # parsing a time is open to anyone who can see leads (the task-done flow needs it)
+    assert bot_client.post("crm/due/parse/", actor=4002, data={"text": "23:59"}).status_code in (
+        200,
+        400,
+    )
+    nobody = make_staff(telegram_id=4003)
+    assert nobody.pk
+    assert bot_client.post("crm/due/parse/", actor=4003, data={"text": "23:59"}).status_code == 403
     assert bot_client.get("crm/clients/?phone=%2B998901117711", actor=4002).status_code == 200
     assert bot_client.get("crm/clients/?phone=%2B998901117711", actor=999).status_code == 403
     # a linked but non-staff account is not a panel user
@@ -1024,14 +1061,21 @@ def test_bot_done_snooze_forbidden_and_conflict(bot_client, seller, make_staff, 
     assert bad.status_code == 400
     r = bot_client.post(f"crm/tasks/{t.pk}/snooze/", actor=4001, data={"preset": "tomorrow"})
     assert r.status_code == 200 and r.data["task"]["due_at"] == "2026-11-04T10:00:00"
-    r = bot_client.post(f"crm/tasks/{t.pk}/done/", actor=4001, data={"note": "ok"})
+    r = bot_client.post(
+        f"crm/tasks/{t.pk}/done/", actor=4001, data={"note": "ok", "outcome": "given_info"}
+    )
     assert r.status_code == 200 and r.data["task"]["is_done"] is True
     assert Invoice.objects.get(pk=inv.pk).desc == "ok"
     assert (
         bot_client.post(f"crm/tasks/{t.pk}/snooze/", actor=4001, data={"preset": "1h"}).status_code
         == 409
     )
-    assert bot_client.post(f"crm/tasks/{t.pk}/done/", actor=4001, data={}).status_code == 409
+    assert (
+        bot_client.post(
+            f"crm/tasks/{t.pk}/done/", actor=4001, data={"outcome": "given_info"}
+        ).status_code
+        == 409
+    )
     assert (
         bot_client.post("crm/tasks/99999/snooze/", actor=4001, data={"preset": "1h"}).status_code
         == 404
@@ -1042,7 +1086,7 @@ def test_bot_manager_can_close_other_peoples_task(bot_client, seller, make_staff
     make_staff("call_center.manage_invoice", *PERMS, telegram_id=4005, name="Rahbar")
     inv = lead(seller)
     t = CC.create_task(inv, text="t", due_at=NOW, by=seller)
-    r = bot_client.post(f"crm/tasks/{t.pk}/done/", actor=4005, data={})
+    r = bot_client.post(f"crm/tasks/{t.pk}/done/", actor=4005, data={"outcome": "given_info"})
     assert r.status_code == 200 and r.data["by_name"] == "Rahbar"
 
 
@@ -1198,7 +1242,7 @@ def test_reassign_moves_open_tasks_and_create_task_falls_back(seller, make_staff
     inv = lead(seller)
     mine = CC.create_task(inv, text="a", due_at=NOW, by=seller)
     done = CC.create_task(inv, text="b", due_at=NOW, by=seller)
-    CC.complete_task(done, by=seller)
+    CC.complete_task(done, by=seller, outcome="given_info")
     CC.update_lead(inv, by=seller, assigned_to=new)
     mine.refresh_from_db()
     done.refresh_from_db()

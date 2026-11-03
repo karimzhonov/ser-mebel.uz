@@ -94,6 +94,7 @@ urlpatterns = [
     path("crm/locations/", crm.LocationSetView.as_view()),
     path("crm/due/parse/", crm.DueParseView.as_view()),
     path("crm/leads/", crm.LeadCreateView.as_view()),
+    path("crm/tasks/<int:pk>/", crm.TaskDetailView.as_view()),
     path("crm/tasks/<int:pk>/done/", crm.TaskDoneView.as_view()),
     path("crm/tasks/<int:pk>/snooze/", crm.TaskSnoozeView.as_view()),
 ]

@@ -6,9 +6,10 @@ class ServiceError(Exception):
     by staff — it is shown to them verbatim.
     """
 
-    def __init__(self, message: str):
+    def __init__(self, message: str, field: str | None = None):
         super().__init__(message)
         self.message = message
+        self.field = field  # which request field is wrong (the API adds it to the 400 body)
 
 
 class ServiceConflict(ServiceError):

@@ -138,6 +138,10 @@ export interface TaskLead {
   source_label: string | null;
   solution: number | null;
   solution_label: string | null;
+  /** the lead's address — prefills an O'lchov created from the task */
+  address?: string | null;
+  /** the lead has a saved map point / link (the metering copies it) */
+  has_point?: boolean;
 }
 
 export interface InvoiceTask {
@@ -150,6 +154,14 @@ export interface InvoiceTask {
   assigned: UserRef | null;
   invoice: TaskLead;
   created_by: UserRef | null;
+}
+
+/** POST /invoice-tasks/{id}/done/ — the finished task (top level) + what the outcome did. */
+export interface TaskDoneResult extends InvoiceTask {
+  /** the reminder created for the next call (re_phone / given_* with a time), else null */
+  next_task: InvoiceTask | null;
+  /** how many other open tasks of the lead were closed (closing outcomes) */
+  closed_tasks: number;
 }
 
 export interface TimelineEntry {

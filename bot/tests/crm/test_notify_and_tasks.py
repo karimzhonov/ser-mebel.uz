@@ -108,13 +108,14 @@ async def test_contract_fixtures_render(path):
 
 
 # ------------------------------------------------------------------ buttons
-async def test_done_edits_message_and_removes_keyboard(env):
+async def test_done_keep_only_posts_keep_and_finishes(env):
+    env.backend.routes[("GET", "crm/tasks/8/")] = {"outcomes": ["keep"], "url": "u"}
     env.backend.routes[("POST", "crm/tasks/8/done/")] = {
         "task": {"id": 8, "is_done": True},
         "by_name": "Aziz",
     }
     await env.cb("crm:done:8", text="⏰ Vazifa vaqti keldi")
-    assert env.backend.to("crm/tasks/8/done/")[0][2] == {}
+    assert env.backend.to("crm/tasks/8/done/")[0][2] == {"outcome": "keep"}
     e = env.session.edits()[0]
     assert e.text.startswith("✅ Bajarildi — Aziz") and "Vazifa vaqti keldi" in e.text
     assert e.reply_markup is None
@@ -135,9 +136,7 @@ async def test_snooze_edits_message(env):
 
 
 async def test_done_conflict_alerts_and_keeps_message(env):
-    env.backend.routes[("POST", "crm/tasks/8/done/")] = Conflict(
-        "Vazifa allaqachon bajarilgan", 409
-    )
+    env.backend.routes[("GET", "crm/tasks/8/")] = Conflict("Vazifa allaqachon bajarilgan", 409)
     await env.cb("crm:done:8")
     a = env.session.answers()[-1]
     assert a.show_alert and "allaqachon bajarilgan" in a.text
@@ -154,6 +153,7 @@ async def test_snooze_forbidden_alerts(env):
 
 async def test_task_buttons_work_for_user_without_lead_right(env):
     env.backend.who["crm"] = {"can_add_lead": False}
+    env.backend.routes[("GET", "crm/tasks/8/")] = {"outcomes": ["keep"]}
     env.backend.routes[("POST", "crm/tasks/8/done/")] = {"task": {"id": 8}, "by_name": "Aziz"}
     await env.cb("crm:done:8")
     assert len(env.backend.to("crm/tasks/8/done/")) == 1

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlarmClock, Check as CheckIcon, Clock, Sunrise } from "lucide-react";
+import { AlarmClock, BellOff, Check as CheckIcon, Clock, Sunrise, Timer } from "lucide-react";
 import { api } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
 import type { Assignee, InvoiceTask, UserRef } from "@/api/types";
@@ -7,6 +7,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { PhoneLink } from "@/components/domain";
 import { Badge, Button, Input, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
+import { CompleteTaskDialog } from "./CompleteTaskDialog";
 
 /** Query keys every CRM write refreshes (useAction matches them by substring). */
 export const CRM_INVALIDATE = ["invoices", "invoice-tasks", "dashboard"];
@@ -14,6 +15,48 @@ export const CRM_INVALIDATE = ["invoices", "invoice-tasks", "dashboard"];
 /** Solutions a lead can be moved to by hand: «Сотилди» comes only from an order. */
 export const SOLD_OUT = 6;
 export const GO_FOR_MEASURED = 5;
+
+/* ----------------------------------------------------- task outcomes */
+
+/** The next column a lead goes to when a task is done (POST /invoice-tasks/{id}/done/ `outcome`). */
+export type TaskOutcome =
+  | "re_phone"
+  | "given_info"
+  | "given_location"
+  | "go_for_measured"
+  | "price_problem"
+  | "dont_need"
+  | "declined"
+  | "keep";
+
+/** outcome key → solution value (call_center.constants.SolutionChoice) */
+export const OUTCOME_SOLUTION: Record<Exclude<TaskOutcome, "keep">, number> = {
+  re_phone: 1,
+  given_info: 2,
+  given_location: 3,
+  go_for_measured: 5,
+  price_problem: 4,
+  dont_need: 0,
+  declined: -1,
+};
+
+/** Outcomes that close the lead (and the lead's other open tasks). */
+export const CLOSING_OUTCOMES: TaskOutcome[] = ["price_problem", "dont_need", "declined"];
+/** Outcomes where a next call / reminder may be set. */
+export const FOLLOW_UP_OUTCOMES: TaskOutcome[] = ["re_phone", "given_info", "given_location"];
+
+/** sold_out, go_for_measured, price_problem, dont_need, declined — mirrors services.CLOSED_SOLUTIONS */
+const CLOSED_SOLUTIONS = [6, 5, 4, 0, -1];
+
+/** Mirror of call_center.services.task_outcomes — only for the UI, the server decides. */
+export function taskOutcomes(task: InvoiceTask, can: (perm: string) => boolean): TaskOutcome[] {
+  const sol = task.invoice.solution;
+  if ((sol !== null && CLOSED_SOLUTIONS.includes(sol)) || !can("call_center.change_invoice")) return ["keep"];
+  const out: TaskOutcome[] = ["re_phone", "given_info", "given_location"];
+  if (can("metering.add_metering")) out.push("go_for_measured");
+  out.push("price_problem", "dont_need", "declined");
+  return out;
+}
 
 /* ------------------------------------------------------------- dates */
 
@@ -198,9 +241,69 @@ export function DuePicker({ value, onChange }: { value: string; onChange: (v: st
   );
 }
 
+export type NextTaskBody = { preset: "1h" | "today" | "tomorrow" } | { due_at: string };
+
+/** Next call for a finished task: one-tap presets (resolved time shown), exact time, optional «Eslatmasiz».
+ * `value` null = nothing chosen yet, "none" = no reminder. */
+export function NextCallPicker({
+  value,
+  onChange,
+  allowNone,
+}: {
+  value: NextTaskBody | "none" | null;
+  onChange: (v: NextTaskBody | "none" | null) => void;
+  allowNone?: boolean;
+}) {
+  const preset = value && value !== "none" && "preset" in value ? value.preset : null;
+  const custom = value && value !== "none" && "due_at" in value ? value.due_at : "";
+  const btn = (active: boolean) =>
+    cn(
+      "flex min-h-[52px] flex-col items-start justify-center rounded-xl border px-3 py-1.5 text-left text-sm font-semibold transition",
+      active
+        ? "border-brand-500 bg-brand-50 text-brand-700 ring-1 ring-brand-500 dark:bg-brand-500/15 dark:text-brand-200"
+        : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200",
+    );
+  const presets: { key: "1h" | "today" | "tomorrow"; label: string; icon: typeof Clock }[] = [
+    { key: "1h", label: "+1 soat", icon: Timer },
+    { key: "today", label: "Bugun", icon: AlarmClock },
+    { key: "tomorrow", label: "Ertaga", icon: Sunrise },
+  ];
+  return (
+    <div className="space-y-2">
+      <div className={cn("grid gap-2", allowNone ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3")}>
+        {presets.map((p) => (
+          <button key={p.key} type="button" className={btn(preset === p.key)} onClick={() => onChange({ preset: p.key })}>
+            <span className="inline-flex items-center gap-1.5">
+              <p.icon className="h-4 w-4" /> {p.label}
+            </span>
+            <span className="text-xs font-normal opacity-75 tabular-nums">{dueLabel(presetDue(p.key))}</span>
+          </button>
+        ))}
+        {allowNone && (
+          <button type="button" className={btn(value === "none")} onClick={() => onChange("none")}>
+            <span className="inline-flex items-center gap-1.5">
+              <BellOff className="h-4 w-4" /> Eslatmasiz
+            </span>
+            <span className="text-xs font-normal opacity-75">vazifa qo'yilmaydi</span>
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="muted whitespace-nowrap text-xs">Aniq vaqt:</span>
+        <Input
+          type="datetime-local"
+          className={cn("h-9 flex-1", custom && "border-brand-500 ring-1 ring-brand-500")}
+          value={custom}
+          onChange={(e) => onChange(e.target.value ? { due_at: e.target.value } : allowNone ? "none" : null)}
+        />
+      </div>
+    </div>
+  );
+}
+
 /* --------------------------------------------------------- task row */
 
-/** One task with its actions: done (optional note), +1 soat, ertaga, another time. */
+/** One task with its actions: done (opens CompleteTaskDialog — next stage + next call), +1 soat, ertaga, another time. */
 export function TaskRow({
   task,
   showClient,
@@ -211,19 +314,13 @@ export function TaskRow({
   onOpen?: () => void;
 }) {
   const canManage = useCanManageTask()(task);
-  const [mode, setMode] = useState<null | "done" | "move">(null);
-  const [note, setNote] = useState("");
+  const [mode, setMode] = useState<null | "move">(null);
+  const [completing, setCompleting] = useState(false);
   const [due, setDue] = useState("");
   const reset = () => {
     setMode(null);
-    setNote("");
     setDue("");
   };
-  const done = useAction(() => api.post(`/invoice-tasks/${task.id}/done/`, note.trim() ? { note: note.trim() } : {}), {
-    success: "Vazifa bajarildi",
-    invalidate: CRM_INVALIDATE,
-    onSuccess: reset,
-  });
   const move = useAction(
     (body: { preset: string } | { due_at: string }) => api.post(`/invoice-tasks/${task.id}/reschedule/`, body),
     { success: "Vazifa ko'chirildi", invalidate: CRM_INVALIDATE, onSuccess: reset },
@@ -273,7 +370,7 @@ export function TaskRow({
         </div>
         {!task.is_done && canManage && !mode && (
           <div className="flex flex-wrap gap-1">
-            <Button size="sm" variant="success" icon={<CheckIcon className="h-3.5 w-3.5" />} onClick={() => setMode("done")}>
+            <Button size="sm" variant="success" icon={<CheckIcon className="h-3.5 w-3.5" />} onClick={() => setCompleting(true)}>
               Bajarildi
             </Button>
             <Button size="sm" variant="outline" loading={move.isPending} onClick={() => move.mutate({ preset: "1h" })}>
@@ -288,25 +385,6 @@ export function TaskRow({
           </div>
         )}
       </div>
-      {mode === "done" && (
-        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-          <Input
-            autoFocus
-            placeholder="Natija (ixtiyoriy): nima gaplashildi?"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && done.mutate()}
-          />
-          <div className="flex gap-1">
-            <Button size="md" variant="success" loading={done.isPending} onClick={() => done.mutate()}>
-              Saqlash
-            </Button>
-            <Button size="md" variant="ghost" onClick={reset}>
-              Bekor
-            </Button>
-          </div>
-        </div>
-      )}
       {mode === "move" && (
         <div className="mt-2 flex flex-col gap-2 sm:flex-row">
           <Input type="datetime-local" autoFocus value={due} onChange={(e) => setDue(e.target.value)} />
@@ -320,6 +398,7 @@ export function TaskRow({
           </div>
         </div>
       )}
+      {completing && <CompleteTaskDialog task={task} onClose={() => setCompleting(false)} />}
     </div>
   );
 }

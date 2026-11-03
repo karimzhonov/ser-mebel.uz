@@ -5,6 +5,7 @@ from rest_framework import serializers
 
 from call_center.constants import LeadSource
 from call_center.dto import dt, user_ref
+from call_center.services import OUTCOME_KEYS
 
 from .. import i18n as uz
 
@@ -23,8 +24,25 @@ class TaskCreateSerializer(serializers.Serializer):
     )
 
 
+class NextTaskSerializer(serializers.Serializer):
+    """The next call: exactly one of `due_at` / `preset`."""
+
+    text = serializers.CharField(max_length=500, required=False, allow_blank=True, default="")
+    due_at = serializers.DateTimeField(required=False)
+    preset = serializers.ChoiceField(choices=["1h", "today", "tomorrow"], required=False)
+
+    def validate(self, attrs):
+        if bool(attrs.get("due_at")) == bool(attrs.get("preset")):
+            raise serializers.ValidationError(
+                {"due_at": "due_at yoki preset dan birini ko'rsating."}
+            )
+        return attrs
+
+
 class TaskDoneSerializer(serializers.Serializer):
     note = serializers.CharField(max_length=5000, required=False, allow_blank=True, default="")
+    outcome = serializers.ChoiceField(choices=OUTCOME_KEYS, required=False, allow_null=True)
+    next_task = NextTaskSerializer(required=False, allow_null=True)
 
 
 class TaskRescheduleSerializer(serializers.Serializer):
@@ -86,6 +104,8 @@ class InvoiceTaskSerializer(serializers.Serializer):
             "source_label": uz.lead_source(inv.source),
             "solution": inv.solution,
             "solution_label": uz.solution(inv.solution),
+            "address": inv.address or "",
+            "has_point": inv.lat is not None and inv.lon is not None,
         }
 
 

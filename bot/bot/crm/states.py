@@ -26,3 +26,10 @@ class LocPick(StatesGroup):
     ({lat, lon, address, live}). Redis-backed, so it is shared by the uvicorn workers."""
 
     target = State()
+
+
+class TaskDone(StatesGroup):
+    """A typed «next call» time while completing a task. Default destiny, Redis; the
+    context (task, outcome, message to edit, ts for the 10 min TTL) is in the FSM data."""
+
+    custom = State()

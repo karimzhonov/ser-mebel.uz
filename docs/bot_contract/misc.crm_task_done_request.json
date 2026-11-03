@@ -1,0 +1,7 @@
+{
+  "note": "Mijoz o'ylab ko'radi",
+  "outcome": "re_phone",
+  "next_task": {
+    "preset": "tomorrow"
+  }
+}

@@ -434,6 +434,9 @@ function Timeline({ invoiceId }: { invoiceId: number }) {
                   ) : (
                     e.text
                   )}
+                  {e.type === "note" && e.kind === "solution" && Number(e.meta?.closed_tasks) > 0 && (
+                    <span className="muted text-xs"> · {Number(e.meta.closed_tasks)} ta vazifa yopildi</span>
+                  )}
                 </div>
               )}
               {e.type === "note" && e.kind === "location" && e.meta?.lat != null && e.meta?.lon != null && (
