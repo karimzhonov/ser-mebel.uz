@@ -113,6 +113,29 @@ def task_done_line(res: dict) -> str:
     return "\n".join(rows)
 
 
+def task_closed_line(d: dict) -> str:
+    """Status of a reminder whose task was closed outside the bot (`crm.task_closed`)."""
+    label = d.get("solution_label")
+    if d.get("how") == "auto":
+        return f"🗂 Ariza yopildi — {esc(label)}" if label else "🗂 Ariza yopildi"
+    name = d.get("by_name")
+    rows = [f"✅ Panelda bajarildi — {esc(name)}" if name else "✅ Panelda bajarildi"]
+    if label:
+        rows.append(f"➡️ {esc(label)}")
+    if d.get("next_due"):
+        rows.append(f"⏰ Keyingi qo'ng'iroq: {esc(dt_short(d['next_due']))}")
+    return "\n".join(rows)
+
+
+def task_moved_line(d: dict) -> str:
+    """Status of a reminder whose task was rescheduled / reassigned (`crm.task_moved`)."""
+    if d.get("how") == "reassigned":
+        return f"↪️ {esc(d.get('to_name') or '—')} ga o'tkazildi"
+    due = esc(dt_short((d.get("task") or {}).get("due_at")))
+    name = d.get("by_name")
+    return f"⏰ Ko'chirildi: {due} — {esc(name)}" if name else f"⏰ Ko'chirildi: {due}"
+
+
 def remind_label(remind: dict | None) -> str:
     r = remind or {}
     if r.get("at"):

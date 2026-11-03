@@ -341,6 +341,7 @@ class TaskDoneView(_TaskView):
             note=str(data.get("note") or ""),
             outcome=outcome,
             next_task=next_task,
+            via="bot",
         )
         return Response(
             {
@@ -358,5 +359,7 @@ class TaskSnoozeView(_TaskView):
 
     def post(self, request, pk):
         user = self.require_site_perm("call_center.view_invoice")
-        task = S.snooze_task(self.get_task(pk), by=user, preset=_dict_body(request).get("preset"))
+        task = S.snooze_task(
+            self.get_task(pk), by=user, preset=_dict_body(request).get("preset"), via="bot"
+        )
         return Response({"task": dto.task_dto(task)})

@@ -1,0 +1,16 @@
+{
+  "id": "00000000-0000-0000-0000-000000002002",
+  "event": "crm.task_closed",
+  "data": {
+    "task": {
+      "id": 41
+    },
+    "how": "done",
+    "by_name": "Dilfuza Karimova",
+    "solution_label": "Qayta qo'ng'iroq qilish",
+    "next_due": "2026-11-05T10:00:00",
+    "to": [
+      555000222
+    ]
+  }
+}

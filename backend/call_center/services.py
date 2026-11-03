@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import F, Q
 from django.urls import reverse
 from django.utils import timezone
 
@@ -309,8 +309,17 @@ def create_invoice(
 
 
 def _close_open_tasks(invoice, by, now) -> int:
-    """Mark every still-open reminder of the lead done (the lead is closed: no more calls)."""
-    return invoice.tasks.filter(done_at__isnull=True).update(done_at=now, done_by=by)
+    """Mark every still-open reminder of the lead done (the lead is closed: no more calls).
+    The bot is told per task (crm.task_closed, how=auto) so it can tidy its reminders."""
+    from . import events
+
+    open_tasks = list(invoice.tasks.filter(done_at__isnull=True).select_related("assigned_to"))
+    closed = invoice.tasks.filter(pk__in=[t.pk for t in open_tasks], done_at__isnull=True).update(
+        done_at=now, done_by=by
+    )
+    for t in open_tasks:
+        events.task_closed(t, how="auto", by=by, invoice=invoice)
+    return closed
 
 
 def _apply_solution(invoice, solution, author) -> int:
@@ -368,9 +377,21 @@ def update_lead(invoice, *, by, assigned_to=UNSET, source=UNSET):
             moved = 0
             if assigned_to is not None and previous_id is not None:
                 # the previous owner's open reminders follow the lead
-                moved = invoice.tasks.filter(
-                    assigned_to_id=previous_id, done_at__isnull=True
-                ).update(assigned_to=assigned_to)
+                to_move = list(
+                    invoice.tasks.filter(
+                        assigned_to_id=previous_id, done_at__isnull=True
+                    ).select_related("assigned_to")
+                )
+                moved = invoice.tasks.filter(pk__in=[t.pk for t in to_move]).update(
+                    assigned_to=assigned_to,
+                    # the new owner gets the reminder too (even for an already-reminded task)
+                    notified_at=None,
+                    remind_seq=F("remind_seq") + 1,
+                )
+                from . import events
+
+                for t in to_move:  # t.assigned_to is still the previous owner (old reminder)
+                    events.task_moved(t, how="reassigned", by=by, to_user=assigned_to)
             invoice.assigned_to = assigned_to
             meta = {
                 "to_id": assigned_to.pk if assigned_to else None,
@@ -625,11 +646,15 @@ class TaskCompletion:
     closed_tasks: int = 0
 
 
-def complete_task(task, *, by, note="", outcome=None, next_task=None) -> TaskCompletion:
+def complete_task(
+    task, *, by, note="", outcome=None, next_task=None, via="panel"
+) -> TaskCompletion:
     """Finish a task and move its lead to the stage the user chose (`outcome`, see
     task_outcomes). re_phone requires `next_task` (the next call); given_info /
     given_location accept one; closing answers and `keep` refuse one. A closing
-    answer closes the lead's other open tasks."""
+    answer closes the lead's other open tasks. `via="bot"`: the bot edits its own message,
+    so no crm.task_closed is emitted for this task."""
+    from . import events
     from .models import Invoice
 
     with transaction.atomic():
@@ -670,11 +695,17 @@ def complete_task(task, *, by, note="", outcome=None, next_task=None) -> TaskCom
         created = None
         if due is not None:
             created = create_task(invoice, text=text, due_at=due, by=by, assigned_to=None)
+        if via != "bot":
+            events.task_closed(task, how="done", by=by, invoice=invoice, next_task=created)
     task.invoice = invoice
     return TaskCompletion(task=task, invoice=invoice, next_task=created, closed_tasks=closed)
 
 
-def reschedule_task(task, *, by, due_at):
+def reschedule_task(task, *, by, due_at, via="panel"):
+    """Move a task's time. `via="bot"` (snooze from the reminder itself): no event, the
+    bot edits its own message."""
+    from . import events
+
     if not due_at:
         raise ServiceError("Vaqtni ko'rsating")
     with transaction.atomic():
@@ -683,13 +714,15 @@ def reschedule_task(task, *, by, due_at):
         task.notified_at = None
         task.remind_seq += 1
         task.save(update_fields=["due_at", "notified_at", "remind_seq"])
+        if via != "bot":
+            events.task_moved(task, how="rescheduled", by=by)
     return task
 
 
-def snooze_task(task, *, by, preset):
+def snooze_task(task, *, by, preset, via="panel"):
     if preset not in ("1h", "tomorrow"):
         raise ServiceError("Noma'lum vaqt tanlovi")
-    return reschedule_task(task, by=by, due_at=due_preset(preset, _now()))
+    return reschedule_task(task, by=by, due_at=due_preset(preset, _now()), via=via)
 
 
 # ------------------------------------------------------------------ time helpers

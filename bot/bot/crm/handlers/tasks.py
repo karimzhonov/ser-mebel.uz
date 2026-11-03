@@ -21,7 +21,7 @@ from aiogram.types import CallbackQuery, Message
 
 from bot.hr.texts import FINANCE_MENU_BUTTONS
 
-from .. import api
+from .. import api, reminders
 from .. import keyboards as K
 from .. import texts as T
 from ..states import TaskDone
@@ -111,6 +111,7 @@ def build() -> Router:
                 await picker(cb, state, task_id, answer=False)
             return
         await _drop_custom(state, task_id)
+        await reminders.forget(task_id)
         await cb.answer()
         res = dict(res or {})
         res.setdefault("by_name", cb.from_user.full_name)
@@ -264,6 +265,7 @@ def build() -> Router:
             await message.answer(api.err_text(e))
             return
         await state.clear()
+        await reminders.forget(int(d.get("task")))
         res = dict(res or {})
         res.setdefault("by_name", message.from_user.full_name)
         line = T.task_done_line(res)
@@ -292,6 +294,7 @@ def build() -> Router:
         except api.BackendError as e:
             await _alert(cb, e)
             return
+        await reminders.forget(int(tid))
         await cb.answer()
         due = ((res or {}).get("task") or {}).get("due_at")
         await _finish(cb, f"⏰ {T.dt_short(due)} ga ko'chirildi")

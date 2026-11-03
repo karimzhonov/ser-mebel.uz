@@ -70,7 +70,7 @@ async def test_task_due_renders_four_buttons_for_each_recipient():
     ]
 
 
-async def test_task_due_adds_yandex_map_button_when_invoice_has_a_point():
+async def test_task_due_has_no_map_button_even_when_invoice_has_a_point():
     import copy
 
     env = copy.deepcopy(TASK_DUE)
@@ -79,7 +79,6 @@ async def test_task_due_adds_yandex_map_button_when_invoice_has_a_point():
     await dispatch(env, bot)
     assert buttons(bot.send_message.call_args_list[0].kwargs["reply_markup"]) == [
         ("💻 Panelda ochish", None, "https://ser-mebel.uz/call-center?open=41"),
-        ("🗺 Yandex xaritada", None, "https://yandex.uz/maps/?ll=69.27,41.31&pt=69.27,41.31"),
         ("✅ Bajarildi", "crm:done:8", None),
         ("⏰ +1 soat", "crm:sn:1h:8", None),
         ("🌅 Ertaga", "crm:sn:tm:8", None),
@@ -100,7 +99,17 @@ async def test_blocked_recipient_is_reported():
     assert delivered[0]["blocked"] is True
 
 
-@pytest.mark.parametrize("path", sorted(glob.glob(str(CONTRACT / "event.crm.*.json"))))
+SYNC_ONLY = ("event.crm.task_closed.json", "event.crm.task_moved.json")  # edit, never send
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        p
+        for p in sorted(glob.glob(str(CONTRACT / "event.crm.*.json")))
+        if Path(p).name not in SYNC_ONLY
+    ],
+)
 async def test_contract_fixtures_render(path):
     env = json.loads(Path(path).read_text(encoding="utf-8"))
     delivered = await dispatch(env, fake_bot())

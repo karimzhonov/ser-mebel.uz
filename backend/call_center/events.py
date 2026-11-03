@@ -10,6 +10,7 @@ import functools
 import logging
 
 from core.bot_notify import emit
+from core.i18n import solution
 
 from . import dto
 
@@ -51,5 +52,45 @@ def task_due(task):
             "invoice": dto.lead_brief(task.invoice),
             "to": [task.assigned_to.telegram_id],
             "url": lead_url(task.invoice_id),
+        },
+    )
+
+
+def _to(task) -> list[int]:
+    user = task.assigned_to
+    return [user.telegram_id] if user is not None and user.telegram_id else []
+
+
+@_safe
+def task_closed(task, *, how, by=None, invoice=None, next_task=None):
+    """A reminder the bot already sent was closed elsewhere (panel done, or the lead was
+    closed): the bot strips the buttons from that message and adds a status line.
+    how: "done" | "auto"."""
+    invoice = invoice or task.invoice
+    emit(
+        "crm.task_closed",
+        {
+            "task": {"id": task.pk},
+            "how": how,
+            "by_name": dto.user_ref(by)["name"] if by is not None else None,
+            "solution_label": solution(invoice.solution) if invoice.solution else None,
+            "next_due": dto.dt(next_task.due_at) if next_task is not None else None,
+            "to": _to(task),
+        },
+    )
+
+
+@_safe
+def task_moved(task, *, how, by=None, to_user=None):
+    """A reminder the bot already sent was rescheduled in the panel or handed to someone
+    else. how: "rescheduled" | "reassigned"."""
+    emit(
+        "crm.task_moved",
+        {
+            "task": {"id": task.pk, "due_at": dto.dt(task.due_at)},
+            "how": how,
+            "by_name": dto.user_ref(by)["name"] if by is not None else None,
+            "to_name": dto.user_ref(to_user)["name"] if to_user is not None else None,
+            "to": _to(task),
         },
     )

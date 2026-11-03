@@ -107,13 +107,13 @@ async def test_response_fixture_without_filled_has_no_extra_note(env):
     assert "ham qo'shildi" not in env.session.last().text
 
 
-async def test_task_due_fixture_renders_with_a_map_button():
+async def test_task_due_fixture_renders_without_a_map_button():
     bot = fake_bot()
     env = fx("event.crm.task_due")
     await dispatch(env, bot)
     call = bot.send_message.call_args_list[0]
     btns = buttons(call.kwargs["reply_markup"])
-    assert ("🗺 Yandex xaritada", None, env["data"]["invoice"]["map_url"]) in btns
+    assert not any("Yandex" in t for t, *_ in btns)
     assert call.args[0] == env["data"]["to"][0]
 
 
