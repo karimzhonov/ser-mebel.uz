@@ -65,6 +65,13 @@ class BotAPIView(APIView):
 
         return user_by_telegram(self.actor_tg) if self.actor_tg else None
 
+    def require_linked_user(self):
+        """The panel account of the acting Telegram user (403 when not linked)."""
+        self.require_actor()
+        if self.site_user is None:
+            raise PermissionDenied("Telegram saytdagi profilingizga ulanmagan")
+        return self.site_user
+
     def require_site_perm(self, perm: str):
         self.require_actor()
         if self.site_user is None:

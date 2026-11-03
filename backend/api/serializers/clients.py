@@ -10,7 +10,7 @@ from client.models import Client
 from metering.models import Metering
 
 from .. import i18n as uz
-from .common import ClientShortSerializer
+from .common import ClientShortSerializer, LocationFieldsMixin, LocationInputMixin
 
 
 class ClientSerializer(serializers.ModelSerializer):
@@ -23,7 +23,7 @@ class ClientSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_at"]
 
 
-class InvoiceSerializer(serializers.ModelSerializer):
+class InvoiceSerializer(LocationFieldsMixin, serializers.ModelSerializer):
     client = ClientShortSerializer(read_only=True)
     solution_label = serializers.SerializerMethodField()
     is_editable = serializers.SerializerMethodField()
@@ -43,6 +43,11 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "create_date",
             "update_date",
             "desc",
+            "address",
+            "address_link",
+            "lat",
+            "lon",
+            "map_url",
             "solution",
             "solution_label",
             "is_editable",
@@ -55,7 +60,14 @@ class InvoiceSerializer(serializers.ModelSerializer):
             "open_tasks",
             "needs_task",
         ]
-        read_only_fields = ["create_date", "update_date", "solution", "source"]
+        read_only_fields = [
+            "create_date",
+            "update_date",
+            "solution",
+            "source",
+            "address",
+            "address_link",
+        ]
 
     def get_solution_label(self, obj):
         return uz.solution(obj.solution)
@@ -108,11 +120,12 @@ class InvoiceSerializer(serializers.ModelSerializer):
         return metering.pk if isinstance(metering, Metering) else None
 
 
-class InvoiceCreateSerializer(serializers.Serializer):
+class InvoiceCreateSerializer(LocationInputMixin, serializers.Serializer):
     fio = serializers.CharField(max_length=255)
     phone = PhoneNumberField(region="UZ")
     desc = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     source = serializers.ChoiceField(choices=LeadSource.choices)
+    address = serializers.CharField(max_length=255, required=False, allow_blank=True)
     # eligibility (may change invoices) is checked by call_center.services
     assigned_to = serializers.PrimaryKeyRelatedField(
         queryset=get_user_model().objects.all(), required=False, allow_null=True
@@ -123,6 +136,7 @@ class InvoiceCreateSerializer(serializers.Serializer):
     task_due_at = serializers.DateTimeField(required=False, allow_null=True)
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
         text, due = attrs.pop("task_text", None), attrs.pop("task_due_at", None)
         if due is None and text:
             raise serializers.ValidationError({"task_due_at": uz.ERROR_CODE["required"]})

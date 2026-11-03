@@ -9,6 +9,7 @@ from django.db.models import Q
 from django.urls import reverse
 
 from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden
+from core.geo import UNSET
 from core.kanban import DANGER, IDLE, INFO, OK, PRIMARY, WARN, Column, build_board
 
 from .constants import ACTIVE_SOLUTIONS, LeadSource, NoteKind, SolutionChoice
@@ -142,8 +143,6 @@ DEFAULT_TASK_TEXT = "Mijozga qo'ng'iroq qilish"
 TOMORROW_HOUR = 10
 TODAY_EVENING_HOUR = 18
 
-UNSET = object()  # "argument not given" (None is a real value for assigned_to)
-
 
 def with_task_annotations(qs):
     """Annotate invoices with next_due / next_task_id / next_task_text / open_tasks
@@ -229,11 +228,18 @@ def create_invoice(
     author=None,
     assigned_to=None,
     task: dict | None = None,
+    lat=None,
+    lon=None,
+    address: str = "",
+    address_link: str | None = None,
+    via: str = "panel",
 ):
     """A new lead. The client is looked up by phone and created if new (an existing
     client's name is never overwritten). `assigned_to` defaults to the author;
-    `task` = {text, due_at} adds the first reminder."""
+    `task` = {text, due_at} adds the first reminder. `lat`/`lon` (+ `address`,
+    `address_link`) attach the client's location."""
     from client.models import Client
+    from core.geo import make_point
 
     from .models import Invoice
 
@@ -242,6 +248,11 @@ def create_invoice(
     if assigned_to is not None and (author is None or assigned_to.pk != author.pk):
         _require_eligible(assigned_to)
     assignee = assigned_to or author
+    point = None
+    if lat is not None or lon is not None:
+        point = make_point(lat, lon)
+        if point is None:
+            raise ServiceError("Lokatsiya koordinatalari noto'g'ri")
     with transaction.atomic():
         client, _ = Client.objects.get_or_create(phone=phone, defaults={"fio": fio})
         invoice = Invoice.objects.create(
@@ -249,7 +260,13 @@ def create_invoice(
             source=source or None,
             assigned_to=assignee,
             created_by=author,
+            lat=point.lat if point else None,
+            lon=point.lon if point else None,
+            address=(address or "").strip()[:255],
+            address_link=address_link or None,
         )
+        if point or address_link:
+            _log(invoice, NoteKind.location, author, meta=_location_meta(point, via, address_link))
         if desc and desc.strip():
             add_note(invoice, author=author, text=desc)
         if task:
@@ -324,6 +341,144 @@ def update_lead(invoice, *, by, assigned_to=UNSET, source=UNSET):
             invoice.source = source or None
         invoice.save()
     return invoice
+
+
+# ------------------------------------------------------------------ location
+def _location_meta(point, via, link=None) -> dict:
+    return {
+        "lat": point.lat_str if point else None,
+        "lon": point.lon_str if point else None,
+        "link": bool(link),  # a short link may locate the lead without a point
+        "via": via,
+    }
+
+
+def _fill_down(invoice, by=None) -> list[tuple[str, int]]:
+    """Give the lead's metering - and that metering's order - the lead's location where
+    they have none of their own. Archived meterings are filled too (blank-only)."""
+    from core.geo import copy_location
+    from metering.models import Metering
+    from order.models import Order
+
+    filled: list[tuple[str, int]] = []
+    metering = Metering.objects.select_for_update().filter(invoice=invoice).first()
+    if metering is None:
+        return filled
+    fields = copy_location(invoice, metering)
+    if fields:
+        metering._history_user = by  # not the request's user: it may be the bot principal
+        metering.save(update_fields=fields)
+        filled.append(("metering", metering.pk))
+    order = Order.objects.select_for_update().filter(metering=metering).first()
+    if order is not None:
+        fields = copy_location(metering, order)
+        if fields:
+            order._history_user = by
+            order.save(update_fields=fields)
+            filled.append(("order", order.pk))
+    return filled
+
+
+def set_invoice_location(invoice, *, point, link=UNSET, address=UNSET, by, via="panel"):
+    """Attach (or, with `point=None` and no link, clear) the lead's map location.
+
+    Returns (invoice, changed, filled): `filled` = [("metering"|"order", id)] that
+    inherited it. The same point again is a no-op (no history line). A blank address
+    never overwrites a typed one; from the bot (`via="bot"`, a venue's address) it only
+    fills a blank. Allowed on closed leads."""
+    from core.geo import resolve_location
+
+    from .models import Invoice
+
+    with transaction.atomic():
+        locked = Invoice.objects.select_for_update().get(pk=invoice.pk)
+        new_lat, new_lon, new_link = resolve_location(locked, point, link)
+        moved = locked.lat != new_lat or locked.lon != new_lon or locked.address_link != new_link
+        fields = []
+        if moved:
+            locked.lat, locked.lon, locked.address_link = new_lat, new_lon, new_link
+            fields += ["lat", "lon", "address_link"]
+        if address is not UNSET:
+            text = (address or "").strip()[:255]
+            if via == "bot":  # a venue's address only fills a blank one
+                write = bool(text) and not locked.address
+            else:  # the panel may also clear it, while a point still locates the lead
+                write = bool(text or locked.lat is not None) and text != locked.address
+            if write and text != locked.address:
+                locked.address = text
+                fields.append("address")
+        changed = bool(fields)
+        filled: list[tuple[str, int]] = []
+        if changed:
+            locked.save(update_fields=fields + ["update_date"])
+            if moved:
+                _log(
+                    locked,
+                    NoteKind.location,
+                    by,
+                    meta=_location_meta(point if moved else None, via, locked.address_link),
+                )
+        if locked.lat is not None or locked.address_link:
+            filled = _fill_down(locked, by)
+    for name in ("lat", "lon", "address", "address_link", "update_date"):
+        setattr(invoice, name, getattr(locked, name))
+    return invoice, changed, filled
+
+
+def location_candidates(user, *, phone=None, limit=8) -> list[tuple[str, object]]:
+    """Where the bot may attach a received location: [("invoice"|"metering", obj)].
+
+    No phone: the user's own "location requested" leads, then open meterings (those
+    without a point first). With a phone: that client's open leads and editable
+    meterings. Each kind needs view + change permission."""
+    from django.db.models import F
+
+    from metering.constants import MeteringStatus
+    from metering.models import Metering
+
+    from .models import Invoice
+
+    can_inv = user.has_perm("call_center.view_invoice") and user.has_perm(
+        "call_center.change_invoice"
+    )
+    can_met = user.has_perm("metering.view_metering") and user.has_perm("metering.change_metering")
+    out: list[tuple[str, object]] = []
+    if phone is not None:
+        if can_inv:
+            qs = (
+                Invoice.objects.filter(client_id=phone)
+                .exclude(solution__in=[int(x) for x in CLOSED_SOLUTIONS])
+                .select_related("client", "assigned_to")
+                .order_by("-create_date")
+            )
+            out += [("invoice", i) for i in qs[:limit]]
+        if can_met:
+            qs = (
+                Metering.objects.filter(client_id=phone)
+                .exclude(status__in=MeteringStatus.archive_statuses())
+                .select_related("client", "invoice")
+                .order_by(F("date_time").desc(nulls_last=True))
+            )
+            out += [("metering", m) for m in qs[:limit]]
+        return out[:limit]
+    if can_inv:
+        qs = (
+            Invoice.objects.filter(assigned_to=user, solution=SolutionChoice.given_location)
+            .select_related("client", "assigned_to")
+            .order_by("-create_date")
+        )
+        out += [("invoice", i) for i in qs[:5]]
+    if can_met:
+        from django.db.models import BooleanField, ExpressionWrapper
+
+        qs = (
+            Metering.objects.filter(status__in=[MeteringStatus.created, MeteringStatus.other_day])
+            .select_related("client", "invoice")
+            .annotate(_no_point=ExpressionWrapper(Q(lat__isnull=True), output_field=BooleanField()))
+            .order_by("-_no_point", F("date_time").asc(nulls_last=True), "pk")
+        )
+        out += [("metering", m) for m in qs[: max(limit - len(out), 0)]]
+    return out[:limit]
 
 
 # ------------------------------------------------------------------ tasks

@@ -90,6 +90,8 @@ urlpatterns = [
     path("hr/off-requests/", hr.OffRequestsView.as_view()),
     # ---- CRM (call-centre leads)
     path("crm/clients/", crm.ClientLookupView.as_view()),
+    path("crm/locations/candidates/", crm.LocationCandidatesView.as_view()),
+    path("crm/locations/", crm.LocationSetView.as_view()),
     path("crm/due/parse/", crm.DueParseView.as_view()),
     path("crm/leads/", crm.LeadCreateView.as_view()),
     path("crm/tasks/<int:pk>/done/", crm.TaskDoneView.as_view()),

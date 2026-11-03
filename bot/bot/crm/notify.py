@@ -13,6 +13,8 @@ from . import texts as T
 @on("crm.task_due")
 async def task_due(n: Notifier, d: dict) -> None:
     text = T.task_due(d)
-    kb = K.task_kb(int(d["task"]["id"]), d.get("url") or "")
+    kb = K.task_kb(
+        int(d["task"]["id"]), d.get("url") or "", (d.get("invoice") or {}).get("map_url") or ""
+    )
     for tg in d.get("to") or []:
         await n.send(tg, text, kb)

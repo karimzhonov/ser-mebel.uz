@@ -6,7 +6,7 @@ import { cleanParams, useGet, useMeta } from "@/api/hooks";
 import type { Invoice, LeadBoard as LeadBoardData, LeadBoardColumn } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { MeteringCreateModal } from "../Meterings";
-import { PhoneLink } from "@/components/domain";
+import { AddressLink, PhoneLink } from "@/components/domain";
 import { Empty, PageLoader, TONES } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { CRM_INVALIDATE, DueText, GO_FOR_MEASURED, NoTaskBadge, SOLD_OUT, SourceBadge } from "./shared";
@@ -254,6 +254,11 @@ function LeadCard({
         <SourceBadge label={card.source_label} />
       </div>
       {card.desc && <p className="muted line-clamp-2 text-xs">{card.desc}</p>}
+      {(card.address || card.map_url) && (
+        <div className="text-xs">
+          <AddressLink nested address={card.address} link={card.address_link} mapUrl={card.map_url} lat={card.lat} lon={card.lon} />
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-xs">
         {card.next_task ? (
           <span className="flex min-w-0 items-center gap-1.5" title={card.next_task.text}>

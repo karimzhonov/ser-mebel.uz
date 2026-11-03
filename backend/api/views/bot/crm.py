@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from phonenumber_field.phonenumber import PhoneNumber
 from phonenumbers import NumberParseException
-from rest_framework.exceptions import NotFound, ParseError
+from rest_framework.exceptions import NotFound, ParseError, PermissionDenied
 from rest_framework.response import Response
 
 from call_center import dto
@@ -19,6 +19,9 @@ from call_center import services as S
 from call_center.constants import LeadSource
 from call_center.models import Invoice, InvoiceTask
 from core.exceptions import ServiceError
+from core.geo import UNSET, make_point, obj_map_url
+from metering.models import Metering
+from metering.services import set_metering_location
 
 from .base import BotAPIView
 
@@ -66,6 +69,93 @@ class ClientLookupView(BotAPIView):
         )
 
 
+def _location_perms(user) -> tuple[bool, bool]:
+    inv = user.has_perm("call_center.view_invoice") and user.has_perm("call_center.change_invoice")
+    met = user.has_perm("metering.view_metering") and user.has_perm("metering.change_metering")
+    return inv, met
+
+
+def _point_from(raw):
+    """{lat, lon} (numbers or strings) -> MapPoint; None when the pair is not valid."""
+    if not isinstance(raw, dict):
+        return None
+    return make_point(raw.get("lat"), raw.get("lon"))
+
+
+class LocationCandidatesView(BotAPIView):
+    """GET [?phone=] -> {items: [LocationTarget], can_new_lead}."""
+
+    def get(self, request):
+        user = self.require_linked_user()
+        inv, met = _location_perms(user)
+        if not (inv or met):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+        raw = request.query_params.get("phone")
+        phone = None
+        if raw not in (None, ""):
+            phone = _phone(raw)
+            if phone is None:
+                return _bad("Telefon raqami noto'g'ri", "phone")
+        items = S.location_candidates(user, phone=phone)
+        return Response(
+            {
+                "items": [dto.location_target(kind, obj, user) for kind, obj in items],
+                "can_new_lead": user.has_perm("call_center.add_invoice")
+                and user.has_perm("call_center.view_invoice"),
+            }
+        )
+
+
+class LocationSetView(BotAPIView):
+    """POST {target: {kind, id}, lat, lon, address?, live?} ->
+    {target, changed, filled: [{kind, id}], map_url, url}."""
+
+    def post(self, request):
+        user = self.require_linked_user()
+        data = _dict_body(request)
+        target = data.get("target")
+        if not isinstance(target, dict) or target.get("kind") not in ("invoice", "metering"):
+            return _bad("Nishon noto'g'ri", "target")
+        kind = target["kind"]
+        try:
+            pk = int(target.get("id"))
+        except (TypeError, ValueError):
+            return _bad("Nishon noto'g'ri", "target")
+        inv, met = _location_perms(user)
+        if not (inv if kind == "invoice" else met):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+        point = make_point(data.get("lat"), data.get("lon"))
+        if point is None:
+            return _bad("Koordinatalar noto'g'ri", "location")
+        address = str(data.get("address") or "").strip()
+        kwargs = {"address": address} if address else {}
+        if kind == "invoice":
+            obj = Invoice.objects.select_related("client", "assigned_to").filter(pk=pk).first()
+            if obj is None:
+                raise NotFound()
+            _, changed, filled = S.set_invoice_location(
+                obj, point=point, by=user, via="bot", **kwargs
+            )
+            url = E.lead_url(obj.pk)
+        else:
+            obj = Metering.objects.select_related("client", "invoice").filter(pk=pk).first()
+            if obj is None:
+                raise NotFound()
+            if obj.address:  # a venue's address only fills a blank one
+                kwargs = {}
+            _, changed, filled = set_metering_location(obj, point=point, by=user, **kwargs)
+            url = E.metering_url(obj.pk)
+        return Response(
+            {
+                "target": dto.location_target(kind, obj, user),
+                "changed": changed,
+                "filled": [{"kind": k, "id": i} for k, i in filled],
+                "map_url": obj_map_url(obj),
+                "url": url,
+            }
+        )
+
+
 class DueParseView(BotAPIView):
     """POST {text} -> {due_at}; 400 {detail, field: "remind"} when it can't be read."""
 
@@ -98,6 +188,13 @@ class LeadCreateView(BotAPIView):
             due = self._due(data.get("remind"))
         except ServiceError as e:
             return _bad(e.message, "remind")
+        loc = data.get("location")
+        point, address = None, ""
+        if loc not in (None, ""):
+            point = _point_from(loc)
+            if point is None:
+                return _bad("Lokatsiya noto'g'ri", "location")
+            address = str(loc.get("address") or "").strip()
 
         from client.models import Client
 
@@ -114,6 +211,11 @@ class LeadCreateView(BotAPIView):
             .first()
         )
         if recent is not None:
+            if point is not None and recent.lat is None:
+                # the first request lost its location (or it came on the retry): attach it
+                S.set_invoice_location(
+                    recent, point=point, address=address or UNSET, by=user, via="bot"
+                )
             task = recent.tasks.select_related("assigned_to").order_by("pk").first()
             return Response(
                 {
@@ -133,6 +235,10 @@ class LeadCreateView(BotAPIView):
             source=source,
             author=user,
             task={"text": None, "due_at": due} if due else None,
+            lat=point.lat if point else None,
+            lon=point.lon if point else None,
+            address=address,
+            via="bot",
         )
         task = invoice.tasks.select_related("assigned_to").first()
         return Response(

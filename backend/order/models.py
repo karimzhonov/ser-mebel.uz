@@ -71,6 +71,8 @@ class Order(models.Model):
     address_link = models.URLField(
         max_length=1000, blank=True, null=True, verbose_name="Ссылка на яндекс карты"
     )
+    lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    lon = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
 
     design_type = models.ForeignKey(
         "design.DesignType", models.CASCADE, null=True, verbose_name="Дизайн"

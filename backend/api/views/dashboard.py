@@ -5,6 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from call_center.constants import LeadSource, SolutionChoice
+from core.geo import coord_str, obj_map_url
 from metering.constants import MeteringStatus
 from metering.price.models import InventoryType, ObjectType
 from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
@@ -93,6 +94,9 @@ def _order_card(order, show_price):
         "client": str(order.client) if order.client_id else "—",
         "phone": str(order.client.phone) if order.client_id else "",
         "address": order.address,
+        "lat": coord_str(order.lat),
+        "lon": coord_str(order.lon),
+        "map_url": obj_map_url(order),
         "desc": (order.desc or "").strip(),
         "factory": order.factory.name,
         "end_date": order.end_date,
@@ -112,6 +116,9 @@ def _metering_card(metering):
         "client": str(metering.client),
         "phone": str(metering.client.phone),
         "address": metering.address or "",
+        "lat": coord_str(metering.lat),
+        "lon": coord_str(metering.lon),
+        "map_url": obj_map_url(metering),
         "desc": (metering.desc or "").strip(),
         "when": metering.date_time,
         "has_design": design is not None,
@@ -127,6 +134,7 @@ def _invoice_card(invoice):
         "client": str(invoice.client),
         "phone": str(invoice.client.phone),
         "desc": (invoice.desc or "").strip(),
+        "map_url": obj_map_url(invoice),
         "when": invoice.create_date,
     }
 

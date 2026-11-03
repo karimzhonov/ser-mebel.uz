@@ -8,7 +8,10 @@
       "end_date": "2026-10-30",
       "status_label": "Jarayonda",
       "phone": "+998901112233",
-      "address": "Chilonzor 5"
+      "address": "Chilonzor 5",
+      "lat": "41.311081",
+      "lon": "69.279737",
+      "map_url": "https://yandex.uz/maps/?ll=69.279737,41.311081&pt=69.279737,41.311081&z=17&l=map"
     },
     "left_days": 3,
     "key": "3",

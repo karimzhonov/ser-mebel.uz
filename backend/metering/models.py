@@ -13,9 +13,11 @@ from .constants import MeteringStatus, METERING_CHANGE_STATUS_PERMISSION
 
 class Metering(models.Model):
     client = models.ForeignKey("client.Client", models.CASCADE, verbose_name='Мижоз')
-    status = models.CharField(verbose_name='Статус', max_length=255, choices=MeteringStatus.choices, default=MeteringStatus.created)
+    status = models.CharField(verbose_name='Статус', max_length=255, choices=MeteringStatus.choices, default=MeteringStatus.created, db_index=True)
     address = models.TextField(blank=True, null=True, verbose_name='Адрес')
     address_link = models.URLField(max_length=1000, blank=True, null=True, verbose_name='Адрес ссылка')
+    lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    lon = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
     create_date = models.DateTimeField(auto_now_add=True, verbose_name='Дата создание')
     desc = models.TextField(blank=True, null=True, verbose_name='Описание')
     

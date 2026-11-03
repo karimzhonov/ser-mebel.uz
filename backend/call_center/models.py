@@ -18,6 +18,12 @@ class Invoice(models.Model):
     source = models.CharField(  # noqa: DJ001 - NULL = not set (old leads)
         "Manba", max_length=20, choices=LeadSource.choices, null=True, blank=True, db_index=True
     )
+    # Where the client lives: a map point (source of truth), the typed address and the raw
+    # pasted link. Inherited by the metering and the order created from this lead.
+    lat = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    lon = models.DecimalField(max_digits=9, decimal_places=6, null=True, blank=True)
+    address = models.CharField("Manzil", max_length=255, blank=True, default="")
+    address_link = models.URLField("Xarita havolasi", max_length=1000, blank=True, null=True)
     assigned_to = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         models.PROTECT,

@@ -4,7 +4,7 @@ import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll } from "@/api/hooks";
 import type { Factory } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
-import { PhoneLink } from "@/components/domain";
+import { AddressLink, PhoneLink } from "@/components/domain";
 import { Button, Card, DataTable, Field, IconButton, Input, Modal, PageHeader } from "@/components/ui";
 
 type Form = { id?: number; name: string; address: string; phone: string; ordering: string };
@@ -43,7 +43,7 @@ export default function FactoriesPage() {
           rowKey={(r) => r.id}
           columns={[
             { key: "name", header: "Nomi", cell: (r) => <span className="font-medium">{r.name}</span> },
-            { key: "address", header: "Manzil", cell: (r) => r.address || "—" },
+            { key: "address", header: "Manzil", cell: (r) => <AddressLink address={r.address} /> },
             { key: "phone", header: "Telefon", cell: (r) => <PhoneLink value={r.phone} /> },
             { key: "ordering", header: "Tartib", cell: (r) => r.ordering },
             {

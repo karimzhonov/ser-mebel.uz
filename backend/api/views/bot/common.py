@@ -42,7 +42,20 @@ class WhoAmIView(BotAPIView):
                         self.site_user
                         and self.site_user.has_perm("call_center.add_invoice")
                         and self.site_user.has_perm("call_center.view_invoice")
-                    )
+                    ),
+                    "can_set_location": bool(
+                        self.site_user
+                        and (
+                            (
+                                self.site_user.has_perm("call_center.view_invoice")
+                                and self.site_user.has_perm("call_center.change_invoice")
+                            )
+                            or (
+                                self.site_user.has_perm("metering.view_metering")
+                                and self.site_user.has_perm("metering.change_metering")
+                            )
+                        )
+                    ),
                 },
             }
         )

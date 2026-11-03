@@ -191,7 +191,7 @@ def test_bot_crm_flow(bot_client, seller, bot_events):
     assert "ulanmagan" in unlinked.data["detail"]
 
     who = bot_client.post("whoami/", actor=4001, data={"user": {"id": 4001}})
-    assert who.data["crm"] == {"can_add_lead": True}
+    assert who.data["crm"] == {"can_add_lead": True, "can_set_location": True}
 
     req = load_fixture("misc.crm_lead_request.json")
     r = bot_client.post("crm/leads/", actor=4001, data=req)
@@ -926,10 +926,13 @@ def test_call_center_manager_section(admin_api, make_staff):
 def test_bot_whoami_and_permission_matrix(bot_client, seller, make_staff):
     make_staff("call_center.view_invoice", telegram_id=4002)
     who = bot_client.post("whoami/", actor=4002, data={"user": {"id": 4002}})
-    assert who.data["crm"] == {"can_add_lead": False}
-    assert bot_client.post("whoami/", actor=555, data={"user": {"id": 555}}).data["crm"] == {
-        "can_add_lead": False
-    }
+    assert who.data["crm"]["can_add_lead"] is False
+    assert (
+        bot_client.post("whoami/", actor=555, data={"user": {"id": 555}}).data["crm"][
+            "can_add_lead"
+        ]
+        is False
+    )
     body = {
         "name": "A",
         "phone": "+998901117711",
@@ -1080,7 +1083,7 @@ def test_bot_non_dict_body_is_400(bot_client, seller):
 def test_whoami_can_add_lead_needs_view_and_add(bot_client, make_staff):
     make_staff("call_center.add_invoice", telegram_id=4010)
     who = bot_client.post("whoami/", actor=4010, data={"user": {"id": 4010}})
-    assert who.data["crm"] == {"can_add_lead": False}
+    assert who.data["crm"]["can_add_lead"] is False
 
 
 def test_assignee_with_view_only_can_close_own_task(api, bot_client, seller, make_staff, clock):

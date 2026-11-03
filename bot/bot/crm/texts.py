@@ -40,6 +40,17 @@ ALREADY_DONE = "Allaqachon bajarilgan"
 USE_BUTTONS = "Iltimos, yuqoridagi tugmalardan birini tanlang."
 SAVING = "⏳ Saqlanmoqda…"
 OPEN_PANEL = "💻 Panelda ochish"
+MAP_BTN = "🗺 Yandex xaritada"
+
+LOC_ASK = "📍 Lokatsiya olindi.\n\nQaysi mijoz? Telefon raqamini yozing yoki ro'yxatdan tanlang:"
+LOC_ASK_EMPTY = (
+    "📍 Lokatsiya olindi.\n\nSizga tegishli ochiq ariza yoki o'lchov topilmadi. "
+    "Mijozning telefon raqamini yozing:"
+)
+LOC_PHONE_NONE = "Bu raqam bo'yicha ochiq ariza yoki o'lchov topilmadi."
+LOC_IN_LEAD = "📍 Lokatsiya arizaga biriktiriladi. Davom eting."
+LOC_LIVE = "ℹ️ Jonli lokatsiya: hozirgi nuqta saqlanadi."
+LOC_SAME = "ℹ️ Xuddi shu nuqta avvaldan bor edi."
 
 
 def dt_short(iso: str | None) -> str:
@@ -77,6 +88,8 @@ def summary(d: dict) -> str:
         f"📝 {esc(d.get('note')) or '—'}",
         f"⏰ {esc(remind_label(d.get('remind')))}",
     ]
+    if d.get("location"):
+        rows.append("📍 Lokatsiya bor")
     return "\n".join(rows)
 
 
@@ -111,3 +124,30 @@ def task_due(d: dict) -> str:
         rows.append("")
         rows.append(f"📝 {esc(inv['last_note'])}")
     return "\n".join(rows)
+
+
+def loc_button(it: dict) -> str:
+    """Button label of a location candidate (GET crm/locations/candidates/ item)."""
+    cl = it.get("client") or {}
+    mark = " ✅" if it.get("has_point") else ""
+    if it.get("kind") == "invoice":
+        return f"📋 #{it.get('id')} {cl.get('fio') or ''}{mark}"
+    return f"📐 {dt_short(it.get('when'))} {cl.get('fio') or ''}{mark}"
+
+
+def loc_saved(res: dict) -> str:
+    t = res.get("target") or {}
+    cl = t.get("client") or {}
+    what = "ariza" if t.get("kind") == "invoice" else "o'lchov"
+    line = f"✅ Lokatsiya saqlandi: {what} #{t.get('id')} — {esc(cl.get('fio'))} · {esc(cl.get('phone'))}"
+    names = {"metering": "o'lchovga", "order": "buyurtmaga"}
+    filled = []
+    for f in res.get("filled") or []:
+        n = names.get(f.get("kind"))
+        if n and n not in filled:
+            filled.append(n)
+    if filled:
+        line += f"\n({' va '.join(filled)} ham qo'shildi)"
+    if res.get("changed") is False:
+        line += "\n" + LOC_SAME
+    return line

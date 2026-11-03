@@ -65,6 +65,23 @@ export interface Meta {
   lead_sources?: { value: string; label: string }[];
 }
 
+/** A saved map point (strings with 6 decimals, "41.311081") + the Yandex link the API builds:
+ * the exact point, else a text search for the address; null when there is nothing to show. */
+export interface Located {
+  lat: string | null;
+  lon: string | null;
+  map_url: string | null;
+}
+
+/** POST /geo/parse/ — a pasted map link / coordinates, as the server understands it. */
+export interface GeoParse {
+  lat: string | null;
+  lon: string | null;
+  map_url: string | null;
+  /** a short link (maps.app.goo.gl, yandex …/-/…): kept as a link, no point read from it */
+  short: boolean;
+}
+
 export interface Deadline {
   days: number | null;
   level: Tone;
@@ -80,7 +97,7 @@ export interface OrderSummary {
   money_left: Money | null;
 }
 
-export interface Invoice {
+export interface Invoice extends Located {
   id: number;
   client: ClientShort;
   create_date: string;
@@ -98,6 +115,8 @@ export interface Invoice {
   open_tasks: number;
   /** an active lead (new / re-phone / info / location) with no open task */
   needs_task: boolean;
+  address?: string;
+  address_link?: string | null;
 }
 
 /* ---------------------------------------------------------------- CRM */
@@ -167,7 +186,7 @@ export interface TaskAgenda {
   upcoming: InvoiceTask[];
 }
 
-export interface MeteringShort {
+export interface MeteringShort extends Located {
   id: number;
   client: ClientShort;
   address: string | null;
@@ -177,7 +196,7 @@ export interface MeteringShort {
   folder: number | null;
 }
 
-export interface Metering {
+export interface Metering extends Located {
   id: number;
   client: ClientShort;
   status: string;
@@ -392,7 +411,7 @@ export interface Factory {
   ordering: number;
 }
 
-export interface Order {
+export interface Order extends Located {
   id: number;
   order_number: number;
   client: ClientShort | null;
@@ -449,7 +468,7 @@ export interface OrderDetail extends Order {
   };
 }
 
-export interface ProductionOrder {
+export interface ProductionOrder extends Located {
   id: number;
   order_number: number;
   client: ClientShort | null;
@@ -614,7 +633,7 @@ export interface Overview {
   meterings: {
     missed: number;
     today: number;
-    upcoming: { id: number; client: string; phone: string; address: string; when: string }[];
+    upcoming: { id: number; client: string; phone: string; address: string; when: string; map_url?: string | null; lat?: string | null; lon?: string | null }[];
   } | null;
   call_center: { unanswered: number; callback: number } | null;
   warehouse: {

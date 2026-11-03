@@ -47,7 +47,7 @@ class CanAddLead(BaseFilter):
             return False
         cur = await state.get_state()
         if cur is not None:
-            return cur.startswith("Lead:")
+            return cur.startswith(("Lead:", "LocPick:"))
         return not (self.forwards and getattr(actor, "member", None))
 
 
@@ -147,7 +147,14 @@ STEPS = {
 
 
 async def _start(message: Message, state: FSMContext, seed: dict) -> None:
+    cur = await state.get_state()
+    loc = None
+    if cur and cur.startswith(("Lead:", "LocPick:")):
+        loc = (await state.get_data()).get("location")  # a received location survives a restart
     await state.clear()
+    seed = dict(seed)
+    if loc and "location" not in seed:
+        seed["location"] = loc
     await state.update_data(**seed)
     await go_name(message, state)
 
@@ -366,6 +373,11 @@ def build() -> Router:
             "note": d.get("note") or "",
             "remind": d.get("remind") or {"preset": "none"},
         }
+        loc = d.get("location")
+        if loc:
+            payload["location"] = {
+                k: loc[k] for k in ("lat", "lon", "address") if loc.get(k) not in (None, "")
+            }
         target = cb.message
         done = False
         try:

@@ -12,5 +12,7 @@
     "id": 3,
     "name": "Dilfuza Karimova"
   },
-  "last_note": "Oshxona mebeli kerak, o'lcham 3x2.5 m"
+  "last_note": "Oshxona mebeli kerak, o'lcham 3x2.5 m",
+  "has_point": true,
+  "map_url": "https://yandex.uz/maps/?ll=69.279737,41.311081&pt=69.279737,41.311081&z=17&l=map"
 }

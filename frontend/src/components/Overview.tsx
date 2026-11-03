@@ -29,7 +29,7 @@ import { useGet, useMeta } from "@/api/hooks";
 import type { Money, Overview, Tone } from "@/api/types";
 import { cn } from "@/lib/cn";
 import { dateTime, money, num, phone } from "@/lib/format";
-import { DeadlinePill } from "./domain";
+import { AddressLink, DeadlinePill } from "./domain";
 import { Badge, Card, Empty, PageLoader, TONES } from "./ui";
 
 const SERIES: Record<string, { label: string; color: string }> = {
@@ -257,7 +257,13 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
                   <Link to={`/meterings/${m.id}`} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50">
                     <span className="min-w-0">
                       <span className="block truncate font-medium">{m.client}</span>
-                      <span className="muted block truncate text-xs">{m.address || phone(m.phone)}</span>
+                      <span className="muted block truncate text-xs">
+                        {m.address || m.map_url ? (
+                          <AddressLink nested address={m.address} mapUrl={m.map_url} lat={m.lat} lon={m.lon} />
+                        ) : (
+                          phone(m.phone)
+                        )}
+                      </span>
                     </span>
                     <span className="flex items-center gap-1 whitespace-nowrap text-xs font-medium text-brand-700 dark:text-accent-200">
                       <CalendarClock className="h-3.5 w-3.5" /> {dateTime(m.when)}

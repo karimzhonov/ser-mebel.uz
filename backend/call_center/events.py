@@ -34,6 +34,13 @@ def lead_url(invoice_id) -> str:
     return f"{base}/call-center?open={invoice_id}"
 
 
+def metering_url(metering_id) -> str:
+    from django.conf import settings
+
+    base = (getattr(settings, "ADMIN_BASE_URL", "") or "https://ser-mebel.uz").rstrip("/")
+    return f"{base}/meterings/{metering_id}"
+
+
 @_safe
 def task_due(task):
     """The task's time has come: remind its assignee in the bot."""

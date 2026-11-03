@@ -18,3 +18,11 @@ class Lead(StatesGroup):
     remind_custom = State()
     confirm = State()
     saving = State()
+
+
+class LocPick(StatesGroup):
+    """A location was received and the person picks which lead / metering it belongs to.
+    Default destiny; the location itself lives in the FSM data under `location`
+    ({lat, lon, address, live}). Redis-backed, so it is shared by the uvicorn workers."""
+
+    target = State()

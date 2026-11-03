@@ -1,3 +1,4 @@
+from core.geo import UNSET
 from core.notifications import (
     SMS_ORDER_ASSEMBLY,
     SMS_ORDER_DETAILING,
@@ -267,6 +268,7 @@ def create_order(*, count_days=None, author=None, **fields):
 
     from call_center.constants import SolutionChoice
     from core.exceptions import ServiceError
+    from core.geo import make_point
     from metering.constants import MeteringStatus
 
     from .constants import DEFAULT_FACTORY_NAME
@@ -286,6 +288,22 @@ def create_order(*, count_days=None, author=None, **fields):
         if design_type is None or design_type.design_id != design.pk:
             raise ServiceError("Shu o'lchov dizaynidan variant tanlang")
         fields.setdefault("client", metering.client)
+
+    # location: this call's own, else the metering's (point, pasted link, address)
+    if "lat" in fields or "lon" in fields:
+        lat, lon = fields.get("lat"), fields.get("lon")
+        point = make_point(lat, lon) if lat is not None or lon is not None else None
+        if (lat is not None or lon is not None) and point is None:
+            raise ServiceError("Lokatsiya koordinatalari noto'g'ri")
+        fields["lat"], fields["lon"] = (point.lat, point.lon) if point else (None, None)
+    if metering is not None and fields.get("lat") is None and not fields.get("address_link"):
+        fields["lat"], fields["lon"] = metering.lat, metering.lon
+        fields["address_link"] = metering.address_link
+    fields["address"] = (fields.get("address") or "").strip()
+    if metering is not None and not fields["address"]:
+        fields["address"] = (metering.address or "").strip()[:255]
+    if not fields["address"] and fields.get("lat") is None:
+        raise ServiceError("Manzilni kiriting yoki xaritadan nuqta qo'shing")
 
     fields.setdefault("reception_date", timezone.now().date())
     if fields.get("factory") is None:
@@ -310,6 +328,37 @@ def create_order(*, count_days=None, author=None, **fields):
         order = Order(**fields)
         order.save()
     return order
+
+
+def set_order_location(order, *, point, link=UNSET, address=UNSET, by=None):
+    """Attach / clear the order's map location (`point=None` and no link clears it)."""
+    from django.db import transaction
+
+    from core.exceptions import ServiceError
+    from core.geo import resolve_location
+
+    from .models import Order
+
+    with transaction.atomic():
+        locked = Order.objects.select_for_update().get(pk=order.pk)
+        new_lat, new_lon, new_link = resolve_location(locked, point, link)
+        fields = []
+        if (locked.lat, locked.lon, locked.address_link) != (new_lat, new_lon, new_link):
+            locked.lat, locked.lon, locked.address_link = new_lat, new_lon, new_link
+            fields += ["lat", "lon", "address_link"]
+        if address is not UNSET:
+            text = (address or "").strip()[:255]
+            if (text or locked.lat is not None) and text != locked.address:
+                locked.address = text
+                fields.append("address")
+        if not locked.address and locked.lat is None:
+            raise ServiceError("Manzilni kiriting yoki xaritadan nuqta qo'shing")
+        if fields:
+            locked._history_user = by
+            locked.save(update_fields=fields)
+    for name in ("lat", "lon", "address", "address_link"):
+        setattr(order, name, getattr(locked, name))
+    return order, bool(fields)
 
 
 def send_order_to_detailing(order):

@@ -7,6 +7,7 @@ from .views import call_center, finance, hr, metering, orders, users, warehouse
 from .views.auth import LoginView, LogoutView, MeView, TelegramLoginView
 from .views.dashboard import BoardsView, MetaView
 from .views.files import FileView, FolderMessagesView, FolderView
+from .views.geo import GeoParseView
 from .views.overview import OverviewView
 
 router = DefaultRouter()
@@ -59,6 +60,7 @@ v1 = [
     path("auth/telegram/", TelegramLoginView.as_view(), name="api-telegram-login"),
     path("auth/me/", MeView.as_view(), name="api-me"),
     path("meta/", MetaView.as_view(), name="api-meta"),
+    path("geo/parse/", GeoParseView.as_view(), name="api-geo-parse"),
     path("dashboard/boards/", BoardsView.as_view(), name="api-boards"),
     path("dashboard/overview/", OverviewView.as_view(), name="api-overview"),
     path("folders/<int:folder_id>/", FolderView.as_view(), name="api-folder"),

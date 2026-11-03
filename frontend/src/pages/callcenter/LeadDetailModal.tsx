@@ -4,8 +4,10 @@ import {
   ArrowRightLeft,
   CheckCircle2,
   ClipboardList,
+  MapPin,
   MessageSquare,
   Package,
+  Pencil,
   PhoneCall,
   Plus,
   Ruler,
@@ -17,10 +19,12 @@ import { api } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
 import type { Invoice, InvoiceTask, Metering, Order, TimelineEntry } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
-import { MeteringStatusBadge, OrderStatusBadge, PhoneLink, SolutionBadge } from "@/components/domain";
-import { Button, Empty, Field, Input, KV, Modal, Select, Spinner, Textarea, TONES } from "@/components/ui";
+import { AddressLink, MeteringStatusBadge, OrderStatusBadge, PhoneLink, SolutionBadge } from "@/components/domain";
+import { LocationEditModal } from "@/components/LocationField";
+import { Button, Empty, Field, IconButton, Input, KV, Modal, Select, Spinner, Textarea, TONES } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { dateTime } from "@/lib/format";
+import { yandexPointUrl } from "@/lib/geo";
 import { MeteringCreateModal } from "../Meterings";
 import { LeadCreateModal } from "./LeadCreateModal";
 import {
@@ -119,7 +123,13 @@ export function LeadDetailModal({ id, onClose }: { id: number; onClose: () => vo
 
       {metering && (
         <MeteringCreateModal
-          initial={{ client_phone: invoice.client.phone, client_fio: invoice.client.fio, invoice: invoice.id }}
+          initial={{
+            client_phone: invoice.client.phone,
+            client_fio: invoice.client.fio,
+            invoice: invoice.id,
+            address: invoice.address ?? "",
+            invoiceHasLocation: !!(invoice.lat && invoice.lon) || !!invoice.address_link,
+          }}
           onClose={() => setMetering(false)}
           onCreated={onClose}
         />
@@ -144,8 +154,10 @@ function LeadInfo({ invoice, canChange }: { invoice: Invoice; canChange: boolean
     invalidate: CRM_INVALIDATE,
   });
   const assigneeKnown = !invoice.assigned_to || assignees.some((a) => a.id === invoice.assigned_to?.id);
+  const [editLocation, setEditLocation] = useState(false);
 
   return (
+    <>
     <KV
       items={[
         [
@@ -155,6 +167,23 @@ function LeadInfo({ invoice, canChange }: { invoice: Invoice; canChange: boolean
           </Link>,
         ],
         ["Telefon", <PhoneLink value={invoice.client.phone} />],
+        [
+          "Manzil",
+          <span className="inline-flex items-start gap-1">
+            <AddressLink
+              address={invoice.address}
+              link={invoice.address_link}
+              mapUrl={invoice.map_url}
+              lat={invoice.lat}
+              lon={invoice.lon}
+            />
+            {canChange && (
+              <IconButton label="Manzil va lokatsiyani o'zgartirish" className="-my-2 h-8 w-8" onClick={() => setEditLocation(true)}>
+                <Pencil className="h-3.5 w-3.5" />
+              </IconButton>
+            )}
+          </span>,
+        ],
         [
           "Manba",
           canChange ? (
@@ -204,6 +233,19 @@ function LeadInfo({ invoice, canChange }: { invoice: Invoice; canChange: boolean
           : []),
       ]}
     />
+    {editLocation && (
+      <LocationEditModal
+        resource="invoices"
+        id={invoice.id}
+        address={invoice.address}
+        link={invoice.address_link}
+        lat={invoice.lat}
+        lon={invoice.lon}
+        invalidate={[...CRM_INVALIDATE, "meterings", "orders", "timeline"]}
+        onClose={() => setEditLocation(false)}
+      />
+    )}
+    </>
   );
 }
 
@@ -329,6 +371,10 @@ function look(e: TimelineEntry): Look {
     if (e.kind === "solution") return { icon: PhoneCall, tone: "warn", title: "Javob kodi" };
     if (e.kind === "assigned") return { icon: UserRound, tone: "idle", title: "Mas'ul o'zgardi" };
     if (e.kind === "source") return { icon: Tag, tone: "idle", title: "Manba o'zgardi" };
+    if (e.kind === "location")
+      return e.meta?.lat == null && !e.meta?.link
+        ? { icon: MapPin, tone: "idle", title: "Lokatsiya o'chirildi" }
+        : { icon: MapPin, tone: "info", title: "Lokatsiya qo'shildi" };
     return { icon: MessageSquare, tone: "info", title: "Izoh" };
   }
   if (e.type === "created") return { icon: Sparkles, tone: "primary", title: "Ariza yaratildi" };
@@ -389,6 +435,16 @@ function Timeline({ invoiceId }: { invoiceId: number }) {
                     e.text
                   )}
                 </div>
+              )}
+              {e.type === "note" && e.kind === "location" && e.meta?.lat != null && e.meta?.lon != null && (
+                <a
+                  href={yandexPointUrl(String(e.meta.lat), String(e.meta.lon))}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-0.5 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline dark:text-brand-300"
+                >
+                  <MapPin className="h-3.5 w-3.5 text-rose-500" /> Yandex xaritada ochish
+                </a>
               )}
             </li>
           );

@@ -61,6 +61,10 @@ class Actor:
     def can_add_lead(self) -> bool:
         return bool((self.crm or {}).get("can_add_lead"))
 
+    @property
+    def can_set_location(self) -> bool:
+        return bool((self.crm or {}).get("can_set_location"))
+
     @classmethod
     def from_whoami(cls, user: User, data: dict) -> "Actor":
         return cls(

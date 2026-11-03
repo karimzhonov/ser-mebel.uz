@@ -10,6 +10,7 @@ from call_center.constants import SolutionChoice
 from call_center.models import Invoice, InvoiceTask
 from call_center.services import create_invoice, invoice_is_editable, set_invoice_solution
 from client.models import Client
+from core.geo import UNSET
 from metering.models import Metering
 from oauth.models import User
 from order.models import Order
@@ -21,6 +22,7 @@ from ..serializers.clients import (
     InvoiceSerializer,
     InvoiceSolutionSerializer,
 )
+from ..serializers.common import LocationSetSerializer
 from ..serializers.crm import (
     InvoiceTaskSerializer,
     LeadUpdateSerializer,
@@ -168,6 +170,24 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         set_invoice_solution(invoice, serializer.validated_data["solution"], author=request.user)
         return Response(self._data(invoice))
+
+    @action(detail=True, methods=["post"])
+    def location(self, request, pk=None):
+        """Attach / clear the lead's map location: {location, address?}."""
+        require_perm(request.user, "call_center.change_invoice")
+        invoice = self.get_object()
+        body = LocationSetSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        d = body.validated_data
+        CC.set_invoice_location(
+            invoice,
+            point=d["point"],
+            link=d["link"],
+            address=d["address"] if "address" in d else UNSET,
+            by=request.user,
+            via="panel",
+        )
+        return Response({**self._data(invoice), "short": d["short"]})
 
     @action(detail=False, methods=["get"])
     def board(self, request):

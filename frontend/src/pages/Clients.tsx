@@ -6,6 +6,7 @@ import { useAction, useGet, useList } from "@/api/hooks";
 import type { Client, Invoice, Metering, Order } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import {
+  AddressLink,
   BackLink,
   DeadlinePill,
   MeteringStatusBadge,
@@ -125,7 +126,9 @@ export function ClientDetailPage() {
           {related?.meterings.map((m) => (
             <button key={m.id} onClick={() => navigate(`/meterings/${m.id}`)} className="flex w-full items-center justify-between gap-2 border-b border-slate-100 px-5 py-3 text-left text-sm last:border-0 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/50">
               <div>
-                <div className="font-medium">{m.address || "Manzilsiz"}</div>
+                <div className="font-medium">
+                  <AddressLink nested address={m.address} link={m.address_link} mapUrl={m.map_url} lat={m.lat} lon={m.lon} empty="Manzilsiz" />
+                </div>
                 <div className="muted text-xs">{dateTime(m.date_time)}</div>
               </div>
               <MeteringStatusBadge status={m.status} label={m.status_label} />

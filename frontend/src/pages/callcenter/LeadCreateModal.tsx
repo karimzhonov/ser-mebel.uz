@@ -3,6 +3,7 @@ import { api, fieldErrors } from "@/api/client";
 import { useAction } from "@/api/hooks";
 import type { Invoice } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
+import { LocationField } from "@/components/LocationField";
 import { Button, Chip, Field, Input, Modal, Textarea } from "@/components/ui";
 import { AssigneeSelect, CRM_INVALIDATE, DuePicker, useAssignees, useLeadSources } from "./shared";
 
@@ -23,6 +24,8 @@ export function LeadCreateModal({
     fio: initial?.fio ?? "",
     source: initial?.source ?? "",
     desc: "",
+    address: "",
+    location: "",
   });
   const [assignedTo, setAssignedTo] = useState<number | null>(user?.id ?? null);
   const [withTask, setWithTask] = useState(true);
@@ -37,6 +40,8 @@ export function LeadCreateModal({
       api
         .post<Invoice>("/invoices/", {
           ...form,
+          address: form.address.trim(),
+          location: form.location.trim(),
           ...(assigneeValue ? { assigned_to: assigneeValue } : {}),
           ...(withTask && task.due_at ? { task_text: task.text.trim(), task_due_at: task.due_at } : {}),
         })
@@ -103,6 +108,11 @@ export function LeadCreateModal({
         <Field label="Mas'ul xodim" error={errors.assigned_to} className="sm:col-span-2">
           <AssigneeSelect value={assigneeValue} onChange={setAssignedTo} assignees={assignees} emptyLabel="Menga" />
         </Field>
+
+        <Field label="Manzil" error={errors.address}>
+          <Input placeholder="Tuman, ko'cha, uy" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+        </Field>
+        <LocationField value={form.location} onChange={(location) => setForm({ ...form, location })} error={errors.location} />
 
         <Field label="Izoh" error={errors.desc} className="sm:col-span-2">
           <Textarea

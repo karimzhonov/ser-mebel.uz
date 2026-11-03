@@ -59,6 +59,7 @@ class NoteKind(TextChoices):
     solution = ("solution", "Javob kodi")
     assigned = ("assigned", "Mas'ul")
     source = ("source", "Manba")
+    location = ("location", "Lokatsiya")
 
 
 # Leads in these answers (None = "Yangi") must always have an open task.

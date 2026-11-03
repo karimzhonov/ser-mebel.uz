@@ -36,6 +36,7 @@ import {
   TimelineChart,
 } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { LocationEditModal, LocationField } from "@/components/LocationField";
 import {
   Button,
   Card,
@@ -45,6 +46,7 @@ import {
   DataTable,
   Empty,
   Field,
+  IconButton,
   Input,
   KV,
   Modal,
@@ -175,7 +177,16 @@ export function OrdersPage() {
               ),
             },
             { key: "factory", header: "Zavod", cell: (r) => r.factory.name, hideOnMobile: true },
-            { key: "address", header: "Manzil", cell: (r) => <span className="line-clamp-1 max-w-[200px]">{r.address}</span>, hideOnMobile: true },
+            {
+              key: "address",
+              header: "Manzil",
+              cell: (r) => (
+                <span className="line-clamp-1 max-w-[200px]">
+                  <AddressLink nested address={r.address} link={r.address_link} mapUrl={r.map_url} lat={r.lat} lon={r.lon} />
+                </span>
+              ),
+              hideOnMobile: true,
+            },
             { key: "status", header: "Holat", cell: (r) => <OrderStatusBadge status={r.status} label={r.status_label} /> },
             { key: "dates", header: "Qabul / topshirish", cell: (r) => <span className="whitespace-nowrap text-xs">{date(r.reception_date)}<br />{date(r.end_date)}</span> },
             { key: "deadline", header: "Muddat", cell: (r) => <DeadlinePill deadline={r.deadline} /> },
@@ -192,7 +203,9 @@ export function OrdersPage() {
                 <span className="font-semibold">№{r.order_number} · {r.client?.fio}</span>
                 <OrderStatusBadge status={r.status} label={r.status_label} />
               </div>
-              <div className="muted text-sm">{r.address}</div>
+              <div className="muted text-sm">
+                <AddressLink nested address={r.address} link={r.address_link} mapUrl={r.map_url} lat={r.lat} lon={r.lon} />
+              </div>
               <div className="flex items-center justify-between">
                 <DeadlinePill deadline={r.deadline} />
                 {showMoney && <MoneyLeft className="text-sm" left={r.money_left} total={r.total_price} />}
@@ -216,7 +229,9 @@ export function OrderDetailPage() {
   const navigate = useNavigate();
   const { data: o, isLoading } = useGet<OrderDetail>(`/orders/${id}/`);
   const [tab, setTab] = useState("info");
+  const { can } = useAuth();
   const [editing, setEditing] = useState(false);
+  const [editLocation, setEditLocation] = useState(false);
   const [confirm, setConfirm] = useState<null | "detailing" | "next-status" | "go-to-assembly">(null);
 
   const inv = ["orders", "dashboard", "detailings", "assemblies", "meterings"];
@@ -300,7 +315,17 @@ export function OrderDetailPage() {
               items={[
                 ["Mijoz", o.client ? <Link className="text-brand-700 hover:underline dark:text-brand-300" to={`/clients/${encodeURIComponent(o.client.phone)}`}>{o.client.fio}</Link> : "—"],
                 ["Telefon", <PhoneLink value={o.client?.phone} />],
-                ["Manzil", <AddressLink address={o.address} link={o.address_link} />],
+                [
+                  "Manzil",
+                  <span className="inline-flex items-start gap-1">
+                    <AddressLink address={o.address} link={o.address_link} mapUrl={o.map_url} lat={o.lat} lon={o.lon} />
+                    {can("order.change_order") && (
+                      <IconButton label="Manzil va lokatsiyani o'zgartirish" className="-my-2 h-8 w-8" onClick={() => setEditLocation(true)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </IconButton>
+                    )}
+                  </span>,
+                ],
                 ["Zavod", o.factory.name],
                 ["Qabul sanasi", date(o.reception_date)],
                 ["Topshirish sanasi", date(o.end_date, "ko'rsatilmagan")],
@@ -387,6 +412,18 @@ export function OrderDetailPage() {
       {tab === "history" && <OrderHistory orderId={o.id} />}
 
       {editing && <OrderEditModal order={o} onClose={() => setEditing(false)} />}
+      {editLocation && (
+        <LocationEditModal
+          resource="orders"
+          id={o.id}
+          address={o.address}
+          link={o.address_link}
+          lat={o.lat}
+          lon={o.lon}
+          invalidate={["orders", "dashboard", "detailings", "assemblies", "paintings", "rovers", "production"]}
+          onClose={() => setEditLocation(false)}
+        />
+      )}
       <Confirm
         open={!!confirm}
         onClose={() => setConfirm(null)}
@@ -622,7 +659,7 @@ export function OrderCreatePage() {
     count_days: "",
     design_type: "",
     address: "",
-    address_link: "",
+    location: "",
     price: { amount: 0 as number | string, currency: "USD" },
     lost_money: { amount: 0 as number | string, currency: "USD" },
     discount: "0",
@@ -631,7 +668,7 @@ export function OrderCreatePage() {
 
   useEffect(() => {
     if (metering)
-      setForm((f) => ({ ...f, address: metering.address ?? "", address_link: metering.address_link ?? "" }));
+      setForm((f) => ({ ...f, address: metering.address ?? "" }));
   }, [metering]);
   useEffect(() => {
     if (design?.types.length) setForm((f) => ({ ...f, design_type: String(design.types[0].id) }));
@@ -662,7 +699,7 @@ export function OrderCreatePage() {
           reception_date: form.reception_date,
           count_days: form.count_days ? Number(form.count_days) : null,
           address: form.address,
-          address_link: form.address_link || null,
+          location: form.location.trim(),
           ...(canPrice ? { price: form.price, lost_money: form.lost_money, discount: Number(form.discount || 0) } : {}),
         })
         .then((r) => r.data),
@@ -725,12 +762,23 @@ export function OrderCreatePage() {
         </Card>
         <Card title="Manzil">
           <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Manzil" error={errors.address}>
+            <Field label="Manzil" error={errors.address} hint={metering ? "O'lchovdan olindi" : undefined}>
               <Input value={form.address} onChange={upd("address")} />
             </Field>
-            <Field label="Xarita havolasi" error={errors.address_link}>
-              <Input type="url" value={form.address_link} onChange={upd("address_link")} />
-            </Field>
+            <LocationField
+              value={form.location}
+              onChange={(location) => setForm({ ...form, location })}
+              error={errors.location ?? errors.address_link}
+              hint={
+                metering
+                  ? metering.lat && metering.lon
+                    ? "Bo'sh qolsa — o'lchovdagi nuqta olinadi 📍"
+                    : metering.address_link
+                      ? "Bo'sh qolsa — o'lchovdagi havola olinadi"
+                      : "O'lchovda lokatsiya yo'q — havola yoki koordinata qo'shing"
+                  : "Manzil yoki xaritadagi nuqtadan biri kerak"
+              }
+            />
           </div>
         </Card>
         {canPrice && (

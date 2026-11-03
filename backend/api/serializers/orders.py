@@ -15,7 +15,14 @@ from order.rover.models import Rover
 from .. import i18n as uz
 from ..fields import MoneyField
 from ..utils import order_deadline
-from .common import ClientShortSerializer, UserShortSerializer, can_view_price, money_left
+from .common import (
+    ClientShortSerializer,
+    LocationFieldsMixin,
+    LocationInputMixin,
+    UserShortSerializer,
+    can_view_price,
+    money_left,
+)
 
 PRICE_FIELDS = ["price", "lost_money", "discount", "total_price", "money_left"]
 
@@ -28,7 +35,7 @@ class FactorySerializer(serializers.ModelSerializer):
         fields = ["id", "name", "address", "phone", "ordering"]
 
 
-class OrderSerializer(serializers.ModelSerializer):
+class OrderSerializer(LocationFieldsMixin, serializers.ModelSerializer):
     client = ClientShortSerializer(read_only=True)
     factory = FactorySerializer(read_only=True)
     status_label = serializers.SerializerMethodField()
@@ -47,6 +54,9 @@ class OrderSerializer(serializers.ModelSerializer):
             "factory",
             "address",
             "address_link",
+            "lat",
+            "lon",
+            "map_url",
             "desc",
             "status",
             "status_label",
@@ -163,7 +173,7 @@ class OrderDetailSerializer(OrderSerializer):
         }
 
 
-class OrderCreateSerializer(serializers.Serializer):
+class OrderCreateSerializer(LocationInputMixin, serializers.Serializer):
     client_phone = PhoneNumberField(region="UZ", required=False)
     client_fio = serializers.CharField(max_length=255, required=False, allow_blank=True)
     metering = serializers.PrimaryKeyRelatedField(
@@ -180,7 +190,8 @@ class OrderCreateSerializer(serializers.Serializer):
     count_days = serializers.IntegerField(
         min_value=1, max_value=365, required=False, allow_null=True
     )
-    address = serializers.CharField(max_length=255)
+    # may stay blank: it is then taken from the metering (order.services.create_order)
+    address = serializers.CharField(max_length=255, required=False, allow_blank=True)
     address_link = serializers.URLField(
         max_length=1000, required=False, allow_blank=True, allow_null=True
     )
@@ -189,6 +200,7 @@ class OrderCreateSerializer(serializers.Serializer):
     discount = serializers.FloatField(required=False, min_value=0, max_value=100)
 
     def validate(self, attrs):
+        attrs = super().validate(attrs)
         if not attrs.get("metering") and not attrs.get("client_phone"):
             raise serializers.ValidationError({"client_phone": "Mijoz telefonini kiriting."})
         return attrs
@@ -237,6 +249,9 @@ class ProductionOrderSerializer(OrderSerializer):
             "client",
             "address",
             "address_link",
+            "lat",
+            "lon",
+            "map_url",
             "status",
             "status_label",
             "deadline",

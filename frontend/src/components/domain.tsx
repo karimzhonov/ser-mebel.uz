@@ -12,7 +12,6 @@ import {
 import {
   ArrowLeft,
   Download,
-  ExternalLink,
   FileText,
   Folder as FolderIcon,
   FolderOpen,
@@ -31,6 +30,7 @@ import { useAction, useGet, useMeta } from "@/api/hooks";
 import type { Deadline, Folder, FolderFile, Message, Money, Tone } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/cn";
+import { mapHref } from "@/lib/geo";
 import { dateTime, fileSize, leftPercent, money, phone, relative } from "@/lib/format";
 import { Badge, Button, Empty, IconButton, Input, Modal, Spinner, Textarea, TONES } from "./ui";
 
@@ -108,25 +108,81 @@ export function PhoneLink({ value }: { value: string | null | undefined }) {
   );
 }
 
-export function AddressLink({ address, link }: { address: string | null | undefined; link?: string | null }) {
-  if (!address && !link) return <span className="muted">—</span>;
+/** An address that opens Yandex Maps: the exact point when the API has one (map_url),
+ * otherwise a Yandex text search for the address. The pin is coloured when a point is saved.
+ * `nested` renders a span (for addresses inside a card that is itself a link or a button —
+ * an <a> there would be invalid markup). */
+export function AddressLink({
+  address,
+  link,
+  mapUrl,
+  lat,
+  lon,
+  nested,
+  className,
+  empty = "—",
+}: {
+  address: string | null | undefined;
+  link?: string | null;
+  mapUrl?: string | null;
+  lat?: string | null;
+  lon?: string | null;
+  nested?: boolean;
+  className?: string;
+  empty?: ReactNode;
+}) {
+  const href = mapHref({ address, link, mapUrl, lat, lon });
+  const hasPoint = !!(lat && lon);
+  if (!address && !href) return <span className="muted">{empty}</span>;
+  const label = address || (hasPoint ? `${lat}, ${lon}` : "Xaritada");
+  const body = (
+    <>
+      <MapPin className={cn("h-3.5 w-3.5 shrink-0", hasPoint ? "text-rose-500" : "text-slate-400")} />
+      <span className="min-w-0 break-words">{label}</span>
+    </>
+  );
+  const cls = cn(
+    "inline-flex items-start gap-1 text-left hover:underline",
+    href && "cursor-pointer text-brand-700 dark:text-brand-300",
+    className,
+  );
+  if (!href)
+    return <span className={cn("inline-flex items-start gap-1", className)}>{body}</span>;
+  if (nested)
+    return (
+      <span
+        role="link"
+        tabIndex={0}
+        title="Yandex xaritada ochish"
+        className={cls}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          window.open(href, "_blank", "noopener,noreferrer");
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.stopPropagation();
+          e.preventDefault();
+          window.open(href, "_blank", "noopener,noreferrer");
+        }}
+      >
+        {body}
+      </span>
+    );
   return (
-    <span className="inline-flex items-center gap-1">
-      <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-      <span>{address || "—"}</span>
-      {link && (
-        <a
-          href={link}
-          target="_blank"
-          rel="noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="ml-1 text-brand-700 hover:underline dark:text-brand-300"
-          title="Xaritani ochish"
-        >
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
-      )}
-    </span>
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      title="Yandex xaritada ochish"
+      onClick={(e) => e.stopPropagation()}
+      className={cls}
+    >
+      {body}
+    </a>
   );
 }
 

@@ -1,6 +1,6 @@
 import { useGet, useList, useMeta } from "@/api/hooks";
 import type { Invoice, StatusStats } from "@/api/types";
-import { PhoneLink, SolutionBadge, TimelineChart } from "@/components/domain";
+import { AddressLink, PhoneLink, SolutionBadge, TimelineChart } from "@/components/domain";
 import { Card, Chip, DataTable, Pagination } from "@/components/ui";
 import { relative } from "@/lib/format";
 import { DueText, NoTaskBadge, SourceBadge } from "./shared";
@@ -99,6 +99,11 @@ export function LeadList({
                   <span className="muted">{r.assigned_to?.name ?? relative(r.create_date)}</span>
                 </div>
                 {r.desc && <p className="muted line-clamp-2 text-sm">{r.desc}</p>}
+                {(r.address || r.map_url) && (
+                  <div className="text-xs">
+                    <AddressLink nested address={r.address} link={r.address_link} mapUrl={r.map_url} lat={r.lat} lon={r.lon} />
+                  </div>
+                )}
               </div>
             )}
           />

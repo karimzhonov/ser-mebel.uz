@@ -1,0 +1,10 @@
+{
+  "target": {
+    "kind": "invoice",
+    "id": 128
+  },
+  "lat": "41.311081",
+  "lon": "69.279737",
+  "address": "Chilonzor 5",
+  "live": false
+}

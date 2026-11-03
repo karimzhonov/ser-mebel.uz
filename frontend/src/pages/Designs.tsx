@@ -194,7 +194,7 @@ export function DesignDetailPage() {
               items={[
                 ["Mijoz", <Link className="text-brand-700 hover:underline dark:text-brand-300" to={`/meterings/${m.id}`}>{m.client.fio}</Link>],
                 ["Telefon", <PhoneLink value={m.client.phone} />],
-                ["Manzil", <AddressLink address={m.address} link={m.address_link} />],
+                ["Manzil", <AddressLink address={m.address} link={m.address_link} mapUrl={m.map_url} lat={m.lat} lon={m.lon} />],
                 ["O'lchov sanasi", dateTime(m.date_time)],
               ]}
             />

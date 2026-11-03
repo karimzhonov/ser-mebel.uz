@@ -13,6 +13,7 @@ The bot is a **thin Telegram UI**. It has **no database** and no business rules:
 - `bot/backend/` — `client.py` (`backend.request(method, path, actor=, json=, params=, files=, raw=)`, errors `ServiceRefusal`(400)/`Forbidden`(403)/`NotFound`/`Conflict`(409)/`BackendDown`), `signing.py` (HMAC vector in the contract doc).
 - `bot/common/` — `middlewares.py` (update dedup, per-user Redis lock, actor/`whoami`), `actor.py`, `kb.py`, `fmt.py`, `rds.py`, `link.py` (site account linking), `start.py` (plain `/start`, `/moliya`, `/start davomat`).
 - `bot/notify/registry.py` — `@on("event.name")` renderers + `dispatch()`; `Notifier` records `delivered` (`blocked` on Telegram 403).
+- `bot/crm/` — call-center leads. `crm.router` = private-only, composed of `handlers/tasks` (task buttons) -> `handlers/location` (Telegram location -> lead/metering pick, FSM `LocPick:target`; must stay BEFORE lead so a forwarded location is not taken as a lead forward) -> `handlers/lead` («Yangi mijoz» FSM `Lead:*`; also accepts `LocPick:*` states). Group-chat locations stay with HR attendance.
 - `bot/finance/` — Moliya: `router.py`, `handlers/*`, `states.py`, `texts.py`, `keyboards.py`, `charts.py` (QuickChart), `notify.py` (`finance.*` renderers). `bot/hr/` — davomat (separate owner).
 
 ## Rules
