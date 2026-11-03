@@ -149,6 +149,20 @@ def build() -> Router:
         await state.clear()
         raise SkipHandler
 
+    # 3c. any other private location nobody above took: say why (no later router handles
+    # locations in a private chat, so this never steals one; the state is left untouched)
+    @r.message(F.location)
+    async def loc_refused(message: Message, state: FSMContext, actor=None):
+        if actor is None:
+            text = api.DOWN_TEXT
+        elif actor.can_set_location and await state.get_state() is not None:
+            text = T.LOC_BUSY
+        elif not actor.crm_linked:
+            text = T.LOC_NOT_LINKED
+        else:
+            text = T.LOC_NO_RIGHT
+        await message.answer(text)
+
     # 4. the pick
     @r.callback_query(F.data.regexp(LOC_CB), StateFilter(LocPick.target))
     async def loc_pick(cb: CallbackQuery, state: FSMContext):

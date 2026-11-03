@@ -213,10 +213,18 @@ async def test_cancel_clears(env):
 
 
 async def test_no_permission_location_is_ignored(env):
-    env.backend.who["crm"] = {"can_add_lead": True, "can_set_location": False}
+    env.backend.who["crm"] = {"linked": True, "can_add_lead": True, "can_set_location": False}
     await send_loc(env)
     assert await env.state() is None
     assert not env.backend.to("crm/locations/candidates/")
+    assert "huquqi kerak" in env.session.last().text
+
+
+async def test_unlinked_location_says_how_to_link(env):
+    env.backend.who["crm"] = {"linked": False, "can_add_lead": False, "can_set_location": False}
+    await send_loc(env)
+    assert await env.state() is None
+    assert "ulanmagan" in env.session.last().text
 
 
 async def test_location_during_lead_note_is_carried_into_save(env):
@@ -263,6 +271,7 @@ async def test_finance_draft_state_is_untouched(env):
 
     key = StorageKey(bot_id=env.bot.id, chat_id=UID, user_id=UID)
     assert (await env.dp.storage.get_data(key)) == {"draft": "keep"}
+    assert "boshqa amal ochiq" in env.session.last().text
 
 
 async def test_group_location_never_reaches_crm(env):

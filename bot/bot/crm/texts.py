@@ -50,6 +50,19 @@ LOC_ASK_EMPTY = (
 LOC_PHONE_NONE = "Bu raqam bo'yicha ochiq ariza yoki o'lchov topilmadi."
 LOC_IN_LEAD = "📍 Lokatsiya arizaga biriktiriladi. Davom eting."
 LOC_LIVE = "ℹ️ Jonli lokatsiya: hozirgi nuqta saqlanadi."
+# a location the bot could not take: say why instead of staying silent
+LOC_NOT_LINKED = (
+    "📍 Lokatsiyani saqlab bo'lmadi: Telegram'ingiz saytdagi profilingizga ulanmagan.\n"
+    "Saytda menyu pastidagi «Telegramni ulash» tugmasini bosing, so'ng lokatsiyani qayta yuboring."
+)
+LOC_NO_RIGHT = (
+    "📍 Lokatsiyani saqlash uchun arizalar yoki o'lchovlarni o'zgartirish huquqi kerak. "
+    "Administratorga murojaat qiling."
+)
+LOC_BUSY = (
+    "📍 Hozir boshqa amal ochiq. Uni tugating yoki /bekor ni bosing, "
+    "so'ng lokatsiyani qayta yuboring."
+)
 LOC_SAME = "ℹ️ Xuddi shu nuqta avvaldan bor edi."
 
 

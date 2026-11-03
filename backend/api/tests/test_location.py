@@ -372,6 +372,7 @@ def test_whoami_can_set_location_combos(bot_client, make_staff):
         who = bot_client.post("whoami/", actor=5000 + i, data={"user": {"id": 5000 + i}})
         assert who.data["crm"]["can_set_location"] is expected, perms
     assert bot_client.post("whoami/", actor=1, data={"user": {"id": 1}}).data["crm"] == {
+        "linked": False,
         "can_add_lead": False,
         "can_set_location": False,
     }
@@ -549,4 +550,4 @@ def test_location_target_dto_matches_fixture(seller):
     req = load_fixture("misc.crm_location_request.json")
     assert set(req) == {"target", "lat", "lon", "address", "live"}
     who = load_fixture("misc.whoami_response.json")
-    assert who["crm"] == {"can_add_lead": True, "can_set_location": True}
+    assert who["crm"] == {"linked": True, "can_add_lead": True, "can_set_location": True}

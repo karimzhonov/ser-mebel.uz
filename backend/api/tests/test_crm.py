@@ -191,7 +191,7 @@ def test_bot_crm_flow(bot_client, seller, bot_events):
     assert "ulanmagan" in unlinked.data["detail"]
 
     who = bot_client.post("whoami/", actor=4001, data={"user": {"id": 4001}})
-    assert who.data["crm"] == {"can_add_lead": True, "can_set_location": True}
+    assert who.data["crm"] == {"linked": True, "can_add_lead": True, "can_set_location": True}
 
     req = load_fixture("misc.crm_lead_request.json")
     r = bot_client.post("crm/leads/", actor=4001, data=req)

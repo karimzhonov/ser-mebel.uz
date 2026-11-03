@@ -38,6 +38,8 @@ class WhoAmIView(BotAPIView):
                     "is_admin": bool(m and m.is_admin),
                 },
                 "crm": {
+                    # Telegram linked to an active staff profile on the site
+                    "linked": bool(self.site_user),
                     "can_add_lead": bool(
                         self.site_user
                         and self.site_user.has_perm("call_center.add_invoice")
