@@ -82,6 +82,22 @@ SECTIONS: tuple[Section, ...] = (
         ("metering.metering",),
         extra=("metering.change_status",),
     ),
+    Section(
+        "metering_measurer",
+        "O'lchov",
+        "Zamerchi",
+        (),
+        edit=False,
+        hint="Zamerlar unga biriktiriladi, bot eslatib turadi. «O'lchovlar»da kamida «Ko'rish» ham kerak",
+    ),
+    Section(
+        "metering_manager",
+        "O'lchov",
+        "Zamerlar rahbari",
+        (),
+        edit=False,
+        hint="Hamma zamerlarni ko'radi va zamerchini almashtiradi",
+    ),
     Section("designs", "O'lchov", "Dizayn", ("design.design", "design.designtype")),
     Section(
         "prices",
@@ -199,6 +215,8 @@ _SINGLE = {
     "order_price": "order.view_order_price",
     "finance_all": "accounting.view_all_operations",
     "call_center_manager": "call_center.manage_invoice",
+    "metering_measurer": "oauth.user_metering",
+    "metering_manager": "metering.manage_metering",
 }
 
 
@@ -243,6 +261,8 @@ def access(user) -> dict:
                 "label": s.label,
                 "hint": s.hint,
                 "can_edit": s.edit,
+                # one yes/no permission (shown as «Yo'q / Ha» instead of «Ko'rish»)
+                "is_flag": s.key in _SINGLE,
                 "level": _level(s, own),
                 "from_groups": _level(s, groups),
             }

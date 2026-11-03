@@ -28,6 +28,7 @@ class InvoiceSerializer(LocationFieldsMixin, serializers.ModelSerializer):
     solution_label = serializers.SerializerMethodField()
     is_editable = serializers.SerializerMethodField()
     metering_id = serializers.SerializerMethodField()
+    metering = serializers.SerializerMethodField()
     source_label = serializers.SerializerMethodField()
     assigned_to = serializers.SerializerMethodField()
     created_by = serializers.SerializerMethodField()
@@ -52,6 +53,7 @@ class InvoiceSerializer(LocationFieldsMixin, serializers.ModelSerializer):
             "solution_label",
             "is_editable",
             "metering_id",
+            "metering",
             "source",
             "source_label",
             "assigned_to",
@@ -118,6 +120,30 @@ class InvoiceSerializer(LocationFieldsMixin, serializers.ModelSerializer):
     def get_metering_id(self, obj):
         metering = getattr(obj, "metering", None)
         return metering.pk if isinstance(metering, Metering) else None
+
+    def get_metering(self, obj):
+        """The lead's zamer in short (the lead card shows it without a second request)."""
+        from core.i18n import metering_status
+
+        m = getattr(obj, "metering", None)
+        if not isinstance(m, Metering):
+            return None
+        measurer = m.measurer
+        return {
+            "id": m.pk,
+            "status": m.status,
+            "status_label": metering_status(m.status),
+            "date_time": m.date_time,
+            "measurer": (
+                {"id": measurer.pk, "name": measurer.name or str(measurer.phone)}
+                if measurer
+                else None
+            ),
+            "result_note": m.result_note,
+            "cancel_reason": m.cancel_reason,
+            "next_step": m.next_step,
+            "folder": m.folder_id,
+        }
 
 
 class InvoiceCreateSerializer(LocationInputMixin, serializers.Serializer):

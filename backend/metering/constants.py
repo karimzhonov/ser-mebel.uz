@@ -2,6 +2,15 @@ from django.db.models import TextChoices
 from unfold.enums import ActionVariant
 
 METERING_CHANGE_STATUS_PERMISSION = 'change_status'
+METERING_MANAGE_PERMISSION = 'manage_metering'
+METERING_MAX_UPLOAD_MB = 500
+
+
+class NextStep(TextChoices):
+    """What happens after the measurement (set when the metering is finished)."""
+
+    design_price = ('design_price', 'Dizayn + narx')
+    price = ('price', 'Faqat narx')
 
 
 class MeteringStatus(TextChoices):

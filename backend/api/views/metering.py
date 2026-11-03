@@ -15,6 +15,7 @@ from call_center.models import Invoice
 from client.models import Client
 from core.exceptions import ServiceError
 from core.geo import UNSET
+from metering import services as metering_services
 from metering.constants import MeteringStatus
 from metering.design.models import Design, DesignType
 from metering.design.services import add_design_type, mark_design_done
@@ -50,18 +51,25 @@ from metering.price.services import (
 )
 from metering.services import (
     assign_metering_tasks,
+    cancel_metering,
     create_metering,
+    default_measurer,
     designers,
-    mark_metering_done,
-    mark_metering_dont_need,
-    mark_metering_other_day,
+    finish_metering,
+    mark_metering_measured,
+    measurers,
+    metering_agenda,
+    metering_files,
     metering_is_editable,
+    metering_queryset_for,
     pricers,
+    reschedule_metering,
+    save_metering_files,
     set_metering_location,
+    set_metering_measurer,
     start_design,
     start_price,
 )
-from oauth.constants import METERING_PERMISSION
 
 from ..permissions import IsStaffUser, ModelPermissions, require_perm
 from ..serializers.common import LocationSetSerializer, UserShortSerializer
@@ -70,6 +78,8 @@ from ..serializers.metering import (
     CalculationInputSerializer,
     DesignSerializer,
     DesignTypeSerializer,
+    DontNeedSerializer,
+    FinishSerializer,
     InventorySerializer,
     InventoryTypeSerializer,
     MeteringCreateSerializer,
@@ -82,9 +92,11 @@ from ..serializers.metering import (
     PriceSerializer,
     RoomInputSerializer,
     RoomTypeSerializer,
+    SetMeasurerSerializer,
     can_assign_tasks,
 )
 from ..utils import apply_period, csv_values, int_param, timeseries
+from .files import _file_row
 
 
 def _bool_param(value):
@@ -120,14 +132,35 @@ class MeteringViewSet(viewsets.ModelViewSet):
         return MeteringSerializer
 
     def base_queryset(self):
-        qs = Metering.objects.select_related("client", "design__user", "price__user", "order")
+        qs = Metering.objects.select_related(
+            "client",
+            "design__user",
+            "price__user",
+            "order",
+            "measurer",
+            "created_by",
+            "invoice__assigned_to",
+        )
         return apply_period(qs, "create_date", self.request.query_params)
 
     def get_queryset(self):
-        qs = self.base_queryset()
-        statuses = csv_values(self.request.query_params.get("status"))
+        qs = metering_queryset_for(self.request.user, self.base_queryset())
+        params = self.request.query_params
+        statuses = csv_values(params.get("status"))
         if statuses:
             qs = qs.filter(status__in=statuses)
+        return self._by_measurer(qs)
+
+    def _by_measurer(self, qs):
+        """?measurer=<id>|me"""
+        value = self.request.query_params.get("measurer")
+        if value == "me":
+            return qs.filter(measurer=self.request.user)
+        if value not in (None, ""):
+            try:
+                return qs.filter(measurer_id=int(value))
+            except ValueError:
+                return qs.none()
         return qs
 
     def _detail(self, metering, code=status.HTTP_200_OK):
@@ -145,13 +178,17 @@ class MeteringViewSet(viewsets.ModelViewSet):
         fio = (data.pop("client_fio", "") or "").strip()
         invoice_id = data.pop("invoice", None)
         invoice = get_object_or_404(Invoice, pk=invoice_id) if invoice_id else None
+        measurer_id = data.pop("measurer", None)
+        measurer = get_object_or_404(get_user_model(), pk=measurer_id) if measurer_id else None
         with transaction.atomic():  # no orphan client if the metering is refused
             client = Client.objects.filter(phone=phone).first()
             if client is None:
                 if not fio:
                     raise ServiceError("Yangi mijoz uchun F.I.Sh. kiriting")
                 client = Client.objects.create(phone=phone, fio=fio)
-            metering = create_metering(client=client, invoice=invoice, author=request.user, **data)
+            metering = create_metering(
+                client=client, invoice=invoice, author=request.user, measurer=measurer, **data
+            )
         return self._detail(metering, status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
@@ -181,27 +218,126 @@ class MeteringViewSet(viewsets.ModelViewSet):
         response.data = {**response.data, "short": d["short"]}
         return response
 
-    @action(detail=True, methods=["post"], url_path="dont-need")
+    @action(
+        detail=True, methods=["post"], url_path="dont-need", serializer_class=DontNeedSerializer
+    )
     def dont_need(self, request, pk=None):
-        require_perm(request.user, "metering.change_metering")
-        return self._detail(mark_metering_dont_need(self.get_object()))
+        """Cancel the zamer: {reason}. The lead goes back to its operator as a call task."""
+        serializer = DontNeedSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        metering, returned = cancel_metering(
+            self.get_object(), by=request.user, reason=serializer.validated_data["reason"]
+        )
+        response = self._detail(metering)
+        response.data["lead_returned"] = returned
+        return response
 
     @action(
         detail=True, methods=["post"], url_path="other-day", serializer_class=OtherDaySerializer
     )
     def other_day(self, request, pk=None):
-        require_perm(request.user, "metering.change_metering")
+        """Move the zamer to another time: {date_time} (required)."""
         serializer = OtherDaySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        metering = mark_metering_other_day(
-            self.get_object(), serializer.validated_data.get("date_time")
+        metering = reschedule_metering(
+            self.get_object(), by=request.user, date_time=serializer.validated_data["date_time"]
         )
         return self._detail(metering)
 
     @action(detail=True, methods=["post"], url_path="metering-done")
     def metering_done(self, request, pk=None):
-        require_perm(request.user, f"oauth.{METERING_PERMISSION}")
-        return self._detail(mark_metering_done(self.get_object()))
+        """«O'lchov oldim»: the measurer (or a zamer manager) took the measurements."""
+        return self._detail(mark_metering_measured(self.get_object(), by=request.user))
+
+    @action(detail=True, methods=["post"], serializer_class=FinishSerializer)
+    def finish(self, request, pk=None):
+        """«Bajarildi»: {note, next_step: design_price|price, designer?, pricer} - needs
+        at least one uploaded file."""
+        serializer = FinishSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d = serializer.validated_data
+        User = get_user_model()
+        designer = get_object_or_404(User, pk=d["designer"]) if d.get("designer") else None
+        pricer = get_object_or_404(User, pk=d["pricer"]) if d.get("pricer") else None
+        result = finish_metering(
+            self.get_object(),
+            by=request.user,
+            note=d["note"],
+            next_step=d["next_step"],
+            designer=designer,
+            pricer=pricer,
+        )
+        response = self._detail(result["metering"])
+        response.data["assigned"] = result["assigned"]
+        return response
+
+    @action(detail=True, methods=["post"], serializer_class=SetMeasurerSerializer)
+    def measurer(self, request, pk=None):
+        """Hand the zamer to another measurer: {measurer}."""
+        serializer = SetMeasurerSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = get_object_or_404(get_user_model(), pk=serializer.validated_data["measurer"])
+        return self._detail(
+            set_metering_measurer(self.get_object(), measurer=user, by=request.user)
+        )
+
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def files(self, request, pk=None):
+        """GET: files of the metering folder tree. POST multipart `file`: upload (one file
+        per request from the SPA, so a big video shows real progress)."""
+        metering = self.get_object()
+        if request.method == "POST":
+            uploads = request.FILES.getlist("file")
+            if not uploads:
+                raise ServiceError("Fayl tanlang", "files")
+            created = save_metering_files(metering, uploads, by=request.user)
+            return Response([_file_row(f) for f in created], status=status.HTTP_201_CREATED)
+        rows = metering_files(metering).order_by("-uploaded_at")
+        return Response([_file_row(f) for f in rows])
+
+    @action(detail=False, methods=["get"])
+    def measurers(self, request):
+        """Who can be picked as the measurer: {items: [UserShort], default: id|null}."""
+        if not (
+            request.user.has_perm("metering.add_metering")
+            or request.user.has_perm("metering.change_metering")
+            or request.user.has_perm("metering.manage_metering")
+        ):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+        default = default_measurer()
+        items = UserShortSerializer(measurers(), many=True).data
+        body = {"items": items, "default": default.pk if default else None}
+        if not items:
+            body["hint"] = (
+                "Zamerchi yo'q: xodimga «Metering» (user_metering) huquqini bering. "
+                "Hozircha zamer zamerchisiz yaratiladi."
+            )
+        return Response(body)
+
+    @action(detail=False, methods=["get"])
+    def agenda(self, request):
+        """The «Zamerlar» day agenda: counts + overdue / today / tomorrow / week / waiting."""
+        qs = metering_queryset_for(request.user, self.base_queryset())
+        qs = self._by_measurer(qs)
+        search = (request.query_params.get("search") or "").strip()
+        if search:
+            from django.db.models import Q
+
+            qs = qs.filter(
+                Q(client__fio__icontains=search)
+                | Q(client__phone__icontains=search)
+                | Q(address__icontains=search)
+            )
+        data = metering_agenda(qs, now=metering_services._now())
+        ctx = self.get_serializer_context()
+        out = {"counts": data["counts"]}
+        for key in ("overdue", "today", "tomorrow", "week", "waiting"):
+            out[key] = MeteringSerializer(data[key], many=True, context=ctx).data
+        return Response(out)
 
     @action(detail=True, methods=["post"], url_path="create-design")
     def create_design(self, request, pk=None):
@@ -249,7 +385,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def stats(self, request):
         """Counts per status (the admin MeteringStatusBanner) + the line chart."""
-        qs = self.filter_queryset(self.base_queryset())
+        qs = self.filter_queryset(metering_queryset_for(request.user, self.base_queryset()))
         counts = {
             row["status"]: row["c"]
             for row in qs.order_by().values("status").annotate(c=Count("pk"))

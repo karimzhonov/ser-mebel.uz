@@ -12,9 +12,9 @@ from api.tests.test_location import (
     INV_PERMS,
     MET_PERMS,
     NOW,
-    P,
     P2,
     YA,
+    P,
     _order_chain,
     _order_payload,
     mk,
@@ -30,7 +30,7 @@ from metering.services import create_metering, set_metering_location
 from order.models import Order
 from order.services import set_order_location
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("default_measurer")]
 
 
 # ------------------------------------------------------------ inheritance via the panel API
@@ -290,7 +290,7 @@ def test_candidates_gating_per_kind(bot_client, make_staff, seller):
     assert _items(r) == [("invoice", inv.pk)]
     # metering perms only: never invoices, even by phone
     make_staff(*MET_PERMS, telegram_id=4601)
-    r = bot_client.get(f"crm/locations/candidates/?phone=%2B998901113301", actor=4601)
+    r = bot_client.get("crm/locations/candidates/?phone=%2B998901113301", actor=4601)
     assert _items(r) == [("metering", m.pk)]
     r = bot_client.get("crm/locations/candidates/?phone=%2B998901112233", actor=4601)
     assert r.data["items"] == []

@@ -1,6 +1,7 @@
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import serializers
 
+from metering import services as metering_services
 from metering.constants import MeteringStatus
 from metering.design.models import Design, DesignType
 from metering.models import Metering
@@ -14,7 +15,17 @@ from metering.price.models import (
     Room,
     RoomType,
 )
-from metering.services import ASSIGNABLE_STATUSES, metering_is_editable
+from metering.services import (
+    ASSIGNABLE_STATUSES,
+    CANCELLABLE_STATUSES,
+    OPEN_STATUSES,
+    can_reschedule_or_cancel,
+    can_work_metering,
+    is_overdue,
+    metering_files,
+    metering_is_editable,
+    metering_operator,
+)
 from oauth.constants import METERING_PERMISSION
 
 from .. import i18n as uz
@@ -35,8 +46,10 @@ def _user(user):
 
 def can_assign_tasks(user) -> bool:
     """The metering staff (who press "Замер выполнен") or whoever may edit meterings."""
-    return user.has_perm(f"oauth.{METERING_PERMISSION}") or user.has_perm(
-        "metering.change_metering"
+    return (
+        user.has_perm(f"oauth.{METERING_PERMISSION}")
+        or user.has_perm("metering.change_metering")
+        or user.has_perm("metering.manage_metering")
     )
 
 
@@ -71,6 +84,9 @@ class MeteringSerializer(LocationFieldsMixin, serializers.ModelSerializer):
     price = serializers.SerializerMethodField()
     order = serializers.SerializerMethodField()
     is_editable = serializers.SerializerMethodField()
+    measurer = serializers.SerializerMethodField()
+    operator = serializers.SerializerMethodField()
+    is_overdue = serializers.SerializerMethodField()
 
     class Meta:
         model = Metering
@@ -80,6 +96,15 @@ class MeteringSerializer(LocationFieldsMixin, serializers.ModelSerializer):
             "status",
             "status_label",
             "date_time",
+            "measurer",
+            "operator",
+            "measured_at",
+            "done_at",
+            "result_note",
+            "next_step",
+            "cancel_reason",
+            "is_overdue",
+            "rev",
             "address",
             "address_link",
             "lat",
@@ -122,26 +147,52 @@ class MeteringSerializer(LocationFieldsMixin, serializers.ModelSerializer):
     def get_is_editable(self, obj):
         return metering_is_editable(obj)
 
+    def get_measurer(self, obj):
+        return _user(obj.measurer)
+
+    def get_operator(self, obj):
+        return _user(metering_operator(obj))
+
+    def get_is_overdue(self, obj):
+        # one clock reading and one constance lookup per serialization run: the root
+        # context is shared by every child of a ListSerializer
+        ctx = self.context
+        if "_met_now" not in ctx:
+            ctx["_met_now"] = metering_services._now()
+            ctx["_met_late_after"] = metering_services._late_after()
+        return is_overdue(obj, ctx["_met_now"], ctx["_met_late_after"])
+
 
 class MeteringDetailSerializer(MeteringSerializer):
     actions = serializers.SerializerMethodField()
+    file_count = serializers.SerializerMethodField()
 
     class Meta(MeteringSerializer.Meta):
-        fields = MeteringSerializer.Meta.fields + ["actions"]
+        fields = MeteringSerializer.Meta.fields + ["file_count", "actions"]
         read_only_fields = fields
 
+    def get_file_count(self, obj):
+        return metering_files(obj).count()
+
     def get_actions(self, obj):
-        """Which buttons this user gets — the admin's has_*_permission checks."""
+        """Which buttons this user gets."""
         user = self.context["request"].user
         status = obj.status
         S = MeteringStatus
         can_change = user.has_perm("metering.change_metering")
+        manager = user.is_superuser or user.has_perm("metering.manage_metering")
+        work = can_work_metering(user, obj)
+        measured = work and status in OPEN_STATUSES
         return {
             "edit": can_change and metering_is_editable(obj),
-            "dont_need": can_change and status in [S.created, S.other_day, S.metering_done],
-            "other_day": can_change and status in [S.created, S.other_day],
-            "metering_done": user.has_perm(f"oauth.{METERING_PERMISSION}")
-            and status in [S.created, S.other_day],
+            "measured": measured,
+            "metering_done": measured,  # old name of "measured" (kept for old clients)
+            "reschedule": can_reschedule_or_cancel(user, obj) and status in OPEN_STATUSES,
+            "cancel": can_reschedule_or_cancel(user, obj) and status in CANCELLABLE_STATUSES,
+            "finish": work and status == S.metering_done,
+            "upload": can_reschedule_or_cancel(user, obj)
+            and status not in (S.dont_need, S.sold_out),
+            "set_measurer": (manager or can_change) and status in [*OPEN_STATUSES, S.metering_done],
             "create_design": user.has_perm("design.add_design") and not hasattr(obj, "design"),
             "create_price": user.has_perm("price.add_price") and not hasattr(obj, "price"),
             # "Назначить исполнителей": after the metering, while a task is still open.
@@ -164,18 +215,35 @@ class MeteringCreateSerializer(LocationInputMixin, serializers.Serializer):
     )
     desc = serializers.CharField(required=False, allow_blank=True, allow_null=True)
     invoice = serializers.IntegerField(required=False, allow_null=True)
+    measurer = serializers.IntegerField(required=False, allow_null=True)
 
 
 class MeteringUpdateSerializer(serializers.ModelSerializer):
-    """MeteringAdmin leaves only date_time and desc editable on an existing row."""
+    """Only the description is editable: the time moves through «reschedule» (it is
+    versioned and told to the measurer)."""
 
     class Meta:
         model = Metering
-        fields = ["date_time", "desc"]
+        fields = ["desc"]
 
 
 class OtherDaySerializer(serializers.Serializer):
-    date_time = serializers.DateTimeField(required=False, allow_null=True)
+    date_time = serializers.DateTimeField()
+
+
+class DontNeedSerializer(serializers.Serializer):
+    reason = serializers.CharField(trim_whitespace=True)
+
+
+class FinishSerializer(serializers.Serializer):
+    note = serializers.CharField(allow_blank=True, required=False, default="")
+    next_step = serializers.CharField(allow_blank=True, required=False, default="")
+    designer = serializers.IntegerField(required=False, allow_null=True)
+    pricer = serializers.IntegerField(required=False, allow_null=True)
+
+
+class SetMeasurerSerializer(serializers.Serializer):
+    measurer = serializers.IntegerField()
 
 
 # --- Design ---------------------------------------------------------------------

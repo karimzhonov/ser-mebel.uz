@@ -238,6 +238,14 @@ def add_note(invoice, *, author, text, kind=NoteKind.note, meta=None, task=None)
     return note
 
 
+def log_metering(invoice, *, author, event, text="", meta=None):
+    """Timeline line about the lead's zamer (assigned / measured / rescheduled /
+    cancelled / done). meta always carries the event name."""
+    return _log(
+        invoice, NoteKind.metering, author, text=text, meta={"event": event, **(meta or {})}
+    )
+
+
 def log_solution(invoice, old, new, author=None, extra=None):
     """History line for an answer change (also called by metering/order creation).
     `extra` is merged into the line's meta (e.g. {"closed_tasks": 2})."""
@@ -334,6 +342,45 @@ def _apply_solution(invoice, solution, author) -> int:
         closed = _close_open_tasks(invoice, author, _now())
     log_solution(invoice, old, int(solution), author, {"closed_tasks": closed} if closed else None)
     return closed
+
+
+def _active_user(user):
+    """The user, if still an eligible lead assignee (active, right permissions)."""
+    if user is None or not user.is_active:
+        return None
+    return user if eligible_assignees().filter(pk=user.pk).exists() else None
+
+
+def return_lead_from_metering(invoice, *, by, reason, metering_id) -> bool:
+    """The zamer was cancelled: the lead goes back to its operator as a call task
+    (answer "Қайта телефон қилиш", a task due now). A sold lead is left alone. The
+    caller holds (or takes here) the lead lock before any metering/task row.
+    Returns whether the lead was returned."""
+    from .models import Invoice
+
+    with transaction.atomic():
+        locked = (
+            Invoice.objects.select_for_update(of=("self",))
+            .select_related("assigned_to")
+            .get(pk=invoice.pk)
+        )
+        if locked.solution != SolutionChoice.go_for_measured:
+            return False  # sold out, or the operator already moved the lead on
+        # not set_invoice_solution: it refuses a lead already "served" (go_for_measured)
+        _apply_solution(locked, SolutionChoice.re_phone, by)
+        create_task(
+            locked,
+            text=f"Zamer bekor bo'ldi: {reason}"[:500],
+            due_at=_now(),
+            by=by,
+            assigned_to=_active_user(locked.assigned_to) or _active_user(locked.created_by) or by,
+            check=False,
+        )
+        log_metering(
+            locked, author=by, event="cancelled", text=reason, meta={"metering_id": metering_id}
+        )
+        invoice.solution = locked.solution
+    return True
 
 
 def set_invoice_solution(invoice, solution: int, *, author=None):
@@ -752,9 +799,9 @@ _DATE = re.compile(r"^(\d{1,2})\.(\d{1,2})(?:\.(\d{4}))?(?:\s+(\d{1,2}):(\d{2}))
 _BAD_TIME = "Vaqtni tushunmadim. Masalan: 14:30, 25.12 yoki 25.12 14:30"
 
 
-def parse_due(text, now) -> datetime:
+def parse_due(text, now, default_time=None) -> datetime:
     """ "HH:MM" (today), "dd.mm", "dd.mm HH:MM", "dd.mm.yyyy HH:MM". A date without a
-    time means 10:00. A moment in the past is refused."""
+    time means 10:00 (or `default_time`). A moment in the past is refused."""
     raw = (text or "").strip()
     try:
         m = _TIME_ONLY.match(raw)
@@ -764,7 +811,12 @@ def parse_due(text, now) -> datetime:
             m = _DATE.match(raw)
             if not m:
                 raise ValueError
-            hour, minute = (int(m[4]), int(m[5])) if m[4] is not None else (TOMORROW_HOUR, 0)
+            if m[4] is not None:
+                hour, minute = int(m[4]), int(m[5])
+            elif default_time is not None:
+                hour, minute = default_time.hour, default_time.minute
+            else:
+                hour, minute = TOMORROW_HOUR, 0
             due = datetime(int(m[3] or now.year), int(m[2]), int(m[1]), hour, minute)
     except ValueError:
         raise ServiceError(_BAD_TIME)

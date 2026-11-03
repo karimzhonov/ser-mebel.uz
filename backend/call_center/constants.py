@@ -60,6 +60,7 @@ class NoteKind(TextChoices):
     assigned = ("assigned", "Mas'ul")
     source = ("source", "Manba")
     location = ("location", "Lokatsiya")
+    metering = ("metering", "O'lchov")
 
 
 # Leads in these answers (None = "Yangi") must always have an open task.

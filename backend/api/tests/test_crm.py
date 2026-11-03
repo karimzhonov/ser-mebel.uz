@@ -10,7 +10,7 @@ from call_center.constants import NoteKind
 from call_center.models import Invoice, InvoiceNote
 from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("default_measurer")]
 
 PERMS = ("call_center.view_invoice", "call_center.add_invoice", "call_center.change_invoice")
 NOW = datetime(2026, 11, 3, 12, 0)

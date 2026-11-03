@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRightLeft,
+  CalendarClock,
   CheckCircle2,
   ClipboardList,
   MapPin,
@@ -14,18 +15,20 @@ import {
   Sparkles,
   Tag,
   UserRound,
+  XCircle,
 } from "lucide-react";
 import { api } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
 import type { Invoice, InvoiceTask, Metering, Order, TimelineEntry } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
-import { AddressLink, MeteringStatusBadge, OrderStatusBadge, PhoneLink, SolutionBadge } from "@/components/domain";
+import { AddressLink, FolderButton, MeteringStatusBadge, OrderStatusBadge, PhoneLink, SolutionBadge } from "@/components/domain";
 import { LocationEditModal } from "@/components/LocationField";
 import { Button, Empty, Field, IconButton, Input, KV, Modal, Select, Spinner, Textarea, TONES } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { dateTime } from "@/lib/format";
 import { yandexPointUrl } from "@/lib/geo";
 import { MeteringCreateModal } from "../Meterings";
+import { NEXT_STEP_LABEL, personName } from "../meterings/actions";
 import { LeadCreateModal } from "./LeadCreateModal";
 import {
   AssigneeSelect,
@@ -70,6 +73,7 @@ export function LeadDetailModal({ id, onClose }: { id: number; onClose: () => vo
         {/* left: who / what / what next */}
         <div className="space-y-5">
           <LeadInfo invoice={invoice} canChange={canChange} />
+          {invoice.metering && <MeteringBlock metering={invoice.metering} />}
 
           {canChange && !served && (
             <div>
@@ -221,7 +225,7 @@ function LeadInfo({ invoice, canChange }: { invoice: Invoice; canChange: boolean
         ],
         ["Javob kodi", <SolutionBadge solution={invoice.solution} label={invoice.solution_label} />],
         ["Yaratilgan", `${dateTime(invoice.create_date)}${invoice.created_by ? " · " + invoice.created_by.name : ""}`],
-        ...(invoice.metering_id
+        ...(invoice.metering_id && !invoice.metering
           ? ([
               [
                 "O'lchov",
@@ -246,6 +250,51 @@ function LeadInfo({ invoice, canChange }: { invoice: Invoice; canChange: boolean
       />
     )}
     </>
+  );
+}
+
+/* ------------------------------------------------------------ zamer */
+
+function MeteringBlock({ metering: m }: { metering: NonNullable<Invoice["metering"]> }) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="label mb-0 flex items-center gap-1.5">
+          <Ruler className="h-4 w-4" /> O'lchov
+        </div>
+        <MeteringStatusBadge status={m.status} label={m.status_label} />
+      </div>
+      <div className="space-y-1">
+        <div>
+          <span className="muted">Vaqt: </span>
+          {dateTime(m.date_time)}
+        </div>
+        <div>
+          <span className="muted">Zamerchi: </span>
+          {personName(m.measurer, "tayinlanmagan")}
+        </div>
+        {m.next_step && (
+          <div>
+            <span className="muted">Keyingi qadam: </span>
+            {NEXT_STEP_LABEL[m.next_step]}
+          </div>
+        )}
+        {m.result_note && <div className="whitespace-pre-line break-words rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-800/60">{m.result_note}</div>}
+        {m.status === "dont_need" && m.cancel_reason && (
+          <div className="whitespace-pre-line break-words rounded-lg bg-rose-50 px-2.5 py-1.5 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+            Bekor bo'ldi: {m.cancel_reason}
+          </div>
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Link className="font-medium text-brand-700 hover:underline dark:text-brand-300" to={`/meterings/${m.id}`}>
+          O'lchovni ochish →
+        </Link>
+        <span className="ml-auto">
+          <FolderButton folderId={m.folder} />
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -371,6 +420,15 @@ function look(e: TimelineEntry): Look {
     if (e.kind === "solution") return { icon: PhoneCall, tone: "warn", title: "Javob kodi" };
     if (e.kind === "assigned") return { icon: UserRound, tone: "idle", title: "Mas'ul o'zgardi" };
     if (e.kind === "source") return { icon: Tag, tone: "idle", title: "Manba o'zgardi" };
+    if (e.kind === "metering") {
+      const ev = String(e.meta?.event ?? "");
+      if (ev === "measured") return { icon: Ruler, tone: "info", title: "O'lchov olindi" };
+      if (ev === "rescheduled") return { icon: CalendarClock, tone: "warn", title: "O'lchov vaqti o'zgardi" };
+      if (ev === "cancelled") return { icon: XCircle, tone: "danger", title: "O'lchov bekor bo'ldi" };
+      if (ev === "done") return { icon: CheckCircle2, tone: "ok", title: "O'lchov bajarildi" };
+      if (ev === "reassigned" || ev === "assigned") return { icon: UserRound, tone: "idle", title: "Zamerchi tayinlandi" };
+      return { icon: Ruler, tone: "info", title: "O'lchov" };
+    }
     if (e.kind === "location")
       return e.meta?.lat == null && !e.meta?.link
         ? { icon: MapPin, tone: "idle", title: "Lokatsiya o'chirildi" }
@@ -397,7 +455,9 @@ function Timeline({ invoiceId }: { invoiceId: number }) {
         {entries.map((e, i) => {
           const l = look(e);
           const Icon = l.icon;
-          const isNote = e.type === "note" && (e.kind === "note" || !e.kind);
+          const isNote = e.type === "note" && (e.kind === "note" || !e.kind || e.kind === "metering");
+          const metEvent = e.type === "note" && e.kind === "metering" ? String(e.meta?.event ?? "") : "";
+          const metId = metEvent && e.meta?.metering_id != null ? Number(e.meta.metering_id) : null;
           const href = e.link ? (e.link.kind === "order" ? `/orders/${e.link.id}` : `/meterings/${e.link.id}`) : null;
           return (
             <li key={i} className="relative">
@@ -438,6 +498,19 @@ function Timeline({ invoiceId }: { invoiceId: number }) {
                     <span className="muted text-xs"> · {Number(e.meta.closed_tasks)} ta vazifa yopildi</span>
                   )}
                 </div>
+              )}
+              {metEvent === "rescheduled" && !e.text && (e.meta?.from != null || e.meta?.to != null) && (
+                <div className="text-sm">
+                  {dateTime(e.meta.from ? String(e.meta.from) : null)} → <b>{dateTime(e.meta.to ? String(e.meta.to) : null)}</b>
+                </div>
+              )}
+              {metEvent === "done" && typeof e.meta?.next_step === "string" && e.meta.next_step in NEXT_STEP_LABEL && (
+                <div className="muted text-xs">Keyingi qadam: {NEXT_STEP_LABEL[e.meta.next_step as keyof typeof NEXT_STEP_LABEL]}</div>
+              )}
+              {metId && !href && (
+                <Link className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300" to={`/meterings/${metId}`}>
+                  O'lchovni ochish →
+                </Link>
               )}
               {e.type === "note" && e.kind === "location" && e.meta?.lat != null && e.meta?.lon != null && (
                 <a

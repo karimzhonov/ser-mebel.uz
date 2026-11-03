@@ -4,11 +4,13 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
-from oauth.models import User, METERING_PERMISSION
 from core.utils import create_folder
-from core.sms import format_phone
-from core.notifications import SMS_METERING_ASSIGNED
-from .constants import MeteringStatus, METERING_CHANGE_STATUS_PERMISSION
+from .constants import (
+    MeteringStatus,
+    METERING_CHANGE_STATUS_PERMISSION,
+    METERING_MANAGE_PERMISSION,
+    NextStep,
+)
 
 
 class Metering(models.Model):
@@ -25,6 +27,28 @@ class Metering(models.Model):
     invoice = models.OneToOneField('call_center.Invoice', models.CASCADE, blank=True, null=True, verbose_name='Call-center инвойс')
     folder = FilerFolderField(on_delete=models.SET_NULL, related_name='metering_folder', null=True, blank=True)
 
+    # Zamer stage 1: who measures, and what happened (docs/BOT_CONTRACT.md "Zamer").
+    measurer = models.ForeignKey(
+        "oauth.User", models.PROTECT, null=True, blank=True, related_name="measured_meterings",
+        verbose_name="Zamerchi",
+    )
+    created_by = models.ForeignKey(
+        "oauth.User", models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    scheduled_at = models.DateTimeField(null=True, blank=True, help_text="When the measurer was told")
+    measured_at = models.DateTimeField(null=True, blank=True)
+    done_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    done_by = models.ForeignKey(
+        "oauth.User", models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    result_note = models.TextField(blank=True, default="")
+    next_step = models.CharField(max_length=20, blank=True, default="", choices=NextStep.choices)
+    cancel_reason = models.TextField(blank=True, default="")
+    # Bumped on every status / date_time / measurer change: versions the reminders and the
+    # bot's stale-message check.
+    rev = models.PositiveIntegerField(default=0)
+
     history = HistoricalRecords()
 
     def __str__(self):
@@ -36,6 +60,15 @@ class Metering(models.Model):
         
         permissions = [
             (METERING_CHANGE_STATUS_PERMISSION ,'Metring change status'),
+            (METERING_MANAGE_PERMISSION, 'Zamerlar rahbari: barcha zamerlar, zamerchini almashtirish'),
+        ]
+        indexes = [
+            models.Index(fields=["measurer", "status", "date_time"]),
+            models.Index(
+                fields=["date_time"],
+                condition=models.Q(status__in=["created", "other_day"]),
+                name="met_open_due",
+            ),
         ]
     
 
@@ -43,17 +76,3 @@ class Metering(models.Model):
 def create_metering_folders(sender: Type[Metering], instance: Metering, created, **kwargs):
     if not created: return
     create_folder(instance, 'Замер')
-    User.send_messages(
-        METERING_PERMISSION,
-        'admin:metering_metering_change',
-        {'object_id': instance.pk},
-        f"Mijozga ({instance.client}) o'lcham olish uchun zayavka yaratildi. ({instance.date_time.date()} - {instance.date_time.time()})",
-        sms_template=SMS_METERING_ASSIGNED,
-        sms_context={
-            'mijoz_ism': str(instance.client),
-            'mijoz_tel': format_phone(instance.client.phone) or '',
-            'manzil': instance.address or '',
-            'sana': instance.date_time.date() if instance.date_time else '',
-            'vaqt': instance.date_time.time() if instance.date_time else '',
-        },
-    )

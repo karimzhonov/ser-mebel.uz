@@ -17,7 +17,7 @@ from core.geo import MapPoint
 from metering.models import Metering
 from metering.services import create_metering, set_metering_location
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("default_measurer")]
 
 INV_PERMS = ("call_center.view_invoice", "call_center.add_invoice", "call_center.change_invoice")
 MET_PERMS = ("metering.view_metering", "metering.change_metering")

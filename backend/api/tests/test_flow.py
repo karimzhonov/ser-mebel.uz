@@ -10,7 +10,7 @@ from metering.price.models import Inventory, InventoryType, ObjectType
 from order.constants import DEFAULT_FACTORY_NAME, OrderStatus
 from order.models import Factory, Order
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("default_measurer")]
 
 
 @pytest.fixture

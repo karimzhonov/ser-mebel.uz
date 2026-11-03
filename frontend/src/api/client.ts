@@ -67,6 +67,13 @@ async function refreshAccess(): Promise<string | null> {
   }
 }
 
+/** Get a new access token now (shares an in-flight refresh). Call before a long request,
+ * e.g. a big upload, so the server doesn't reject it with 401 after it was fully sent. */
+export function refreshNow(): Promise<string | null> {
+  refreshing = refreshing ?? refreshAccess().finally(() => (refreshing = null));
+  return refreshing;
+}
+
 api.interceptors.response.use(
   (r) => {
     // The server's nginx turns any 404 into a redirect to the Django admin, and the
@@ -90,8 +97,7 @@ api.interceptors.response.use(
     const original = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
     if (error.response?.status === 401 && original && !original._retry) {
       original._retry = true;
-      refreshing = refreshing ?? refreshAccess().finally(() => (refreshing = null));
-      const access = await refreshing;
+      const access = await refreshNow();
       if (access) {
         original.headers.Authorization = `Bearer ${access}`;
         return api(original);

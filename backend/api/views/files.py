@@ -58,6 +58,9 @@ ALLOWED_UPLOAD_EXTENSIONS = {
     ".stl",
     ".mp4",
     ".mov",
+    ".m4v",
+    ".webm",
+    ".3gp",
     ".avi",
     ".mp3",
     ".m4a",
@@ -98,6 +101,9 @@ _CONTENT_TYPE_EXT = {
     "application/x-rar-compressed": ".rar",
     "video/mp4": ".mp4",
     "video/quicktime": ".mov",
+    "video/webm": ".webm",
+    "video/3gpp": ".3gp",
+    "video/x-m4v": ".m4v",
 }
 # Names that say nothing about the file ("pdf (3)", "document", "image_12").
 _GENERIC_NAME = re.compile(
@@ -294,6 +300,38 @@ class MessageSerializer(serializers.ModelSerializer):
         read_only_fields = ["author", "created_at"]
 
 
+def save_uploads(folder, uploads, *, owner) -> list:
+    """Validate (type, name) and store `uploads` in `folder`. Raises ServiceError with the
+    first refused file's reason before anything is saved. Returns the saved File/Image
+    objects. Shared by the folder endpoint and the metering files endpoint."""
+    from core.exceptions import ServiceError
+
+    cache = {}
+
+    def client_name():
+        if "name" not in cache:
+            cache["name"] = _client_name_for(folder)
+        return cache["name"]
+
+    for upload in uploads:
+        original = upload.name
+        name = _normalize_upload_name(upload, client_name)
+        if name is None:
+            raise ServiceError(
+                f"«{original}»: fayl turini aniqlab bo'lmadi yoki bunday "
+                "turdagi faylni yuklab bo'lmaydi (PDF, rasm, video, Word, Excel …)."
+            )
+        upload.name = name  # also the stored path, so /media/… ends with the extension
+    created = []
+    for upload in uploads:
+        ext = os.path.splitext(upload.name)[1].lower()
+        model = Image if ext in IMAGE_EXTENSIONS else File
+        obj = model(folder=folder, owner=owner, original_filename=upload.name, file=upload)
+        obj.save()
+        created.append(obj)
+    return created
+
+
 class FolderView(APIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
@@ -332,37 +370,8 @@ class FolderView(APIView):
             return Response({"id": child.pk, "name": child.name}, status=status.HTTP_201_CREATED)
 
         require_perm(request.user, "filer.add_file")
-        cache = {}
-
-        def client_name():
-            if "name" not in cache:
-                cache["name"] = _client_name_for(folder)
-            return cache["name"]
-
-        for upload in uploads:
-            name = _normalize_upload_name(upload, client_name)
-            if name is None:
-                return Response(
-                    {
-                        "detail": f"«{upload.name}»: fayl turini aniqlab bo'lmadi yoki bunday "
-                        "turdagi faylni yuklab bo'lmaydi (PDF, rasm, Word, Excel …)."
-                    },
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-            upload.name = name  # also the stored path, so /media/… ends with the extension
-        created = []
-        for upload in uploads:
-            ext = os.path.splitext(upload.name)[1].lower()
-            model = Image if ext in IMAGE_EXTENSIONS else File
-            obj = model(
-                folder=folder,
-                owner=request.user,
-                original_filename=upload.name,
-                file=upload,
-            )
-            obj.save()
-            created.append(_file_row(obj))
-        return Response(created, status=status.HTTP_201_CREATED)
+        created = save_uploads(folder, uploads, owner=request.user)
+        return Response([_file_row(obj) for obj in created], status=status.HTTP_201_CREATED)
 
 
 class FileView(APIView):

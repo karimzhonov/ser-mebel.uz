@@ -246,6 +246,10 @@ CONSTANCE_CONFIG = {
     'FIN_READY_DAYS': (30, "Moliya: «Готов» buyurtma qoldiq to'lov ro'yxatida necha kun turadi", int),
     'FIN_BONUS_SINCE': ('', "Moliya: shu sanadan keyin «Готов» bo'lganlarga bonus kuzatuvi (bo'sh — birinchi ishga tushgan kun)", str),
     'FIN_REPORT_TEMPLATE': ('', "Moliya: hisob-kitob varaqasi fon rasmi (media yo'li)", str),
+    # Zamer (measurer reminders in the bot)
+    'METERING_DIGEST_HOUR': (20, "Zamer: ertangi zamerlar ro'yxati soat nechada yuboriladi", int),
+    'METERING_REMIND_BEFORE_MIN': (60, "Zamer: zamerdan necha daqiqa oldin eslatish", int),
+    'METERING_LATE_AFTER_MIN': (60, "Zamer: vaqt o'tgach necha daqiqadan keyin natijani so'rash", int),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
@@ -292,6 +296,13 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
                 "FIN_READY_DAYS",
                 "FIN_BONUS_SINCE",
                 "FIN_REPORT_TEMPLATE",
+            )
+        },
+        "Zamer": {
+            "fields": (
+                "METERING_DIGEST_HOUR",
+                "METERING_REMIND_BEFORE_MIN",
+                "METERING_LATE_AFTER_MIN",
             )
         },
     }

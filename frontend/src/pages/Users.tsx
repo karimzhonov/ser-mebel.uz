@@ -207,7 +207,7 @@ function AccessModal({ user, onClose }: { user: StaffUser; onClose: () => void }
                     const value: string = (changed[s.key] as AccessLevel | undefined) ?? s.level;
                     const options = [
                       { value: "none", label: "Yo'q" },
-                      { value: "view", label: "Ko'rish" },
+                      { value: "view", label: s.is_flag ? "Ha" : "Ko'rish" },
                       ...(s.can_edit ? [{ value: "edit", label: "O'zgartirish" }] : []),
                     ];
                     return (

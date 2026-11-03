@@ -42,6 +42,8 @@ def setup(api, make_staff, db_client):
     designer = make_staff("oauth.user_design", "design.view_design")
     pricer = make_staff("price.change_price", "price.view_price")
     zamerchi = api("metering.view_metering", "oauth.user_metering")
+    Metering.objects.filter(pk=metering.pk).update(measurer=zamerchi.user)
+    metering.refresh_from_db()
     return metering, designer, pricer, zamerchi
 
 

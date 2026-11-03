@@ -2,7 +2,7 @@
 
 from django.urls import path
 
-from .views.bot import common, crm, finance, hr
+from .views.bot import common, crm, finance, hr, metering
 
 urlpatterns = [
     path("whoami/", common.WhoAmIView.as_view()),
@@ -97,4 +97,8 @@ urlpatterns = [
     path("crm/tasks/<int:pk>/", crm.TaskDetailView.as_view()),
     path("crm/tasks/<int:pk>/done/", crm.TaskDoneView.as_view()),
     path("crm/tasks/<int:pk>/snooze/", crm.TaskSnoozeView.as_view()),
+    # ---- Zamer (measurer)
+    path("meterings/<int:pk>/measured/", metering.MeteringMeasuredView.as_view()),
+    path("meterings/<int:pk>/reschedule/", metering.MeteringRescheduleView.as_view()),
+    path("meterings/<int:pk>/cancel/", metering.MeteringCancelView.as_view()),
 ]

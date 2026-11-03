@@ -107,6 +107,8 @@ export interface Invoice extends Located {
   solution_label: string | null;
   is_editable: boolean;
   metering_id: number | null;
+  /** the lead's zamer (latest) in short — null when none yet */
+  metering?: InvoiceMetering | null;
   source: string | null;
   source_label: string | null;
   assigned_to: UserRef | null;
@@ -168,7 +170,7 @@ export interface TimelineEntry {
   type: "created" | "note" | "task_created" | "task_done" | "metering" | "order";
   at: string;
   author: UserRef | null;
-  /** for type=note: note | solution | assigned | source */
+  /** for type=note: note | solution | assigned | source | location | metering (meta.event) */
   kind: string | null;
   text: string;
   meta: Record<string, unknown>;
@@ -208,6 +210,44 @@ export interface MeteringShort extends Located {
   folder: number | null;
 }
 
+/** a person on a zamer (measurer / operator); the API sends UserShort, name may be empty */
+export interface PersonRef {
+  id: number;
+  name: string | null;
+  phone?: string;
+}
+
+export type MeteringNextStep = "" | "design_price" | "price";
+
+/** InvoiceSerializer.metering — the zamer of a lead, in short */
+export interface InvoiceMetering {
+  id: number;
+  status: string;
+  status_label: string;
+  date_time: string | null;
+  measurer: PersonRef | null;
+  result_note: string;
+  cancel_reason: string;
+  next_step: MeteringNextStep;
+  folder: number | null;
+}
+
+export type MeteringActionKey =
+  | "edit"
+  | "measured"
+  | "reschedule"
+  | "cancel"
+  | "finish"
+  | "upload"
+  | "set_measurer"
+  | "create_design"
+  | "create_price"
+  | "assign"
+  // legacy keys (older API): metering_done = measured, other_day = reschedule, dont_need = cancel
+  | "metering_done"
+  | "other_day"
+  | "dont_need";
+
 export interface Metering extends Located {
   id: number;
   client: ClientShort;
@@ -224,10 +264,40 @@ export interface Metering extends Located {
   price: { id: number; done: boolean; user: UserShort | null } | null;
   order: OrderSummary | null;
   is_editable: boolean;
-  actions?: Record<
-    "edit" | "dont_need" | "other_day" | "metering_done" | "create_design" | "create_price" | "assign",
-    boolean
-  >;
+  /** who goes to measure (null = not assigned) */
+  measurer?: PersonRef | null;
+  /** the call-centre operator of the lead (or whoever created the zamer) */
+  operator?: PersonRef | null;
+  measured_at?: string | null;
+  done_at?: string | null;
+  result_note?: string;
+  next_step?: MeteringNextStep;
+  cancel_reason?: string;
+  /** open and its time passed (+ grace) — the measurer has not answered */
+  is_overdue?: boolean;
+  rev?: number;
+  /** detail only: files in the zamer folder tree */
+  file_count?: number;
+  actions?: Partial<Record<MeteringActionKey, boolean>>;
+}
+
+/** GET /meterings/agenda/ — one measurer's day plan */
+export interface MeteringAgenda {
+  counts: { overdue: number; today: number; tomorrow: number; week: number; waiting: number; archive: number };
+  overdue: Metering[];
+  today: Metering[];
+  tomorrow: Metering[];
+  week: Metering[];
+  waiting: Metering[];
+}
+
+/** GET /meterings/measurers/ */
+export interface MeasurerList {
+  items: UserShort[];
+  /** preselect this one (the only measurer), else null */
+  default: number | null;
+  /** set when there is no measurer — a zamer can then be created without one */
+  hint?: string;
 }
 
 export interface DesignType {
@@ -607,6 +677,7 @@ export interface AccessSection {
   hint: string;
   /** false = view-only here (e.g. the warehouse: only the keeper books) */
   can_edit: boolean;
+  is_flag?: boolean;
   /** the person's own level; "custom" = set by hand in the old admin */
   level: AccessLevel | "custom";
   from_groups: AccessLevel | "custom";

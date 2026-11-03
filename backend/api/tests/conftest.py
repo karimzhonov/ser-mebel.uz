@@ -41,6 +41,13 @@ def make_staff(db):
 
 
 @pytest.fixture
+def default_measurer(make_staff):
+    """The company's only measurer: create_metering preselects them. Opt in with
+    `pytestmark = pytest.mark.usefixtures("default_measurer")` or as an argument."""
+    return make_staff("oauth.user_metering", "metering.view_metering", name="Zamerchi")
+
+
+@pytest.fixture
 def api(make_staff):
     def _client(*perms, **kwargs):
         user = make_staff(*perms, **kwargs)
