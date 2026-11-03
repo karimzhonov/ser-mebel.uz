@@ -40,6 +40,7 @@ def periodic_tasks() -> dict[str, tuple[str, dict]]:
         ),
         "moliya: tozalash": ("accounting.tasks.cleanup", {"minute": "30", "hour": "3"}),
         "hr: davomat jadvali": ("hr.tasks.tick", {"minute": "*"}),
+        "crm: vazifa eslatmalari": ("call_center.tasks.task_reminders", {"minute": "*"}),
     }
 
 
@@ -65,5 +66,5 @@ def sync_periodic_tasks() -> None:
             # slips by five hours.
             PeriodicTask.objects.filter(pk=pt.pk).update(last_run_at=datetime.utcnow())
     # tasks of this module that were renamed/removed
-    for prefix in ("accounting.tasks.", "hr.tasks."):
+    for prefix in ("accounting.tasks.", "hr.tasks.", "call_center.tasks."):
         PeriodicTask.objects.filter(task__startswith=prefix).exclude(name__in=wanted).delete()

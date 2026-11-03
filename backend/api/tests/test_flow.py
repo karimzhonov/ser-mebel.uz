@@ -29,7 +29,7 @@ def test_full_pipeline(admin_api, catalog):
     # Call-centre: a new lead creates the client on the fly.
     resp = admin_api.post(
         "/api/v1/invoices/",
-        {"fio": "Ali Valiyev", "phone": "+998901112244", "desc": "Кухня"},
+        {"fio": "Ali Valiyev", "phone": "+998901112244", "desc": "Кухня", "source": "phone"},
         format="json",
     )
     assert resp.status_code == 201, resp.content

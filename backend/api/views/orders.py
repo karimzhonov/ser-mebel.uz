@@ -7,6 +7,7 @@ from rest_framework.response import Response
 
 from client.models import Client
 from core.exceptions import ServiceError
+from core.geo import UNSET
 from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
 from order.assembly.models import Assembly
 from order.assembly.services import (
@@ -28,10 +29,11 @@ from order.services import (
     create_order,
     send_order_to_assembly,
     send_order_to_detailing,
+    set_order_location,
 )
 
 from ..permissions import ModelPermissions, require_perm
-from ..serializers.common import UserShortSerializer, can_view_price
+from ..serializers.common import LocationSetSerializer, UserShortSerializer, can_view_price
 from ..serializers.orders import (
     AssemblySerializer,
     DetailingSerializer,
@@ -179,7 +181,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                         raise ServiceError("Yangi mijoz uchun F.I.Sh. kiriting")
                     client = Client.objects.create(phone=phone, fio=fio)
                 data["client"] = client
-            order = create_order(**data)
+            order = create_order(author=request.user, **data)
         return self._detail(order, status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
@@ -193,6 +195,25 @@ class OrderViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return self._detail(order)
+
+    @action(detail=True, methods=["post"])
+    def location(self, request, pk=None):
+        """Attach / clear the order's map location: {location, address?}."""
+        require_perm(request.user, "order.change_order")
+        order = self.get_object()
+        body = LocationSetSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        d = body.validated_data
+        set_order_location(
+            order,
+            point=d["point"],
+            link=d["link"],
+            address=d["address"] if "address" in d else UNSET,
+            by=request.user,
+        )
+        response = self._detail(order)
+        response.data = {**response.data, "short": d["short"]}
+        return response
 
     @action(detail=True, methods=["post"])
     def detailing(self, request, pk=None):

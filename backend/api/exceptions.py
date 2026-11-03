@@ -30,7 +30,10 @@ def exception_handler(exc, context):
     """DRF's handler plus: a ServiceError (business rule said no) becomes a 400 whose
     `detail` is the message the service wrote for staff; every message is Uzbek."""
     if isinstance(exc, ServiceError):
-        return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
+        body = {"detail": exc.message}
+        if getattr(exc, "field", None):
+            body["field"] = exc.field
+        return Response(body, status=status.HTTP_400_BAD_REQUEST)
     response = drf_exception_handler(exc, context)
     if response is None:
         return response

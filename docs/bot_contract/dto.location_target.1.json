@@ -1,0 +1,14 @@
+{
+  "kind": "invoice",
+  "id": 128,
+  "client": {
+    "fio": "Ali Valiyev",
+    "phone": "+998901112244"
+  },
+  "status": 3,
+  "status_label": "Mijozdan lokatsiya olish",
+  "when": "2026-11-03T12:00:00",
+  "address": "Chilonzor 5",
+  "has_point": false,
+  "mine": true
+}

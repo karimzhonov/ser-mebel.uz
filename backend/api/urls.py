@@ -7,11 +7,13 @@ from .views import call_center, finance, hr, metering, orders, users, warehouse
 from .views.auth import LoginView, LogoutView, MeView, TelegramLoginView
 from .views.dashboard import BoardsView, MetaView
 from .views.files import FileView, FolderMessagesView, FolderView
+from .views.geo import GeoParseView
 from .views.overview import OverviewView
 
 router = DefaultRouter()
 router.register("clients", call_center.ClientViewSet, basename="client")
 router.register("invoices", call_center.InvoiceViewSet, basename="invoice")
+router.register("invoice-tasks", call_center.InvoiceTaskViewSet, basename="invoicetask")
 router.register("meterings", metering.MeteringViewSet, basename="metering")
 router.register("designs", metering.DesignViewSet, basename="design")
 router.register("design-types", metering.DesignTypeViewSet, basename="designtype")
@@ -58,6 +60,7 @@ v1 = [
     path("auth/telegram/", TelegramLoginView.as_view(), name="api-telegram-login"),
     path("auth/me/", MeView.as_view(), name="api-me"),
     path("meta/", MetaView.as_view(), name="api-meta"),
+    path("geo/parse/", GeoParseView.as_view(), name="api-geo-parse"),
     path("dashboard/boards/", BoardsView.as_view(), name="api-boards"),
     path("dashboard/overview/", OverviewView.as_view(), name="api-overview"),
     path("folders/<int:folder_id>/", FolderView.as_view(), name="api-folder"),
@@ -86,7 +89,9 @@ v1 = [
     path("finance/settings/", finance.FinanceSettingsView.as_view(), name="api-finance-settings"),
     path("finance/handover/", finance.HandoverView.as_view(), name="api-finance-handover"),
     path("finance/me/", finance.MeFinanceView.as_view(), name="api-finance-me"),
-    path("warehouse/summary/", warehouse.WarehouseSummaryView.as_view(), name="api-warehouse-summary"),
+    path(
+        "warehouse/summary/", warehouse.WarehouseSummaryView.as_view(), name="api-warehouse-summary"
+    ),
     path("warehouse/keeper/", warehouse.KeeperView.as_view(), name="api-warehouse-keeper"),
     path("warehouse/export/", warehouse.WarehouseExportView.as_view(), name="api-warehouse-export"),
     path("hr/day/", hr.HrDayView.as_view(), name="api-hr-day"),

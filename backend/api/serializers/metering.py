@@ -21,6 +21,8 @@ from .. import i18n as uz
 from ..fields import MoneyField
 from .common import (
     ClientShortSerializer,
+    LocationFieldsMixin,
+    LocationInputMixin,
     OrderSummarySerializer,
     UserShortSerializer,
     order_of,
@@ -43,15 +45,26 @@ def _order_summary(metering, context):
     return OrderSummarySerializer(order, context=context).data if order else None
 
 
-class MeteringShortSerializer(serializers.ModelSerializer):
+class MeteringShortSerializer(LocationFieldsMixin, serializers.ModelSerializer):
     client = ClientShortSerializer(read_only=True)
 
     class Meta:
         model = Metering
-        fields = ["id", "client", "address", "address_link", "date_time", "status", "folder"]
+        fields = [
+            "id",
+            "client",
+            "address",
+            "address_link",
+            "lat",
+            "lon",
+            "map_url",
+            "date_time",
+            "status",
+            "folder",
+        ]
 
 
-class MeteringSerializer(serializers.ModelSerializer):
+class MeteringSerializer(LocationFieldsMixin, serializers.ModelSerializer):
     client = ClientShortSerializer(read_only=True)
     status_label = serializers.SerializerMethodField()
     design = serializers.SerializerMethodField()
@@ -69,6 +82,9 @@ class MeteringSerializer(serializers.ModelSerializer):
             "date_time",
             "address",
             "address_link",
+            "lat",
+            "lon",
+            "map_url",
             "desc",
             "create_date",
             "invoice",
@@ -138,7 +154,7 @@ class MeteringDetailSerializer(MeteringSerializer):
         }
 
 
-class MeteringCreateSerializer(serializers.Serializer):
+class MeteringCreateSerializer(LocationInputMixin, serializers.Serializer):
     client_phone = PhoneNumberField(region="UZ")
     client_fio = serializers.CharField(max_length=255, required=False, allow_blank=True)
     date_time = serializers.DateTimeField()

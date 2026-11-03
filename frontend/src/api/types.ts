@@ -61,6 +61,25 @@ export interface Meta {
   site_title: string;
   /** The site bot's @username (TELEGRAM_BOT_USERNAME), without the @. */
   telegram_bot: string;
+  /** CRM: where a lead came from (Telegram, Instagram, …) — required on a new ariza. */
+  lead_sources?: { value: string; label: string }[];
+}
+
+/** A saved map point (strings with 6 decimals, "41.311081") + the Yandex link the API builds:
+ * the exact point, else a text search for the address; null when there is nothing to show. */
+export interface Located {
+  lat: string | null;
+  lon: string | null;
+  map_url: string | null;
+}
+
+/** POST /geo/parse/ — a pasted map link / coordinates, as the server understands it. */
+export interface GeoParse {
+  lat: string | null;
+  lon: string | null;
+  map_url: string | null;
+  /** a short link (maps.app.goo.gl, yandex …/-/…): kept as a link, no point read from it */
+  short: boolean;
 }
 
 export interface Deadline {
@@ -78,7 +97,7 @@ export interface OrderSummary {
   money_left: Money | null;
 }
 
-export interface Invoice {
+export interface Invoice extends Located {
   id: number;
   client: ClientShort;
   create_date: string;
@@ -88,9 +107,98 @@ export interface Invoice {
   solution_label: string | null;
   is_editable: boolean;
   metering_id: number | null;
+  source: string | null;
+  source_label: string | null;
+  assigned_to: UserRef | null;
+  created_by: UserRef | null;
+  next_task: { id: number; text: string; due_at: string } | null;
+  open_tasks: number;
+  /** an active lead (new / re-phone / info / location) with no open task */
+  needs_task: boolean;
+  address?: string;
+  address_link?: string | null;
 }
 
-export interface MeteringShort {
+/* ---------------------------------------------------------------- CRM */
+
+export interface UserRef {
+  id: number;
+  name: string;
+}
+
+export interface Assignee extends UserRef {
+  has_telegram: boolean;
+}
+
+/** The lead a task belongs to (InvoiceTaskSerializer.invoice). */
+export interface TaskLead {
+  id: number;
+  client: ClientShort;
+  source: string | null;
+  source_label: string | null;
+  solution: number | null;
+  solution_label: string | null;
+  /** the lead's address — prefills an O'lchov created from the task */
+  address?: string | null;
+  /** the lead has a saved map point / link (the metering copies it) */
+  has_point?: boolean;
+}
+
+export interface InvoiceTask {
+  id: number;
+  text: string;
+  due_at: string;
+  is_done: boolean;
+  done_at: string | null;
+  created_at: string;
+  assigned: UserRef | null;
+  invoice: TaskLead;
+  created_by: UserRef | null;
+}
+
+/** POST /invoice-tasks/{id}/done/ — the finished task (top level) + what the outcome did. */
+export interface TaskDoneResult extends InvoiceTask {
+  /** the reminder created for the next call (re_phone / given_* with a time), else null */
+  next_task: InvoiceTask | null;
+  /** how many other open tasks of the lead were closed (closing outcomes) */
+  closed_tasks: number;
+}
+
+export interface TimelineEntry {
+  type: "created" | "note" | "task_created" | "task_done" | "metering" | "order";
+  at: string;
+  author: UserRef | null;
+  /** for type=note: note | solution | assigned | source */
+  kind: string | null;
+  text: string;
+  meta: Record<string, unknown>;
+  task: { id: number; text: string; due_at: string; is_done: boolean; assigned: UserRef | null } | null;
+  link: { kind: "metering" | "order"; id: number } | null;
+}
+
+export interface LeadBoardColumn {
+  key: string;
+  title: string;
+  tone: Tone;
+  /** the solution a card gets when dropped here (null = «Yangi») */
+  solution: number | null;
+  droppable: boolean;
+  collapsed: boolean;
+  count: number;
+  cards: Invoice[];
+}
+
+export interface LeadBoard {
+  columns: LeadBoardColumn[];
+}
+
+export interface TaskAgenda {
+  overdue: InvoiceTask[];
+  today: InvoiceTask[];
+  upcoming: InvoiceTask[];
+}
+
+export interface MeteringShort extends Located {
   id: number;
   client: ClientShort;
   address: string | null;
@@ -100,7 +208,7 @@ export interface MeteringShort {
   folder: number | null;
 }
 
-export interface Metering {
+export interface Metering extends Located {
   id: number;
   client: ClientShort;
   status: string;
@@ -315,7 +423,7 @@ export interface Factory {
   ordering: number;
 }
 
-export interface Order {
+export interface Order extends Located {
   id: number;
   order_number: number;
   client: ClientShort | null;
@@ -372,7 +480,7 @@ export interface OrderDetail extends Order {
   };
 }
 
-export interface ProductionOrder {
+export interface ProductionOrder extends Located {
   id: number;
   order_number: number;
   client: ClientShort | null;
@@ -537,7 +645,7 @@ export interface Overview {
   meterings: {
     missed: number;
     today: number;
-    upcoming: { id: number; client: string; phone: string; address: string; when: string }[];
+    upcoming: { id: number; client: string; phone: string; address: string; when: string; map_url?: string | null; lat?: string | null; lon?: string | null }[];
   } | null;
   call_center: { unanswered: number; callback: number } | null;
   warehouse: {

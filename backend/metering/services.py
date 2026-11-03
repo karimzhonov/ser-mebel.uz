@@ -3,6 +3,7 @@
 from django.db.models import F, Q
 from django.urls import reverse
 
+from core.geo import UNSET
 from core.kanban import DANGER, INFO, OK, PRIMARY, WARN, Column, build_board
 
 from .constants import MeteringStatus
@@ -138,12 +139,27 @@ def metering_is_editable(metering) -> bool:
     return metering.status not in MeteringStatus.archive_statuses()
 
 
-def create_metering(*, client, date_time, address=None, address_link=None, desc=None, invoice=None):
-    """Mirrors MeteringCreateForm.save: linking an invoice marks it "Замерга борилади"."""
+def create_metering(
+    *,
+    client,
+    date_time,
+    address=None,
+    address_link=None,
+    desc=None,
+    invoice=None,
+    author=None,
+    lat=None,
+    lon=None,
+):
+    """Mirrors MeteringCreateForm.save: linking an invoice marks it "Замерга борилади".
+
+    The lead's location (point, pasted link, address) is inherited unless this call
+    brings its own."""
     from django.db import transaction
 
     from call_center.constants import SolutionChoice
     from core.exceptions import ServiceError
+    from core.geo import make_point
 
     from .models import Metering
 
@@ -152,6 +168,16 @@ def create_metering(*, client, date_time, address=None, address_link=None, desc=
             raise ServiceError("Ariza boshqa mijozga tegishli")
         if Metering.objects.filter(invoice=invoice).exists():
             raise ServiceError("Bu ariza uchun o'lchov allaqachon yaratilgan")
+    if lat is not None or lon is not None:
+        point = make_point(lat, lon)
+        if point is None:
+            raise ServiceError("Lokatsiya koordinatalari noto'g'ri")
+        lat, lon = point.lat, point.lon
+    if invoice is not None:
+        if lat is None and lon is None and not address_link:
+            lat, lon, address_link = invoice.lat, invoice.lon, invoice.address_link
+        if not (address or "").strip() and invoice.address:
+            address = invoice.address
 
     with transaction.atomic():
         metering = Metering.objects.create(
@@ -159,13 +185,64 @@ def create_metering(*, client, date_time, address=None, address_link=None, desc=
             date_time=date_time,
             address=address,
             address_link=address_link,
+            lat=lat,
+            lon=lon,
             desc=desc,
             invoice=invoice,
         )
         if invoice is not None:
+            from call_center.services import log_solution
+
+            old = invoice.solution
             invoice.solution = SolutionChoice.go_for_measured
             invoice.save()
+            log_solution(invoice, old, int(SolutionChoice.go_for_measured), author)
     return metering
+
+
+def set_metering_location(metering, *, point, link=UNSET, address=UNSET, by=None):
+    """Attach / clear the metering's map location (and give a blank order the same).
+    Returns (metering, changed, filled=[("order", id)]). Archived meterings are
+    read-only."""
+    from django.db import transaction
+
+    from core.exceptions import ServiceError
+    from core.geo import copy_location, resolve_location
+
+    from .models import Metering
+
+    with transaction.atomic():
+        locked = Metering.objects.select_for_update().get(pk=metering.pk)
+        if not metering_is_editable(locked):
+            raise ServiceError("Bajarilgan o'lchovni tahrirlab bo'lmaydi")
+        new_lat, new_lon, new_link = resolve_location(locked, point, link)
+        fields = []
+        if (locked.lat, locked.lon, locked.address_link) != (new_lat, new_lon, new_link):
+            locked.lat, locked.lon, locked.address_link = new_lat, new_lon, new_link
+            fields += ["lat", "lon", "address_link"]
+        if address is not UNSET:
+            text = (address or "").strip()
+            # an empty address clears it, but only while a point still locates the job
+            if (text or locked.lat is not None) and text != (locked.address or ""):
+                locked.address = text
+                fields.append("address")
+        if fields:
+            locked._history_user = by  # not the request's user: it may be the bot principal
+            locked.save(update_fields=fields)
+        filled = []
+        if locked.lat is not None or locked.address_link:
+            from order.models import Order
+
+            order = Order.objects.select_for_update().filter(metering=locked).first()
+            if order is not None:
+                order_fields = copy_location(locked, order)
+                if order_fields:
+                    order._history_user = by
+                    order.save(update_fields=order_fields)
+                    filled.append(("order", order.pk))
+    for name in ("lat", "lon", "address", "address_link"):
+        setattr(metering, name, getattr(locked, name))
+    return metering, bool(fields), filled
 
 
 def _require_status(metering, allowed):

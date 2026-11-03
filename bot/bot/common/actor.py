@@ -12,6 +12,7 @@ class Actor:
     user: User
     member: dict | None = None  # finance Member DTO or None
     hr: dict = field(default_factory=lambda: {"employee": None, "is_admin": False})
+    crm: dict = field(default_factory=dict)
 
     @property
     def tg_id(self) -> int:
@@ -55,10 +56,24 @@ class Actor:
     def hr_admin(self) -> bool:
         return bool((self.hr or {}).get("is_admin"))
 
+    # ---- CRM
+    @property
+    def can_add_lead(self) -> bool:
+        return bool((self.crm or {}).get("can_add_lead"))
+
+    @property
+    def can_set_location(self) -> bool:
+        return bool((self.crm or {}).get("can_set_location"))
+
+    @property
+    def crm_linked(self) -> bool:
+        return bool((self.crm or {}).get("linked"))
+
     @classmethod
     def from_whoami(cls, user: User, data: dict) -> "Actor":
         return cls(
             user=user,
             member=data.get("finance_member"),
             hr=data.get("hr") or {"employee": None, "is_admin": False},
+            crm=data.get("crm") or {},
         )

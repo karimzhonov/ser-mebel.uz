@@ -14,6 +14,87 @@ def can_view_price(request) -> bool:
     return bool(request and request.user.has_perm(f"order.{ORDER_VIEW_PRICE_PERMISSION}"))
 
 
+def map_url(obj) -> str | None:
+    """Where "open on the map" goes for a lead / metering / order (core.geo.yandex_url)."""
+    from core.geo import obj_map_url
+
+    return obj_map_url(obj)
+
+
+class LocationFieldsMixin(serializers.Serializer):
+    """Read-only `lat`, `lon` (6-place strings or null) and `map_url` for a model that
+    has the location columns."""
+
+    lat = serializers.SerializerMethodField()
+    lon = serializers.SerializerMethodField()
+    map_url = serializers.SerializerMethodField()
+
+    def get_lat(self, obj):
+        from core.geo import coord_str
+
+        return coord_str(obj.lat)
+
+    def get_lon(self, obj):
+        from core.geo import coord_str
+
+        return coord_str(obj.lon)
+
+    def get_map_url(self, obj):
+        return map_url(obj)
+
+
+class LocationInputMixin(serializers.Serializer):
+    """`location` (a link or coordinates) -> lat / lon / address_link in validated data.
+    The legacy `address_link` input is read as a location too (kept as is when it is
+    not a recognisable map link)."""
+
+    location = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+
+    def validate(self, attrs):
+        from core.exceptions import ServiceError
+        from core.geo import location_input
+
+        attrs = super().validate(attrs)
+        text = attrs.pop("location", None)
+        legacy = text is None and attrs.get("address_link")
+        if text is None and not legacy:
+            return attrs
+        try:
+            point, link, _short = location_input(
+                text if text is not None else attrs["address_link"]
+            )
+        except ServiceError as e:
+            if legacy:
+                return attrs
+            raise serializers.ValidationError({"location": e.message})
+        attrs["lat"] = point.lat if point else None
+        attrs["lon"] = point.lon if point else None
+        attrs["address_link"] = link
+        return attrs
+
+
+class LocationSetSerializer(serializers.Serializer):
+    """Body of POST /{invoices|meterings|orders}/{id}/location/."""
+
+    location = serializers.CharField(required=False, allow_blank=True, max_length=2000)
+    address = serializers.CharField(required=False, allow_blank=True, max_length=255)
+
+    def validate(self, attrs):
+        from core.exceptions import ServiceError
+        from core.geo import UNSET, location_input
+
+        if "location" not in attrs:
+            # no `location` key: keep the stored point and link, update the address only
+            attrs["point"], attrs["link"], attrs["short"] = UNSET, UNSET, False
+            return attrs
+        try:
+            point, link, short = location_input(attrs["location"])
+        except ServiceError as e:
+            raise serializers.ValidationError({"location": e.message})
+        attrs["point"], attrs["link"], attrs["short"] = point, link, short
+        return attrs
+
+
 class UserShortSerializer(serializers.ModelSerializer):
     phone = PhoneNumberField(region="UZ", read_only=True)
 

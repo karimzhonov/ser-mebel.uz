@@ -1,0 +1,14 @@
+{
+  "name": "Ali Valiyev",
+  "phone": "+998901112244",
+  "source": "telegram",
+  "note": "Oshxona mebeli kerak",
+  "remind": {
+    "preset": "tomorrow"
+  },
+  "location": {
+    "lat": "41.311081",
+    "lon": "69.279737",
+    "address": "Chilonzor 5"
+  }
+}

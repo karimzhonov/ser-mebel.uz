@@ -40,10 +40,11 @@ RAW_TIMEOUT = aiohttp.ClientTimeout(total=60)
 class BackendError(Exception):
     """Base of all backend errors. `detail` is the backend's (Uzbek) message."""
 
-    def __init__(self, detail: str = "", status: int = 0):
+    def __init__(self, detail: str = "", status: int = 0, field: str = ""):
         super().__init__(detail)
         self.detail = detail
         self.status = status
+        self.field = field  # additive `field` of a 400 body (CRM lead form), else ""
 
 
 class ServiceRefusal(BackendError):
@@ -85,6 +86,15 @@ def canonical_path(path: str) -> str:
     reproduces). Callers pass RAW refs (Cyrillic, spaces, '@', '+', '%'): they are
     encoded here once, never by the call sites."""
     return quote(path, safe=PATH_SAFE)
+
+
+def _field(body: bytes) -> str:
+    try:
+        data = jsonlib.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return ""
+    f = data.get("field") if isinstance(data, dict) else None
+    return f if isinstance(f, str) else ""
 
 
 def _detail(body: bytes) -> str:
@@ -211,7 +221,7 @@ class BackendClient:
             cls = {400: ServiceRefusal, 403: Forbidden, 404: NotFound, 409: Conflict}.get(
                 status, ServiceRefusal
             )
-            raise cls(detail, status)
+            raise cls(detail, status, _field(content))
         if raw:
             m = _FILENAME.search(disp or "")
             return RawResponse(content, ctype.split(";")[0].strip(), m.group(1) if m else None)

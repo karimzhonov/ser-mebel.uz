@@ -19,6 +19,7 @@ from rest_framework.views import APIView
 from accounting import services as finance
 from call_center.constants import SolutionChoice
 from call_center.models import Invoice
+from core.geo import coord_str, obj_map_url
 from metering.constants import MeteringStatus
 from metering.models import Metering
 from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
@@ -329,7 +330,12 @@ class OverviewView(APIView):
         bal = finance.balances()
         rows = sorted(
             (
-                {"id": m.id, "name": m.name, "role": m.role, "balance": round(float(bal.get(m.id, 0)), 2)}
+                {
+                    "id": m.id,
+                    "name": m.name,
+                    "role": m.role,
+                    "balance": round(float(bal.get(m.id, 0)), 2),
+                }
                 for m in finance.wallets()
             ),
             key=lambda r: -r["balance"],
@@ -435,6 +441,9 @@ class OverviewView(APIView):
                     "client": str(m.client),
                     "phone": str(m.client.phone),
                     "address": m.address or "",
+                    "lat": coord_str(m.lat),
+                    "lon": coord_str(m.lon),
+                    "map_url": obj_map_url(m),
                     "when": m.date_time,
                 }
                 for m in upcoming

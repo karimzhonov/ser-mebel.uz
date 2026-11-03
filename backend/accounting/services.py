@@ -27,6 +27,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Max, Q, Sum
 
 from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden
+from core.geo import obj_map_url
 from oauth.models import TelegramMember, TelegramRole, User
 from order.constants import OrderStatus
 from order.models import Order
@@ -245,6 +246,9 @@ class OrderInfo:
     end_date: date | None = None
     ready_date: date | None = None
     address: str = ""
+    lat: Decimal | None = None
+    lon: Decimal | None = None
+    map_url: str | None = None
     furniture: str = ""
     extra: dict = field(default_factory=dict)
 
@@ -319,6 +323,9 @@ def _info_from_order(order: Order, ready: date | None) -> OrderInfo:
         end_date=order.end_date,
         ready_date=ready,
         address=order.address or "",
+        lat=order.lat,
+        lon=order.lon,
+        map_url=obj_map_url(order),
         furniture=furniture,
     )
 

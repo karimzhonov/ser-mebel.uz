@@ -14,6 +14,7 @@ import logging
 from constance import config
 
 from core.bot_notify import emit
+from core.geo import coord_str
 from oauth.models import TelegramMember, User
 
 from . import dto
@@ -395,6 +396,9 @@ def deadline(info, left_days: int, key: str, receivers: list[TelegramMember], wh
                 "status_label": info.status_label,
                 "phone": info.phone,
                 "address": info.address,
+                "lat": coord_str(info.lat),
+                "lon": coord_str(info.lon),
+                "map_url": info.map_url,
             },
             "left_days": left_days,
             "key": key,

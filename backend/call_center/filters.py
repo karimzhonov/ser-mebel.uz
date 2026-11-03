@@ -12,6 +12,6 @@ class InvoiceSolutionDropdownFilter(DropdownFilter):
         return SolutionChoice.choices
 
     def queryset(self, request, queryset):
-        if not self.value() in ['', None]:
+        if not self.value() in ["", None]:
             return queryset.filter(solution=self.value())
         return queryset

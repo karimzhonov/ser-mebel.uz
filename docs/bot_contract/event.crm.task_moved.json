@@ -1,0 +1,16 @@
+{
+  "id": "00000000-0000-0000-0000-000000002003",
+  "event": "crm.task_moved",
+  "data": {
+    "task": {
+      "id": 41,
+      "due_at": "2026-11-05T10:00:00"
+    },
+    "how": "rescheduled",
+    "by_name": "Dilfuza Karimova",
+    "to_name": null,
+    "to": [
+      555000222
+    ]
+  }
+}

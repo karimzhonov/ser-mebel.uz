@@ -14,6 +14,7 @@ from rest_framework.response import Response
 from call_center.models import Invoice
 from client.models import Client
 from core.exceptions import ServiceError
+from core.geo import UNSET
 from metering.constants import MeteringStatus
 from metering.design.models import Design, DesignType
 from metering.design.services import add_design_type, mark_design_done
@@ -56,13 +57,14 @@ from metering.services import (
     mark_metering_other_day,
     metering_is_editable,
     pricers,
+    set_metering_location,
     start_design,
     start_price,
 )
 from oauth.constants import METERING_PERMISSION
 
 from ..permissions import IsStaffUser, ModelPermissions, require_perm
-from ..serializers.common import UserShortSerializer
+from ..serializers.common import LocationSetSerializer, UserShortSerializer
 from ..serializers.metering import (
     AssignTasksSerializer,
     CalculationInputSerializer,
@@ -149,7 +151,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
                 if not fio:
                     raise ServiceError("Yangi mijoz uchun F.I.Sh. kiriting")
                 client = Client.objects.create(phone=phone, fio=fio)
-            metering = create_metering(client=client, invoice=invoice, **data)
+            metering = create_metering(client=client, invoice=invoice, author=request.user, **data)
         return self._detail(metering, status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
@@ -159,6 +161,25 @@ class MeteringViewSet(viewsets.ModelViewSet):
         kwargs["partial"] = True
         super().update(request, *args, **kwargs)
         return self._detail(metering)
+
+    @action(detail=True, methods=["post"])
+    def location(self, request, pk=None):
+        """Attach / clear the metering's map location: {location, address?}."""
+        require_perm(request.user, "metering.change_metering")
+        metering = self.get_object()
+        body = LocationSetSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        d = body.validated_data
+        set_metering_location(
+            metering,
+            point=d["point"],
+            link=d["link"],
+            address=d["address"] if "address" in d else UNSET,
+            by=request.user,
+        )
+        response = self._detail(metering)
+        response.data = {**response.data, "short": d["short"]}
+        return response
 
     @action(detail=True, methods=["post"], url_path="dont-need")
     def dont_need(self, request, pk=None):

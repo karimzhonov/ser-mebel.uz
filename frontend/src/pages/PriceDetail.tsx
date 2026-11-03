@@ -26,7 +26,7 @@ import { toast } from "sonner";
 import { api, downloadFile, errorMessage, fetchBlob } from "@/api/client";
 import { useAction, useAll, useGet } from "@/api/hooks";
 import type { Accessory, Calculation, Inventory, InventoryType, ObjectType, OfferSheet, Price, PriceVersion, Room, RoomImage, RoomType } from "@/api/types";
-import { BackLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink } from "@/components/domain";
+import { AddressLink, BackLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink } from "@/components/domain";
 import {
   Badge,
   Button,
@@ -213,7 +213,9 @@ export function PriceDetailPage() {
                   {p.metering.client.fio}
                 </Link>
                 <div><PhoneLink value={p.metering.client.phone} /></div>
-                <div className="muted">{p.metering.address}</div>
+                <div>
+                  <AddressLink address={p.metering.address} link={p.metering.address_link} mapUrl={p.metering.map_url} lat={p.metering.lat} lon={p.metering.lon} />
+                </div>
               </div>
             </Card>
           )}

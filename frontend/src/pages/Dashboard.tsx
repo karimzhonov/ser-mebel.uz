@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ChevronRight, Clock, Columns3, Factory, LayoutGrid, MapPin, Phone } from "lucide-react";
+import { ChevronRight, Clock, Columns3, Factory, LayoutGrid, Phone } from "lucide-react";
 import { useGet } from "@/api/hooks";
 import type { Board } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
-import { DeadlinePill, MoneyLeft } from "@/components/domain";
+import { AddressLink, DeadlinePill, MoneyLeft } from "@/components/domain";
 import { OverviewPanel } from "@/components/Overview";
 import { useUrlState } from "@/lib/useUrlState";
 import { Badge, Check, Empty, PageHeader, PageLoader, Segmented, TONES } from "@/components/ui";
@@ -145,9 +145,9 @@ function OrderCard({ card }: { card: any }) {
         <DeadlinePill deadline={card.deadline} />
       </div>
       <div className="font-medium">{card.client}</div>
-      {card.address && (
-        <div className="muted flex items-center gap-1 text-xs">
-          <MapPin className="h-3 w-3" /> {card.address}
+      {(card.address || card.map_url) && (
+        <div className="text-xs">
+          <AddressLink nested address={card.address} mapUrl={card.map_url} lat={card.lat} lon={card.lon} />
         </div>
       )}
       <div className="flex items-center justify-between gap-2 text-xs">
@@ -172,9 +172,9 @@ function MeteringCard({ card }: { card: any }) {
       <div className="muted flex items-center gap-1 text-xs">
         <Phone className="h-3 w-3" /> {phone(card.phone)}
       </div>
-      {card.address && (
-        <div className="muted flex items-center gap-1 text-xs">
-          <MapPin className="h-3 w-3" /> {card.address}
+      {(card.address || card.map_url) && (
+        <div className="text-xs">
+          <AddressLink nested address={card.address} mapUrl={card.map_url} lat={card.lat} lon={card.lon} />
         </div>
       )}
       <div className="flex flex-wrap items-center gap-1.5">

@@ -40,7 +40,10 @@ import {
   Warehouse,
   ArrowDownUp,
   UserCheck,
+  ListTodo,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/api/client";
 import logoWide from "@/assets/logo-wide.png";
 import { useAuth } from "@/auth/AuthContext";
 import { cn } from "@/lib/cn";
@@ -52,6 +55,10 @@ interface NavItem {
   icon: ComponentType<{ className?: string }>;
   perm?: string;
   superuser?: boolean;
+  /** active only on this exact path (a parent of other menu items) */
+  end?: boolean;
+  /** red counter next to the label */
+  badge?: "crm";
 }
 
 // Same sections and permissions as the admin sidebar (backend/core/sidebars.py).
@@ -63,7 +70,8 @@ const NAV: { title: string; items: NavItem[] }[] = [
   {
     title: "Sotuv",
     items: [
-      { to: "/call-center", label: "Call-center", icon: PhoneCall, perm: "call_center.view_invoice" },
+      { to: "/call-center", label: "Call-center", icon: PhoneCall, perm: "call_center.view_invoice", end: true },
+      { to: "/call-center/tasks", label: "Bugungi ishlarim", icon: ListTodo, perm: "call_center.view_invoice", badge: "crm" },
       { to: "/clients", label: "Mijozlar", icon: Users, perm: "client.view_client" },
     ],
   },
@@ -275,8 +283,22 @@ export function AppLayout() {
   );
 }
 
+/** Overdue + today's CRM tasks of the current user, refreshed every minute. */
+function useCrmBadge(enabled: boolean) {
+  const { data } = useQuery({
+    queryKey: ["invoice-tasks", "summary"],
+    queryFn: async () => (await api.get<{ overdue: number; today: number }>("/invoice-tasks/summary/")).data,
+    enabled,
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  return data;
+}
+
 function NavSection({ title, items }: { title: string; items: NavItem[] }) {
   const [collapsed, setCollapsed] = useState(false);
+  const { can } = useAuth();
+  const crm = useCrmBadge(items.some((i) => i.badge === "crm") && can("call_center.view_invoice"));
   return (
     <div>
       {title && (
@@ -294,7 +316,7 @@ function NavSection({ title, items }: { title: string; items: NavItem[] }) {
             <li key={item.to}>
               <NavLink
                 to={item.to}
-                end={item.to === "/"}
+                end={item.to === "/" || item.end}
                 className={({ isActive }) =>
                   cn(
                     "flex items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium transition",
@@ -305,7 +327,18 @@ function NavSection({ title, items }: { title: string; items: NavItem[] }) {
                 }
               >
                 <item.icon className="h-[18px] w-[18px] shrink-0" />
-                {item.label}
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                {item.badge === "crm" && crm && crm.overdue + crm.today > 0 && (
+                  <span
+                    className={cn(
+                      "rounded-full px-1.5 text-[11px] font-semibold tabular-nums",
+                      crm.overdue ? "bg-rose-500 text-white" : "bg-amber-400 text-brand-900",
+                    )}
+                    title={`Muddati o'tgan: ${crm.overdue} · Bugun: ${crm.today}`}
+                  >
+                    {crm.overdue + crm.today}
+                  </span>
+                )}
               </NavLink>
             </li>
           ))}

@@ -471,6 +471,7 @@ async def site_entry_remind(n: Notifier, d: dict):
 
 @on("finance.deadline")
 async def deadline(n: Notifier, d: dict):
+    import html
     from urllib.parse import quote
 
     o, left = d["order"], d["left_days"]
@@ -480,10 +481,12 @@ async def deadline(n: Notifier, d: dict):
     )
     left_txt = "bugun" if left == 0 else f"{left} kun qoldi"
     if d["key"] == "3":
-        q = quote(f"{o.get('address') or o['client']}, Toshkent")
+        link = o.get("map_url") or "https://yandex.uz/maps/?text=" + quote(
+            f"{o.get('address') or o['client']}, Toshkent"
+        )
         text = (
             f"📍 <b>Srok: {left_txt}</b>\n{head}\n📞 Telefon: {esc(o.get('phone') or '—')}\n🏠 Manzil: {esc(o.get('address') or '—')}"
-            f'\n🗺 <a href="https://www.google.com/maps/search/?api=1&query={q}">Xaritada ochish</a>'
+            f'\n🗺 <a href="{html.escape(link, quote=True)}">Yandex xaritada ochish</a>'
         )
     else:
         text = f"⏰ <b>Srok yaqinlashmoqda — {left_txt}</b>\n{head}"

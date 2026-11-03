@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Brush, Calculator, CalendarClock, CheckCircle2, Plus, Send, UserPlus, XCircle } from "lucide-react";
+import { Brush, Calculator, CalendarClock, CheckCircle2, Pencil, Plus, Send, UserPlus, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useGet, useList, useMeta } from "@/api/hooks";
@@ -17,6 +17,7 @@ import {
   TimelineChart,
 } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { LocationEditModal, LocationField } from "@/components/LocationField";
 import {
   Button,
   Card,
@@ -25,6 +26,7 @@ import {
   Confirm,
   DataTable,
   Field,
+  IconButton,
   Input,
   KV,
   Modal,
@@ -144,7 +146,10 @@ export function MeteringsPage() {
                   <span className="font-medium">{r.client.fio}</span>
                   <MeteringStatusBadge status={r.status} label={r.status_label} />
                 </div>
-                <div className="muted text-sm">{dateTime(r.date_time)} · {r.address || "—"}</div>
+                <div className="muted text-sm">
+                  {dateTime(r.date_time)} ·{" "}
+                  <AddressLink nested address={r.address} link={r.address_link} mapUrl={r.map_url} lat={r.lat} lon={r.lon} />
+                </div>
                 <div className="flex gap-1">
                   {r.design && <Check ok={r.design.done} label="Dizayn" />}
                   {r.price && <Check ok={r.price.done} label="Narx" />}
@@ -169,7 +174,14 @@ export function MeteringCreateModal({
   onClose,
   onCreated,
 }: {
-  initial?: { client_phone?: string; client_fio?: string; invoice?: number };
+  initial?: {
+    client_phone?: string;
+    client_fio?: string;
+    invoice?: number;
+    /** the lead's address — prefilled; its map point is copied by the server when the field is left empty */
+    address?: string;
+    invoiceHasLocation?: boolean;
+  };
   onClose: () => void;
   onCreated?: (m: Metering) => void;
 }) {
@@ -177,8 +189,8 @@ export function MeteringCreateModal({
     client_phone: initial?.client_phone ?? "+998",
     client_fio: initial?.client_fio ?? "",
     date_time: "",
-    address: "",
-    address_link: "",
+    address: initial?.address ?? "",
+    location: "",
     desc: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -221,9 +233,13 @@ export function MeteringCreateModal({
         <Field label="Manzil" error={errors.address} className="sm:col-span-2">
           <Input value={form.address} onChange={upd("address")} />
         </Field>
-        <Field label="Xarita havolasi" error={errors.address_link} className="sm:col-span-2">
-          <Input type="url" placeholder="https://yandex.uz/maps/…" value={form.address_link} onChange={upd("address_link")} />
-        </Field>
+        <LocationField
+          className="sm:col-span-2"
+          value={form.location}
+          onChange={(location) => setForm({ ...form, location })}
+          error={errors.location ?? errors.address_link}
+          hint={initial?.invoiceHasLocation ? "Arizadan olinadi 📍 (bo'sh qoldiring yoki boshqasini kiriting)" : undefined}
+        />
         <Field label="Tavsif" error={errors.desc} className="sm:col-span-2">
           <Textarea value={form.desc} onChange={upd("desc")} />
         </Field>
@@ -236,7 +252,9 @@ export function MeteringDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { data: m, isLoading } = useGet<Metering>(`/meterings/${id}/`);
+  const { can } = useAuth();
   const [otherDay, setOtherDay] = useState(false);
+  const [editLocation, setEditLocation] = useState(false);
   const [assign, setAssign] = useState(false);
   const [confirm, setConfirm] = useState<null | "dont_need" | "metering_done">(null);
   const [form, setForm] = useState({ date_time: "", desc: "" });
@@ -296,7 +314,17 @@ export function MeteringDetailPage() {
               items={[
                 ["Mijoz", <Link className="text-brand-700 hover:underline dark:text-brand-300" to={`/clients/${encodeURIComponent(m.client.phone)}`}>{m.client.fio}</Link>],
                 ["Telefon", <PhoneLink value={m.client.phone} />],
-                ["Manzil", <AddressLink address={m.address} link={m.address_link} />],
+                [
+                  "Manzil",
+                  <span className="inline-flex items-start gap-1">
+                    <AddressLink address={m.address} link={m.address_link} mapUrl={m.map_url} lat={m.lat} lon={m.lon} />
+                    {can("metering.change_metering") && m.is_editable && (
+                      <IconButton label="Manzil va lokatsiyani o'zgartirish" className="-my-2 h-8 w-8" onClick={() => setEditLocation(true)}>
+                        <Pencil className="h-3.5 w-3.5" />
+                      </IconButton>
+                    )}
+                  </span>,
+                ],
                 ["Yaratilgan", dateTime(m.create_date)],
                 ...(m.invoice ? ([["Ariza", <Link className="text-brand-700 hover:underline" to={`/call-center?open=${m.invoice}`}>#{m.invoice}</Link>]] as [string, JSX.Element][]) : []),
               ]}
@@ -410,6 +438,18 @@ export function MeteringDetailPage() {
         }
       />
       {assign && <AssignTasksModal metering={m} onClose={() => setAssign(false)} />}
+      {editLocation && (
+        <LocationEditModal
+          resource="meterings"
+          id={m.id}
+          address={m.address}
+          link={m.address_link}
+          lat={m.lat}
+          lon={m.lon}
+          invalidate={["meterings", "dashboard", "designs", "prices", "orders", "invoices"]}
+          onClose={() => setEditLocation(false)}
+        />
+      )}
     </div>
   );
 }

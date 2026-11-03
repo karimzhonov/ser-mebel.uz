@@ -1,0 +1,25 @@
+{
+  "target": {
+    "kind": "invoice",
+    "id": 128,
+    "client": {
+      "fio": "Ali Valiyev",
+      "phone": "+998901112244"
+    },
+    "status": 3,
+    "status_label": "Mijozdan lokatsiya olish",
+    "when": "2026-11-03T12:00:00",
+    "address": "Chilonzor 5",
+    "has_point": true,
+    "mine": true
+  },
+  "changed": true,
+  "filled": [
+    {
+      "kind": "metering",
+      "id": 57
+    }
+  ],
+  "map_url": "https://yandex.uz/maps/?ll=69.279737,41.311081&pt=69.279737,41.311081&z=17&l=map",
+  "url": "https://ser-mebel.uz/call-center?open=128"
+}

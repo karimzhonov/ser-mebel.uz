@@ -207,7 +207,7 @@ function ProductionModal({
           items={[
             ["Mijoz", o.client?.fio ?? "—"],
             ["Telefon", <PhoneLink value={o.client?.phone} />],
-            ["Manzil", <AddressLink address={o.address} link={o.address_link} />],
+            ["Manzil", <AddressLink address={o.address} link={o.address_link} mapUrl={o.map_url} lat={o.lat} lon={o.lon} />],
             ["Topshirish sanasi", date(o.end_date, "ko'rsatilmagan")],
             ["Buyurtma", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Buyurtmani ochish →</Link>],
             ...(kind !== "detailing" ? ([["Maydon", num(item.square)], ["Narx", money(item.price)]] as [string, string][]) : []),

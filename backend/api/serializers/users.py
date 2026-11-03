@@ -91,7 +91,9 @@ class UserSerializer(serializers.ModelSerializer):
         if "groups" in validated_data and is_keeper(instance):
             if [g.name for g in validated_data["groups"]] != [KEEPER_GROUP]:
                 raise serializers.ValidationError(
-                    {"groups": "Bu xodim — omborchi. Uning huquqlari Ombor → Omborchi sahifasida boshqariladi."}
+                    {
+                        "groups": "Bu xodim — omborchi. Uning huquqlari Ombor → Omborchi sahifasida boshqariladi."
+                    }
                 )
         password = validated_data.pop("password", None)
         user = super().update(instance, validated_data)

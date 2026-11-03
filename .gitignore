@@ -215,3 +215,6 @@ __marimo__/
 
 db-data
 redis-data
+
+# local salary Excel templates (not part of the repo)
+shablonlar/
