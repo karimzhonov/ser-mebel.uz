@@ -68,6 +68,7 @@ class OverviewView(APIView):
                 "accounting": self.accounting(user, params),
                 "production": self.production(user),
                 "meterings": self.meterings(user),
+                "pipeline": self.pipeline(user),
                 "call_center": self.call_center(user),
                 "warehouse": self.warehouse(user, params),
                 "hr": self.hr(user),
@@ -449,6 +450,14 @@ class OverviewView(APIView):
                 for m in upcoming
             ],
         }
+
+    def pipeline(self, user):
+        """Zamer · Dizayn · Narx for superusers and «Bosh menejer» (manage_metering)."""
+        from metering import services as metering_services
+
+        if not metering_services.can_see_pipeline(user):
+            return None
+        return metering_services.pipeline_overview(metering_services._now())
 
     def call_center(self, user):
         if not user.has_perm("call_center.view_invoice"):

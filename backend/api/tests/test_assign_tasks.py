@@ -39,15 +39,17 @@ def setup(api, make_staff, db_client):
     metering = Metering.objects.create(client=db_client, date_time=datetime(2026, 10, 1, 10))
     Metering.objects.filter(pk=metering.pk).update(status=MeteringStatus.metering_done)
     metering.refresh_from_db()
-    designer = make_staff("oauth.user_design", "design.view_design")
-    pricer = make_staff("price.change_price", "price.view_price")
+    designer = make_staff("oauth.user_design", "design.view_design", telegram_id=6001)
+    pricer = make_staff("price.change_price", "price.view_price", telegram_id=6002)
     zamerchi = api("metering.view_metering", "oauth.user_metering")
     Metering.objects.filter(pk=metering.pk).update(measurer=zamerchi.user)
     metering.refresh_from_db()
     return metering, designer, pricer, zamerchi
 
 
-def test_assign_both_sends_task_to_both_only(setup, notified, commit):
+def test_assign_both_tells_both_at_once(setup, notified, commit, bot_events):
+    """design + price: the price waits for the client's OK on the design, so the pricer
+    hears nothing yet; nobody gets the old broadcast."""
     metering, designer, pricer, zamerchi = setup
     sent, broadcast = notified
     lists = zamerchi.get("/api/v1/meterings/assignees/").data
@@ -64,11 +66,14 @@ def test_assign_both_sends_task_to_both_only(setup, notified, commit):
     assert resp.status_code == 200, resp.data
     assert resp.data["design"]["user"]["id"] == designer.pk
     assert resp.data["price"]["user"]["id"] == pricer.pk
-    assert sorted(pk for pk, _ in sent) == sorted([designer.pk, pricer.pk])
-    assert broadcast == []  # nobody else got it
+    assert resp.data["price"]["stage"] == "work"
+    evs = {e["task"]["kind"]: e for e in bot_events.of("offer.assigned")}
+    assert evs["design"]["to"] == [6001] and evs["design"]["how"] == "new"
+    assert evs["price"]["to"] == [6002] and evs["price"]["how"] == "new"
+    assert sent == [] and broadcast == []  # nobody else got it
 
 
-def test_assign_one_sends_to_that_one(setup, notified, commit):
+def test_assign_one_sends_to_that_one(setup, notified, commit, bot_events):
     metering, designer, pricer, zamerchi = setup
     sent, broadcast = notified
     resp = commit(
@@ -79,27 +84,32 @@ def test_assign_one_sends_to_that_one(setup, notified, commit):
     )
     assert resp.status_code == 200
     assert resp.data["design"] is not None and resp.data["price"] is None
-    assert sent == [(designer.pk, f"/designs/{resp.data['design']['id']}")]
-    assert broadcast == []
+    ev = bot_events.one("offer.assigned")
+    assert ev["to"] == [6001] and ev["task"]["url"].endswith(
+        f"/designs/{resp.data['design']['id']}"
+    )
+    assert sent == [] and broadcast == []
 
 
-def test_reassign_notifies_new_person(setup, notified, make_staff, commit):
+def test_reassign_notifies_new_person(setup, notified, make_staff, commit, bot_events):
     metering, designer, pricer, zamerchi = setup
-    sent, _ = notified
     commit(
         zamerchi.post,
         f"/api/v1/meterings/{metering.pk}/assign/",
         {"designer": designer.pk},
         format="json",
     )
-    other = make_staff("oauth.user_design", "design.view_design")
+    other = make_staff("oauth.user_design", "design.view_design", telegram_id=6003)
+    bot_events.clear()
     commit(
         zamerchi.post,
         f"/api/v1/meterings/{metering.pk}/assign/",
         {"designer": other.pk},
         format="json",
     )
-    assert [pk for pk, _ in sent] == [designer.pk, other.pk]
+    assert bot_events.one("offer.changed")["to"] == [6001]  # the old card is retired
+    new = bot_events.one("offer.assigned")
+    assert new["to"] == [6003] and new["how"] == "reassigned"
 
 
 def test_assign_rules(setup, notified, api, commit):

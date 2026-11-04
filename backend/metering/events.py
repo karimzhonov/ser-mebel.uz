@@ -82,3 +82,100 @@ def metering_changed(m, *, how, by=None, to_users=(), to_name=None, watchers=())
             "watchers": watch,
         },
     )
+
+
+# --- Stage 2: dizayn va narx (docs/BOT_CONTRACT.md, "Dizayn va narx") -------------------
+
+
+def _base() -> str:
+    from django.conf import settings
+
+    return (getattr(settings, "ADMIN_BASE_URL", "") or "https://ser-mebel.uz").rstrip("/")
+
+
+def design_url(design_id) -> str:
+    return f"{_base()}/designs/{design_id}"
+
+
+def price_url(price_id) -> str:
+    return f"{_base()}/prices/{price_id}"
+
+
+def offer_url(kind, obj_id) -> str:
+    return design_url(obj_id) if kind == "design" else price_url(obj_id)
+
+
+def present_url(kind, obj_id) -> str:
+    """The manager's page: «Mijozga ko'rsatish», the row opened."""
+    return f"{_base()}/presentations?open={kind[0]}{obj_id}"
+
+
+def order_url(price) -> str:
+    design = getattr(price.metering, "design", None)
+    url = f"{_base()}/orders/new?metering={price.metering_id}"
+    return f"{url}&design={design.pk}" if design is not None else url
+
+
+@_safe
+def offer_assigned(obj, kind, *, how, comment=None):
+    """The designer / pricer got (or got back) a task.
+    how: "new" | "reassigned" | "changes"."""
+    to = _tg(obj.user)
+    if not to:
+        return
+    emit(
+        "offer.assigned",
+        {"task": dto.offer_task(obj, kind), "how": how, "comment": comment or None, "to": to},
+    )
+
+
+@_safe
+def offer_reminder(obj, kind, *, what):
+    """what: "soon" | "late" | "overdue"."""
+    to = _tg(obj.user)
+    if not to:
+        return
+    emit("offer.reminder", {"task": dto.offer_task(obj, kind), "kind": what, "to": to})
+
+
+@_safe
+def offer_present(obj, kind, *, how, to_users):
+    """The manager must show the design / price to the client. how: "ready" | "reminder"."""
+    to = _tg(*to_users)
+    if not to:
+        return
+    emit("offer.present", {"task": dto.offer_task(obj, kind), "how": how, "to": to})
+
+
+@_safe
+def offer_changed(obj, kind, *, how, by=None, to_users=(), to_name=None, answer=None, watchers=()):
+    """A task the bot may have shown changed. `to` = the chats whose cards are now stale
+    (the OLD assignee for "reassigned", the manager for "answered").
+    how: "done" | "due_moved" | "reassigned" | "answered" | "cancelled"."""
+    to, watch = _tg(*to_users), _tg(*watchers)
+    if not to and not watch:
+        return
+    emit(
+        "offer.changed",
+        {
+            "task": dto.offer_task(obj, kind),
+            "how": how,
+            "answer": answer,
+            "by_name": user_ref(by)["name"] if by is not None else None,
+            "to_name": to_name,
+            "to": to,
+            "watchers": watch,
+        },
+    )
+
+
+@_safe
+def offer_order_ready(price, *, to_users):
+    """The client agreed to the price: someone must make the order."""
+    to = _tg(*to_users)
+    if not to:
+        return
+    emit(
+        "offer.order_ready",
+        {"task": dto.offer_task(price, "price"), "to": to, "url": order_url(price)},
+    )

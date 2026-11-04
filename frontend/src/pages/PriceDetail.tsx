@@ -45,11 +45,14 @@ import {
   Textarea,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { dateTime, money, num, phone } from "@/lib/format";
+import { dateTime, money, num } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
+import { personName } from "./meterings/actions";
+import { OfferStatusCard } from "./offers/OfferStatusCard";
+import { CLIENT_RESULT_LABEL, Hint, OFFER_INVALIDATE, OfferStageBadge } from "./offers/actions";
 
 const PdfViewer = lazy(() => import("@/components/PdfViewer"));
-const INV = ["prices", "meterings", "orders"];
+const INV = [...OFFER_INVALIDATE, "orders"];
 const usd = (amount: number) => money({ amount, currency: "USD" });
 const UNIT_LABEL = { kv: "Kv. m", pog: "Pog. m" } as const;
 
@@ -74,7 +77,11 @@ export function PriceDetailPage() {
   const [confirmDone, setConfirmDone] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
 
-  const done = useAction(() => api.post(`/prices/${id}/done/`), { success: "Hisob-kitob bajarildi", invalidate: INV, onSuccess: () => setConfirmDone(false) });
+  const done = useAction(() => api.post(`/prices/${id}/done/`), {
+    success: "Narx tayyor — menejerga yuborildi",
+    invalidate: INV,
+    onSuccess: () => setConfirmDone(false),
+  });
 
   if (isLoading || !p || !objects || !roomTypes) return <PageLoader />;
   const title = p.metering?.client.fio ?? p.desc ?? `Hisob-kitob #${p.id}`;
@@ -93,8 +100,15 @@ export function PriceDetailPage() {
         title={title}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
-            {p.done ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="warn">Ishda</Badge>}
-            {p.user_detail && <span>Smetchik: {p.user_detail.name || phone(p.user_detail.phone)}</span>}
+            {p.stage ? (
+              <OfferStageBadge stage={p.stage} label={p.stage_label} overdue={p.is_overdue} />
+            ) : p.done ? (
+              <Badge tone="ok">Bajarildi</Badge>
+            ) : (
+              <Badge tone="warn">Ishda</Badge>
+            )}
+            {p.client_result && <Badge tone={p.client_result === "agreed" ? "ok" : "danger"}>{CLIENT_RESULT_LABEL[p.client_result]}</Badge>}
+            {p.user_detail && <span>Smetchik: {personName(p.user_detail)}</span>}
           </span>
         }
         actions={
@@ -102,14 +116,19 @@ export function PriceDetailPage() {
             <FolderButton folderId={p.metering?.folder} label="O'lchov fayllari" />
             <FolderButton folderId={p.folder} label="Hisob-kitob fayllari" />
             {p.actions?.done && (
-              <Button variant="success" icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setConfirmDone(true)}>
-                Bajarish
+              <Button size="lg" variant="success" className="w-full sm:w-auto" icon={<CheckCircle2 className="h-5 w-5" />} onClick={() => setConfirmDone(true)}>
+                Tayyor
               </Button>
             )}
           </>
         }
       />
 
+      {p.is_overdue && p.stage === "work" && (
+        <div className="mb-4">
+          <Hint tone="danger">Muddat o'tdi — narxni hisoblang yoki muddatni o'zgartiring.</Hint>
+        </div>
+      )}
       {p.locked && (
         <div className="mb-4 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           <Lock className="h-4 w-4 shrink-0" />
@@ -185,6 +204,16 @@ export function PriceDetailPage() {
 
         {/* ---------------------------------------------------------- side */}
         <div className="space-y-4">
+          {p.metering && p.stage && (
+            <OfferStatusCard
+              kind="price"
+              id={p.id}
+              offer={p}
+              assignee={p.user_detail}
+              actions={{ due: p.actions?.due, reassign: p.actions?.reassign, answer: p.actions?.answer }}
+              client={title}
+            />
+          )}
           <Card>
             <div className="muted text-xs font-medium uppercase tracking-wide">Jami</div>
             <div className="mt-1 text-3xl font-semibold tabular-nums text-slate-900 dark:text-white">{money(p.price, "$0")}</div>
@@ -252,8 +281,9 @@ export function PriceDetailPage() {
       <Confirm
         open={confirmDone}
         onClose={() => setConfirmDone(false)}
-        title="Hisob-kitob yakunlansinmi?"
-        text="Hisob-kitob «Bajarilgan» bo'limiga o'tadi."
+        title="Narx tayyormi?"
+        text={p.metering ? "Menejerga xabar boradi — u taklifni mijozga ko'rsatadi." : "Hisob-kitob «Bajarilgan» bo'limiga o'tadi."}
+        confirmLabel="Ha, tayyor"
         variant="success"
         loading={done.isPending}
         onConfirm={() => done.mutate()}

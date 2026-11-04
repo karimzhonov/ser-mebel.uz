@@ -42,6 +42,7 @@ def periodic_tasks() -> dict[str, tuple[str, dict]]:
         "hr: davomat jadvali": ("hr.tasks.tick", {"minute": "*"}),
         "crm: vazifa eslatmalari": ("call_center.tasks.task_reminders", {"minute": "*"}),
         "zamer: eslatmalar": ("metering.tasks.metering_reminders", {"minute": "*"}),
+        "dizayn/narx: eslatmalar": ("metering.tasks.offer_reminders", {"minute": "*"}),
     }
 
 

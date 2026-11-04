@@ -15,6 +15,18 @@ def _no_network(monkeypatch):
     monkeypatch.setattr("oauth.models.requests.post", _blocked)
 
 
+@pytest.fixture(autouse=True)
+def _tmp_media(settings, tmp_path):
+    """Uploaded test files never land in the real MEDIA_ROOT."""
+    settings.MEDIA_ROOT = str(tmp_path / "media")
+
+
+@pytest.fixture(autouse=True)
+def _no_offer_sms_queue(monkeypatch):
+    """The Celery broker is not there in tests: the offer SMS is only queued."""
+    monkeypatch.setattr("metering.tasks.offer_sms.delay", lambda *a, **k: None)
+
+
 @pytest.fixture
 def make_staff(db):
     from oauth.models import User
@@ -45,6 +57,14 @@ def default_measurer(make_staff):
     """The company's only measurer: create_metering preselects them. Opt in with
     `pytestmark = pytest.mark.usefixtures("default_measurer")` or as an argument."""
     return make_staff("oauth.user_metering", "metering.view_metering", name="Zamerchi")
+
+
+@pytest.fixture
+def default_manager(make_staff):
+    """The company's only manager (metering.present_to_client): «Bajarildi» preselects
+    them. Opt in with `pytestmark = pytest.mark.usefixtures("default_manager")` or as an
+    argument."""
+    return make_staff("metering.present_to_client", "metering.view_metering", name="Menejer")
 
 
 @pytest.fixture

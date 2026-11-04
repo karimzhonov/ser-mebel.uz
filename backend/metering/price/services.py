@@ -1,21 +1,19 @@
 from django.db import transaction
 from filer.models.foldermodels import Folder
 
-from core.notifications import SMS_PRICE_NEEDED
-from oauth.models import CALL_CENTER_PERMISSION, User
+from core.exceptions import ServiceError, ServiceForbidden
+
+MANAGE = "metering.manage_metering"
 
 
-def notify_and_create_price_folder(price) -> None:
-    """Notify call-center staff that a price needs to be calculated and create
-    the Filer folder for this Price nested under its Metering's folder.
+def create_price_folder(price) -> None:
+    """Create the Filer folder for this Price nested under its Metering's folder.
 
     No-ops when the Price has no linked Metering (metering=None is a valid
     state — see PriceAdmin, which allows creating a Price without a metering).
     """
     if price.metering is None:
         return
-
-    notify_price_task(price)
 
     created_history = price.history.order_by("history_date").first()
     created_user = created_history.history_user if created_history else None
@@ -38,14 +36,15 @@ def recompute_price_total(price) -> None:
 
     from order.models import Order
 
-    from .models import Calculate
+    from .models import Calculate, Price
 
     amount = 0
     for calc in Calculate.objects.filter(price=price):
         if calc.amount is not None:
             amount += calc.amount.amount
     price.price = Money(amount, currency="USD")
-    price.save()
+    # not a full save(): stage / rev / due_at may have moved under this request
+    Price.objects.filter(pk=price.pk).update(price=price.price)
     if price.metering_id:
         Order.objects.filter(metering_id=price.metering_id).update(
             price=Money(amount, currency="USD")
@@ -698,47 +697,155 @@ def version_offer_data(version) -> dict:
     return data
 
 
-def mark_price_done(price):
-    from core.exceptions import ServiceError
+def create_price(metering, *, user, due_at, days, by=None):
+    """A Price in work for the metering; the pricer, if any, is told at once (it starts
+    together with the design). `days` = the deadline's length in days. Call inside the
+    caller's transaction."""
+    from metering import events
+    from metering import services as M
 
-    if price.done:
-        raise ServiceError("Narx allaqachon hisoblangan")
-    price.done = True
-    price.save()
+    from .models import Price
+
+    with transaction.atomic():
+        price = Price(
+            metering=metering,
+            user=user,
+            stage="work",
+            due_at=due_at,
+            assigned_at=M._now(),
+            duration_days=days,
+        )
+        price._history_user = by
+        price.save()
+        if user is not None:
+            events.offer_assigned(price, "price", how="new")
+            M.queue_offer_sms(price, "price", "assigned")
     return price
 
 
-def notify_price_task(price) -> None:
-    """Price task: only the assigned person when there is one, otherwise (old admin flow)
-    the call-centre staff. Sent after the transaction commits."""
-    # robust: a failing send is logged and never turns a saved change into a 500.
-    transaction.on_commit(lambda: _send_price_task(price), robust=True)
+def can_work_price(user, price) -> bool:
+    """May press «Tayyor» / move the deadline: the pricer, a price boss, a superuser;
+    anyone who can change prices while nobody is assigned."""
+    if user is None:
+        return False
+    if user.is_superuser or user.has_perm(MANAGE):
+        return True
+    if price.user_id is not None:
+        return price.user_id == user.pk
+    return user.has_perm("price.change_price")
 
 
-def _send_price_task(price) -> None:
-    import logging
+def mark_price_done(price, *, by):
+    """«Tayyor» (site only): the calculation goes to the manager, who shows it to the
+    client."""
+    from metering import services as M
 
-    from oauth.services import notify_user
+    if price.metering_id is None:
+        # a calculation made in the admin without a zamer: nobody to show it to
+        if price.done:
+            raise ServiceError("Allaqachon bajarilgan")
+        price.done = True
+        price.stage = "approved"
+        price.done_at = M._now()
+        price.done_by = by
+        price._history_user = by
+        price.save(update_fields=["done", "stage", "done_at", "done_by"])
+        return price
+    with transaction.atomic():
+        m, _, _, locked = M.offer_locked(price, "price")
+        if not can_work_price(by, locked):
+            raise ServiceForbidden("Bu hisob sizga biriktirilmagan")
+        if locked.stage != "work":
+            raise M.offer_stage_error(locked.stage)
+        M.offer_ready(locked, "price", m, by=by, now=M._now())
+    return M._copy_back(price, locked, ["done", "stage", "done_at", "done_by", "rev"])
 
-    text = f"{price.metering.client} mijozga narx chiqarish kerak"
-    context = {"buyurtma_raqami": price.metering_id}
-    if price.user_id:
-        notify_user(
-            price.user,
-            url=f"/prices/{price.pk}",
-            telegram_text=text,
-            sms_template=SMS_PRICE_NEEDED,
-            sms_context=context,
+
+def set_price_due(price, *, by, due_at=None, preset=None, text=None):
+    from metering import services as M
+
+    return M.move_offer_due(
+        price, "price", by=by, can_work=can_work_price, due_at=due_at, preset=preset, text=text
+    )
+
+
+def set_pricer(price, *, by, user):
+    from metering import services as M
+
+    return M.reassign_offer(price, "price", by=by, user=user, boss_perm=MANAGE, pool=M.pricers())
+
+
+def record_price_answer(price, *, by, answer, comment="", due_at=None):
+    """The manager's record of what the client said: approved | recalc | declined.
+    Returns {"task": price, "closed_tasks": n}."""
+    from call_center.constants import SolutionChoice
+    from call_center.services import close_lead_from_offer
+    from metering import events
+    from metering import services as M
+    from metering.constants import ClientResult
+
+    comment = M.offer_answer_prelude(answer, comment, ("approved", "recalc", "declined"))
+    closed = 0
+    with transaction.atomic():
+        m, _, _, locked = M.offer_locked(price, "price")
+        M.offer_check_answerable(locked, m, by, "price")
+        now = M._now()
+        new_due = None
+        answered_round = locked.round
+        locked._history_user = by
+        if answer == "approved":
+            locked.stage = "approved"
+            locked.rev += 1
+            locked.save(update_fields=["stage", "rev"])
+            m.client_result = ClientResult.agreed
+            m._history_user = by
+            m.save(update_fields=["client_result"])
+        elif answer == "recalc":
+            new_due = M.offer_send_back(
+                locked,
+                "price",
+                m,
+                by=by,
+                now=now,
+                comment=comment,
+                due_at=due_at,
+                fix_cfg="PRICE_FIX_DAYS",
+            )
+        else:
+            locked.stage = "declined"
+            locked.done = False  # invariant: done == stage in (review, approved)
+            locked.rev += 1
+            locked.save(update_fields=["stage", "done", "rev"])
+            m.client_result = ClientResult.price_declined
+            m._history_user = by
+            m.save(update_fields=["client_result"])
+        M.offer_store_answer(
+            locked,
+            "price",
+            m,
+            by=by,
+            answer=answer,
+            comment=comment,
+            round_=answered_round,
+            due_at=new_due,
+            log=answer != "declined",
         )
-        return
-    try:
-        User.send_messages(
-            CALL_CENTER_PERMISSION,
-            "admin:price_price_change",
-            {"object_id": price.pk},
-            text=text,
-            sms_template=SMS_PRICE_NEEDED,
-            sms_context=context,
-        )
-    except Exception:
-        logging.getLogger(__name__).exception("Price task broadcast failed (%s)", price.pk)
+        if answer == "declined" and m.invoice_id is not None:
+            closed = close_lead_from_offer(
+                m.invoice,
+                by=by,
+                solution=SolutionChoice.price_problem,
+                reason=comment,
+                metering_id=m.pk,
+                event="price_declined",
+            )
+        M.offer_answered(locked, "price", m, by=by, answer=answer)
+        if answer == "approved":
+            # the manager if they may make orders, else everybody who may
+            if m.manager is not None and m.manager.has_perm("order.add_order"):
+                makers = [m.manager]
+            else:
+                makers = list(M.order_creators())
+            events.offer_order_ready(locked, to_users=makers)
+    M._copy_back(price, locked, ["stage", "done", "round", "due_at", "rev"])
+    return {"task": price, "closed_tasks": closed}

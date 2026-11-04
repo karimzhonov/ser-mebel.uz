@@ -2,6 +2,8 @@
 call-centre → замер → дизайн → нарх → заказ → деталировка → сборка → готов."""
 
 import pytest
+
+from api.tests.offerkit import design_file
 from djmoney.money import Money
 
 from call_center.constants import SolutionChoice
@@ -79,8 +81,15 @@ def test_full_pipeline(admin_api, catalog):
     resp = admin_api.get(f"/api/v1/designs/{design_id}/")
     design_type_id = resp.data["types"][0]["id"]
     assert resp.data["actions"]["create_order"] is False  # not done yet
+    design_file(design_id)
     resp = admin_api.post(f"/api/v1/designs/{design_id}/done/")
-    assert resp.data["done"] is True and resp.data["actions"]["create_order"] is True
+    # ready, but the client has not said yes yet: no order
+    assert resp.data["done"] is True and resp.data["actions"]["create_order"] is False
+    from metering.design.models import Design
+
+    Design.objects.filter(pk=design_id).update(stage="approved", confirm=True)
+    resp = admin_api.get(f"/api/v1/designs/{design_id}/")
+    assert resp.data["actions"]["create_order"] is True
 
     # Price: 10 m² of МДФ at $20 + 4 BLUM hinges at $3 = $212.
     resp = admin_api.post(f"/api/v1/meterings/{metering_id}/create-price/")

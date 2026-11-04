@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
+
+from api.tests.offerkit import design_file
 from phonenumber_field.phonenumber import PhoneNumber
 
 from api.tests.botkit import load_fixture
@@ -14,6 +16,7 @@ from call_center.constants import NoteKind, SolutionChoice
 from call_center.models import Invoice
 from core.exceptions import ServiceError
 from core.geo import MapPoint
+from metering.design.models import Design
 from metering.models import Metering
 from metering.services import create_metering, set_metering_location
 
@@ -170,7 +173,10 @@ def _order_chain(admin_api, phone="+998901112255", **inv_extra):
     admin_api.post(f"/api/v1/meterings/{mid}/metering-done/")
     design = admin_api.post(f"/api/v1/meterings/{mid}/create-design/").data["design"]["id"]
     dtype = admin_api.get(f"/api/v1/designs/{design}/").data["types"][0]["id"]
+    design_file(design)
     admin_api.post(f"/api/v1/designs/{design}/done/")
+    # the manager has recorded the client's «Tasdiqladi»
+    Design.objects.filter(pk=design).update(stage="approved", confirm=True)
     return inv_id, mid, dtype
 
 
@@ -349,7 +355,9 @@ def test_legacy_address_link_input_is_read_as_a_location(admin_api, seller):
 
 def test_dashboard_cards_carry_map_url(admin_api, seller):
     inv = mk(seller, lat=P.lat, lon=P.lon)
-    mk_metering(inv)
+    m = mk_metering(inv)
+    # the dashboard lists zamers from the real today on, not from the frozen NOW
+    Metering.objects.filter(pk=m.pk).update(date_time=datetime.now() + timedelta(days=1))
     ov = admin_api.get("/api/v1/dashboard/overview/")
     assert ov.status_code == 200
     up = ov.data["meterings"]["upcoming"]

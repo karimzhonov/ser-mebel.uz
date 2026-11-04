@@ -41,6 +41,7 @@ import {
   ArrowDownUp,
   UserCheck,
   ListTodo,
+  Presentation,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
@@ -54,6 +55,8 @@ interface NavItem {
   label: string;
   icon: ComponentType<{ className?: string }>;
   perm?: string;
+  /** shown when the user holds any of these (instead of `perm`) */
+  anyPerm?: string[];
   superuser?: boolean;
   /** active only on this exact path (a parent of other menu items) */
   end?: boolean;
@@ -81,6 +84,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { to: "/meterings", label: "O'lchovlar", icon: Ruler, perm: "metering.view_metering" },
       { to: "/designs", label: "Dizayn", icon: Brush, perm: "design.view_design" },
       { to: "/prices", label: "Narx hisoblash", icon: Calculator, perm: "price.view_price" },
+      { to: "/presentations", label: "Mijozga ko'rsatish", icon: Presentation, anyPerm: ["metering.present_to_client", "metering.manage_metering"] },
       { to: "/catalog", label: "Mahsulotlar", icon: Boxes, perm: "price.view_inventorytype" },
     ],
   },
@@ -165,7 +169,7 @@ function useTheme() {
 }
 
 export function AppLayout() {
-  const { user, can, logout } = useAuth();
+  const { user, can, canAny, logout } = useAuth();
   const [open, setOpen] = useState(false);
   const [dark, setDark] = useTheme();
   const location = useLocation();
@@ -175,7 +179,7 @@ export function AppLayout() {
   const keeperOnly = !!user?.is_warehouse_keeper && !user.is_superuser;
   const visible = (item: NavItem) =>
     keeperOnly ? item.to.startsWith("/warehouse") && (!item.perm || can(item.perm)) && !item.superuser
-      : item.superuser ? user?.is_superuser : !item.perm || can(item.perm);
+      : item.superuser ? user?.is_superuser : item.anyPerm ? canAny(...item.anyPerm) : !item.perm || can(item.perm);
   const sections = NAV.map((s) => ({ ...s, items: s.items.filter(visible) })).filter((s) => s.items.length);
 
   const sidebar = (

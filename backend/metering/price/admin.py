@@ -55,7 +55,20 @@ class PriceAdmin(SimpleHistoryAdmin, ModelAdmin):
     list_select_related = ["metering__client", "metering__order"]
     actions_submit_line = ["done_action"]
     actions_detail = ["download_excel"]
-    exclude = ["folder", "done", "metering"]
+    # stage-2 fields are managed by the services / the SPA, not by hand
+    exclude = [
+        "folder",
+        "done",
+        "metering",
+        "stage",
+        "due_at",
+        "assigned_at",
+        "done_at",
+        "done_by",
+        "round",
+        "rev",
+        "duration_days",
+    ]
     readonly_fields = ["metering_folder", "folder_link", "price"]
     list_filter = [get_date_filter("created_at"), "done", MeteringPresenceFilter]
     list_filter_sheet = True

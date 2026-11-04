@@ -230,6 +230,11 @@ export interface InvoiceMetering {
   cancel_reason: string;
   next_step: MeteringNextStep;
   folder: number | null;
+  /** stage 2: who shows the design / price to the client */
+  manager?: PersonRef | null;
+  client_result?: ClientResult;
+  design?: OfferBrief | null;
+  price?: OfferBrief | null;
 }
 
 export type MeteringActionKey =
@@ -300,6 +305,117 @@ export interface MeasurerList {
   hint?: string;
 }
 
+/* ---------------------------------------------------- stage 2: dizayn va narx */
+
+export type OfferKind = "design" | "price";
+
+/** work → review (at the client) → approved / declined; cancelled */
+/* "waiting" is a legacy value only (old rows); nothing new creates it */
+export type OfferStage = "waiting" | "work" | "review" | "approved" | "declined" | "cancelled";
+
+export type ClientResult = "" | "agreed" | "design_declined" | "price_declined";
+
+/** design: approved | changes | declined; price: approved | recalc | declined */
+export type OfferAnswerKind = "approved" | "changes" | "recalc" | "declined";
+
+export interface OfferAnswer {
+  id: number;
+  kind: OfferKind;
+  round: number;
+  answer: OfferAnswerKind;
+  answer_label?: string;
+  comment: string;
+  due_at: string | null;
+  by: PersonRef | null;
+  created_at: string;
+}
+
+/** a design / price in short (lead card, «Mijozga ko'rsatish» rows) */
+export interface OfferBrief {
+  id: number;
+  stage: OfferStage;
+  stage_label: string;
+  due_at: string | null;
+  done_at?: string | null;
+  is_overdue: boolean;
+  user: PersonRef | null;
+  round: number;
+  last_comment: string | null;
+  /** design only: the variants (each has its own folder) */
+  types?: DesignType[];
+  /** price only */
+  price?: Money | null;
+  folder?: number | null;
+}
+
+/** fields Design and Price share in stage 2 */
+export interface OfferFields {
+  stage: OfferStage;
+  stage_label: string;
+  due_at: string | null;
+  done_at: string | null;
+  round: number;
+  rev: number;
+  is_overdue: boolean;
+  manager: PersonRef | null;
+  measurer: PersonRef | null;
+  /** the manager's last «O'zgartirish» / «Qayta hisoblash» comment */
+  last_comment: string | null;
+  client_result: ClientResult;
+  /** the measurer's note (metering.result_note) */
+  result_note?: string;
+  /** detail only */
+  answers?: OfferAnswer[];
+}
+
+export interface OfferAgendaCounts {
+  overdue: number;
+  today: number;
+  work: number;
+  review: number;
+  archive?: number;
+}
+
+/** GET /designs/agenda/, /prices/agenda/ */
+export interface OfferAgenda<T> {
+  counts: OfferAgendaCounts;
+  overdue: T[];
+  today: T[];
+  work: T[];
+  review: T[];
+}
+
+/** GET /meterings/presentations/ — one client the manager shows a design / price to */
+export interface PresentationRow {
+  metering: MeteringShort;
+  design: OfferBrief | null;
+  price: OfferBrief | null;
+  manager: PersonRef | null;
+  waiting_for: "design" | "price" | null;
+  is_overdue: boolean;
+}
+
+export interface Presentations {
+  counts: { review: number; overdue: number; working: number; order_ready: number };
+  review: PresentationRow[];
+  working: PresentationRow[];
+  order_ready: PresentationRow[];
+}
+
+/** GET /meterings/assignees/ */
+export interface MeteringAssignees {
+  designers: UserShort[];
+  pricers: UserShort[];
+  /** set when nobody holds «Dizayner» / «Narxchi» — what to do about it */
+  designer_hint?: string;
+  pricer_hint?: string;
+  managers?: UserShort[];
+  default_manager?: number | null;
+  defaults?: { design_due_at: string; price_due_at: string };
+  /** set when nobody holds «Menejer» */
+  hint?: string;
+}
+
 export interface DesignType {
   id: number;
   name: string;
@@ -307,7 +423,7 @@ export interface DesignType {
   created_at: string;
 }
 
-export interface Design {
+export interface Design extends OfferFields {
   id: number;
   metering: MeteringShort;
   created_at: string;
@@ -316,7 +432,9 @@ export interface Design {
   user_detail: UserShort | null;
   types: DesignType[];
   order: OrderSummary | null;
-  actions: { done: boolean; add_type: boolean; create_order: boolean };
+  /** detail only: files in the variant folders */
+  file_count?: number;
+  actions: { done: boolean; add_type: boolean; create_order: boolean; due?: boolean; reassign?: boolean; answer?: boolean };
 }
 
 export interface ObjectType {
@@ -464,7 +582,7 @@ export interface OfferSheet {
   }[];
 }
 
-export interface Price {
+export interface Price extends Partial<OfferFields> {
   id: number;
   metering: MeteringShort | null;
   price: Money | null;
@@ -482,7 +600,9 @@ export interface Price {
   versions?: PriceVersion[];
   /** the order is in detailing or later: nothing can change */
   locked?: boolean;
-  actions?: { edit: boolean; done: boolean };
+  /** design_price: days the pricer gets once the design is approved */
+  duration_days?: number;
+  actions?: { edit: boolean; done: boolean; due?: boolean; reassign?: boolean; answer?: boolean };
 }
 
 export interface Factory {
@@ -667,6 +787,18 @@ export interface StaffUser {
   last_login: string | null;
 }
 
+/** GET /groups/ — a role (Django group) */
+export interface StaffGroup {
+  id: number;
+  name: string;
+  /** number of members */
+  member_count?: number;
+  members_count?: number;
+  user_count?: number;
+  /** managed elsewhere (the keeper group «Omborchi» — on the Ombor page): no rename/delete/access/member edits */
+  locked?: boolean;
+}
+
 export type AccessLevel = "none" | "view" | "edit";
 
 export interface AccessSection {
@@ -680,12 +812,14 @@ export interface AccessSection {
   is_flag?: boolean;
   /** the person's own level; "custom" = set by hand in the old admin */
   level: AccessLevel | "custom";
-  from_groups: AccessLevel | "custom";
+  /** person only: what the person's groups give */
+  from_groups?: AccessLevel | "custom";
 }
 
+/** GET /users/{id}/access/ and /groups/{id}/access/ (a group has no is_superuser / is_keeper) */
 export interface UserAccess {
-  is_superuser: boolean;
-  is_keeper: boolean;
+  is_superuser?: boolean;
+  is_keeper?: boolean;
   sections: AccessSection[];
 }
 
@@ -743,4 +877,25 @@ export interface Overview {
     rows: { id: number; name: string; role: string; balance: number }[];
   } | null;
   timeline: { series: string[]; points: Record<string, number | string>[] };
+  /** «Zamer · Dizayn · Narx» — superuser / metering.manage_metering only */
+  pipeline?: SalesPipeline | null;
+}
+
+export type PipelineRole = "zamerchi" | "dizayner" | "narxchi" | "menejer";
+
+export interface SalesPipeline {
+  counts: {
+    zamer_today: number;
+    zamer_overdue: number;
+    zamer_waiting: number;
+    design_work: number;
+    design_overdue: number;
+    design_review: number;
+    price_work: number;
+    price_overdue: number;
+    price_review: number;
+    order_ready: number;
+  };
+  overdue: { kind: string; id: number; client: string; person: string | PersonRef | null; due_at: string | null; late_hours: number | null; url?: string | null }[];
+  load: { role: PipelineRole; person: { id: number; name: string } | null; open: number; overdue: number }[];
 }

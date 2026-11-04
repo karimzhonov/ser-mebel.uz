@@ -204,10 +204,17 @@ def create_metering(
             type(invoice).objects.select_for_update().get(pk=invoice.pk)
             old_metering = Metering.objects.select_for_update().filter(invoice=invoice).first()
             if old_metering is not None:
-                if old_metering.status != MeteringStatus.dont_need:
+                from .constants import ClientResult
+
+                refused = old_metering.client_result in (
+                    ClientResult.design_declined,
+                    ClientResult.price_declined,
+                )
+                if old_metering.status != MeteringStatus.dont_need and not refused:
                     raise ServiceError("Bu ariza uchun o'lchov allaqachon yaratilgan")
-                # Metering.invoice is a OneToOne: a cancelled zamer lets go of the lead so
-                # the operator can book a new one.
+                # Metering.invoice is a OneToOne: a cancelled zamer (or one whose design /
+                # price the client refused) lets go of the lead so the operator can book a
+                # new one.
                 old_metering.invoice = None
                 old_metering._history_user = author
                 old_metering.save(update_fields=["invoice"])
@@ -297,20 +304,19 @@ def _now():
     return datetime.now()
 
 
-def measurers():
-    """Who can be sent to measure: active staff holding oauth.user_metering EXPLICITLY
-    (own or via a group). Deliberately not users_with_perm: that adds every superuser."""
+def _explicit_holders(app_label, codename):
+    """Active staff holding app_label.codename EXPLICITLY (own or via a group).
+    Deliberately not users_with_perm: that adds every superuser."""
     from django.db.models import Q
 
-    from oauth.constants import METERING_PERMISSION
     from oauth.models import User
 
     perm = Q(
-        user_permissions__codename=METERING_PERMISSION,
-        user_permissions__content_type__app_label="oauth",
+        user_permissions__codename=codename,
+        user_permissions__content_type__app_label=app_label,
     ) | Q(
-        groups__permissions__codename=METERING_PERMISSION,
-        groups__permissions__content_type__app_label="oauth",
+        groups__permissions__codename=codename,
+        groups__permissions__content_type__app_label=app_label,
     )
     return (
         User.objects.filter(is_active=True, is_staff=True)
@@ -318,6 +324,14 @@ def measurers():
         .distinct()
         .order_by("name", "phone")
     )
+
+
+def measurers():
+    """Who can be sent to measure: active staff holding oauth.user_metering EXPLICITLY
+    (own or via a group). Deliberately not users_with_perm: that adds every superuser."""
+    from oauth.constants import METERING_PERMISSION
+
+    return _explicit_holders("oauth", METERING_PERMISSION)
 
 
 def default_measurer():
@@ -360,8 +374,9 @@ def _bump(metering, locked, fields):
 
 
 def _lock(metering):
-    """Row locks in the one global order Invoice -> Metering -> InvoiceTask: the lead's
-    row first (when there is one), then the metering."""
+    """Row locks in the one global order Invoice -> Metering -> Design -> Price ->
+    InvoiceTask: the lead's row first (when there is one), then the metering (the offer
+    rows follow in _lock_offer)."""
     from call_center.models import Invoice
 
     from .models import Metering
@@ -613,19 +628,25 @@ def cancel_metering(metering, *, by, reason):
     return metering, returned
 
 
-def metering_folder_ids(metering) -> list[int]:
-    """The metering's folder and every sub-folder of it."""
+def folder_tree_ids(roots) -> list[int]:
+    """The given folders and every sub-folder of them."""
     from filer.models import Folder
 
-    if metering.folder_id is None:
-        return []
-    ids, level = [metering.folder_id], [metering.folder_id]
+    ids = [r for r in roots if r is not None]
+    level = list(ids)
     for _ in range(10):
-        level = list(Folder.objects.filter(parent_id__in=level).values_list("pk", flat=True))
         if not level:
             break
+        level = list(Folder.objects.filter(parent_id__in=level).values_list("pk", flat=True))
         ids += level
     return ids
+
+
+def metering_folder_ids(metering) -> list[int]:
+    """The metering's folder and every sub-folder of it."""
+    if metering.folder_id is None:
+        return []
+    return folder_tree_ids([metering.folder_id])
 
 
 def metering_files(metering):
@@ -634,10 +655,23 @@ def metering_files(metering):
     return File.objects.filter(folder_id__in=metering_folder_ids(metering)).select_related("owner")
 
 
-def finish_metering(metering, *, by, note, next_step, designer=None, pricer=None):
+def finish_metering(
+    metering,
+    *,
+    by,
+    note,
+    next_step,
+    designer=None,
+    pricer=None,
+    manager=None,
+    design_due_at=None,
+    price_due_at=None,
+):
     """«Bajarildi»: after measuring, the measurer uploads the files on the site, writes
     the note and picks the next step - design + price (designer and pricer) or only the
-    price (pricer). Returns {"metering", "assigned"}."""
+    price (pricer) - the manager who will show the result to the client, and the
+    deadlines (default: design 2 days, price 1 day at OFFER_DUE_HOUR). With design +
+    price both start at once, each with its own deadline. Returns {"metering", "assigned"}."""
     from django.db import transaction
 
     from call_center.services import log_metering
@@ -660,19 +694,44 @@ def finish_metering(metering, *, by, note, next_step, designer=None, pricer=None
         if next_step not in NextStep.values:
             raise ServiceError("Keyingi bosqichni tanlang", "next_step")
         if pricer is None:
-            raise ServiceError("Narx hisoblovchini tanlang", "pricer")
+            raise ServiceError(
+                "Narxchi yo'q yoki tanlanmagan — Xodimlar → Guruhlar (rollar)da «Narxchi» roliga xodim qo'shing",
+                "pricer",
+            )
         if next_step == NextStep.design_price and designer is None:
-            raise ServiceError("Dizaynerni tanlang", "designer")
+            raise ServiceError(
+                "Dizayner yo'q yoki tanlanmagan — Xodimlar → Guruhlar (rollar)da «Dizayner» roliga xodim qo'shing",
+                "designer",
+            )
         if next_step == NextStep.price and designer is not None:
             raise ServiceError("«Faqat narx» uchun dizayner tanlanmaydi", "designer")
+        manager = _pick_manager(manager)
+        now = _now()
+        defaults = offer_defaults(now)
+        if next_step == NextStep.design_price:
+            design_due_at = _future_due(design_due_at, defaults["design_due_at"], now, "design_due")
+        else:
+            design_due_at = None
+        price_due_at = _future_due(price_due_at, defaults["price_due_at"], now, "price_due")
         if not metering_files(locked).exists():
             raise ServiceError("Kamida bitta fayl yuklang", "files")
+        # the offer rows read the manager from the database
+        locked.manager = manager
+        locked._history_user = by
+        locked.save(update_fields=["manager"])
         # BEFORE the status change: it only accepts metering_done / done
-        assigned = assign_metering_tasks(locked, designer=designer, pricer=pricer)
+        assigned = assign_metering_tasks(
+            locked,
+            designer=designer,
+            pricer=pricer,
+            design_due_at=design_due_at,
+            price_due_at=price_due_at,
+            by=by,
+        )
         locked.status = MeteringStatus.done
         locked.result_note = note
         locked.next_step = next_step
-        locked.done_at = _now()
+        locked.done_at = now
         locked.done_by = by
         locked.rev += 1
         locked._history_user = by
@@ -682,7 +741,7 @@ def finish_metering(metering, *, by, note, next_step, designer=None, pricer=None
         _bump(
             metering,
             locked,
-            ["status", "result_note", "next_step", "done_at", "done_by", "rev"],
+            ["status", "result_note", "next_step", "done_at", "done_by", "rev", "manager"],
         )
         if locked.invoice_id is not None:
             log_metering(
@@ -874,24 +933,38 @@ def due_metering_reminders(now) -> dict:
     return sent
 
 
-def start_design(metering):
+def start_design(metering, *, by=None):
+    """The legacy «Create design» button: an unassigned design with the default deadline
+    (anyone with oauth.user_design may work it; no bot task without an assignee)."""
     from core.exceptions import ServiceError
 
     from .design.models import Design
+    from .design.services import create_design
 
     if Design.objects.filter(metering=metering).exists():
         raise ServiceError("Dizayn allaqachon yaratilgan")
-    return Design.objects.create(metering=metering)
+    _refuse_if_declined(metering, None)
+    now = _now()
+    return create_design(
+        metering, user=None, due_at=default_due(_cfg("DESIGN_DAYS"), now=now), by=by
+    )
 
 
-def start_price(metering):
+def start_price(metering, *, by=None):
     from core.exceptions import ServiceError
 
     from .price.models import Price
+    from .price.services import create_price
 
     if Price.objects.filter(metering=metering).exists():
         raise ServiceError("Narx hisoblash allaqachon yaratilgan")
-    return Price.objects.create(metering=metering)
+    from .design.models import Design
+
+    design = Design.objects.filter(metering=metering).first()
+    _refuse_if_declined(metering, design, price=True)
+    now = _now()
+    days = _cfg("PRICE_DAYS")
+    return create_price(metering, user=None, due_at=default_due(days, now=now), days=days, by=by)
 
 
 # --- Assigning the design / price tasks after the metering --------------------------
@@ -900,49 +973,65 @@ ASSIGNABLE_STATUSES = [MeteringStatus.metering_done, MeteringStatus.done]
 
 
 def designers():
-    """Who may be picked to draw the design: design staff who can also open the
-    design page the Telegram link points to."""
+    """Who may be picked to draw the design: active staff holding oauth.user_design
+    EXPLICITLY (own or via a group, no superusers) who can also open the design page the
+    Telegram link points to."""
     from oauth.constants import DESIGN_PERMISSION
     from oauth.services import users_with_perm
 
     can_open = users_with_perm("design", "view_design").values("pk")
-    return (
-        users_with_perm("oauth", DESIGN_PERMISSION)
-        .filter(pk__in=can_open)
-        .order_by("name", "phone")
-    )
+    return _explicit_holders("oauth", DESIGN_PERMISSION).filter(pk__in=can_open)
 
 
 def pricers():
-    """Who may be picked to calculate the price: users who can edit price calculations
-    (and open them)."""
+    """Who may be picked to calculate the price: active staff holding
+    price.change_price EXPLICITLY (own or via a group, no superusers) who can open it."""
     from oauth.services import users_with_perm
 
     can_open = users_with_perm("price", "view_price").values("pk")
-    return (
-        users_with_perm("price", "change_price").filter(pk__in=can_open).order_by("name", "phone")
-    )
+    return _explicit_holders("price", "change_price").filter(pk__in=can_open)
 
 
-def assign_metering_tasks(metering, *, designer=None, pricer=None) -> dict:
+def _refuse_if_declined(metering, design, *, price=False):
+    """No design / price work on a metering the client has refused, nor a price after the
+    design was declined or cancelled."""
+    from core.exceptions import ServiceError
+
+    from .constants import ClientResult, OfferStage
+
+    if metering.client_result in (ClientResult.design_declined, ClientResult.price_declined):
+        raise ServiceError("Mijoz rad etgan — vazifa tayinlab bo'lmaydi")
+    if price and design is not None and design.stage in (OfferStage.declined, OfferStage.cancelled):
+        raise ServiceError("Dizayn rad etilgan yoki bekor qilingan — narx hisoblab bo'lmaydi")
+
+
+def assign_metering_tasks(
+    metering,
+    *,
+    designer=None,
+    pricer=None,
+    design_due_at=None,
+    price_due_at=None,
+    by=None,
+) -> dict:
     """After "Замер выполнен": give the design and/or the price task to one person each.
 
     Owner's rule: the metering staff hand these tasks out themselves, so this creates
     the Design / Price rows without design.add_design / price.add_price.
 
     A task that doesn't exist yet is created for that person; an existing unfinished
-    task is handed over to the new person. Only the chosen people are notified, and only
-    after the whole change is committed — a refused or failed request sends nothing.
+    task is handed over to the new person (the old one's bot card is retired). Design and
+    price start at the same time, each person is told at once. Only the chosen people are notified, and only after the whole
+    change is committed — a refused or failed request sends nothing.
     Returns {"design": "created"|"reassigned"|None, "price": ...}.
     """
     from django.db import IntegrityError, transaction
 
     from core.exceptions import ServiceError
 
-    from .design.models import Design
-    from .design.services import notify_design_task
-    from .price.models import Price
-    from .price.services import notify_price_task
+    from .constants import OfferStage
+    from .design.services import create_design
+    from .price.services import create_price
 
     if designer is None and pricer is None:
         raise ServiceError("Dizayner va/yoki narx hisoblovchini tanlang")
@@ -955,36 +1044,875 @@ def assign_metering_tasks(metering, *, designer=None, pricer=None) -> dict:
     try:
         with transaction.atomic():
             # Serialises concurrent assigns of the same metering.
-            locked = _lock(metering)
+            locked, design, price = _lock_offer(metering)
             if locked.status not in ASSIGNABLE_STATUSES:
                 raise ServiceError("Ijrochilar «O'lchov bajarildi»dan keyin tayinlanadi")
-            design = Design.objects.filter(metering=locked).first()
-            price = Price.objects.filter(metering=locked).first()
             # Every refusal before any write.
-            if designer is not None and design is not None and design.done:
-                raise ServiceError("Dizayn allaqachon bajarilgan — qayta tayinlab bo'lmaydi")
-            if pricer is not None and price is not None and price.done:
-                raise ServiceError("Narx allaqachon hisoblangan — qayta tayinlab bo'lmaydi")
+            _refuse_if_declined(locked, design, price=pricer is not None)
+            if designer is not None and design is not None:
+                if design.done:
+                    raise ServiceError("Dizayn allaqachon bajarilgan — qayta tayinlab bo'lmaydi")
+                if design.stage != OfferStage.work:
+                    raise ServiceError("Dizayn yopilgan — qayta tayinlab bo'lmaydi")
+            if pricer is not None and price is not None:
+                if price.done:
+                    raise ServiceError("Narx allaqachon hisoblangan — qayta tayinlab bo'lmaydi")
+                if price.stage != OfferStage.work:
+                    raise ServiceError("Narx yopilgan — qayta tayinlab bo'lmaydi")
 
+            now = _now()
             if designer is not None:
                 if design is None:
-                    # post_save notifies the designer once this commits.
-                    Design.objects.create(metering=locked, user=designer)
+                    due = design_due_at or default_due(_cfg("DESIGN_DAYS"), now=now)
+                    design = create_design(locked, user=designer, due_at=due, by=by)
                     result["design"] = "created"
                 elif design.user_id != designer.pk:
-                    design.user = designer
-                    design.save(update_fields=["user"])
-                    notify_design_task(design)  # deferred to on_commit
+                    _hand_over(design, "design", designer, by=by, now=now)
                     result["design"] = "reassigned"
             if pricer is not None:
                 if price is None:
-                    Price.objects.create(metering=locked, user=pricer)
+                    days = _cfg("PRICE_DAYS")
+                    due = price_due_at or default_due(days, now=now)
+                    create_price(locked, user=pricer, due_at=due, days=days, by=by)
                     result["price"] = "created"
                 elif price.user_id != pricer.pk:
-                    price.user = pricer
-                    price.save(update_fields=["user"])
-                    notify_price_task(price)
+                    _hand_over(price, "price", pricer, by=by, now=now)
                     result["price"] = "reassigned"
     except IntegrityError:
         raise ServiceError("Vazifalar hozir tayinlanmoqda — sahifani yangilang")
     return result
+
+
+# --- Stage 2: dizayn va narx ----------------------------------------------------------
+# Docs: docs/BOT_CONTRACT.md, "Dizayn va narx". Lock order: Invoice -> Metering -> Design
+# -> Price -> InvoiceTask (_lock_offer).
+
+PRESENT_LOOKBACK_DAYS = 7
+_DUE_PRESETS = {"1d": 1, "2d": 2, "3d": 3}
+_PAST = "O'tgan vaqt — kelajakdagi vaqtni kiriting"
+
+
+def _cfg(name):
+    from constance import config
+
+    return int(getattr(config, name))
+
+
+def managers():
+    """Who may show the design / price to the client: active staff holding
+    metering.present_to_client EXPLICITLY (like measurers(): no superusers)."""
+    from .constants import METERING_PRESENT_PERMISSION
+
+    return _explicit_holders("metering", METERING_PRESENT_PERMISSION)
+
+
+def default_manager():
+    """The manager when there is exactly one (preselected), else None."""
+    found = list(managers()[:2])
+    return found[0] if len(found) == 1 else None
+
+
+def order_creators():
+    """Who is told to make the order when the client agreed to the price: active staff
+    holding order.add_order EXPLICITLY."""
+    return _explicit_holders("order", "add_order")
+
+
+def manager_of(metering):
+    """Who gets the «ready» card of this metering: its manager; a legacy row without one
+    goes to the only manager, else to nobody."""
+    return metering.manager or default_manager()
+
+
+def default_due(days, *, now):
+    from datetime import datetime, time, timedelta
+
+    return datetime.combine(now.date() + timedelta(days=days), time(_cfg("OFFER_DUE_HOUR")))
+
+
+def offer_defaults(now) -> dict:
+    return {
+        "design_due_at": default_due(_cfg("DESIGN_DAYS"), now=now),
+        "price_due_at": default_due(_cfg("PRICE_DAYS"), now=now),
+    }
+
+
+def shift_due(current, *, now, preset=None, text=None, due_at=None):
+    """The new deadline. Exactly one of preset ("1d"|"2d"|"3d": that many days after the
+    later of the old deadline's day and today, same clock), text ("18:00", "25.12",
+    "25.12 18:00") or due_at. Must be in the future."""
+    from datetime import datetime, time, timedelta
+
+    from call_center.services import parse_due
+    from core.exceptions import ServiceError
+
+    text = (text or "").strip() or None
+    if sum(x is not None for x in (preset, text, due_at)) != 1:
+        raise ServiceError("Yangi muddatni kiriting", "due")
+    clock = (
+        current.time().replace(second=0, microsecond=0)
+        if current is not None
+        else time(_cfg("OFFER_DUE_HOUR"))
+    )
+    if due_at is not None:
+        target = due_at.replace(second=0, microsecond=0)
+    elif preset is not None:
+        if preset not in _DUE_PRESETS:
+            raise ServiceError("Noma'lum muddat tanlovi", "due")
+        base = max(current.date(), now.date()) if current is not None else now.date()
+        target = datetime.combine(base + timedelta(days=_DUE_PRESETS[preset]), clock)
+    else:
+        try:
+            target = parse_due(text, now, default_time=clock)
+        except ServiceError as e:
+            raise ServiceError(e.message, "due")
+    if target <= now:
+        raise ServiceError(_PAST, "due")
+    return target
+
+
+def _future_due(value, default, now, field):
+    from core.exceptions import ServiceError
+
+    if value is None:
+        return default
+    value = value.replace(second=0, microsecond=0)
+    if value <= now:
+        raise ServiceError(_PAST, field)
+    return value
+
+
+def _pick_manager(manager):
+    """«Bajarildi» needs a manager once one exists; exactly one is preselected. With no
+    manager at all (rollout) it finishes without one (None) and logs a warning."""
+    from core.exceptions import ServiceError
+
+    if manager is None:
+        manager = default_manager()
+        if manager is None:
+            if managers().exists():
+                raise ServiceError("Menejerni tanlang", "manager")
+            import logging
+
+            logging.getLogger("metering").warning(
+                "finish without a manager: nobody holds metering.present_to_client"
+            )
+            return None
+        return manager
+    if not managers().filter(pk=manager.pk).exists():
+        raise ServiceError("Bu xodim menejer emas", "manager")
+    return manager
+
+
+def can_present(user, metering) -> bool:
+    """May record the client's answer for this metering."""
+    from .constants import METERING_PRESENT_PERMISSION
+
+    if user is None:
+        return False
+    if user.is_superuser or user.has_perm(f"metering.{METERING_MANAGE_PERMISSION}"):
+        return True
+    if metering.manager_id is not None:
+        return metering.manager_id == user.pk
+    return user.has_perm(f"metering.{METERING_PRESENT_PERMISSION}")
+
+
+def _lock_offer(metering):
+    """Lock the metering (after its lead), then its Design, then its Price. Returns
+    (metering, design|None, price|None); each offer row has the locked metering attached."""
+    from .design.models import Design
+    from .price.models import Price
+
+    locked = _lock(metering)
+    design = (
+        Design.objects.select_for_update(of=("self",))
+        .select_related("user")
+        .filter(metering=locked)
+        .first()
+    )
+    price = (
+        Price.objects.select_for_update(of=("self",))
+        .select_related("user")
+        .filter(metering=locked)
+        .first()
+    )
+    for row in (design, price):
+        if row is not None:
+            row.metering = locked
+    return locked, design, price
+
+
+def _copy_back(obj, locked, fields):
+    for name in fields:
+        setattr(obj, name, getattr(locked, name))
+    return obj
+
+
+def _hand_over(obj, kind, user, *, by, now):
+    """Give an unfinished Design / Price to another person: the old one's bot card is
+    retired, the new one gets the task."""
+    from . import events
+
+    old = obj.user
+    obj.user = user
+    obj.rev += 1
+    fields = ["user", "rev"]
+    if obj.stage == "work":
+        obj.assigned_at = now
+        fields.append("assigned_at")
+    obj._history_user = by
+    obj.save(update_fields=fields)
+    if obj.stage == "work":
+        events.offer_changed(
+            obj,
+            kind,
+            how="reassigned",
+            by=by,
+            to_users=[old] if old is not None else [],
+            to_name=_name(user),
+        )
+        events.offer_assigned(obj, kind, how="reassigned")
+        queue_offer_sms(obj, kind, "assigned")
+
+
+def queue_offer_sms(obj, kind, what):
+    """SMS (after commit, via Celery) for a person without Telegram. what: "assigned"
+    (the designer / pricer) | "ready" (the manager)."""
+    from django.db import transaction
+
+    person = obj.user if what == "assigned" else manager_of(obj.metering)
+    if person is None or person.telegram_id or not person.is_active:
+        return
+    oid, rev = obj.pk, obj.rev
+
+    def _go():
+        try:
+            from .tasks import offer_sms
+
+            offer_sms.delay(kind, oid, rev, what)
+        except Exception:  # noqa: BLE001 - a broken broker must not undo the change
+            import logging
+
+            logging.getLogger("metering").exception("could not queue the offer SMS")
+
+    transaction.on_commit(_go)
+
+
+def folder_file_count(folder_ids) -> int:
+    from filer.models import File
+
+    return File.objects.filter(folder_id__in=folder_tree_ids(folder_ids)).count()
+
+
+def offer_stage_error(stage):
+    """The refusal for a Design / Price that cannot be worked any more."""
+    from core.exceptions import ServiceConflict
+
+    if stage in ("review", "approved"):
+        return ServiceConflict("Allaqachon bajarilgan")
+    return ServiceConflict("Bu vazifa yopilgan")
+
+
+# --- Stage 2: reads -------------------------------------------------------------------
+
+
+def due_offer_reminders(now) -> dict:
+    """Bot reminders for the designer / pricer (soon, late, daily overdue) and for the
+    manager who owes the client's answer (nudge, then daily). Each fires once per
+    revision of the row (accounting.services.once)."""
+    from datetime import datetime, time, timedelta
+
+    from accounting.services import once
+
+    from . import events
+    from .design.models import Design
+    from .price.models import Price
+
+    hour = _cfg("OFFER_REMIND_HOUR")
+    today_at = datetime.combine(now.date(), time(hour))
+    present_after = timedelta(hours=_cfg("PRESENT_REMIND_HOURS"))
+    sent = {"soon": 0, "late": 0, "overdue": 0, "present": 0}
+    midnight = datetime.combine(now.date(), time(0))
+    fallback_manager = default_manager()  # once per run, not per row
+
+    def remind_at(obj):
+        due = obj.due_at
+        if obj.assigned_at is not None and due - obj.assigned_at >= timedelta(hours=36):
+            at = datetime.combine(due.date() - timedelta(days=1), time(hour))
+        else:
+            at = datetime.combine(due.date(), time(hour))
+        return at if at < due else due - timedelta(hours=2)
+
+    for model, kind in ((Design, "design"), (Price, "price")):
+        key = f"off:{kind[0]}"
+        work = (
+            model.objects.filter(
+                stage="work",
+                due_at__isnull=False,
+                user__isnull=False,
+                user__is_active=True,
+                user__telegram_id__isnull=False,
+            )
+            .select_related("metering__client", "metering__manager", "metering__measurer", "user")
+            .order_by("due_at", "pk")
+        )
+        # soon: the reminder moment has come, the deadline has not
+        count = 0
+        for obj in work.filter(due_at__gt=now, due_at__lte=now + timedelta(days=3))[:1000]:
+            at = remind_at(obj)
+            if obj.assigned_at is not None and not obj.assigned_at < at:
+                continue  # assigned after the reminder moment: nothing to remind of yet
+            if at <= now and count < 200 and once(f"{key}:{obj.pk}:r{obj.rev}:soon"):
+                events.offer_reminder(obj, kind, what="soon")
+                sent["soon"] += 1
+                count += 1
+        # late: the deadline just passed
+        for obj in work.filter(due_at__lte=now, due_at__gte=now - timedelta(hours=24))[:200]:
+            if once(f"{key}:{obj.pk}:r{obj.rev}:late"):
+                events.offer_reminder(obj, kind, what="late")
+                sent["late"] += 1
+        # overdue: every morning for a week
+        if now >= today_at:
+            # from the NEXT day after the deadline: a deadline before the reminder hour has
+            # just got its "late" - no "overdue" an hour later the same day
+            late = work.filter(due_at__lt=midnight, due_at__gte=now - timedelta(days=7))
+            for obj in late[:200]:
+                if once(f"{key}:{obj.pk}:r{obj.rev}:od:{now.date().isoformat()}"):
+                    events.offer_reminder(obj, kind, what="overdue")
+                    sent["overdue"] += 1
+        # manager: the client's answer is overdue
+        review = (
+            model.objects.filter(
+                stage="review",
+                done_at__lte=now - present_after,
+                done_at__gt=now - present_after - timedelta(days=PRESENT_LOOKBACK_DAYS),
+            )
+            .select_related("metering__client", "metering__manager", "metering__measurer", "user")
+            .order_by("done_at", "pk")
+        )
+        for obj in review[:200]:
+            who = obj.metering.manager or fallback_manager
+            if who is None or not who.is_active or not who.telegram_id:
+                continue
+            day = f"{key}:{obj.pk}:r{obj.rev}:pr:{now.date().isoformat()}"
+            if once(f"{key}:{obj.pk}:r{obj.rev}:pr"):
+                once(day)  # the first nudge is today's
+            elif now < today_at or not once(day):
+                continue
+            events.offer_present(obj, kind, how="reminder", to_users=[who])
+            sent["present"] += 1
+    return sent
+
+
+def offer_agenda(qs, *, now) -> dict:
+    """The agenda of the «Dizayn» / «Narx hisoblash» page over `qs` (Design or Price rows).
+    overdue = in work past the deadline; today = in work due today; work = all in work
+    (nearest deadline first, undated last); review = waiting for the client's answer.
+    The archive is paged by the list."""
+    from datetime import timedelta
+
+    from django.db.models import F
+
+    from .constants import OFFER_ARCHIVE
+
+    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    work = qs.filter(stage="work")
+    buckets = {
+        "overdue": work.filter(due_at__lt=now).order_by("due_at", "pk"),
+        "today": work.filter(due_at__gte=now, due_at__lt=today0 + timedelta(days=1)).order_by(
+            "due_at", "pk"
+        ),
+        "work": work.order_by(F("due_at").asc(nulls_last=True), "pk"),
+        "review": qs.filter(stage="review").order_by(F("done_at").asc(nulls_last=True), "pk"),
+    }
+    out = {"counts": {}}
+    for key, bucket in buckets.items():
+        out["counts"][key] = bucket.count()
+        out[key] = list(bucket[:AGENDA_LIMIT])
+    out["counts"]["archive"] = qs.filter(stage__in=OFFER_ARCHIVE).count()
+    return out
+
+
+def offer_queryset_for(user, qs, *, kind):
+    """Row scoping of the AGENDA: a plain designer / pricer sees only their own rows;
+    manage_metering («Bosh menejer») and superusers see all. (List and detail are scoped
+    by the viewset as before.)"""
+    if user.is_superuser or user.has_perm(f"metering.{METERING_MANAGE_PERMISSION}"):
+        return qs
+    return qs.filter(user=user)
+
+
+def presentations(user, *, now, manager=None, search="") -> dict:
+    """«Mijozga ko'rsatish»: what the manager owes the client. Rows are dicts
+    {metering, design, price, manager, waiting_for, is_overdue}. Scope: my meterings (and
+    those with no manager yet); everything for manage_metering and superusers.
+    review = the design / price is ready, the client's answer is due; working = the
+    designer / pricer is still at it; order_ready = the client agreed, no order yet.
+    `manager` (a user id) and `search` narrow the queryset BEFORE the row cap; `counts`
+    are of the whole filtered set, not of the capped rows."""
+    from datetime import timedelta
+
+    from django.db.models import Prefetch, Q
+
+    from .constants import ClientResult
+    from .models import Metering, OfferAnswer
+
+    present_after = timedelta(hours=_cfg("PRESENT_REMIND_HOURS"))
+    cut = now - present_after
+
+    def rows(qs, bucket):
+        out = []
+        for m in qs.order_by("-pk")[:AGENDA_LIMIT]:
+            design = getattr(m, "design", None)
+            price = getattr(m, "price", None)
+            waiting_for = None
+            overdue = False
+            if bucket == "review":
+                done = [
+                    o.done_at for o in (design, price) if o and o.stage == "review" and o.done_at
+                ]
+                overdue = bool(done) and min(done) + present_after <= now
+            elif bucket == "working":
+                if design is not None and design.stage == "work":
+                    waiting_for = "design"
+                elif price is not None and price.stage == "work":
+                    waiting_for = "price"
+                overdue = any(
+                    o is not None and o.stage == "work" and o.due_at and o.due_at < now
+                    for o in (design, price)
+                )
+            out.append(
+                {
+                    "metering": m,
+                    "design": design,
+                    "price": price,
+                    "manager": m.manager,
+                    "waiting_for": waiting_for,
+                    "is_overdue": overdue,
+                }
+            )
+        return out
+
+    base = Metering.objects.filter(status=MeteringStatus.done)
+    if not (user.is_superuser or user.has_perm(f"metering.{METERING_MANAGE_PERMISSION}")):
+        base = base.filter(Q(manager=user) | Q(manager__isnull=True))
+    if manager is not None:
+        base = base.filter(manager_id=manager)
+    search = (search or "").strip()
+    if search:
+        base = base.filter(
+            Q(client__fio__icontains=search)
+            | Q(client__phone__icontains=search)
+            | Q(address__icontains=search)
+        )
+    in_review = Q(design__stage="review") | Q(price__stage="review")
+    in_work = Q(design__stage="work") | Q(price__stage="work")
+    review = base.filter(in_review)
+    working = base.filter(in_work).exclude(in_review)
+    ready = base.filter(client_result=ClientResult.agreed, order__isnull=True)
+    late_review = review.filter(
+        Q(design__stage="review", design__done_at__lte=cut)
+        | Q(price__stage="review", price__done_at__lte=cut)
+    )
+    late_working = working.filter(
+        Q(design__stage="work", design__due_at__lt=now)
+        | Q(price__stage="work", price__due_at__lt=now)
+    )
+
+    def heavy(qs):
+        return qs.select_related(
+            "client", "manager", "measurer", "design__user", "price__user"
+        ).prefetch_related(
+            "design__designtype_set",
+            Prefetch("offer_answers", queryset=OfferAnswer.objects.order_by("created_at", "pk")),
+        )
+
+    return {
+        "review": rows(heavy(review), "review"),
+        "working": rows(heavy(working), "working"),
+        "order_ready": rows(heavy(ready), "order_ready"),
+        "counts": {
+            "review": review.count(),
+            "overdue": late_review.count() + late_working.count(),
+            "working": working.count(),
+            "order_ready": ready.count(),
+        },
+    }
+
+
+# --- Stage 2: writes shared by Design and Price ----------------------------------------
+
+
+def offer_locked(obj, kind):
+    """(metering, design, price, row): all locked in the global order; `row` is `obj`'s
+    row. Call inside transaction.atomic()."""
+    from core.exceptions import ServiceError
+
+    m, design, price = _lock_offer(obj.metering)
+    row = design if kind == "design" else price
+    if row is None or row.pk != obj.pk:
+        raise ServiceError("Vazifa topilmadi")
+    return m, design, price, row
+
+
+def move_offer_due(obj, kind, *, by, can_work, due_at=None, preset=None, text=None):
+    """Move the deadline of a task in work (the assignee, a boss or a zamer manager).
+    The assignee's bot card is re-rendered; the manager is told when someone else moved it."""
+    from django.db import transaction
+
+    from core.exceptions import ServiceConflict, ServiceForbidden
+
+    from . import events
+
+    with transaction.atomic():
+        m, _, _, row = offer_locked(obj, kind)
+        if not (can_work(by, row) or by.has_perm(f"metering.{METERING_MANAGE_PERMISSION}")):
+            raise ServiceForbidden("Bu vazifa sizga biriktirilmagan")
+        if row.stage != "work":
+            raise ServiceConflict("Muddatni faqat ishdagi vazifada o'zgartirish mumkin")
+        row.due_at = shift_due(row.due_at, now=_now(), preset=preset, text=text, due_at=due_at)
+        row.rev += 1
+        row._history_user = by
+        row.save(update_fields=["due_at", "rev"])
+        watchers = [m.manager] if m.manager is not None and m.manager.pk != by.pk else []
+        events.offer_changed(
+            row,
+            kind,
+            how="due_moved",
+            by=by,
+            to_users=[row.user] if row.user is not None else [],
+            watchers=watchers,
+        )
+    return _copy_back(obj, row, ["due_at", "rev"])
+
+
+def reassign_offer(obj, kind, *, by, user, boss_perm, pool):
+    """Hand a task in work to another person."""
+    from django.db import transaction
+
+    from core.exceptions import ServiceError, ServiceForbidden
+
+    with transaction.atomic():
+        _, _, _, row = offer_locked(obj, kind)
+        if not (
+            by.is_superuser
+            or by.has_perm(boss_perm)
+            or by.has_perm(f"metering.{METERING_MANAGE_PERMISSION}")
+        ):
+            raise ServiceForbidden("Ijrochini almashtirish huquqi yo'q")
+        if not pool.filter(pk=user.pk).exists():
+            raise ServiceError("Bu xodim bu ishni bajara olmaydi", "user")
+        if row.stage != "work":
+            raise offer_stage_error(row.stage)
+        if row.user_id != user.pk:
+            _hand_over(row, kind, user, by=by, now=_now())
+    return _copy_back(obj, row, ["user", "rev", "assigned_at"])
+
+
+def offer_ready(row, kind, m, *, by, now):
+    """The designer / pricer pressed «Tayyor»: the task goes to the manager. Inside the
+    caller's transaction, row locked."""
+    from call_center.services import log_metering
+
+    from . import events
+
+    row.done = True
+    row.stage = "review"
+    row.done_at = now
+    row.done_by = by
+    row.rev += 1
+    row._history_user = by
+    row.save(update_fields=["done", "stage", "done_at", "done_by", "rev"])
+    if m.invoice_id is not None:
+        log_metering(
+            m.invoice,
+            author=by,
+            event=f"{kind}_done",
+            meta={"metering_id": m.pk, f"{kind}_id": row.pk, "round": row.round},
+        )
+    events.offer_changed(
+        row, kind, how="done", by=by, to_users=[row.user] if row.user is not None else []
+    )
+    who = manager_of(m)
+    if who is not None:
+        events.offer_present(row, kind, how="ready", to_users=[who])
+        queue_offer_sms(row, kind, "ready")
+
+
+def offer_answer_prelude(answer, comment, allowed):
+    """Validate the manager's answer before any lock: returns the stripped comment."""
+    from core.exceptions import ServiceError
+
+    if answer not in allowed:
+        raise ServiceError("Javobni tanlang", "answer")
+    comment = (comment or "").strip()
+    if answer == "declined" and len(comment) < MIN_REASON:
+        raise ServiceError("Sababini yozing", "comment")
+    if answer in ("changes", "recalc") and len(comment) < MIN_REASON:
+        raise ServiceError("Nima o'zgarishini yozing", "comment")
+    return comment
+
+
+def offer_check_answerable(row, m, by, kind):
+    """403 not the manager; 409 already answered / closed; 400 not ready yet."""
+    from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden
+
+    if not can_present(by, m):
+        raise ServiceForbidden("Bu mijoz sizga biriktirilmagan")
+    if row.stage in ("approved", "declined"):
+        raise ServiceConflict("Javob allaqachon yozilgan")
+    if row.stage == "cancelled":
+        raise ServiceConflict("Bu vazifa yopilgan")
+    if row.stage != "review":
+        raise ServiceError(
+            "Dizayn hali tayyor emas" if kind == "design" else "Narx hali tayyor emas"
+        )
+
+
+def offer_store_answer(row, kind, m, *, by, answer, comment, round_, due_at=None, log=True):
+    """The OfferAnswer row + the lead's timeline line. `round_` = the round that was
+    answered (the row's round may already have moved on)."""
+    from call_center.services import log_metering
+
+    from .models import OfferAnswer
+
+    OfferAnswer.objects.create(
+        metering=m, kind=kind, round=round_, answer=answer, comment=comment, due_at=due_at, by=by
+    )
+    if log and m.invoice_id is not None:
+        log_metering(
+            m.invoice,
+            author=by,
+            event=f"{kind}_{answer}",
+            text=comment,
+            meta={"metering_id": m.pk, f"{kind}_id": row.pk, "round": round_},
+        )
+
+
+def offer_send_back(row, kind, m, *, by, now, comment, due_at, fix_cfg):
+    """«O'zgartirish kerak» / «Qayta hisoblash»: the same assignee works it again."""
+    from . import events
+
+    if due_at is not None:
+        due_at = _future_due(due_at, None, now, "due")
+    else:
+        due_at = default_due(_cfg(fix_cfg), now=now)
+    row.done = False
+    row.stage = "work"
+    row.round += 1
+    row.assigned_at = now
+    row.due_at = due_at
+    row.done_at = None
+    row.done_by = None
+    row.rev += 1
+    row._history_user = by
+    row.save(
+        update_fields=[
+            "done",
+            "stage",
+            "round",
+            "assigned_at",
+            "due_at",
+            "done_at",
+            "done_by",
+            "rev",
+        ]
+    )
+    events.offer_assigned(row, kind, how="changes", comment=comment)
+    return due_at
+
+
+def offer_answered(row, kind, m, *, by, answer):
+    """Tell the manager's chats (also when the answer came from the bot) the card is done."""
+    from . import events
+
+    row.rev += 1  # a newer revision than the events above: the bot drops older ones
+    row._history_user = by
+    row.save(update_fields=["rev"])
+    who = manager_of(m)
+    events.offer_changed(
+        row, kind, how="answered", by=by, answer=answer, to_users=[who] if who else []
+    )
+    if answer in ("changes", "recalc"):
+        # queued only now: the SMS is tied to the FINAL revision (the bump above)
+        queue_offer_sms(row, kind, "assigned")
+
+
+# --- Dashboard: Zamer · Dizayn · Narx overview --------------------------------------
+
+
+def can_see_pipeline(user) -> bool:
+    return bool(user.is_superuser or user.has_perm(f"metering.{METERING_MANAGE_PERMISSION}"))
+
+
+def pipeline_overview(now, *, limit=10) -> dict:
+    """What the bosses see on the home page: counts of zamer / design / price work, the
+    most overdue items and the open load per person. A fixed number of queries."""
+    from datetime import timedelta
+
+    from django.db.models import Count, Q
+
+    from .constants import ClientResult
+    from .design.models import Design
+    from .models import Metering
+    from .price.models import Price
+
+    def person(pk, name, phone):
+        return {"id": pk, "name": name or str(phone or "")} if pk else None
+
+    today0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    present_after = timedelta(hours=_cfg("PRESENT_REMIND_HOURS"))
+    scheduled = Metering.objects.filter(
+        status__in=[MeteringStatus.created, MeteringStatus.other_day]
+    )
+    z = Metering.objects.aggregate(
+        today=Count(
+            "pk",
+            filter=Q(
+                status__in=[MeteringStatus.created, MeteringStatus.other_day],
+                date_time__gte=today0,
+                date_time__lt=today0 + timedelta(days=1),
+            ),
+        ),
+        overdue=Count(
+            "pk",
+            filter=Q(
+                status__in=[MeteringStatus.created, MeteringStatus.other_day], date_time__lt=now
+            ),
+        ),
+        waiting=Count("pk", filter=Q(status=MeteringStatus.metering_done)),
+        ready=Count(
+            "pk",
+            filter=Q(
+                status=MeteringStatus.done,
+                client_result=ClientResult.agreed,
+                order__isnull=True,
+            ),
+        ),
+    )
+    counts = {
+        "zamer_today": z["today"],
+        "zamer_overdue": z["overdue"],
+        "zamer_waiting": z["waiting"],
+        "order_ready": z["ready"],
+    }
+    overdue_rows = []
+    load = {}
+
+    for model, kind, role in ((Design, "design", "dizayner"), (Price, "price", "narxchi")):
+        agg = model.objects.aggregate(
+            work=Count("pk", filter=Q(stage="work")),
+            overdue=Count("pk", filter=Q(stage="work", due_at__lt=now)),
+            review=Count("pk", filter=Q(stage="review")),
+        )
+        counts[f"{kind}_work"] = agg["work"]
+        counts[f"{kind}_overdue"] = agg["overdue"]
+        counts[f"{kind}_review"] = agg["review"]
+        for r in (
+            model.objects.filter(stage="work")
+            .values("user_id", "user__name", "user__phone")
+            .annotate(n=Count("pk"), late=Count("pk", filter=Q(due_at__lt=now)))
+        ):
+            row = load.setdefault(
+                (role, r["user_id"]),
+                {
+                    "role": role,
+                    "person": person(r["user_id"], r["user__name"], r["user__phone"]),
+                    "open": 0,
+                    "overdue": 0,
+                },
+            )
+            row["open"] += r["n"]
+            row["overdue"] += r["late"]
+        for obj in (
+            model.objects.filter(stage="work", due_at__lt=now)
+            .select_related("metering__client", "user")
+            .order_by("due_at")[:limit]
+        ):
+            overdue_rows.append(
+                {
+                    "kind": kind,
+                    "id": obj.pk,
+                    "client": str(obj.metering.client) if obj.metering else "",
+                    "person": person(
+                        obj.user_id, obj.user and obj.user.name, obj.user and obj.user.phone
+                    ),
+                    "due_at": obj.due_at,
+                    "late_hours": round((now - obj.due_at).total_seconds() / 3600, 1),
+                    "url": f"/{kind}s/{obj.pk}",
+                }
+            )
+        # managers: what they still owe the client
+        for r in (
+            model.objects.filter(stage="review", metering__manager__isnull=False)
+            .values("metering__manager_id", "metering__manager__name", "metering__manager__phone")
+            .annotate(n=Count("pk"), late=Count("pk", filter=Q(done_at__lte=now - present_after)))
+        ):
+            row = load.setdefault(
+                ("menejer", r["metering__manager_id"]),
+                {
+                    "role": "menejer",
+                    "person": person(
+                        r["metering__manager_id"],
+                        r["metering__manager__name"],
+                        r["metering__manager__phone"],
+                    ),
+                    "open": 0,
+                    "overdue": 0,
+                },
+            )
+            row["open"] += r["n"]
+            row["overdue"] += r["late"]
+
+    for r in (
+        Metering.objects.filter(
+            status__in=[
+                MeteringStatus.created,
+                MeteringStatus.other_day,
+                MeteringStatus.metering_done,
+            ]
+        )
+        .values("measurer_id", "measurer__name", "measurer__phone")
+        .annotate(
+            n=Count("pk"),
+            late=Count(
+                "pk",
+                filter=Q(
+                    date_time__lt=now, status__in=[MeteringStatus.created, MeteringStatus.other_day]
+                ),
+            ),
+        )
+    ):
+        load[("zamerchi", r["measurer_id"])] = {
+            "role": "zamerchi",
+            "person": person(r["measurer_id"], r["measurer__name"], r["measurer__phone"]),
+            "open": r["n"],
+            "overdue": r["late"],
+        }
+    for m in (
+        scheduled.filter(date_time__lt=now)
+        .select_related("client", "measurer")
+        .order_by("date_time")[:limit]
+    ):
+        overdue_rows.append(
+            {
+                "kind": "zamer",
+                "id": m.pk,
+                "client": str(m.client),
+                "person": person(
+                    m.measurer_id, m.measurer and m.measurer.name, m.measurer and m.measurer.phone
+                ),
+                "due_at": m.date_time,
+                "late_hours": round((now - m.date_time).total_seconds() / 3600, 1),
+                "url": f"/meterings/{m.pk}",
+            }
+        )
+    overdue_rows.sort(key=lambda r: -r["late_hours"])
+    return {
+        "counts": counts,
+        "overdue": overdue_rows[:limit],
+        "load": sorted(
+            load.values(),
+            key=lambda r: (r["role"], -r["overdue"], -r["open"]),
+        ),
+    }

@@ -3,7 +3,7 @@ panel API, fill-down limits, data migrations, history users, candidates ordering
 dashboard cards)."""
 
 import importlib
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -312,7 +312,10 @@ def test_board_cards_carry_map_url(admin_api, seller):
 
 def test_overview_upcoming_without_a_point_falls_back_to_text_search(admin_api, seller):
     m = mk_metering(mk(seller), address="Chilonzor 5")
-    Metering.objects.filter(pk=m.pk).update(address="Chilonzor 5")
+    # the dashboard lists zamers from the real today on, not from the frozen NOW
+    Metering.objects.filter(pk=m.pk).update(
+        address="Chilonzor 5", date_time=datetime.now() + timedelta(days=1)
+    )
     up = admin_api.get("/api/v1/dashboard/overview/").data["meterings"]["upcoming"]
     row = next(u for u in up if u["id"] == m.pk)
     assert row["lat"] is None and "text=Chilonzor%205" in row["map_url"]

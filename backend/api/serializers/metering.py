@@ -38,6 +38,7 @@ from .common import (
     UserShortSerializer,
     order_of,
 )
+from .offers import OfferAnswerSerializer, OfferFieldsMixin, offer_brief
 
 
 def _user(user):
@@ -51,6 +52,11 @@ def can_assign_tasks(user) -> bool:
         or user.has_perm("metering.change_metering")
         or user.has_perm("metering.manage_metering")
     )
+
+
+def _brief_extra(brief):
+    """The stage-2 part of a design / price brief (id and user are already there)."""
+    return {k: v for k, v in brief.items() if k not in ("id", "user")}
 
 
 def _order_summary(metering, context):
@@ -85,6 +91,7 @@ class MeteringSerializer(LocationFieldsMixin, serializers.ModelSerializer):
     order = serializers.SerializerMethodField()
     is_editable = serializers.SerializerMethodField()
     measurer = serializers.SerializerMethodField()
+    manager = serializers.SerializerMethodField()
     operator = serializers.SerializerMethodField()
     is_overdue = serializers.SerializerMethodField()
 
@@ -97,6 +104,8 @@ class MeteringSerializer(LocationFieldsMixin, serializers.ModelSerializer):
             "status_label",
             "date_time",
             "measurer",
+            "manager",
+            "client_result",
             "operator",
             "measured_at",
             "done_at",
@@ -133,13 +142,19 @@ class MeteringSerializer(LocationFieldsMixin, serializers.ModelSerializer):
             "done": design.done,
             "confirm": design.confirm,
             "user": _user(design.user),
+            **_brief_extra(offer_brief(design, "design", self.context)),
         }
 
     def get_price(self, obj):
         price = getattr(obj, "price", None)
         if price is None:
             return None
-        return {"id": price.pk, "done": price.done, "user": _user(price.user)}
+        return {
+            "id": price.pk,
+            "done": price.done,
+            "user": _user(price.user),
+            **_brief_extra(offer_brief(price, "price", self.context)),
+        }
 
     def get_order(self, obj):
         return _order_summary(obj, self.context)
@@ -149,6 +164,9 @@ class MeteringSerializer(LocationFieldsMixin, serializers.ModelSerializer):
 
     def get_measurer(self, obj):
         return _user(obj.measurer)
+
+    def get_manager(self, obj):
+        return _user(obj.manager)
 
     def get_operator(self, obj):
         return _user(metering_operator(obj))
@@ -240,6 +258,9 @@ class FinishSerializer(serializers.Serializer):
     next_step = serializers.CharField(allow_blank=True, required=False, default="")
     designer = serializers.IntegerField(required=False, allow_null=True)
     pricer = serializers.IntegerField(required=False, allow_null=True)
+    manager = serializers.IntegerField(required=False, allow_null=True)
+    design_due_at = serializers.DateTimeField(required=False, allow_null=True)
+    price_due_at = serializers.DateTimeField(required=False, allow_null=True)
 
 
 class SetMeasurerSerializer(serializers.Serializer):
@@ -256,7 +277,28 @@ class DesignTypeSerializer(serializers.ModelSerializer):
         read_only_fields = ["folder", "created_at"]
 
 
-class DesignSerializer(serializers.ModelSerializer):
+def _offer_actions(user, obj, kind):
+    """The stage-2 buttons of a Design / Price for this user (service predicates)."""
+    from metering.design.services import can_work_design
+    from metering.price.services import can_work_price
+
+    can_work = can_work_design if kind == "design" else can_work_price
+    manage = user.has_perm("metering.manage_metering")
+    m = obj.metering
+    return {
+        "done": user.has_perm(f"{kind}.change_{kind}")
+        and can_work(user, obj)
+        and obj.stage == "work",
+        "due": (can_work(user, obj) or manage) and obj.stage == "work",
+        "reassign": (user.is_superuser or manage) and obj.stage == "work",
+        "answer": m is not None
+        and metering_services.can_present(user, m)
+        and obj.stage == "review",
+    }
+
+
+class DesignSerializer(OfferFieldsMixin, serializers.ModelSerializer):
+    kind = "design"
     metering = MeteringShortSerializer(read_only=True)
     user_detail = UserShortSerializer(source="user", read_only=True)
     order = serializers.SerializerMethodField()
@@ -275,6 +317,7 @@ class DesignSerializer(serializers.ModelSerializer):
             "types",
             "order",
             "actions",
+            *OfferFieldsMixin.OFFER_FIELDS,
         ]
         read_only_fields = fields
 
@@ -284,13 +327,46 @@ class DesignSerializer(serializers.ModelSerializer):
     def get_actions(self, obj):
         user = self.context["request"].user
         return {
-            "done": user.has_perm("design.change_design") and not obj.done,
+            **_offer_actions(user, obj, "design"),
             "add_type": user.has_perm("design.add_designtype"),
             # can_create_order(), minus its query: metering__order is select_related.
             "create_order": user.has_perm("order.add_order")
-            and obj.done
+            and obj.stage == "approved"
+            and obj.metering.client_result not in ("design_declined", "price_declined")
             and order_of(obj.metering) is None,
         }
+
+
+class DesignDetailSerializer(DesignSerializer):
+    answers = serializers.SerializerMethodField()
+    file_count = serializers.SerializerMethodField()
+
+    class Meta(DesignSerializer.Meta):
+        fields = DesignSerializer.Meta.fields + ["answers", "file_count"]
+        read_only_fields = fields
+
+    def get_answers(self, obj):
+        rows = [a for a in obj.metering.offer_answers.all() if a.kind == "design"]
+        return OfferAnswerSerializer(rows, many=True).data
+
+    def get_file_count(self, obj):
+        from metering.design.services import design_file_count
+
+        return design_file_count(obj)
+
+
+class OfferDueSerializer(serializers.Serializer):
+    due_at = serializers.DateTimeField()
+
+
+class OfferPersonSerializer(serializers.Serializer):
+    user = serializers.IntegerField()
+
+
+class OfferAnswerInputSerializer(serializers.Serializer):
+    answer = serializers.CharField()
+    comment = serializers.CharField(required=False, allow_blank=True, default="")
+    due_at = serializers.DateTimeField(required=False, allow_null=True, default=None)
 
 
 # --- Price ----------------------------------------------------------------------
@@ -471,7 +547,8 @@ class CalculationInputSerializer(serializers.Serializer):
     depth = serializers.IntegerField(min_value=0, max_value=100000, required=False, allow_null=True)
 
 
-class PriceSerializer(serializers.ModelSerializer):
+class PriceSerializer(OfferFieldsMixin, serializers.ModelSerializer):
+    kind = "price"
     metering = MeteringShortSerializer(read_only=True)
     user_detail = UserShortSerializer(source="user", read_only=True)
     price = MoneyField(read_only=True)
@@ -491,8 +568,19 @@ class PriceSerializer(serializers.ModelSerializer):
             "order",
             "client_title",
             "variant",
+            "duration_days",
+            *OfferFieldsMixin.OFFER_FIELDS,
         ]
-        read_only_fields = ["metering", "price", "done", "created_at", "folder"]
+        # the stage-2 state moves only through the services (finish / done / due / answer)
+        read_only_fields = [
+            "metering",
+            "price",
+            "done",
+            "created_at",
+            "folder",
+            "duration_days",
+            *OfferFieldsMixin.OFFER_FIELDS,
+        ]
 
     def get_order(self, obj):
         return _order_summary(obj.metering, self.context)
@@ -503,6 +591,7 @@ class PriceDetailSerializer(PriceSerializer):
     rooms = serializers.SerializerMethodField()
     sheet = serializers.SerializerMethodField()
     actions = serializers.SerializerMethodField()
+    answers = serializers.SerializerMethodField()
 
     class Meta(PriceSerializer.Meta):
         fields = PriceSerializer.Meta.fields + [
@@ -512,7 +601,14 @@ class PriceDetailSerializer(PriceSerializer):
             "versions",
             "locked",
             "actions",
+            "answers",
         ]
+
+    def get_answers(self, obj):
+        if obj.metering is None:
+            return []
+        rows = [a for a in obj.metering.offer_answers.all() if a.kind == "price"]
+        return OfferAnswerSerializer(rows, many=True).data
 
     versions = serializers.SerializerMethodField()
     locked = serializers.SerializerMethodField()
@@ -581,7 +677,7 @@ class PriceDetailSerializer(PriceSerializer):
             "edit": can_change
             and user.has_perms(["price.add_calculate", "price.change_calculate"])
             and not self.get_locked(obj),
-            "done": can_change and not obj.done,
+            **_offer_actions(user, obj, "price"),
         }
 
 

@@ -2,6 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRightLeft,
+  Brush,
+  Calculator,
   CalendarClock,
   CheckCircle2,
   ClipboardList,
@@ -19,7 +21,7 @@ import {
 } from "lucide-react";
 import { api } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
-import type { Invoice, InvoiceTask, Metering, Order, TimelineEntry } from "@/api/types";
+import type { Invoice, InvoiceTask, Metering, OfferBrief, Order, TimelineEntry } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, FolderButton, MeteringStatusBadge, OrderStatusBadge, PhoneLink, SolutionBadge } from "@/components/domain";
 import { LocationEditModal } from "@/components/LocationField";
@@ -29,6 +31,7 @@ import { dateTime } from "@/lib/format";
 import { yandexPointUrl } from "@/lib/geo";
 import { MeteringCreateModal } from "../Meterings";
 import { NEXT_STEP_LABEL, personName } from "../meterings/actions";
+import { CLIENT_RESULT_LABEL, DueLabel, OfferStageBadge } from "../offers/actions";
 import { LeadCreateModal } from "./LeadCreateModal";
 import {
   AssigneeSelect,
@@ -280,6 +283,26 @@ function MeteringBlock({ metering: m }: { metering: NonNullable<Invoice["meterin
           </div>
         )}
         {m.result_note && <div className="whitespace-pre-line break-words rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-800/60">{m.result_note}</div>}
+        {m.manager && (
+          <div>
+            <span className="muted">Menejer: </span>
+            {personName(m.manager)}
+          </div>
+        )}
+        {m.design && <OfferRow kind="design" offer={m.design} />}
+        {m.price && <OfferRow kind="price" offer={m.price} />}
+        {m.client_result && (
+          <div
+            className={cn(
+              "rounded-lg px-2.5 py-1.5 font-medium",
+              m.client_result === "agreed"
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300",
+            )}
+          >
+            {CLIENT_RESULT_LABEL[m.client_result] ?? m.client_result}
+          </div>
+        )}
         {m.status === "dont_need" && m.cancel_reason && (
           <div className="whitespace-pre-line break-words rounded-lg bg-rose-50 px-2.5 py-1.5 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
             Bekor bo'ldi: {m.cancel_reason}
@@ -294,6 +317,32 @@ function MeteringBlock({ metering: m }: { metering: NonNullable<Invoice["meterin
           <FolderButton folderId={m.folder} />
         </span>
       </div>
+    </div>
+  );
+}
+
+/** a design / price line of the lead's zamer: stage, who, deadline (red when overdue), round, last comment */
+function OfferRow({ kind, offer: o }: { kind: "design" | "price"; offer: OfferBrief }) {
+  const Icon = kind === "design" ? Brush : Calculator;
+  return (
+    <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-800/60">
+      <div className="flex flex-wrap items-center gap-2">
+        <Icon className="h-3.5 w-3.5 text-slate-400" />
+        <Link className="font-medium hover:underline" to={`/${kind === "design" ? "designs" : "prices"}/${o.id}`}>
+          {kind === "design" ? "Dizayn" : "Narx"}
+        </Link>
+        <OfferStageBadge stage={o.stage} label={o.stage_label} overdue={o.is_overdue} />
+        {o.round > 1 && <span className="muted text-xs">{o.round}-raund</span>}
+      </div>
+      <div className="muted mt-0.5 flex flex-wrap gap-x-3 text-xs">
+        <span>{personName(o.user, "tayinlanmagan")}</span>
+        {o.stage === "work" && (
+          <span>
+            Muddat: <DueLabel value={o.due_at} overdue={o.is_overdue} className="text-xs" />
+          </span>
+        )}
+      </div>
+      {o.last_comment && o.round > 1 && <div className="mt-0.5 line-clamp-2 text-xs">✏️ {o.last_comment}</div>}
     </div>
   );
 }
@@ -414,6 +463,18 @@ function NoteBox({ invoiceId }: { invoiceId: number }) {
 
 type Look = { icon: typeof MessageSquare; tone: keyof typeof TONES; title: string };
 
+/** stage 2 (dizayn va narx) events logged on the lead (log_metering meta.event) */
+const OFFER_EVENT: Record<string, Look> = {
+  design_done: { icon: Brush, tone: "info", title: "Dizayn tayyor" },
+  design_approved: { icon: CheckCircle2, tone: "ok", title: "Mijoz dizaynni tasdiqladi" },
+  design_changes: { icon: Pencil, tone: "warn", title: "Dizaynni o'zgartirish so'raldi" },
+  design_declined: { icon: XCircle, tone: "danger", title: "Mijoz dizaynni rad etdi" },
+  price_done: { icon: Calculator, tone: "info", title: "Narx tayyor" },
+  price_approved: { icon: CheckCircle2, tone: "ok", title: "Mijoz narxga rozi" },
+  price_recalc: { icon: Calculator, tone: "warn", title: "Narxni qayta hisoblash so'raldi" },
+  price_declined: { icon: XCircle, tone: "danger", title: "Narx mijozni qoniqtirmadi" },
+};
+
 /** icon + headline of one history line; `kind` matters for type=note only */
 function look(e: TimelineEntry): Look {
   if (e.type === "note") {
@@ -427,6 +488,7 @@ function look(e: TimelineEntry): Look {
       if (ev === "cancelled") return { icon: XCircle, tone: "danger", title: "O'lchov bekor bo'ldi" };
       if (ev === "done") return { icon: CheckCircle2, tone: "ok", title: "O'lchov bajarildi" };
       if (ev === "reassigned" || ev === "assigned") return { icon: UserRound, tone: "idle", title: "Zamerchi tayinlandi" };
+      if (ev in OFFER_EVENT) return OFFER_EVENT[ev];
       return { icon: Ruler, tone: "info", title: "O'lchov" };
     }
     if (e.kind === "location")

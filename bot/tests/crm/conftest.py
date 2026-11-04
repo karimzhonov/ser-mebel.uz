@@ -190,8 +190,9 @@ def env(monkeypatch):
     from bot.finance import router as fin
     from bot.hr import group_router, private_router
     from bot.metering import router as metering
+    from bot.offer import router as offer
 
-    for r in (group_router, link.router, start.router, metering, crm, private_router, fin):
+    for r in (group_router, link.router, start.router, metering, offer, crm, private_router, fin):
         r._parent_router = None
     be = Backend()
     monkeypatch.setattr(real, "request", be.request)

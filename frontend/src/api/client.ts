@@ -136,6 +136,11 @@ export function fieldErrors(error: unknown): Record<string, string> {
   const data = (error as AxiosError<any>)?.response?.data;
   if (!data || typeof data !== "object") return {};
   const out: Record<string, string> = {};
+  // a service refusal is {detail, field}: show the message under that field
+  if (typeof data.field === "string" && data.field && typeof data.detail === "string") {
+    out[data.field] = data.detail;
+    return out;
+  }
   for (const [k, v] of Object.entries(data)) {
     if (k === "detail") continue;
     out[k] = Array.isArray(v) ? v.join(" ") : typeof v === "object" ? JSON.stringify(v) : String(v);

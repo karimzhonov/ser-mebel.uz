@@ -18,7 +18,9 @@ from .constants import ACTIVE_SOLUTIONS, LeadSource, NoteKind, SolutionChoice
 
 log = logging.getLogger("call_center")
 
-# Lock order (deadlock rule): Invoice row FIRST, then its InvoiceTask rows. Every
+# Lock order (deadlock rule): Invoice -> Metering -> Design -> Price -> InvoiceTask. The
+# Invoice row is FIRST, its InvoiceTask rows LAST (the zamer / offer rows in between are
+# locked by metering.services._lock / _lock_offer). Every
 # transaction that locks/updates tasks of a lead (complete_task, update_lead, the
 # closing answer in _apply_solution) takes the invoice lock before touching tasks.
 # reschedule_task / due_task_reminders lock tasks only and never lock an invoice after.
@@ -381,6 +383,33 @@ def return_lead_from_metering(invoice, *, by, reason, metering_id) -> bool:
         )
         invoice.solution = locked.solution
     return True
+
+
+def close_lead_from_offer(invoice, *, by, solution, reason, metering_id, event) -> int:
+    """The client refused the design or the price: the lead is closed with `solution`
+    (declined / price_problem) and its open call tasks are closed (bot tidy-up included).
+    Like return_lead_from_metering, the caller holds (or this takes) the lead lock first.
+    A lead already closed by a closing answer is only logged. A sold lead is a conflict.
+    Returns the number of closed tasks."""
+    from .models import Invoice
+
+    with transaction.atomic():
+        locked = Invoice.objects.select_for_update(of=("self",)).get(pk=invoice.pk)
+        if locked.solution == SolutionChoice.sold_out:
+            raise ServiceConflict("Buyurtma allaqachon yaratilgan")
+        closed = 0
+        if locked.solution not in CLOSING_SOLUTIONS:
+            # not set_invoice_solution: it refuses a lead already "served" (go_for_measured)
+            closed = _apply_solution(locked, solution, by)
+        log_metering(
+            locked,
+            author=by,
+            event=event,
+            text=reason,
+            meta={"metering_id": metering_id, "closed_tasks": closed},
+        )
+        invoice.solution = locked.solution
+    return closed
 
 
 def set_invoice_solution(invoice, solution: int, *, author=None):

@@ -37,7 +37,8 @@ def staff_with_permission(codename: str):
 
     return User.objects.filter(
         models.Q(user_permissions__codename=codename)
-        | models.Q(groups__permissions__codename=codename)
+        | models.Q(groups__permissions__codename=codename),
+        is_active=True,
     ).distinct()
 
 
@@ -241,3 +242,97 @@ def delete_user(actor, user) -> None:
 
     with transaction.atomic():
         user.delete()
+
+
+# --- Groups = roles (Operator, Dizayner, Bosh menejer, ...) --------------------------
+
+
+def _group_name(name) -> str:
+    from core.exceptions import ServiceError
+
+    name = " ".join((name or "").split())
+    if not name:
+        raise ServiceError("Guruh nomini kiriting", "name")
+    if len(name) > 150:
+        raise ServiceError("Guruh nomi juda uzun", "name")
+    return name
+
+
+def _check_group_name_free(name, *, exclude=None) -> None:
+    from django.contrib.auth.models import Group
+
+    from core.exceptions import ServiceError
+
+    qs = Group.objects.filter(name__iexact=name)
+    if exclude is not None:
+        qs = qs.exclude(pk=exclude.pk)
+    if qs.exists():
+        raise ServiceError("Bunday nomli guruh bor", "name")
+
+
+def _refuse_keeper(group=None, user=None) -> None:
+    """The omborchi is managed only on the Ombor page (assign_keeper): the role page
+    must not become a way around that rule."""
+    from core.exceptions import ServiceError
+    from warehouse.services import KEEPER_GROUP, is_keeper
+
+    if (group is not None and group.name == KEEPER_GROUP) or (user is not None and is_keeper(user)):
+        raise ServiceError("Omborchi Ombor sahifasida boshqariladi", "members")
+
+
+def create_group(name):
+    from django.contrib.auth.models import Group
+
+    name = _group_name(name)
+    _check_group_name_free(name)
+    return Group.objects.create(name=name)
+
+
+def rename_group(group, name):
+    _refuse_keeper(group)
+    name = _group_name(name)
+    _check_group_name_free(name, exclude=group)
+    group.name = name
+    group.save(update_fields=["name"])
+    return group
+
+
+def delete_group(group) -> None:
+    """A role with people in it cannot be deleted: move the people out first."""
+    from core.exceptions import ServiceError
+
+    _refuse_keeper(group)
+    n = group.user_set.count()
+    if n:
+        raise ServiceError(
+            f"Guruhda {n} nafar xodim bor — avval ularni guruhdan chiqaring", "members"
+        )
+    group.delete()
+
+
+def group_members(group):
+    return group.user_set.order_by("name", "phone")
+
+
+def add_group_member(group, user):
+    """Give the user the group's role. The group's permissions need panel login, so the
+    person becomes staff when the group has any permission."""
+    from django.db import transaction
+
+    _refuse_keeper(group, user)
+    with transaction.atomic():
+        group.user_set.add(user)
+        if not user.is_staff and group.permissions.exists():
+            user.is_staff = True
+            user.save(update_fields=["is_staff"])
+    for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+        user.__dict__.pop(attr, None)
+    return user
+
+
+def remove_group_member(group, user):
+    _refuse_keeper(group, user)
+    group.user_set.remove(user)
+    for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+        user.__dict__.pop(attr, None)
+    return user

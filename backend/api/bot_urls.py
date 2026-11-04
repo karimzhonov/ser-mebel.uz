@@ -2,7 +2,7 @@
 
 from django.urls import path
 
-from .views.bot import common, crm, finance, hr, metering
+from .views.bot import common, crm, finance, hr, metering, offer
 
 urlpatterns = [
     path("whoami/", common.WhoAmIView.as_view()),
@@ -101,4 +101,7 @@ urlpatterns = [
     path("meterings/<int:pk>/measured/", metering.MeteringMeasuredView.as_view()),
     path("meterings/<int:pk>/reschedule/", metering.MeteringRescheduleView.as_view()),
     path("meterings/<int:pk>/cancel/", metering.MeteringCancelView.as_view()),
+    # ---- Dizayn va narx (designer / pricer / manager)
+    path("offers/<str:kind>/<int:pk>/due/", offer.OfferDueView.as_view()),
+    path("offers/<str:kind>/<int:pk>/answer/", offer.OfferAnswerView.as_view()),
 ]

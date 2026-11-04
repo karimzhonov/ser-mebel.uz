@@ -3,11 +3,11 @@ import { AlertCircle, Brush, Calculator, Camera, CheckCircle2, FileText, Loader2
 import { toast } from "sonner";
 import { api, errorMessage, fieldErrors, refreshNow } from "@/api/client";
 import { useAction, useGet } from "@/api/hooks";
-import type { FolderFile, Metering, MeteringNextStep, UserShort } from "@/api/types";
+import type { FolderFile, Metering, MeteringAssignees, MeteringNextStep, UserShort } from "@/api/types";
 import { FolderButton } from "@/components/domain";
-import { Button, Card, Field, Select, Spinner, Textarea } from "@/components/ui";
+import { Button, Card, Field, Input, Select, Spinner, Textarea } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { fileSize, phone } from "@/lib/format";
+import { fileSize, phone, toLocalInput } from "@/lib/format";
 import { MAX_UPLOAD_MB, METERING_INVALIDATE, NEXT_STEP_LABEL } from "./actions";
 
 type UploadRow = {
@@ -125,10 +125,28 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
   const [step, setStep] = useState<MeteringNextStep>("");
   const [designer, setDesigner] = useState("");
   const [pricer, setPricer] = useState("");
-  const people = useGet<{ designers: UserShort[]; pricers: UserShort[] }>(a.finish ? "/meterings/assignees/" : null);
-  const fileCount = files.data === undefined ? metering.file_count ?? 0 : rows.length;
+  const [manager, setManager] = useState("");
+  const [designDue, setDesignDue] = useState("");
+  const [priceDue, setPriceDue] = useState("");
+  const people = useGet<MeteringAssignees>(a.finish ? "/meterings/assignees/" : null);
+  // prefill the manager (the only one / the default) and the deadlines from the server's defaults
+  useEffect(() => {
+    const d = people.data;
+    if (!d) return;
+    const def = d.default_manager ?? (d.managers?.length === 1 ? d.managers[0].id : null);
+    if (def && !manager) setManager(String(def));
+    if (d.defaults) {
+      if (!designDue) setDesignDue(toLocalInput(d.defaults.design_due_at));
+      if (!priceDue) setPriceDue(toLocalInput(d.defaults.price_due_at));
+    }
+  }, [people.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  const managers = people.data?.managers;
+  const needsManager = !!managers?.length;
+  const fileCount = files.data === undefined ? (metering.file_count ?? 0) : rows.length;
   const needsDesigner = step === "design_price";
-  const ready = fileCount > 0 && !!note.trim() && !!step && !!pricer && (!needsDesigner || !!designer) && !busy;
+  const isPast = (v: string) => !!v && new Date(v).getTime() <= Date.now();
+  const dueBad = (needsDesigner && isPast(designDue)) || isPast(priceDue);
+  const ready = fileCount > 0 && !!note.trim() && !!step && !!pricer && (!needsDesigner || !!designer) && (!needsManager || !!manager) && !dueBad && !busy;
   const finish = useAction(
     () =>
       api.post(`/meterings/${metering.id}/finish/`, {
@@ -136,6 +154,9 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
         next_step: step,
         designer: needsDesigner && designer ? Number(designer) : null,
         pricer: pricer ? Number(pricer) : null,
+        manager: manager ? Number(manager) : null,
+        ...(needsDesigner && designDue ? { design_due_at: designDue } : {}),
+        ...(priceDue ? { price_due_at: priceDue } : {}),
       }),
     { success: "Bajarildi — vazifalar yuborildi", invalidate: METERING_INVALIDATE },
   );
@@ -263,19 +284,68 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
                 <div className="grid gap-3 sm:grid-cols-2">
                   {needsDesigner && (
                     <Field label="Dizayner" error={errors.designer}>
-                      <Select className="h-12" value={designer} onChange={(e) => setDesigner(e.target.value)}>
-                        <option value="">— tanlang —</option>
-                        {people.data?.designers.map((u) => (
-                          <option key={u.id} value={u.id}>{person(u)}</option>
-                        ))}
-                      </Select>
+                      {people.data && !people.data.designers.length ? (
+                        <NoAssignee text={people.data.designer_hint || "Dizayner yo'q — Xodimlar → Guruhlar (rollar)da «Dizayner» roliga xodim qo'shing"} />
+                      ) : (
+                        <Select className="h-12" value={designer} onChange={(e) => setDesigner(e.target.value)}>
+                          <option value="">— tanlang —</option>
+                          {people.data?.designers.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {person(u)}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
                     </Field>
                   )}
                   <Field label="Narx hisoblovchi" error={errors.pricer} className={needsDesigner ? undefined : "sm:col-span-2"}>
-                    <Select className="h-12" value={pricer} onChange={(e) => setPricer(e.target.value)}>
-                      <option value="">— tanlang —</option>
-                      {people.data?.pricers.map((u) => (
-                        <option key={u.id} value={u.id}>{person(u)}</option>
+                    {people.data && !people.data.pricers.length ? (
+                      <NoAssignee text={people.data.pricer_hint || "Narx hisoblovchi yo'q — Xodimlar → Guruhlar (rollar)da «Narxchi» roliga xodim qo'shing"} />
+                    ) : (
+                      <Select className="h-12" value={pricer} onChange={(e) => setPricer(e.target.value)}>
+                        <option value="">— tanlang —</option>
+                        {people.data?.pricers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {person(u)}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                  {needsDesigner && (
+                    <Field
+                      label="Dizayn muddati"
+                      error={errors.design_due ?? errors.design_due_at ?? (isPast(designDue) ? "O'tgan vaqt — kelajakdagi vaqtni kiriting" : undefined)}
+                    >
+                      <Input className="h-12 text-base" type="datetime-local" value={designDue} onChange={(e) => setDesignDue(e.target.value)} />
+                    </Field>
+                  )}
+                  <Field
+                    label="Narx muddati"
+                    className={needsDesigner ? undefined : "sm:col-span-2"}
+                    hint={needsDesigner ? "Dizayn va narx bir vaqtda boshlanadi" : undefined}
+                    error={errors.price_due ?? errors.price_due_at ?? (isPast(priceDue) ? "O'tgan vaqt — kelajakdagi vaqtni kiriting" : undefined)}
+                  >
+                    <Input className="h-12 text-base" type="datetime-local" value={priceDue} onChange={(e) => setPriceDue(e.target.value)} />
+                  </Field>
+                  <Field
+                    label="Menejer (mijozga ko'rsatadi)"
+                    className="sm:col-span-2"
+                    error={errors.manager}
+                    hint={
+                      people.data && !needsManager ? (
+                        <span className="text-amber-700 dark:text-amber-300">{people.data.hint || "Menejer yo'q — xodimga «Menejer» huquqini bering"}</span>
+                      ) : (
+                        "Dizayn/narx tayyor bo'lganda unga xabar boradi"
+                      )
+                    }
+                  >
+                    <Select className="h-12" value={manager} disabled={!needsManager} onChange={(e) => setManager(e.target.value)}>
+                      {(managers?.length ?? 0) !== 1 && <option value="">— tanlang —</option>}
+                      {managers?.map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {person(u)}
+                        </option>
                       ))}
                     </Select>
                   </Field>
@@ -304,13 +374,26 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
                       ? "Izoh yozing"
                       : !step
                         ? "Keyingi qadamni tanlang"
-                        : "Ijrochilarni tanlang"}
+                        : !pricer || (needsDesigner && !designer)
+                          ? "Ijrochilarni tanlang"
+                          : needsManager && !manager
+                            ? "Menejerni tanlang"
+                            : "Muddatni to'g'rilang"}
                 </p>
               )}
             </>
           )}
         </div>
       </Card>
+    </div>
+  );
+}
+
+/** nobody holds the role — say where to fix it instead of an empty select */
+function NoAssignee({ text }: { text: string }) {
+  return (
+    <div className="flex min-h-12 items-center rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+      {text}
     </div>
   );
 }

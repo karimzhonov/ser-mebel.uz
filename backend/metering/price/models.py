@@ -9,7 +9,9 @@ from simple_history.models import HistoricalRecords
 
 from core.djmoney import ConvertedCostManager
 
-from .services import notify_and_create_price_folder
+from metering.constants import OfferStage
+
+from .services import create_price_folder
 
 
 class Price(models.Model):
@@ -32,6 +34,21 @@ class Price(models.Model):
         verbose_name="Ответственный за расчёт",
     )
 
+    # Stage 2 (docs/BOT_CONTRACT.md, "Dizayn va narx"); same invariant as Design.
+    stage = models.CharField(
+        max_length=10, choices=OfferStage.choices, default=OfferStage.work, db_index=True
+    )
+    due_at = models.DateTimeField(null=True, blank=True)
+    assigned_at = models.DateTimeField(null=True, blank=True)
+    done_at = models.DateTimeField(null=True, blank=True)
+    done_by = models.ForeignKey(
+        "oauth.User", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    round = models.PositiveSmallIntegerField(default=1)
+    rev = models.PositiveIntegerField(default=0)
+    # length in days of the deadline it was given (informational)
+    duration_days = models.PositiveSmallIntegerField(default=1)
+
     desc = models.TextField(blank=True, null=True, verbose_name="Описание")
     # Commercial offer (PDF): how the client is addressed («Хурматли …») and the
     # variant name on the total page («Премиум»). Empty = the client's name / nothing.
@@ -48,13 +65,20 @@ class Price(models.Model):
     class Meta:
         verbose_name = "Расчёт цены"
         verbose_name_plural = "Расчёт цены"
+        indexes = [
+            models.Index(fields=["user", "stage", "due_at"], name="price_user_stage_due"),
+            models.Index(
+                fields=["due_at"], condition=models.Q(stage="work"), name="price_work_due"
+            ),
+            models.Index(fields=["stage", "done_at"], name="price_stage_done"),
+        ]
 
 
 @receiver(post_save, sender=Price)
 def create_price_folders(sender: Type[Price], instance: Price, created, **kwargs):
     if not created:
         return
-    notify_and_create_price_folder(instance)
+    create_price_folder(instance)
 
 
 class ObjectType(models.Model):

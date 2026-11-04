@@ -9,6 +9,8 @@ from call_center.services import invoice_is_editable
 from client.models import Client
 from metering.models import Metering
 
+from .offers import offer_brief
+
 from .. import i18n as uz
 from .common import ClientShortSerializer, LocationFieldsMixin, LocationInputMixin
 
@@ -143,6 +145,14 @@ class InvoiceSerializer(LocationFieldsMixin, serializers.ModelSerializer):
             "cancel_reason": m.cancel_reason,
             "next_step": m.next_step,
             "folder": m.folder_id,
+            "manager": (
+                {"id": m.manager.pk, "name": m.manager.name or str(m.manager.phone)}
+                if m.manager
+                else None
+            ),
+            "client_result": m.client_result,
+            "design": offer_brief(getattr(m, "design", None), "design", self.context),
+            "price": offer_brief(getattr(m, "price", None), "price", self.context),
         }
 
 

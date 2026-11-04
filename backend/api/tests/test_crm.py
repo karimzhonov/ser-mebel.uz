@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from api.tests.offerkit import design_file
+
 from api.tests.botkit import load_fixture
 from call_center import services as CC
 from call_center.constants import NoteKind
@@ -468,7 +470,11 @@ def test_create_order_logs_sold_out(admin_api):
     admin_api.post(f"/api/v1/meterings/{mid}/metering-done/")
     design = admin_api.post(f"/api/v1/meterings/{mid}/create-design/").data["design"]["id"]
     dtype = admin_api.get(f"/api/v1/designs/{design}/").data["types"][0]["id"]
+    design_file(design)
     admin_api.post(f"/api/v1/designs/{design}/done/")
+    from metering.design.models import Design
+
+    Design.objects.filter(pk=design).update(stage="approved", confirm=True)
     r = admin_api.post(
         "/api/v1/orders/",
         {

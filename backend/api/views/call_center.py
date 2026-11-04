@@ -67,9 +67,17 @@ class ClientViewSet(
         data = {"invoices": [], "meterings": [], "orders": []}
         if request.user.has_perm("call_center.view_invoice"):
             invoices = CC.with_task_annotations(
-                Invoice.objects.filter(client=client).select_related(
-                    "client", "metering__measurer", "assigned_to", "created_by"
+                Invoice.objects.filter(client=client)
+                .select_related(
+                    "client",
+                    "metering__measurer",
+                    "metering__manager",
+                    "metering__design__user",
+                    "metering__price__user",
+                    "assigned_to",
+                    "created_by",
                 )
+                .prefetch_related("metering__offer_answers")
             )
             data["invoices"] = InvoiceSerializer(
                 invoices.order_by("-create_date"), many=True, context=ctx
@@ -120,8 +128,14 @@ class InvoiceViewSet(viewsets.ModelViewSet):
     def base_queryset(self):
         # No aggregates here: `stats` groups on this queryset.
         qs = Invoice.objects.select_related(
-            "client", "metering__measurer", "assigned_to", "created_by"
-        )
+            "client",
+            "metering__measurer",
+            "metering__manager",
+            "metering__design__user",
+            "metering__price__user",
+            "assigned_to",
+            "created_by",
+        ).prefetch_related("metering__offer_answers")
         return apply_period(qs, "create_date", self.request.query_params)
 
     def get_queryset(self):

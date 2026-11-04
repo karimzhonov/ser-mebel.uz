@@ -250,6 +250,14 @@ CONSTANCE_CONFIG = {
     'METERING_DIGEST_HOUR': (20, "Zamer: ertangi zamerlar ro'yxati soat nechada yuboriladi", int),
     'METERING_REMIND_BEFORE_MIN': (60, "Zamer: zamerdan necha daqiqa oldin eslatish", int),
     'METERING_LATE_AFTER_MIN': (60, "Zamer: vaqt o'tgach necha daqiqadan keyin natijani so'rash", int),
+    # Dizayn va narx (stage 2)
+    'DESIGN_DAYS': (2, "Dizayn: standart muddat (necha kun)", int),
+    'PRICE_DAYS': (1, "Narx: standart muddat (necha kun)", int),
+    'OFFER_DUE_HOUR': (18, "Dizayn/narx: muddat soati", int),
+    'OFFER_REMIND_HOUR': (9, "Dizayn/narx: eslatma soati (kunlik)", int),
+    'DESIGN_FIX_DAYS': (1, "Dizayn: o'zgartirish so'ralganda yangi muddat (kun)", int),
+    'PRICE_FIX_DAYS': (1, "Narx: qayta hisoblash so'ralganda yangi muddat (kun)", int),
+    'PRESENT_REMIND_HOURS': (24, "Menejer: mijozdan javob yozilmasa necha soatdan keyin eslatish", int),
 }
 
 CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
@@ -303,6 +311,17 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
                 "METERING_DIGEST_HOUR",
                 "METERING_REMIND_BEFORE_MIN",
                 "METERING_LATE_AFTER_MIN",
+            )
+        },
+        "Dizayn va narx": {
+            "fields": (
+                "DESIGN_DAYS",
+                "PRICE_DAYS",
+                "OFFER_DUE_HOUR",
+                "OFFER_REMIND_HOUR",
+                "DESIGN_FIX_DAYS",
+                "PRICE_FIX_DAYS",
+                "PRESENT_REMIND_HOURS",
             )
         },
     }

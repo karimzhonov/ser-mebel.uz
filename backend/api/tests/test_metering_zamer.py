@@ -7,6 +7,7 @@ from django.contrib.auth.models import Group, Permission
 from django.core.files.uploadedfile import SimpleUploadedFile
 from phonenumber_field.phonenumber import PhoneNumber
 
+from api.tests.offerkit import design_file
 from call_center import services as CC
 from call_center.constants import NoteKind, SolutionChoice
 from call_center.models import InvoiceTask
@@ -446,7 +447,7 @@ def test_cancel_leaves_a_sold_lead_alone(operator, ali):
 
 # ------------------------------------------------------------------ finish
 @pytest.fixture
-def people(make_staff):
+def people(make_staff, default_manager):
     designer = make_staff("oauth.user_design", "design.view_design", name="Dizayner")
     pricer = make_staff("price.change_price", "price.view_price", name="Narxchi")
     return designer, pricer
@@ -502,7 +503,9 @@ def test_order_can_still_be_created_from_a_done_metering(operator, ali, people, 
         m, by=ali, note="ok", next_step="design_price", designer=designer, pricer=pricer
     )
     m = Metering.objects.get(pk=m.pk)
-    design = mark_design_done(m.design)
+    design_file(m.design)
+    design = mark_design_done(m.design, by=designer)
+    type(design).objects.filter(pk=design.pk).update(stage="approved")  # the client said yes
     r = admin_api.post(
         "/api/v1/orders/",
         {
@@ -859,6 +862,10 @@ def test_invoice_serializer_exposes_the_metering_with_stable_queries(
         "cancel_reason",
         "next_step",
         "folder",
+        "manager",
+        "client_result",
+        "design",
+        "price",
     }
     with django_assert_max_num_queries(15):
         c.get("/api/v1/invoices/")
