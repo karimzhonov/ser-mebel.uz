@@ -5,26 +5,6 @@ from django.conf import settings
 from django.db import migrations, models
 
 
-def backfill_stage(apps, schema_editor):
-    """Finished rows count as approved. An unfinished row whose zamer already has an
-    order or is sold out is approved too (the work is evidently over); one whose zamer
-    was cancelled is cancelled; the rest are in work with no deadline (no reminders for
-    old rows; the site shows «Muddat yo'q»). Invariant: done == stage in (review,
-    approved)."""
-    Price = apps.get_model("price", "Price")
-    Order = apps.get_model("order", "Order")
-    ordered = Order.objects.filter(metering__isnull=False).values("metering_id")
-    Price.objects.filter(done=True).update(
-        stage="approved",
-    )
-    open_rows = Price.objects.filter(done=False)
-    open_rows.filter(
-        models.Q(metering__status="sold_out") | models.Q(metering_id__in=ordered)
-    ).update(stage="approved", done=True)
-    Price.objects.filter(done=False, metering__status="dont_need").update(stage="cancelled")
-    Price.objects.filter(done=False).exclude(stage="cancelled").update(stage="work")
-    Price.objects.update(assigned_at=models.F("created_at"))
-
 
 class Migration(migrations.Migration):
 
@@ -166,5 +146,4 @@ class Migration(migrations.Migration):
             model_name="price",
             index=models.Index(fields=["stage", "done_at"], name="price_stage_done"),
         ),
-        migrations.RunPython(backfill_stage, migrations.RunPython.noop),
     ]

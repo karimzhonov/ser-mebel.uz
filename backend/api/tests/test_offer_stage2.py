@@ -1474,8 +1474,8 @@ def _load_backfill(app, name):
 @pytest.mark.parametrize(
     "app,name,model_path",
     [
-        ("design", "0009_offer_stage2", "metering.design.models.Design"),
-        ("price", "0024_offer_stage2", "metering.price.models.Price"),
+        ("design", "0010_offer_stage2_backfill", "metering.design.models.Design"),
+        ("price", "0025_offer_stage2_backfill", "metering.price.models.Price"),
     ],
 )
 def test_backfill_of_unfinished_rows(app, name, model_path, operator, ali, default_factory):
