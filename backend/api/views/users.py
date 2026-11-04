@@ -16,6 +16,9 @@ from oauth.services import (
     delete_group,
     delete_user,
     group_members,
+    merge_group,
+    merge_plan,
+    merge_preview,
     remove_group_member,
     rename_group,
     send_test_telegram_messages,
@@ -94,6 +97,39 @@ class GroupViewSet(viewsets.GenericViewSet):
     def destroy(self, request, pk=None):
         delete_group(self.get_object())
         return Response(status=204)
+
+    @action(detail=False, methods=["get"], url_path="merge-plan")
+    def merge_plan(self, request):
+        """Review screen data: old groups and where each should go (changes nothing)."""
+        return Response(merge_plan())
+
+    def _target(self, value):
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValidationError({"target": "Lavozimni tanlang"})
+        try:
+            return Group.objects.get(pk=value)
+        except Group.DoesNotExist:
+            raise ValidationError({"target": "Lavozim topilmadi"})
+
+    @action(detail=True, methods=["get"], url_path="merge-preview")
+    def merge_preview(self, request, pk=None):
+        """?target=<id> (omit for «shaxsiy huquq»): who moves and what is added."""
+        raw = request.query_params.get("target")
+        target = None
+        if raw not in (None, "", "personal"):
+            try:
+                target = self._target(int(raw))
+            except ValueError:
+                raise ValidationError({"target": "Lavozimni tanlang"})
+        return Response(merge_preview(self.get_object(), target))
+
+    @action(detail=True, methods=["post"], url_path="merge-into")
+    def merge_into(self, request, pk=None):
+        """{target: id} or {to_personal: true}; atomic, deletes the old group."""
+        source = self.get_object()
+        if request.data.get("to_personal") is True:
+            return Response(merge_group(source, None))
+        return Response(merge_group(source, self._target(request.data.get("target"))))
 
     @action(detail=True, methods=["get", "post"])
     def access(self, request, pk=None):

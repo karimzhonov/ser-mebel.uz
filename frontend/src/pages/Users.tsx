@@ -49,7 +49,7 @@ export default function UsersPage() {
     <div>
       <PageHeader
         title="Xodimlar"
-        subtitle="Sayt foydalanuvchilari, rollar (guruhlar) va ularning huquqlari"
+        subtitle="Sayt foydalanuvchilari, lavozimlar va ularning huquqlari"
         actions={
           tab === "users" && (
             <Button icon={<Plus className="h-4 w-4" />} onClick={() => (setErrors({}), setForm({ phone: "+998", name: "", password: "", is_active: true, is_staff: true, groups: [] }))}>
@@ -64,7 +64,7 @@ export default function UsersPage() {
         onChange={(v) => set({ tab: v })}
         options={[
           { value: "users", label: <span className="flex items-center gap-1.5"><UsersIcon className="h-4 w-4" /> Xodimlar</span> },
-          { value: "groups", label: <span className="flex items-center gap-1.5"><UserCog className="h-4 w-4" /> Guruhlar (rollar)</span>, count: groups?.length },
+          { value: "groups", label: <span className="flex items-center gap-1.5"><UserCog className="h-4 w-4" /> Lavozimlar</span>, count: groups?.length },
         ]}
       />
       {tab === "groups" ? (
@@ -81,7 +81,7 @@ export default function UsersPage() {
             columns={[
               { key: "name", header: "Ism", cell: (r) => <span className="font-medium">{r.name || "—"}</span> },
               { key: "phone", header: "Telefon", cell: (r) => <PhoneLink value={r.phone} /> },
-              { key: "groups", header: "Guruhlar", cell: (r) => <div className="flex flex-wrap gap-1">{r.groups.map((g) => <Badge key={g} dot={false}>{groupName(g)}</Badge>)}</div> },
+              { key: "groups", header: "Lavozim", cell: (r) => <div className="flex flex-wrap gap-1">{r.groups.map((g) => <Badge key={g} dot={false}>{groupName(g)}</Badge>)}</div> },
               {
                 key: "flags",
                 header: "Holat",
@@ -141,7 +141,7 @@ export default function UsersPage() {
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} /> Faol</label>
               <label className="flex items-center gap-2"><input type="checkbox" checked={form.is_staff} onChange={(e) => setForm({ ...form, is_staff: e.target.checked })} /> Panelga kirish huquqi</label>
             </div>
-            <Field label="Guruhlar (rollar)">
+            <Field label="Lavozimlar" hint="Bir xodim bir nechta lavozimda bo'lishi mumkin — huquqlari qo'shilib boradi.">
               <div className="flex flex-wrap gap-2">
                 {groups?.map((g) => {
                   const on = form.groups.includes(g.id);

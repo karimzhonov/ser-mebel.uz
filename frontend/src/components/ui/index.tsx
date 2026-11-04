@@ -557,6 +557,56 @@ export function Chip({
   );
 }
 
+/** On/off switch: a real `<button role="switch">` (Space/Enter toggle it natively).
+ * `checked="mixed"` draws an in-between knob (e.g. rights set by hand in the old admin);
+ * pressing it then turns it on. */
+export function Switch({
+  checked,
+  onChange,
+  label,
+  disabled,
+  className,
+}: {
+  checked: boolean | "mixed";
+  onChange: (next: boolean) => void;
+  label: ReactNode;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const mixed = checked === "mixed";
+  const on = checked === true;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      data-state={mixed ? "mixed" : on ? "on" : "off"}
+      disabled={disabled}
+      onClick={() => onChange(mixed ? true : !on)}
+      className={cn(
+        "group inline-flex items-center gap-2 rounded-lg py-1 text-sm text-slate-700 outline-none focus-visible:ring-4 focus-visible:ring-brand-500/30 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-200",
+        className,
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition",
+          on ? "bg-brand-700 dark:bg-accent-300" : mixed ? "bg-amber-300 dark:bg-amber-500/60" : "bg-slate-300 dark:bg-slate-700",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute h-4 w-4 rounded-full bg-white shadow transition-all",
+            on ? "left-[18px]" : mixed ? "left-[10px]" : "left-0.5",
+          )}
+        />
+      </span>
+      <span className="whitespace-nowrap">{label}</span>
+    </button>
+  );
+}
+
 export function Pagination({
   page,
   count,

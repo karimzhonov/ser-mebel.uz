@@ -799,6 +799,34 @@ export interface StaffGroup {
   locked?: boolean;
 }
 
+/** GET /groups/merge-plan/ — old groups to move into the lavozims (superuser) */
+export interface GroupMergePlan {
+  items: {
+    group: { id: number; name: string; member_count: number; locked?: boolean };
+    suggested: { id: number; name: string } | null;
+    reason: string;
+    /** optional extras the backend may send: a plain rename / «add to personal rights» suggestion */
+    action?: string;
+    rename_to?: string;
+    to_personal?: boolean;
+  }[];
+  targets: { id: number; name: string }[];
+}
+
+/** GET /groups/{id}/merge-preview/?target= */
+export interface GroupMergePreview {
+  members: (Pick<StaffUser, "id" | "phone" | "name"> | string)[];
+  add_to_target: { key: string; label: string }[];
+  target_member_count: number;
+}
+
+/** POST /groups/{id}/merge-into/ */
+export interface GroupMergeResult {
+  moved_members: number;
+  added_permissions: string[];
+  deleted: string;
+}
+
 export type AccessLevel = "none" | "view" | "edit";
 
 export interface AccessSection {

@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { KeyRound, Lock, Pencil, Plus, Trash2, UserMinus, UserPlus } from "lucide-react";
+import { ArrowRightLeft, KeyRound, Lock, Pencil, Plus, Trash2, UserMinus, UserPlus } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useGet, useList } from "@/api/hooks";
-import type { StaffGroup, StaffUser } from "@/api/types";
+import type { GroupMergePlan, StaffGroup, StaffUser } from "@/api/types";
 import { AccessEditor } from "@/components/AccessEditor";
 import { PhoneLink } from "@/components/domain";
+import { MergeModal } from "./GroupMerge";
 import { Badge, Button, Card, Confirm, DataTable, Empty, Field, IconButton, Input, Modal, PageLoader, SearchInput, Segmented } from "@/components/ui";
 
 /** members of a group as the API returns them (a list, or a page) */
@@ -16,14 +17,16 @@ export const LOCKED_HINT = "Omborchi Ombor sahifasida boshqariladi";
 
 export const memberCount = (g: StaffGroup) => g.member_count ?? g.members_count ?? g.user_count ?? 0;
 
-/** «Guruhlar (rollar)» — superuser only: a group is a role (Operator, Dizayner, Narxchi …);
- * every member gets its section levels and task flags. */
+/** «Lavozimlar» — superuser only: a lavozim (a Django group: Operator, Dizayner, Narxchi …);
+ * every member gets its section levels and task flags; a person may hold several. */
 export function GroupsPanel() {
   const { data: groups, isFetching } = useAll<StaffGroup>("groups");
   const [form, setForm] = useState<{ id?: number; name: string } | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [del, setDel] = useState<StaffGroup | null>(null);
   const [open, setOpen] = useState<{ group: StaffGroup; tab: "access" | "members" } | null>(null);
+  const [merge, setMerge] = useState(false);
+  const { data: plan } = useGet<GroupMergePlan>("/groups/merge-plan/");
 
   const save = useAction(() => (form!.id ? api.patch(`/groups/${form!.id}/`, { name: form!.name.trim() }) : api.post("/groups/", { name: form!.name.trim() })), {
     success: "Saqlandi",
@@ -31,7 +34,7 @@ export function GroupsPanel() {
     onSuccess: () => setForm(null),
   });
   const remove = useAction((id: number) => api.delete(`/groups/${id}/`), {
-    success: "Guruh o'chirildi",
+    success: "Lavozim o'chirildi",
     invalidate: ["groups", "users"],
     onSuccess: () => setDel(null),
   });
@@ -40,19 +43,26 @@ export function GroupsPanel() {
     <>
       <Card
         padded={false}
-        title="Guruhlar (rollar)"
+        title="Lavozimlar"
         actions={
-          <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => (setErrors({}), setForm({ name: "" }))}>
-            Guruh
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            {!!plan?.items.length && (
+              <Button size="sm" variant="outline" icon={<ArrowRightLeft className="h-4 w-4" />} onClick={() => setMerge(true)}>
+                Eski guruhlarni ko'chirish ({plan.items.length})
+              </Button>
+            )}
+            <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => (setErrors({}), setForm({ name: "" }))}>
+              Lavozim
+            </Button>
+          </div>
         }
       >
         <p className="muted border-b border-slate-100 px-5 py-3 text-xs dark:border-slate-800">
-          Guruh — bu rol: Operator, O'lcham oluvchi, Dizayner, Narxchi, Bosh menejer, Menejer, Konstruktor … Guruhga berilgan bo'lim huquqlari va vazifa belgilari
-          undagi har bir xodimga o'tadi. Telegram'ga ulangan xodimga shu rol bo'yicha xabarlar bot orqali boradi.
+          Lavozim: Operator, O'lcham oluvchi, Dizayner, Narxchi, Bosh menejer, Menejer, Konstruktor … Lavozimga berilgan bo'lim huquqlari va vazifalar
+          undagi har bir xodimga o'tadi; bir xodim bir nechta lavozimda bo'lishi mumkin. Telegram'ga ulangan xodimga shu lavozim bo'yicha xabarlar bot orqali boradi.
         </p>
         {groups && !groups.length ? (
-          <Empty title="Guruhlar yo'q" text="«Guruh» tugmasi bilan birinchi rolni yarating." />
+          <Empty title="Lavozimlar yo'q" text="«Lavozim» tugmasi bilan birinchi lavozimni yarating." />
         ) : (
           <DataTable
             rows={groups}
@@ -111,7 +121,7 @@ export function GroupsPanel() {
       <Modal
         open={!!form}
         onClose={() => setForm(null)}
-        title={form?.id ? "Guruh nomini o'zgartirish" : "Yangi guruh (rol)"}
+        title={form?.id ? "Lavozim nomini o'zgartirish" : "Yangi lavozim"}
         size="sm"
         footer={
           <Button disabled={!form?.name.trim()} loading={save.isPending} onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>
@@ -126,6 +136,8 @@ export function GroupsPanel() {
         )}
       </Modal>
 
+      {merge && plan && <MergeModal plan={plan} onClose={() => setMerge(false)} />}
+
       {open && <GroupModal group={groups?.find((g) => g.id === open.group.id) ?? open.group} tab={open.tab} onTab={(tab) => setOpen({ ...open, tab })} onClose={() => setOpen(null)} />}
 
       <Confirm
@@ -135,15 +147,15 @@ export function GroupsPanel() {
         loading={remove.isPending}
         variant="danger"
         confirmLabel="O'chirish"
-        title="Guruhni o'chirish"
+        title="Lavozimni o'chirish"
         text={
           del && memberCount(del) > 0 ? (
             <>
-              <b>{del.name}</b> guruhida {memberCount(del)} ta xodim bor — avval ularni guruhdan chiqaring.
+              <b>{del.name}</b> lavozimida {memberCount(del)} ta xodim bor — avval ularni lavozimdan chiqaring.
             </>
           ) : (
             <>
-              <b>{del?.name}</b> guruhi o'chiriladi.
+              <b>{del?.name}</b> lavozimi o'chiriladi.
             </>
           )
         }
@@ -154,7 +166,7 @@ export function GroupsPanel() {
 
 function GroupModal({ group, tab, onTab, onClose }: { group: StaffGroup; tab: "access" | "members"; onTab: (t: "access" | "members") => void; onClose: () => void }) {
   return (
-    <Modal open onClose={onClose} title={`Rol — ${group.name}`} size="lg">
+    <Modal open onClose={onClose} title={`Lavozim — ${group.name}`} size="lg">
       <Segmented
         className="mb-4"
         value={tab}
@@ -177,7 +189,7 @@ function GroupModal({ group, tab, onTab, onClose }: { group: StaffGroup; tab: "a
       )}
       {group.locked ? (
         tab === "access" ? (
-          <p className="muted text-sm">Bu rolning huquqlari bu yerda o'zgartirilmaydi.</p>
+          <p className="muted text-sm">Bu lavozimning huquqlari bu yerda o'zgartirilmaydi.</p>
         ) : (
           <Members group={group} readOnly />
         )
@@ -222,7 +234,7 @@ function Members({ group, readOnly }: { group: StaffGroup; readOnly?: boolean })
                       <span className="font-medium">{u.name || "—"}</span> <span className="muted">{u.phone}</span>
                     </span>
                     {ids.has(u.id) ? (
-                      <Badge tone="ok" dot={false}>guruhda</Badge>
+                      <Badge tone="ok" dot={false}>lavozimda</Badge>
                     ) : (
                       <Button size="sm" variant="outline" icon={<UserPlus className="h-4 w-4" />} loading={change.isPending && change.variables?.add?.[0] === u.id} onClick={() => change.mutate({ add: [u.id] })}>
                         Qo'shish
@@ -236,11 +248,11 @@ function Members({ group, readOnly }: { group: StaffGroup; readOnly?: boolean })
         </div>
       )}
       <div>
-        <div className="label">Guruhdagi xodimlar · {members.length}</div>
+        <div className="label">Lavozimdagi xodimlar · {members.length}</div>
         {isLoading ? (
           <PageLoader />
         ) : !members.length ? (
-          <Empty title="Guruhda xodim yo'q" />
+          <Empty title="Lavozimda xodim yo'q" />
         ) : (
           <ul className="divide-y divide-slate-100 rounded-xl border border-slate-100 dark:divide-slate-800 dark:border-slate-800">
             {members.map((m) => (
