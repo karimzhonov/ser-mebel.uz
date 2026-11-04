@@ -317,6 +317,8 @@ class OperationViewSet(viewsets.ModelViewSet):
         only = scoped_member(request)
         if only and d["member"].pk != only.pk:
             raise PermissionDenied("Faqat o'z hamyoningizga yozishingiz mumkin.")
+        if not d["member"].has_wallet:
+            raise ValidationError({"member": f"{d['member'].name}ning hamyoni yo'q."})
         cur = d.get("currency") or "UZS"
         amount = d.get("amount")
         if cur == "USD":

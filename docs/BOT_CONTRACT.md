@@ -78,7 +78,7 @@ Backend errors:
 
 Decimals are strings like `"250000.00"`; dates ISO.
 
-- **Member** `{id, telegram_id, name, username, role, is_admin, is_active_member, is_task_only, has_wallet, is_site_entry, is_feedback, is_bonus_receiver, is_deadline_receiver, site_user: str|null}`
+- **Member** `{id, telegram_id, name, username, role, is_admin, is_active_member, is_task_only, has_wallet, is_site_entry, is_feedback, is_bonus_receiver, is_deadline_receiver, site_user: str|null}` — `has_wallet` / `is_task_only` are the effective flags (the member's «Hamyon» setting auto / on / off; auto = site-entry / feedback non-admins have none). An admin can have `has_wallet=false` with `is_task_only=false` (books into others' wallets, has no own one). The bot must not infer either from the duties.
 - **Category** `{code, name, emoji, kind, admin_only, no_order, archive, excluded}`
 - **Operation** `{number, date, time, kind, amount, currency, orig_amount, rate, category: Category, member: {telegram_id, name}, author_tg, order_ref, comment, worker, pay_type, receipt_file_id, is_deleted, handover}`
 - **OrderBrief** `{ref, client, bucket, ready_date}`

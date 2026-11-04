@@ -96,6 +96,15 @@ class TelegramRole(models.TextChoices):
     BLOCKED = "blocked", "Bloklangan"
 
 
+class WalletMode(models.TextChoices):
+    """Does the member keep a wallet. «auto» = the old rule: site-entry / feedback
+    managers (not admins) have none, everybody else active has one."""
+
+    AUTO = "auto", "Avtomatik (vazifaga qarab)"
+    ON = "on", "Bor"
+    OFF = "off", "Yo'q"
+
+
 class TelegramMember(models.Model):
     """Who may use the finance Telegram bot, and as what.
 
@@ -134,6 +143,12 @@ class TelegramMember(models.Model):
     is_accountant = models.BooleanField(
         default=False, verbose_name="Bugalter (oylik eslatmalari)"
     )
+    wallet_mode = models.CharField(
+        max_length=8,
+        choices=WalletMode.choices,
+        default=WalletMode.AUTO,
+        verbose_name="Hamyon",
+    )
     joined_at = models.DateTimeField(auto_now_add=True, verbose_name="Qo'shilgan")
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -155,10 +170,20 @@ class TelegramMember(models.Model):
 
     @property
     def is_task_only(self) -> bool:
-        """Site-entry / feedback managers don't book money and aren't asked for
-        reports — unless they are also an admin (taskOnly_ in code.txt)."""
-        return (self.is_site_entry or self.is_feedback) and self.role != TelegramRole.ADMIN
+        """No own wallet: doesn't book money and isn't asked for reports. An admin is
+        never task-only (still books into other people's wallets).
+        wallet_mode «auto» keeps the old rule (taskOnly_ in code.txt): site-entry /
+        feedback managers."""
+        if self.role == TelegramRole.ADMIN:
+            return False
+        if self.wallet_mode == WalletMode.ON:
+            return False
+        if self.wallet_mode == WalletMode.OFF:
+            return True
+        return self.is_site_entry or self.is_feedback
 
     @property
     def has_wallet(self) -> bool:
-        return self.is_active_member and not self.is_task_only
+        if not self.is_active_member or self.wallet_mode == WalletMode.OFF:
+            return False
+        return not self.is_task_only

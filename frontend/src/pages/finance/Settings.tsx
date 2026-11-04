@@ -91,7 +91,7 @@ function MembersTab() {
                 {DUTIES.filter(([k]) => r[k]).map(([k, label]) => (
                   <Badge key={k} tone="info" dot={false}>{label}</Badge>
                 ))}
-                {r.is_task_only && <Badge tone="warn" dot={false}>hamyonsiz</Badge>}
+                {(r.role === "admin" || r.role === "staff") && !r.has_wallet && <Badge tone="warn" dot={false}>hamyonsiz</Badge>}
               </div>
             ),
           },
@@ -121,6 +121,7 @@ function MemberModal({ m, onClose }: { m: Member; onClose: () => void }) {
         is_bonus_receiver: f.is_bonus_receiver,
         is_deadline_receiver: f.is_deadline_receiver,
         is_accountant: f.is_accountant,
+        wallet_mode: f.wallet_mode,
       }),
     { success: "Saqlandi", invalidate: ["finance"], onSuccess: onClose },
   );
@@ -162,8 +163,26 @@ function MemberModal({ m, onClose }: { m: Member; onClose: () => void }) {
               {label}
             </label>
           ))}
-          <p className="muted text-xs">Saytga kirituvchi / mijoz fikri vazifasi bor xodim (rahbar bo'lmasa) kirim-chiqim kiritmaydi.</p>
         </div>
+        <Field
+          label="Hamyon"
+          error={errors.wallet_mode}
+          hint={
+            f.wallet_mode === "auto"
+              ? "Saytga kirituvchi / mijoz fikri vazifasi bor xodimda (rahbar bo'lmasa) hamyon bo'lmaydi, qolganlarda bor."
+              : f.wallet_mode === "off"
+                ? f.role === "admin"
+                  ? "Rahbarning o'z hamyoni bo'lmaydi, lekin boshqalarga pul berishi va kiritishi mumkin."
+                  : "Kirim-chiqim kiritmaydi va hisobot so'ralmaydi. Qoldig'i bor hamyonni o'chirib bo'lmaydi."
+                : "Vazifalaridan qat'i nazar o'z hamyoni bo'ladi."
+          }
+        >
+          <Select value={f.wallet_mode ?? "auto"} onChange={(e) => setF({ ...f, wallet_mode: e.target.value as Member["wallet_mode"] })}>
+            <option value="auto">Avtomatik (vazifaga qarab)</option>
+            <option value="on">Bor — hamyonli</option>
+            <option value="off">Yo'q — hamyonsiz</option>
+          </Select>
+        </Field>
         {userList.length > 0 && (
           <Field label="Sayt profili (ixtiyoriy)" hint="Ulansa, u saytdagi Moliya bo'limida o'z hamyonini ko'radi" error={errors.user}>
             <Select value={f.user ?? ""} onChange={(e) => setF({ ...f, user: e.target.value ? Number(e.target.value) : null })}>

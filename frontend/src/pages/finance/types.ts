@@ -16,6 +16,9 @@ export interface Member {
   is_bonus_receiver: boolean;
   is_deadline_receiver: boolean;
   is_accountant: boolean;
+  /** auto = by duties (site-entry / feedback → no wallet); on / off = set by hand */
+  wallet_mode: "auto" | "on" | "off";
+  wallet_mode_label?: string;
   is_task_only: boolean;
   has_wallet: boolean;
   joined_at: string;

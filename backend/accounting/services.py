@@ -1741,6 +1741,12 @@ def create_operation_as(actor: TelegramMember, target: TelegramMember, **fields)
         raise ServiceForbidden("Faqat o'z hamyoningizga yozishingiz mumkin.")
     if not target.is_active_member:
         raise ServiceError("Xodim topilmadi.")
+    if not target.has_wallet:  # a walletless boss / task-only member: nowhere to book
+        raise ServiceError(
+            "Sizning hamyoningiz yo'q."
+            if target.pk == actor.pk
+            else f"{target.name}ning hamyoni yo'q."
+        )
     for spoofable in ("actor_admin", "author", "member", "internal"):
         fields.pop(spoofable, None)
     if fields.get("category_code") == CAT_SALARY and not actor.is_admin:
