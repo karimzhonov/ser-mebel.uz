@@ -60,7 +60,7 @@ const TABS: Tab[] = ["today", "tomorrow", "week", "waiting", "archive"];
  * big buttons, the address opens Yandex Maps. */
 export function MeteringsPage() {
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const manager = can("metering.manage_metering");
   const { state, page, set } = useUrlState({ tab: "today", measurer: "", search: "" });
   const tab: Tab = (TABS as string[]).includes(state.tab) ? (state.tab as Tab) : "today";
@@ -78,7 +78,8 @@ export function MeteringsPage() {
         title="O'lchovlar"
         subtitle="Zamerlar kun rejasi"
         actions={
-          can("metering.add_metering") && (
+          // owner's rule: everyone else books a zamer from the lead (Call-center)
+          user?.is_superuser && (
             <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>
               Yangi o'lchov
             </Button>
