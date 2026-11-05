@@ -9,3 +9,10 @@ export function isPlainManager(user: Me | null | undefined): boolean {
   const lav = (user.lavozims ?? []).map(norm);
   return lav.includes("menejer") && !lav.includes("bosh menejer");
 }
+
+/** «Menejer» or «Bosh menejer» lavozim: both get price tasks from the zamerchi. */
+export function isAnyManager(user: Me | null | undefined): boolean {
+  if (!user || user.is_superuser) return false;
+  const lav = (user.lavozims ?? []).map(norm);
+  return lav.includes("menejer") || lav.includes("bosh menejer");
+}
