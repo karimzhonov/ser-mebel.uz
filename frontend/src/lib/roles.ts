@@ -16,3 +16,11 @@ export function isAnyManager(user: Me | null | undefined): boolean {
   const lav = (user.lavozims ?? []).map(norm);
   return lav.includes("menejer") || lav.includes("bosh menejer");
 }
+
+/** The call-centre operator: works the leads (call_center.view_invoice) and is in the
+ * «Operator» lavozim or holds the «Call-center operatori» flag. A flag alone (left from
+ * the old per-person switches, e.g. on a manager) is not enough. */
+export function isOperator(user: Me | null | undefined, can: (p: string) => boolean): boolean {
+  if (!user || user.is_superuser || !can("call_center.view_invoice")) return false;
+  return (user.lavozims ?? []).map(norm).includes("operator") || can("oauth.user_call_center");
+}
