@@ -227,3 +227,56 @@ def test_assignees_hints_when_pools_empty(admin_api):
     r = admin_api.get("/api/v1/meterings/assignees/")
     assert r.status_code == 200
     assert "«Dizayner»" in r.data["designer_hint"] and "«Menejer»" in r.data["pricer_hint"]
+
+
+def test_operator_books_a_zamer_but_only_views_it(make_staff):
+    """oauth 0014: «Operator» keeps view + add (books from the lead), loses editing; the
+    operators' own old «O'zgartirish» goes too, but not a zamerchi's / bosh menejer's."""
+    op = Group.objects.get(name="Operator")
+    have = perms_of(op)
+    assert {"metering.view_metering", "metering.add_metering"} <= have
+    assert not {"metering.change_metering", "metering.delete_metering", "metering.change_status"} & have
+    report = {s["key"]: s["level"] for s in A.group_access(op)["sections"]}
+    assert report["meterings"] == "view" and report["metering_booker"] == "view"
+
+    edit = ("metering.change_metering", "metering.delete_metering", "metering.change_status")
+    plain = make_staff("metering.view_metering", *edit)
+    measurer = make_staff("oauth.user_metering", "metering.view_metering", *edit)
+    op.user_set.add(plain, measurer)
+    op.permissions.add(*[A._perm_objects(set(edit))[x] for x in edit])  # set by hand again
+    mod = importlib.import_module("oauth.migrations.0014_operator_views_meterings")
+    mod.operators_view_meterings(apps, None)
+    mod.operators_view_meterings(apps, None)  # safe twice
+    plain, measurer = User.objects.get(pk=plain.pk), User.objects.get(pk=measurer.pk)
+    assert plain.has_perm("metering.add_metering") and plain.has_perm("metering.view_metering")
+    assert not any(plain.has_perm(p) for p in edit)
+    assert measurer.has_perm("metering.change_metering")  # a zamerchi keeps steering zamers
+    assert not {"metering.change_metering"} & perms_of(op)
+
+
+def test_booker_flag_gives_only_add(admin_api, make_staff):
+    u = make_staff()
+    r = admin_api.post(
+        f"/api/v1/users/{u.pk}/access/",
+        {"levels": {"meterings": "view", "metering_booker": "view"}},
+        format="json",
+    )
+    assert r.status_code == 200, r.content
+    u = User.objects.get(pk=u.pk)
+    assert u.has_perm("metering.add_metering") and u.has_perm("metering.view_metering")
+    assert not u.has_perm("metering.change_metering")
+
+
+def test_meterings_off_takes_the_booking_too(admin_api, make_staff):
+    """«O'lchovlar» O'zgartirish → Yo'q: add_metering goes with it (no silent booker)."""
+    u = make_staff()
+    url = f"/api/v1/users/{u.pk}/access/"
+    assert admin_api.post(url, {"levels": {"meterings": "edit"}}, format="json").status_code == 200
+    r = admin_api.post(url, {"levels": {"meterings": "none"}}, format="json")
+    assert r.status_code == 200
+    u = User.objects.get(pk=u.pk)
+    assert not u.has_perm("metering.add_metering") and not u.has_perm("metering.view_metering")
+    # a booker set on purpose keeps booking when the section goes to «Ko'rish»
+    admin_api.post(url, {"levels": {"meterings": "view", "metering_booker": "view"}}, format="json")
+    admin_api.post(url, {"levels": {"meterings": "view"}}, format="json")
+    assert User.objects.get(pk=u.pk).has_perm("metering.add_metering")
