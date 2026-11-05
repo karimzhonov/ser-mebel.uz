@@ -132,6 +132,13 @@ jobs:
             docker compose -f docker-compose.prod.yml down
             docker compose -f docker-compose.prod.yml up -d
             docker compose -f docker-compose.prod.yml ps
-            # Untagged-only prune: the two stacks share a Docker Hub repo, so a
-            # broad prune here could pull the other stack's image out from under it.
+            # Every deploy pulls new commit-tagged images, and a plain prune skips
+            # tagged ones, so old tags piled up. docker rmi (no -f) refuses any image
+            # a container uses, so both stacks' current images stay; a failed rmi is
+            # expected here and must not fail the deploy. Other projects' images and
+            # postgres/redis are not touched.
+            for repo in api front bot; do
+              docker image ls --format '{{.Repository}}:{{.Tag}}' "khtkarimzhonov/$repo.ser-mebel.uz" \
+                | xargs -r -n1 docker rmi 2>/dev/null || true
+            done
             docker image prune -f
