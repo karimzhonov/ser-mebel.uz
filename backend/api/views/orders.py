@@ -16,7 +16,11 @@ from order.assembly.services import (
     mark_installing_done,
     ready_for_assembly,
 )
-from order.constants import ORDER_CHANGE_STATUS_PERMISSION, OrderStatus
+from order.constants import (
+    ORDER_CHANGE_STATUS_PERMISSION,
+    ORDER_VIEW_PRICE_PERMISSION,
+    OrderStatus,
+)
 from order.detailing.models import Detailing
 from order.detailing.services import mark_detailing_done
 from order.models import Factory, Order
@@ -30,6 +34,7 @@ from order.services import (
     send_order_to_assembly,
     send_order_to_detailing,
     set_order_location,
+    underpaid_orders,
 )
 
 from ..permissions import ModelPermissions, require_perm
@@ -128,6 +133,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         warning = params.get("warning")
         if warning:
             qs = warning_filter(qs, warning)
+        if params.get("underpaid") == "1":
+            # «65% dan kam to'lagan»: money, so only for who may see order prices
+            require_perm(self.request.user, f"order.{ORDER_VIEW_PRICE_PERMISSION}")
+            qs = underpaid_orders(qs)
         return apply_period(qs, "reception_date", params)
 
     def get_queryset(self):
@@ -262,6 +271,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                     for key in ("success", "warning", "danger")
                 ],
                 "timeline": timeseries(qs, "reception_date", request.query_params),
+                # «65% dan kam to'lagan» tile: money, so only with the price permission
+                "underpaid": (
+                    underpaid_orders(qs).count()
+                    if request.user.has_perm(f"order.{ORDER_VIEW_PRICE_PERMISSION}")
+                    else None
+                ),
             }
         )
 

@@ -162,9 +162,12 @@ class BoardsView(APIView):
         from order.models import Order
         from order.services import order_board
 
+        from .overview import sales_only
+
         user = request.user
         boards = []
-        if user.has_perm("order.view_order"):
+        # the bosh menejer's home: Sotuv + O'lchov only, no orders board
+        if user.has_perm("order.view_order") and not sales_only(user):
             show_price = user.has_perm(f"order.{ORDER_VIEW_PRICE_PERMISSION}")
             boards.append(
                 {

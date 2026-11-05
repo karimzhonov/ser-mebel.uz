@@ -722,6 +722,8 @@ export interface StatusStats {
   by_solution?: { key: string; count: number }[];
   warnings?: { key: string; count: number }[];
   timeline: { date: string; value: number }[];
+  /** orders: live orders paid under 65% (null without the price permission) */
+  underpaid?: number | null;
 }
 
 export interface HistoryEntry {
@@ -857,6 +859,13 @@ export interface UserAccess {
 export interface Overview {
   range: { from: string | null; to: string | null };
   monthly: boolean;
+  /** the bosh menejer: only Sotuv + O'lchov blocks are sent */
+  sales_only?: boolean;
+  underpaid?: {
+    threshold: number;
+    count: number;
+    items: { id: number; number: number; client: string; phone: string; status: string; paid_pct: number; total: Money; paid: Money }[];
+  } | null;
   funnel: {
     steps: { key: string; label: string; count: number; conversion: number | null }[];
     total_conversion: number | null;

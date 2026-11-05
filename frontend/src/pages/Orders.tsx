@@ -9,6 +9,7 @@ import {
   Hammer,
   Pencil,
   Plus,
+  Wallet,
 } from "lucide-react";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useGet, useList, useMeta } from "@/api/hooks";
@@ -71,7 +72,7 @@ export function OrdersPage() {
   const { can } = useAuth();
   const { data: meta } = useMeta();
   const { data: factories } = useAll<Factory>("factories");
-  const { state, page, set } = useUrlState({ search: "", status: "", warning: "", factory: "", date_from: "", date_to: "" });
+  const { state, page, set } = useUrlState({ search: "", status: "", warning: "", factory: "", date_from: "", date_to: "", underpaid: "" });
   const { data, isFetching } = useList<Order>("orders", { ...state, page });
   const { data: stats } = useGet<StatusStats>("/orders/stats/", {
     search: state.search,
@@ -97,14 +98,14 @@ export function OrdersPage() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className={`mb-4 grid grid-cols-1 gap-3 ${showMoney ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3"}`}>
         <StatTile
           label="Kechikkan"
           value={warn.danger ?? "…"}
           tone="danger"
           icon={<AlertTriangle className="h-5 w-5" />}
           active={state.warning === "danger"}
-          onClick={() => set({ warning: state.warning === "danger" ? "" : "danger" })}
+          onClick={() => set({ warning: state.warning === "danger" ? "" : "danger", underpaid: "" })}
         />
         <StatTile
           label={`${meta?.warning_order_days ?? 7} kundan kam`}
@@ -112,7 +113,7 @@ export function OrdersPage() {
           tone="warn"
           icon={<Clock className="h-5 w-5" />}
           active={state.warning === "warning"}
-          onClick={() => set({ warning: state.warning === "warning" ? "" : "warning" })}
+          onClick={() => set({ warning: state.warning === "warning" ? "" : "warning", underpaid: "" })}
         />
         <StatTile
           label="Muddatida"
@@ -120,8 +121,19 @@ export function OrdersPage() {
           tone="ok"
           icon={<CheckCircle2 className="h-5 w-5" />}
           active={state.warning === "success"}
-          onClick={() => set({ warning: state.warning === "success" ? "" : "success" })}
+          onClick={() => set({ warning: state.warning === "success" ? "" : "success", underpaid: "" })}
         />
+        {showMoney && (
+          <StatTile
+            label="65% dan kam to'lagan"
+            hint="birinchi to'lov 70%"
+            value={stats?.underpaid ?? "…"}
+            tone="info"
+            icon={<Wallet className="h-5 w-5" />}
+            active={state.underpaid === "1"}
+            onClick={() => set({ underpaid: state.underpaid === "1" ? "" : "1", warning: "" })}
+          />
+        )}
       </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
