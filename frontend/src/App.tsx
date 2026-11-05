@@ -11,6 +11,7 @@ import { MeteringDetailPage, MeteringsPage } from "@/pages/Meterings";
 import { DesignDetailPage, DesignsPage } from "@/pages/Designs";
 import { PriceDetailPage, PricesPage } from "@/pages/Prices";
 import PresentationsPage from "@/pages/Presentations";
+import ManagerTasksPage from "@/pages/offers/ManagerTasks";
 import CatalogPage from "@/pages/Catalog";
 import { OrderCreatePage, OrderDetailPage, OrdersPage } from "@/pages/Orders";
 import ProductionPage from "@/pages/Production";
@@ -57,6 +58,7 @@ export default function App() {
         <Route path="prices" element={<PricesPage />} />
         <Route path="prices/:id" element={<PriceDetailPage />} />
         <Route path="presentations" element={<PresentationsPage />} />
+        <Route path="my-tasks" element={<ManagerTasksPage />} />
         <Route path="catalog" element={<CatalogPage />} />
         <Route path="orders" element={<OrdersPage />} />
         <Route path="orders/new" element={<OrderCreatePage />} />
