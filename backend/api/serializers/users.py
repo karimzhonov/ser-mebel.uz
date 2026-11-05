@@ -22,10 +22,16 @@ class MeSerializer(serializers.ModelSerializer):
             "permissions",
             "telegram_link",
             "is_warehouse_keeper",
+            "lavozims",
         ]
         read_only_fields = fields
 
     is_warehouse_keeper = serializers.SerializerMethodField()
+    # the person's lavozims (groups) by name: the SPA picks the home page by them
+    lavozims = serializers.SerializerMethodField()
+
+    def get_lavozims(self, obj):
+        return sorted(obj.groups.values_list("name", flat=True))
 
     def get_is_warehouse_keeper(self, obj):
         from warehouse.services import is_keeper

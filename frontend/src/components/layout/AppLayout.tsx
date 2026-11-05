@@ -47,6 +47,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
 import logoWide from "@/assets/logo-wide.png";
 import { useAuth } from "@/auth/AuthContext";
+import { isAnyManager } from "@/lib/roles";
 import { cn } from "@/lib/cn";
 import { phone } from "@/lib/format";
 
@@ -62,6 +63,8 @@ interface NavItem {
   end?: boolean;
   /** red counter next to the label */
   badge?: "crm";
+  /** only for the «Menejer» / «Bosh menejer» lavozims (lib/roles.ts) */
+  managers?: boolean;
 }
 
 // Same sections and permissions as the admin sidebar (backend/core/sidebars.py).
@@ -83,7 +86,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     items: [
       { to: "/meterings", label: "O'lchovlar", icon: Ruler, perm: "metering.view_metering" },
       // the manager: prices the zamerchi gave them + clients to show (owner's request)
-      { to: "/my-tasks", label: "Vazifalarim", icon: ListTodo, perm: "metering.present_to_client" },
+      { to: "/my-tasks", label: "Vazifalarim", icon: ListTodo, managers: true },
       { to: "/designs", label: "Dizayn", icon: Brush, perm: "design.view_design" },
       { to: "/prices", label: "Narx hisoblash", icon: Calculator, perm: "price.view_price" },
       { to: "/presentations", label: "Mijozga ko'rsatish", icon: Presentation, anyPerm: ["metering.present_to_client", "metering.manage_metering"] },
@@ -180,7 +183,7 @@ export function AppLayout() {
   // the omborchi sees only the warehouse (the server gives them nothing else anyway)
   const keeperOnly = !!user?.is_warehouse_keeper && !user.is_superuser;
   const visible = (item: NavItem) =>
-    keeperOnly ? item.to.startsWith("/warehouse") && (!item.perm || can(item.perm)) && !item.superuser
+    item.managers ? isAnyManager(user) : keeperOnly ? item.to.startsWith("/warehouse") && (!item.perm || can(item.perm)) && !item.superuser
       : item.superuser ? user?.is_superuser : item.anyPerm ? canAny(...item.anyPerm) : !item.perm || can(item.perm);
   const sections = NAV.map((s) => ({ ...s, items: s.items.filter(visible) })).filter((s) => s.items.length);
 

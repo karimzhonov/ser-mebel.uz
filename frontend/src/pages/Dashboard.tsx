@@ -6,6 +6,7 @@ import type { Board, TaskAgenda } from "@/api/types";
 import { LeadDetailModal } from "@/pages/callcenter/LeadDetailModal";
 import { TaskRow } from "@/pages/callcenter/shared";
 import ManagerTasksPage from "@/pages/offers/ManagerTasks";
+import { isPlainManager } from "@/lib/roles";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
 import { AddressLink, DeadlinePill, MoneyLeft } from "@/components/domain";
@@ -22,11 +23,9 @@ const LIST_URL: Record<Board["id"], (col: string) => string> = {
 };
 
 export default function DashboardPage() {
-  const { user, can } = useAuth();
-  // owner's rule: the plain manager (not the bosh menejer) sees only «Vazifalarim» at home
-  const manager =
-    !!user && !user.is_superuser && can("metering.present_to_client") && !can("metering.manage_metering");
-  return manager ? <ManagerTasksPage /> : <FullDashboard />;
+  const { user } = useAuth();
+  // owner's rule: the plain «Menejer» (not the bosh menejer) sees only «Vazifalarim» at home
+  return isPlainManager(user) ? <ManagerTasksPage /> : <FullDashboard />;
 }
 
 function FullDashboard() {
