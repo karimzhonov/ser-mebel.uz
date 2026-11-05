@@ -6,7 +6,7 @@ import type { Board, TaskAgenda } from "@/api/types";
 import { LeadDetailModal } from "@/pages/callcenter/LeadDetailModal";
 import { TaskRow } from "@/pages/callcenter/shared";
 import ManagerTasksPage from "@/pages/offers/ManagerTasks";
-import { isPlainManager } from "@/lib/roles";
+import { isOperator, isPlainManager } from "@/lib/roles";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
 import { AddressLink, DeadlinePill, MoneyLeft } from "@/components/domain";
@@ -31,7 +31,7 @@ export default function DashboardPage() {
 function FullDashboard() {
   const { user, can } = useAuth();
   // owner's rule: the operator gets no boards — the overview plus a short note of today's work
-  const operator = !!user && !user.is_superuser && can("oauth.user_call_center");
+  const operator = isOperator(user, can);
   const { state, set } = useUrlState({ tab: "overview", date_from: monthStartISO(), date_to: iso(new Date()) });
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Xayrli tong" : hour < 18 ? "Xayrli kun" : "Xayrli kech";
@@ -73,11 +73,12 @@ function FullDashboard() {
 /** The operator's calls: overdue / today / later, and the first ones of today. */
 function TodayWork() {
   const navigate = useNavigate();
-  const { data } = useGet<TaskAgenda>("/invoice-tasks/agenda/");
+  const { data, isError } = useGet<TaskAgenda>("/invoice-tasks/agenda/");
   const [searchParams, setSearchParams] = useSearchParams();
   const openId = searchParams.get("open");
   const open = (id: number) => setSearchParams((p) => (p.set("open", String(id)), p));
   const now = [...(data?.overdue ?? []), ...(data?.today ?? [])];
+  if (isError) return null; // no call-centre rights: nothing to show, never an endless spinner
   return (
     <Card
       className="mb-4"
