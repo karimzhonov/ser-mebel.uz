@@ -770,6 +770,10 @@ def test_api_actions_and_validation(api, operator, ali, people):
         "date_time": "2026-11-05T10:00:00",
         "address": "Chilonzor",
     }
+    # only the admin books a zamer without a lead
+    r = c_op.post("/api/v1/meterings/", body, format="json")
+    assert r.status_code == 400 and r.data["field"] == "invoice"
+    body["invoice"] = lead(operator, body["client_phone"]).pk
     r = c_op.post("/api/v1/meterings/", body, format="json")
     assert r.status_code == 201, r.content
     assert r.data["measurer"]["id"] == ali.pk and r.data["operator"]["id"] == c_op.user.pk
@@ -841,6 +845,7 @@ def test_api_measurers_and_set_measurer(api, operator, ali, make_staff):
             "client_phone": "+998901117776",
             "client_fio": "Z",
             "date_time": "2026-11-05T10:00:00",
+            "invoice": lead(operator, "+998901117776").pk,
         },
         format="json",
     )

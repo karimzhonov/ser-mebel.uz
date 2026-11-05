@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ChevronRight, Clock, Columns3, Factory, LayoutGrid, Phone } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { AlarmClockOff, CalendarClock, CalendarDays, ChevronRight, Clock, Columns3, Factory, LayoutGrid, ListChecks, PartyPopper, Phone } from "lucide-react";
 import { useGet } from "@/api/hooks";
-import type { Board } from "@/api/types";
+import type { Board, TaskAgenda } from "@/api/types";
+import { LeadDetailModal } from "@/pages/callcenter/LeadDetailModal";
+import { TaskRow } from "@/pages/callcenter/shared";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
 import { AddressLink, DeadlinePill, MoneyLeft } from "@/components/domain";
 import { OverviewPanel } from "@/components/Overview";
 import { useUrlState } from "@/lib/useUrlState";
-import { Badge, Check, Empty, PageHeader, PageLoader, Segmented, TONES } from "@/components/ui";
+import { Badge, Button, Card, Check, Empty, PageHeader, PageLoader, Segmented, StatTile, TONES } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { dateTime, phone } from "@/lib/format";
 
@@ -19,10 +21,13 @@ const LIST_URL: Record<Board["id"], (col: string) => string> = {
 };
 
 export default function DashboardPage() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  // owner's rule: the operator gets no boards — the overview plus a short note of today's work
+  const operator = !!user && !user.is_superuser && can("oauth.user_call_center");
   const { state, set } = useUrlState({ tab: "overview", date_from: monthStartISO(), date_to: iso(new Date()) });
   const hour = new Date().getHours();
   const greet = hour < 12 ? "Xayrli tong" : hour < 18 ? "Xayrli kun" : "Xayrli kech";
+  const tab = operator ? "overview" : state.tab;
 
   return (
     <div>
@@ -30,7 +35,7 @@ export default function DashboardPage() {
         title={`${greet}${user?.name ? ", " + user.name : ""}`}
         subtitle="Ishlab chiqarishning barcha jarayonlari — bitta ekranda"
         actions={
-          state.tab === "overview" && (
+          tab === "overview" && (
             <DateRangeFilter
               from={state.date_from}
               to={state.date_to}
@@ -39,17 +44,71 @@ export default function DashboardPage() {
           )
         }
       />
-      <Segmented
-        className="mb-4"
-        value={state.tab}
-        onChange={(tab) => set({ tab })}
-        options={[
-          { value: "overview", label: <span className="flex items-center gap-1.5"><LayoutGrid className="h-4 w-4" /> Umumiy ko'rinish</span> },
-          { value: "board", label: <span className="flex items-center gap-1.5"><Columns3 className="h-4 w-4" /> Doska</span> },
-        ]}
-      />
-      {state.tab === "board" ? <Boards /> : <OverviewPanel from={state.date_from} to={state.date_to} />}
+      {operator ? (
+        <TodayWork />
+      ) : (
+        <Segmented
+          className="mb-4"
+          value={tab}
+          onChange={(tab) => set({ tab })}
+          options={[
+            { value: "overview", label: <span className="flex items-center gap-1.5"><LayoutGrid className="h-4 w-4" /> Umumiy ko'rinish</span> },
+            { value: "board", label: <span className="flex items-center gap-1.5"><Columns3 className="h-4 w-4" /> Doska</span> },
+          ]}
+        />
+      )}
+      {tab === "board" ? <Boards /> : <OverviewPanel from={state.date_from} to={state.date_to} />}
     </div>
+  );
+}
+
+/** The operator's calls: overdue / today / later, and the first ones of today. */
+function TodayWork() {
+  const navigate = useNavigate();
+  const { data } = useGet<TaskAgenda>("/invoice-tasks/agenda/");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openId = searchParams.get("open");
+  const open = (id: number) => setSearchParams((p) => (p.set("open", String(id)), p));
+  const now = [...(data?.overdue ?? []), ...(data?.today ?? [])];
+  return (
+    <Card
+      className="mb-4"
+      title="Bugungi ishlaringiz"
+      actions={
+        <Button size="sm" variant="outline" icon={<ListChecks className="h-4 w-4" />} onClick={() => navigate("/call-center/tasks")}>
+          Barcha vazifalar
+        </Button>
+      }
+    >
+      {!data ? (
+        <PageLoader />
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <StatTile label="Muddati o'tgan" value={data.overdue.length} tone="danger" icon={<AlarmClockOff className="h-5 w-5" />} />
+            <StatTile label="Bugun" value={data.today.length} tone="warn" icon={<CalendarClock className="h-5 w-5" />} />
+            <StatTile label="Keyingi kunlar" value={data.upcoming.length} tone="info" icon={<CalendarDays className="h-5 w-5" />} />
+          </div>
+          {now.length ? (
+            <div className="mt-4 grid gap-2 lg:grid-cols-2">
+              {now.slice(0, 6).map((t) => (
+                <TaskRow key={t.id} task={t} showClient onOpen={() => open(t.invoice.id)} />
+              ))}
+            </div>
+          ) : (
+            <p className="muted mt-4 flex items-center gap-2 text-sm">
+              <PartyPopper className="h-4 w-4" /> Bugunga qo'ng'iroq vazifasi yo'q.
+            </p>
+          )}
+          {now.length > 6 && (
+            <p className="muted mt-3 text-sm">
+              Yana {now.length - 6} ta — <Link className="underline" to="/call-center/tasks">barcha vazifalar</Link>
+            </p>
+          )}
+        </>
+      )}
+      {openId && <LeadDetailModal id={Number(openId)} onClose={() => setSearchParams((p) => (p.delete("open"), p))} />}
+    </Card>
   );
 }
 

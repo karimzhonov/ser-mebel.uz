@@ -232,6 +232,10 @@ class MeteringViewSet(viewsets.ModelViewSet):
         fio = (data.pop("client_fio", "") or "").strip()
         invoice_id = data.pop("invoice", None)
         invoice = get_object_or_404(Invoice, pk=invoice_id) if invoice_id else None
+        if invoice is None and not request.user.is_superuser:
+            # owner's rule: operators book a zamer from the lead (ariza); a zamer
+            # without a lead is the admin's «Yangi o'lchov» on the O'lchovlar page
+            raise ServiceError("O'lchov arizadan yaratiladi (Call-center)", "invoice")
         measurer_id = data.pop("measurer", None)
         measurer = get_object_or_404(get_user_model(), pk=measurer_id) if measurer_id else None
         with transaction.atomic():  # no orphan client if the metering is refused
