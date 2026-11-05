@@ -77,6 +77,8 @@ class UserSerializer(serializers.ModelSerializer):
     groups = serializers.PrimaryKeyRelatedField(
         queryset=Group.objects.all(), many=True, required=False
     )
+    # the person's own rights left from the old per-person switches (lavozim gives rights now)
+    personal_rights = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -91,8 +93,14 @@ class UserSerializer(serializers.ModelSerializer):
             "groups",
             "last_login",
             "password",
+            "personal_rights",
         ]
         read_only_fields = ["telegram_id", "is_superuser", "last_login"]
+
+    def get_personal_rights(self, obj):
+        from oauth.services import personal_rights
+
+        return personal_rights(obj)
 
     def create(self, validated_data):
         groups = validated_data.pop("groups", [])

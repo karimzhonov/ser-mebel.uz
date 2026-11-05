@@ -1,5 +1,7 @@
 """Roles = groups: CRUD, section levels, members, default groups, routing."""
 
+from api.tests.accesskit import set_levels  # noqa: E402
+
 import importlib
 
 import pytest
@@ -256,27 +258,40 @@ def test_operator_books_a_zamer_but_only_views_it(make_staff):
 
 def test_booker_flag_gives_only_add(admin_api, make_staff):
     u = make_staff()
-    r = admin_api.post(
-        f"/api/v1/users/{u.pk}/access/",
-        {"levels": {"meterings": "view", "metering_booker": "view"}},
-        format="json",
-    )
-    assert r.status_code == 200, r.content
+    r = set_levels(u, {"meterings": "view", "metering_booker": "view"})
+    assert r.status_code == 200, r.data
     u = User.objects.get(pk=u.pk)
     assert u.has_perm("metering.add_metering") and u.has_perm("metering.view_metering")
     assert not u.has_perm("metering.change_metering")
 
 
-def test_meterings_off_takes_the_booking_too(admin_api, make_staff):
-    """«O'lchovlar» O'zgartirish → Yo'q: add_metering goes with it (no silent booker)."""
-    u = make_staff()
-    url = f"/api/v1/users/{u.pk}/access/"
+def test_meterings_off_takes_the_booking_too(admin_api):
+    """Lavozim «O'lchovlar» O'zgartirish → Yo'q: add_metering goes with it (no silent
+    booker)."""
+    gid = admin_api.post("/api/v1/groups/", {"name": "Sinov"}, format="json").data["id"]
+    url = f"/api/v1/groups/{gid}/access/"
+    g = Group.objects.get(pk=gid)
     assert admin_api.post(url, {"levels": {"meterings": "edit"}}, format="json").status_code == 200
     r = admin_api.post(url, {"levels": {"meterings": "none"}}, format="json")
     assert r.status_code == 200
-    u = User.objects.get(pk=u.pk)
-    assert not u.has_perm("metering.add_metering") and not u.has_perm("metering.view_metering")
+    assert not {"metering.add_metering", "metering.view_metering"} & perms_of(g)
     # a booker set on purpose keeps booking when the section goes to «Ko'rish»
     admin_api.post(url, {"levels": {"meterings": "view", "metering_booker": "view"}}, format="json")
     admin_api.post(url, {"levels": {"meterings": "view"}}, format="json")
-    assert User.objects.get(pk=u.pk).has_perm("metering.add_metering")
+    assert "metering.add_metering" in perms_of(g)
+
+
+def test_personal_rights_are_not_set_on_the_users_page(admin_api, make_staff):
+    """Owner's rule: rights come from the lavozim. The old personal ones are listed and
+    can be cleared; new ones cannot be given here."""
+    u = make_staff("metering.view_metering", "metering.change_metering")
+    r = admin_api.post(
+        f"/api/v1/users/{u.pk}/access/", {"levels": {"clients": "view"}}, format="json"
+    )
+    assert r.status_code == 400
+    row = admin_api.get(f"/api/v1/users/{u.pk}/").data
+    assert row["personal_rights"]
+    r = admin_api.post(f"/api/v1/users/{u.pk}/clear-personal-rights/")
+    assert r.status_code == 200 and r.data["removed"] == 2
+    assert not User.objects.get(pk=u.pk).user_permissions.exists()
+    assert admin_api.get(f"/api/v1/users/{u.pk}/").data["personal_rights"] == []

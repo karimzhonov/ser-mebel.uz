@@ -790,6 +790,8 @@ export interface StaffUser {
   is_superuser: boolean;
   groups: number[];
   last_login: string | null;
+  /** own rights left from the old per-person switches (rights come from the lavozim now) */
+  personal_rights?: { key: string; label: string }[];
 }
 
 /** GET /groups/ — a role (Django group) */

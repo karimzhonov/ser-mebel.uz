@@ -3,6 +3,7 @@
 import pytest
 from django.contrib.auth.models import Group, Permission
 
+from api.tests.accesskit import set_levels
 from oauth.access import SECTIONS
 
 
@@ -13,7 +14,7 @@ def levels(client, user):
 
 
 def put(client, user, data):
-    return client.post(f"/api/v1/users/{user.pk}/access/", {"levels": data}, format="json")
+    return set_levels(user, data)  # the API refuses per-person levels now (lavozim only)
 
 
 def fresh(user):

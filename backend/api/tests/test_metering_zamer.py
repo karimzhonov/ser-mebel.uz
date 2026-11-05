@@ -1,5 +1,7 @@
 """Zamer stage 1: measurers, the measurer's actions, reminders, the site API."""
 
+from api.tests.accesskit import set_levels  # noqa: E402
+
 from datetime import datetime, timedelta
 
 import pytest
@@ -992,11 +994,7 @@ def test_users_page_toggles_measurer_and_manager(admin_api, make_staff):
     from oauth.models import User
 
     u = make_staff("metering.view_metering")
-    r = admin_api.post(
-        f"/api/v1/users/{u.pk}/access/",
-        {"levels": {"metering_measurer": "view", "metering_manager": "view"}},
-        format="json",
-    )
+    r = set_levels(u, {"metering_measurer": "view", "metering_manager": "view"})
     assert r.status_code == 200, r.data
     fresh = User.objects.get(pk=u.pk)
     assert fresh.has_perm("oauth.user_metering") and fresh.has_perm("metering.manage_metering")
@@ -1006,7 +1004,5 @@ def test_users_page_toggles_measurer_and_manager(admin_api, make_staff):
         for s in admin_api.get(f"/api/v1/users/{u.pk}/access/").data["sections"]
     }
     assert flags["metering_measurer"] and flags["metering_manager"] and not flags["meterings"]
-    admin_api.post(
-        f"/api/v1/users/{u.pk}/access/", {"levels": {"metering_measurer": "none"}}, format="json"
-    )
+    set_levels(u, {"metering_measurer": "none"})
     assert not User.objects.get(pk=u.pk).has_perm("oauth.user_metering")

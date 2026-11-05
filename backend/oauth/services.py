@@ -613,3 +613,32 @@ def _merge_pass(done: list, skipped: dict) -> None:
         except (ServiceError, Group.DoesNotExist) as e:
             skipped[name] = {"group": name, "reason": str(getattr(e, "message", e))}
 
+
+# --- Personal rights: only the lavozim gives rights now -------------------------------
+
+PERSONAL_RIGHTS_OFF = (
+    "Huquqlar lavozim orqali beriladi: Xodimlar → Lavozimlar → lavozimni tahrirlang "
+    "va xodimni o'sha lavozimga qo'shing."
+)
+
+
+def personal_rights(user) -> list:
+    """The rights the person holds directly (from the old per-person switches), as
+    section labels. Uses the prefetched user_permissions when there are any."""
+    keys = {f"{p.content_type.app_label}.{p.codename}" for p in user.user_permissions.all()}
+    return _perm_labels(keys) if keys else []
+
+
+def clear_personal_rights(user) -> int:
+    """Owner's rule: rights come from the lavozim only — drop the person's own ones.
+    What the person needs must be on their lavozim (shown before clearing)."""
+    from core.exceptions import ServiceError
+
+    if user.is_superuser:
+        raise ServiceError("Administrator hamma bo'limni ko'radi — shaxsiy huquq yo'q")
+    n = user.user_permissions.count()
+    user.user_permissions.clear()
+    for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+        user.__dict__.pop(attr, None)
+    return n
+
