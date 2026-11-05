@@ -1,14 +1,16 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { ChevronRight, Clock, Columns3, Factory, LayoutGrid, Phone } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { AlarmClockOff, CalendarClock, CalendarDays, ChevronRight, Clock, Columns3, Factory, LayoutGrid, ListChecks, PartyPopper, Phone } from "lucide-react";
 import { useGet } from "@/api/hooks";
-import type { Board } from "@/api/types";
+import type { Board, TaskAgenda } from "@/api/types";
+import { LeadDetailModal } from "@/pages/callcenter/LeadDetailModal";
+import { TaskRow } from "@/pages/callcenter/shared";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
 import { AddressLink, DeadlinePill, MoneyLeft } from "@/components/domain";
 import { OverviewPanel } from "@/components/Overview";
 import { useUrlState } from "@/lib/useUrlState";
-import { Badge, Check, Empty, PageHeader, PageLoader, Segmented, TONES } from "@/components/ui";
+import { Badge, Button, Card, Check, Empty, PageHeader, PageLoader, Segmented, StatTile, TONES } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { dateTime, phone } from "@/lib/format";
 
@@ -19,10 +21,72 @@ const LIST_URL: Record<Board["id"], (col: string) => string> = {
 };
 
 export default function DashboardPage() {
+  const { user, can } = useAuth();
+  // owner's rule: the operator's home is a short note of today's work, no boards
+  if (user && !user.is_superuser && can("oauth.user_call_center")) return <OperatorHome name={user.name} />;
+  return <FullDashboard />;
+}
+
+function greeting() {
+  const hour = new Date().getHours();
+  return hour < 12 ? "Xayrli tong" : hour < 18 ? "Xayrli kun" : "Xayrli kech";
+}
+
+/** The operator's home: how many calls are overdue / today / later, and today's list. */
+function OperatorHome({ name }: { name: string | null }) {
+  const navigate = useNavigate();
+  const { data, isLoading } = useGet<TaskAgenda>("/invoice-tasks/agenda/");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const openId = searchParams.get("open");
+  const open = (id: number) => setSearchParams((p) => (p.set("open", String(id)), p));
+  const now = [...(data?.overdue ?? []), ...(data?.today ?? [])];
+  return (
+    <div>
+      <PageHeader
+        title={`${greeting()}${name ? ", " + name : ""}`}
+        subtitle="Bugungi ishlaringiz"
+        actions={
+          <Button variant="outline" icon={<ListChecks className="h-4 w-4" />} onClick={() => navigate("/call-center/tasks")}>
+            Barcha vazifalar
+          </Button>
+        }
+      />
+      {isLoading || !data ? (
+        <PageLoader />
+      ) : (
+        <>
+          <div className="mb-5 grid grid-cols-3 gap-3">
+            <StatTile label="Muddati o'tgan" value={data.overdue.length} tone="danger" icon={<AlarmClockOff className="h-5 w-5" />} />
+            <StatTile label="Bugun" value={data.today.length} tone="warn" icon={<CalendarClock className="h-5 w-5" />} />
+            <StatTile label="Keyingi kunlar" value={data.upcoming.length} tone="info" icon={<CalendarDays className="h-5 w-5" />} />
+          </div>
+          {now.length ? (
+            <div className="grid gap-2 lg:grid-cols-2">
+              {now.slice(0, 10).map((t) => (
+                <TaskRow key={t.id} task={t} showClient onOpen={() => open(t.invoice.id)} />
+              ))}
+            </div>
+          ) : (
+            <Card>
+              <Empty icon={<PartyPopper className="h-6 w-6" />} title="Bugunga vazifa yo'q" text="Yangi arizalarni Call-center sahifasida ko'ring." />
+            </Card>
+          )}
+          {now.length > 10 && (
+            <p className="muted mt-3 text-sm">
+              Yana {now.length - 10} ta — <Link className="underline" to="/call-center/tasks">barcha vazifalar</Link>
+            </p>
+          )}
+        </>
+      )}
+      {openId && <LeadDetailModal id={Number(openId)} onClose={() => setSearchParams((p) => (p.delete("open"), p))} />}
+    </div>
+  );
+}
+
+function FullDashboard() {
   const { user } = useAuth();
   const { state, set } = useUrlState({ tab: "overview", date_from: monthStartISO(), date_to: iso(new Date()) });
-  const hour = new Date().getHours();
-  const greet = hour < 12 ? "Xayrli tong" : hour < 18 ? "Xayrli kun" : "Xayrli kech";
+  const greet = greeting();
 
   return (
     <div>
