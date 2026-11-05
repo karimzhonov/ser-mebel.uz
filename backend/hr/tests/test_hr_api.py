@@ -221,3 +221,47 @@ def test_excel_names_cannot_become_formulas(admin, jasur, clock):
 def test_identity_fields_are_read_only(admin, jasur):
     r = admin.patch(f"/api/v1/hr/employees/{jasur.id}/", {"telegram_id": 12345}, format="json")
     assert r.status_code == 400
+
+
+def test_merge_moves_history_to_the_new_telegram(admin, jasur, api):
+    """The worker moved to another Telegram: the old profile's davomat, points, leaves
+    and wins go to the new one; on the switch day the row with the report stays."""
+    from datetime import time
+
+    from oauth.models import TelegramMember
+
+    jasur.member = TelegramMember.objects.create(telegram_id=500, name="Jasur")
+    jasur.created_on = date(2026, 9, 1)
+    jasur.work_start, jasur.off_days = "09:00", [7]
+    jasur.save()
+    new, _ = S.upsert_emp({"id": 501, "first_name": "Jasur", "username": "Ser_mebel"})
+    Attendance.objects.create(employee=jasur, day=date(2026, 10, 1), status="on_time", points=10, finalized=True)
+    # switch day: the old profile only has an empty row, the new one has the report
+    Attendance.objects.create(employee=jasur, day=date(2026, 10, 2), status="absent", finalized=True)
+    Attendance.objects.create(employee=new, day=date(2026, 10, 2), in_time=time(8, 50), status="on_time", points=10, finalized=True)
+    PointAdjustment.objects.create(employee=jasur, day=date(2026, 10, 3), value=5)
+    Leave.objects.create(number=1, employee=jasur, date_from=date(2026, 11, 1), date_to=date(2026, 11, 3))
+    Winner.objects.create(kind="m", period="2026-09", employee=jasur)
+
+    url = f"/api/v1/hr/employees/{jasur.id}/merge-into/"
+    assert api("hr.change_employee", "hr.view_employee").post(url, {"target": new.id}, format="json").status_code == 403
+    assert admin.post(url, {"target": jasur.id}, format="json").status_code == 400
+    assert admin.post(url, {}, format="json").status_code == 400
+
+    r = admin.post(url, {"target": new.id}, format="json")
+    assert r.status_code == 200, r.content
+    body = r.json()
+    assert body["attendance"] == 2 and body["same_day"] == 1
+    assert body["points"] == body["leaves"] == body["wins"] == 1
+    assert not Employee.objects.filter(pk=jasur.pk).exists()
+    new.refresh_from_db()
+    assert new.telegram_id == 501 and new.created_on == date(2026, 9, 1)
+    assert new.member_id == jasur.member_id  # the finance-bot link moves too
+    assert new.work_start == "09:00" and new.off_days == [7] and new.group_id == jasur.group_id
+    rows = {a.day: a for a in Attendance.objects.filter(employee=new)}
+    assert set(rows) == {date(2026, 10, 1), date(2026, 10, 2)}
+    assert rows[date(2026, 10, 2)].in_time == time(8, 50)
+    assert PointAdjustment.objects.get().employee_id == new.id
+    assert Leave.objects.get().employee_id == new.id
+    assert Winner.objects.get().employee_id == new.id
+    assert next(s for s in S.period_stats(date(2026, 10, 1), date(2026, 10, 3), S.now()) if s.e.id == new.id).pts == 25
