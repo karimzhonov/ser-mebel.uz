@@ -82,6 +82,8 @@ const NAV: { title: string; items: NavItem[] }[] = [
     title: "O'lchov",
     items: [
       { to: "/meterings", label: "O'lchovlar", icon: Ruler, perm: "metering.view_metering" },
+      // the manager: prices the zamerchi gave them + clients to show (owner's request)
+      { to: "/my-tasks", label: "Vazifalarim", icon: ListTodo, perm: "metering.present_to_client" },
       { to: "/designs", label: "Dizayn", icon: Brush, perm: "design.view_design" },
       { to: "/prices", label: "Narx hisoblash", icon: Calculator, perm: "price.view_price" },
       { to: "/presentations", label: "Mijozga ko'rsatish", icon: Presentation, anyPerm: ["metering.present_to_client", "metering.manage_metering"] },
