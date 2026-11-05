@@ -668,8 +668,10 @@ def finish_metering(
     price_due_at=None,
 ):
     """«Bajarildi»: after measuring, the measurer uploads the files on the site, writes
-    the note and picks the next step - design + price (designer and pricer) or only the
-    price (pricer) - the manager who will show the result to the client, and the
+    the note and picks the next step - design + price or only the price - the designer
+    (preselected when there is one) and the manager, who calculates the price (owner's
+    rule: no separate pricer; `pricer` is a legacy override) and shows the result to the
+    client, and the
     deadlines (default: design 2 days, price 1 day at OFFER_DUE_HOUR). With design +
     price both start at once, each with its own deadline. Returns {"metering", "assigned"}."""
     from django.db import transaction
@@ -693,19 +695,32 @@ def finish_metering(
             raise ServiceError("Natija haqida izoh yozing", "note")
         if next_step not in NextStep.values:
             raise ServiceError("Keyingi bosqichni tanlang", "next_step")
-        if pricer is None:
-            raise ServiceError(
-                "Narxchi yo'q yoki tanlanmagan — Xodimlar → Guruhlar (rollar)da «Narxchi» roliga xodim qo'shing",
-                "pricer",
-            )
         if next_step == NextStep.design_price and designer is None:
-            raise ServiceError(
-                "Dizayner yo'q yoki tanlanmagan — Xodimlar → Guruhlar (rollar)da «Dizayner» roliga xodim qo'shing",
-                "designer",
-            )
+            designer = default_designer()
+            if designer is None:
+                raise ServiceError(
+                    "Dizaynerni tanlang"
+                    if designers().exists()
+                    else "Dizayner yo'q — Xodimlar → Lavozimlar: «Dizayner» lavozimiga xodim qo'shing",
+                    "designer",
+                )
         if next_step == NextStep.price and designer is not None:
             raise ServiceError("«Faqat narx» uchun dizayner tanlanmaydi", "designer")
         manager = _pick_manager(manager)
+        # the price is the manager's job: the chosen manager calculates it
+        if pricer is None:
+            if manager is None:
+                raise ServiceError(
+                    "Menejer yo'q — Xodimlar → Lavozimlar: «Menejer» lavozimiga xodim qo'shing",
+                    "manager",
+                )
+            if not pricers().filter(pk=manager.pk).exists():
+                raise ServiceError(
+                    "Bu menejerda narx huquqi yo'q — Xodimlar → Lavozimlar: "
+                    "lavozimida «Narx» bo'limini (o'zgartirish) yoqing",
+                    "manager",
+                )
+            pricer = manager
         now = _now()
         defaults = offer_defaults(now)
         if next_step == NextStep.design_price:
@@ -983,9 +998,17 @@ def designers():
     return _explicit_holders("oauth", DESIGN_PERMISSION).filter(pk__in=can_open)
 
 
+def default_designer():
+    """The designer when there is exactly one (preselected), else None."""
+    found = list(designers()[:2])
+    return found[0] if len(found) == 1 else None
+
+
 def pricers():
-    """Who may be picked to calculate the price: active staff holding
-    price.change_price EXPLICITLY (own or via a group, no superusers) who can open it."""
+    """Who may calculate the price: active staff holding price.change_price EXPLICITLY
+    (own or via a group, no superusers) who can open it. Owner's rule: the price is the
+    managers' job - «Menejer» / «Bosh menejer» hold these rights (oauth 0013) and
+    «Bajarildi» gives the price to the chosen manager."""
     from oauth.services import users_with_perm
 
     can_open = users_with_perm("price", "view_price").values("pk")
@@ -1099,15 +1122,27 @@ def _cfg(name):
 
 
 def managers():
-    """Who may show the design / price to the client: active staff holding
-    metering.present_to_client EXPLICITLY (like measurers(): no superusers)."""
+    """Who may show the design / price to the client (and, owner's rule, calculate the
+    price): active staff holding metering.present_to_client EXPLICITLY (like
+    measurers(): no superusers). «Menejer» and «Bosh menejer» both hold it (oauth 0013)."""
     from .constants import METERING_PRESENT_PERMISSION
 
     return _explicit_holders("metering", METERING_PRESENT_PERMISSION)
 
 
+def bosses():
+    """«Bosh menejer»: active staff holding metering.manage_metering EXPLICITLY. They get
+    a copy of the managers' bot cards (price task, «tayyor», «buyurtma yarating»)."""
+    return _explicit_holders("metering", METERING_MANAGE_PERMISSION)
+
+
 def default_manager():
-    """The manager when there is exactly one (preselected), else None."""
+    """The manager when there is exactly one (preselected), else None. A «Bosh menejer»
+    (manage_metering) does not count when there is exactly one plain «Menejer»: they
+    get a copy of every card anyway (oauth 0013 made them managers too)."""
+    plain = list(managers().exclude(pk__in=bosses().order_by().values("pk"))[:2])
+    if len(plain) == 1:
+        return plain[0]
     found = list(managers()[:2])
     return found[0] if len(found) == 1 else None
 
@@ -1634,8 +1669,9 @@ def offer_ready(row, kind, m, *, by, now):
         row, kind, how="done", by=by, to_users=[row.user] if row.user is not None else []
     )
     who = manager_of(m)
+    # the Bosh menejer gets a copy even when the row has no manager (events adds them)
+    events.offer_present(row, kind, how="ready", to_users=[who] if who is not None else [])
     if who is not None:
-        events.offer_present(row, kind, how="ready", to_users=[who])
         queue_offer_sms(row, kind, "ready")
 
 

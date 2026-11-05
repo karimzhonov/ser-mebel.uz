@@ -87,6 +87,14 @@ def metering_changed(m, *, how, by=None, to_users=(), to_name=None, watchers=())
 # --- Stage 2: dizayn va narx (docs/BOT_CONTRACT.md, "Dizayn va narx") -------------------
 
 
+def _bosses() -> list:
+    """«Bosh menejer» (metering.manage_metering): copied on the few cards that matter -
+    «tayyor» (once, no daily reminders) and «buyurtma yarating» (owner: not too many)."""
+    from .services import bosses
+
+    return list(bosses())
+
+
 def _base() -> str:
     from django.conf import settings
 
@@ -140,8 +148,9 @@ def offer_reminder(obj, kind, *, what):
 
 @_safe
 def offer_present(obj, kind, *, how, to_users):
-    """The manager must show the design / price to the client. how: "ready" | "reminder"."""
-    to = _tg(*to_users)
+    """The manager must show the design / price to the client. how: "ready" | "reminder".
+    The Bosh menejer gets a copy of "ready" only (they may record the answer too)."""
+    to = _tg(*to_users, *(_bosses() if how == "ready" else ()))
     if not to:
         return
     emit("offer.present", {"task": dto.offer_task(obj, kind), "how": how, "to": to})
@@ -150,9 +159,12 @@ def offer_present(obj, kind, *, how, to_users):
 @_safe
 def offer_changed(obj, kind, *, how, by=None, to_users=(), to_name=None, answer=None, watchers=()):
     """A task the bot may have shown changed. `to` = the chats whose cards are now stale
-    (the OLD assignee for "reassigned", the manager for "answered").
+    (the OLD assignee for "reassigned", the manager for "answered"), plus the Bosh
+    menejer for "answered" (their copy of the «tayyor» card). The bot edits only the cards
+    it stored for a chat, so a chat without one is a no-op.
     how: "done" | "due_moved" | "reassigned" | "answered" | "cancelled"."""
-    to, watch = _tg(*to_users), _tg(*watchers)
+    to = _tg(*to_users, *(_bosses() if how == "answered" else ()))
+    watch = _tg(*watchers)
     if not to and not watch:
         return
     emit(
@@ -171,8 +183,9 @@ def offer_changed(obj, kind, *, how, by=None, to_users=(), to_name=None, answer=
 
 @_safe
 def offer_order_ready(price, *, to_users):
-    """The client agreed to the price: someone must make the order."""
-    to = _tg(*to_users)
+    """The client agreed to the price: someone must make the order. The Bosh menejer
+    is always told."""
+    to = _tg(*to_users, *_bosses())
     if not to:
         return
     emit(

@@ -33,7 +33,7 @@ function asRows(data: unknown): FolderFile[] {
 
 /** «Natija»: after measuring, the measurer uploads photos / videos / PDFs (one file per
  * request, one after another, with progress), writes what they saw and hands the zamer on
- * to the designer and/or the pricer. */
+ * to the designer and the manager (who calculates the price). */
 export function MeteringResultCard({ metering, id }: { metering: Metering; id?: string }) {
   const a = metering.actions ?? {};
   const files = useGet<unknown>(`/meterings/${metering.id}/files/`);
@@ -124,7 +124,6 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
   const [note, setNote] = useState("");
   const [step, setStep] = useState<MeteringNextStep>("");
   const [designer, setDesigner] = useState("");
-  const [pricer, setPricer] = useState("");
   const [manager, setManager] = useState("");
   const [designDue, setDesignDue] = useState("");
   const [priceDue, setPriceDue] = useState("");
@@ -135,6 +134,8 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
     if (!d) return;
     const def = d.default_manager ?? (d.managers?.length === 1 ? d.managers[0].id : null);
     if (def && !manager) setManager(String(def));
+    const defDesigner = d.default_designer ?? (d.designers?.length === 1 ? d.designers[0].id : null);
+    if (defDesigner && !designer) setDesigner(String(defDesigner));
     if (d.defaults) {
       if (!designDue) setDesignDue(toLocalInput(d.defaults.design_due_at));
       if (!priceDue) setPriceDue(toLocalInput(d.defaults.price_due_at));
@@ -146,14 +147,14 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
   const needsDesigner = step === "design_price";
   const isPast = (v: string) => !!v && new Date(v).getTime() <= Date.now();
   const dueBad = (needsDesigner && isPast(designDue)) || isPast(priceDue);
-  const ready = fileCount > 0 && !!note.trim() && !!step && !!pricer && (!needsDesigner || !!designer) && (!needsManager || !!manager) && !dueBad && !busy;
+  // the price is calculated by the chosen manager (no separate pricer)
+  const ready = fileCount > 0 && !!note.trim() && !!step && (!needsDesigner || !!designer) && !!manager && !dueBad && !busy;
   const finish = useAction(
     () =>
       api.post(`/meterings/${metering.id}/finish/`, {
         note: note.trim(),
         next_step: step,
         designer: needsDesigner && designer ? Number(designer) : null,
-        pricer: pricer ? Number(pricer) : null,
         manager: manager ? Number(manager) : null,
         ...(needsDesigner && designDue ? { design_due_at: designDue } : {}),
         ...(priceDue ? { price_due_at: priceDue } : {}),
@@ -285,7 +286,7 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
                   {needsDesigner && (
                     <Field label="Dizayner" error={errors.designer}>
                       {people.data && !people.data.designers.length ? (
-                        <NoAssignee text={people.data.designer_hint || "Dizayner yo'q — Xodimlar → Guruhlar (rollar)da «Dizayner» roliga xodim qo'shing"} />
+                        <NoAssignee text={people.data.designer_hint || "Dizayner yo'q — Xodimlar → Lavozimlar: «Dizayner» lavozimiga xodim qo'shing"} />
                       ) : (
                         <Select className="h-12" value={designer} onChange={(e) => setDesigner(e.target.value)}>
                           <option value="">— tanlang —</option>
@@ -298,20 +299,6 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
                       )}
                     </Field>
                   )}
-                  <Field label="Narx hisoblovchi" error={errors.pricer} className={needsDesigner ? undefined : "sm:col-span-2"}>
-                    {people.data && !people.data.pricers.length ? (
-                      <NoAssignee text={people.data.pricer_hint || "Narx hisoblovchi yo'q — Xodimlar → Guruhlar (rollar)da «Narxchi» roliga xodim qo'shing"} />
-                    ) : (
-                      <Select className="h-12" value={pricer} onChange={(e) => setPricer(e.target.value)}>
-                        <option value="">— tanlang —</option>
-                        {people.data?.pricers.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {person(u)}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </Field>
                   {needsDesigner && (
                     <Field
                       label="Dizayn muddati"
@@ -322,21 +309,21 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
                   )}
                   <Field
                     label="Narx muddati"
-                    className={needsDesigner ? undefined : "sm:col-span-2"}
+                    className="sm:col-span-2"
                     hint={needsDesigner ? "Dizayn va narx bir vaqtda boshlanadi" : undefined}
                     error={errors.price_due ?? errors.price_due_at ?? (isPast(priceDue) ? "O'tgan vaqt — kelajakdagi vaqtni kiriting" : undefined)}
                   >
                     <Input className="h-12 text-base" type="datetime-local" value={priceDue} onChange={(e) => setPriceDue(e.target.value)} />
                   </Field>
                   <Field
-                    label="Menejer (mijozga ko'rsatadi)"
+                    label="Menejer (narxni hisoblaydi va mijozga ko'rsatadi)"
                     className="sm:col-span-2"
                     error={errors.manager}
                     hint={
                       people.data && !needsManager ? (
-                        <span className="text-amber-700 dark:text-amber-300">{people.data.hint || "Menejer yo'q — xodimga «Menejer» huquqini bering"}</span>
+                        <span className="text-amber-700 dark:text-amber-300">{people.data.hint || "Menejer yo'q — Xodimlar → Lavozimlar: «Menejer» lavozimiga xodim qo'shing"}</span>
                       ) : (
-                        "Dizayn/narx tayyor bo'lganda unga xabar boradi"
+                        "Narx vazifasi va «dizayn tayyor» xabari unga boradi (bosh menejerga nusxa)"
                       )
                     }
                   >
@@ -374,9 +361,9 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
                       ? "Izoh yozing"
                       : !step
                         ? "Keyingi qadamni tanlang"
-                        : !pricer || (needsDesigner && !designer)
-                          ? "Ijrochilarni tanlang"
-                          : needsManager && !manager
+                        : needsDesigner && !designer
+                          ? "Dizaynerni tanlang"
+                          : !manager
                             ? "Menejerni tanlang"
                             : "Muddatni to'g'rilang"}
                 </p>

@@ -62,6 +62,7 @@ from metering.services import (
     assign_metering_tasks,
     cancel_metering,
     create_metering,
+    default_designer,
     default_manager,
     default_measurer,
     designers,
@@ -304,7 +305,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], serializer_class=FinishSerializer)
     def finish(self, request, pk=None):
-        """«Bajarildi»: {note, next_step: design_price|price, designer?, pricer, manager,
+        """«Bajarildi»: {note, next_step: design_price|price, designer?, pricer?, manager,
         design_due_at?, price_due_at?} - needs at least one uploaded file."""
         serializer = FinishSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -416,11 +417,13 @@ class MeteringViewSet(viewsets.ModelViewSet):
             raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
         manager_list = list(managers())
         default = default_manager()
+        designer = default_designer()
         body = {
             "designers": UserShortSerializer(designers(), many=True).data,
             "pricers": UserShortSerializer(pricers(), many=True).data,
             "managers": UserShortSerializer(manager_list, many=True).data,
             "default_manager": default.pk if default else None,
+            "default_designer": designer.pk if designer else None,
             "defaults": {
                 k: (v.isoformat() if hasattr(v, "isoformat") else v)
                 for k, v in offer_defaults(metering_services._now()).items()
@@ -428,16 +431,17 @@ class MeteringViewSet(viewsets.ModelViewSet):
         }
         if not body["designers"]:
             body["designer_hint"] = (
-                "Dizayner yo'q — Xodimlar → Guruhlar (rollar)da «Dizayner» roliga xodim qo'shing"
+                "Dizayner yo'q — Xodimlar → Lavozimlar: «Dizayner» lavozimiga xodim qo'shing"
             )
         if not body["pricers"]:
             body["pricer_hint"] = (
-                "Narxchi yo'q — Xodimlar → Guruhlar (rollar)da «Narxchi» roliga xodim qo'shing"
+                "Menejer yo'q — narxni menejer hisoblaydi. Xodimlar → Lavozimlar: "
+                "«Menejer» yoki «Bosh menejer» lavozimiga xodim qo'shing"
             )
         if not manager_list:
             body["hint"] = (
-                "Menejer yo'q: xodimga «Menejer» (present_to_client) huquqini bering. "
-                "Usiz zamerni yakunlab bo'lmaydi."
+                "Menejer yo'q — Xodimlar → Lavozimlar: «Menejer» yoki «Bosh menejer» "
+                "lavozimiga xodim qo'shing. Usiz zamerni yakunlab bo'lmaydi."
             )
         return Response(body)
 

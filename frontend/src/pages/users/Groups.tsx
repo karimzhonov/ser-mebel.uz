@@ -17,7 +17,7 @@ export const LOCKED_HINT = "Omborchi Ombor sahifasida boshqariladi";
 
 export const memberCount = (g: StaffGroup) => g.member_count ?? g.members_count ?? g.user_count ?? 0;
 
-/** «Lavozimlar» — superuser only: a lavozim (a Django group: Operator, Dizayner, Narxchi …);
+/** «Lavozimlar» — superuser only: a lavozim (a Django group: Operator, Dizayner, Menejer …);
  * every member gets its section levels and task flags; a person may hold several. */
 export function GroupsPanel() {
   const { data: groups, isFetching } = useAll<StaffGroup>("groups");
@@ -58,7 +58,7 @@ export function GroupsPanel() {
         }
       >
         <p className="muted border-b border-slate-100 px-5 py-3 text-xs dark:border-slate-800">
-          Lavozim: Operator, O'lcham oluvchi, Dizayner, Narxchi, Bosh menejer, Menejer, Konstruktor … Lavozimga berilgan bo'lim huquqlari va vazifalar
+          Lavozim: Operator, O'lcham oluvchi, Dizayner, Bosh menejer, Menejer, Konstruktor … Lavozimga berilgan bo'lim huquqlari va vazifalar
           undagi har bir xodimga o'tadi; bir xodim bir nechta lavozimda bo'lishi mumkin. Telegram'ga ulangan xodimga shu lavozim bo'yicha xabarlar bot orqali boradi.
         </p>
         {groups && !groups.length ? (
@@ -131,7 +131,7 @@ export function GroupsPanel() {
       >
         {form && (
           <Field label="Nomi" error={errors.name ?? errors.non_field_errors}>
-            <Input autoFocus value={form.name} placeholder="Masalan: Narxchi" onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Input autoFocus value={form.name} placeholder="Masalan: Menejer" onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
         )}
       </Modal>

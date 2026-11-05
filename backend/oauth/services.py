@@ -344,7 +344,6 @@ DEFAULT_LAVOZIMS = (
     "Operator",
     "O'lcham oluvchi",
     "Dizayner",
-    "Narxchi",
     "Menejer",
     "Bosh menejer",
     "Konstruktor",
@@ -363,7 +362,8 @@ _MERGE_RULES = (
     (("детал", "конструкт", "konstrukt", "detal"), "Konstruktor"),
     (("ровер", "rover"), "Rover"),
     (("call", "колл", "оператор", "operator"), "Operator"),
-    (("narx", "цен", "прайс", "price"), "Narxchi"),
+    # owner's rule: the price is the managers' job, there is no «Narxchi» any more
+    (("narx", "цен", "прайс", "price"), "Menejer"),
     (("менеджер", "menejer", "manager", "menedjer"), "Menejer"),
 )
 _PERSONAL_WORDS = ("filer", "файл")

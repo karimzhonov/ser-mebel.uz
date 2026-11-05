@@ -537,13 +537,18 @@ def test_finish_refusals(operator, ali, people, make_staff):
     for kw, field in (
         ({"note": "  "}, "note"),
         ({"next_step": "other"}, "next_step"),
-        ({"pricer": None}, "pricer"),
-        ({"designer": None}, "designer"),
+        # no pricer: the price goes to the manager, who needs the price rights
+        ({"pricer": None}, "manager"),
         ({"next_step": "price"}, "designer"),  # designer is forbidden for price-only
     ):
         with pytest.raises(ServiceError) as e:
             go(**kw)
         assert e.value.field == field, kw
+    # one designer is picked by itself; with two the measurer must choose
+    make_staff("oauth.user_design", "design.view_design", name="Dizayner 2")
+    with pytest.raises(ServiceError) as e:
+        go(designer=None)
+    assert e.value.field == "designer"
     with pytest.raises(ServiceForbidden):
         go(by=make_staff(*MEASURER_PERMS))
     m.refresh_from_db()
@@ -794,7 +799,8 @@ def test_api_actions_and_validation(api, operator, ali, people):
     assert c_ali.get(f"{url}/").data["file_count"] == 1
     assert c_ali.post(f"{url}/files/", {}, format="multipart").status_code == 400
     r = c_ali.post(f"{url}/finish/", {"note": "ok", "next_step": "price"}, format="json")
-    assert r.status_code == 400 and r.data["field"] == "pricer"
+    # no pricer: the manager calculates the price, and this one has no price rights
+    assert r.status_code == 400 and r.data["field"] == "manager"
     r = c_ali.post(
         f"{url}/finish/", {"note": "ok", "next_step": "price", "pricer": pricer.pk}, format="json"
     )

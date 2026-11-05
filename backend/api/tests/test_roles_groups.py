@@ -15,7 +15,6 @@ DEFAULTS = [
     "Operator",
     "O'lcham oluvchi",
     "Dizayner",
-    "Narxchi",
     "Menejer",
     "Bosh menejer",
     "Konstruktor",
@@ -38,12 +37,18 @@ def test_default_groups_exist_with_the_flags():
     assert "metering.present_to_client" in perms_of(Group.objects.get(name="Menejer"))
     boss = perms_of(Group.objects.get(name="Bosh menejer"))
     assert {"metering.manage_metering", "call_center.manage_invoice", "order.add_order"} <= boss
+    # oauth 0013: the managers calculate the price, no «Narxchi»
+    for name in ("Menejer", "Bosh menejer"):
+        assert {"price.change_price", "price.view_price"} <= perms_of(Group.objects.get(name=name))
+    assert "metering.present_to_client" in boss
+    assert not Group.objects.filter(name="Narxchi").exists()
     assert "oauth.user_detailing" in perms_of(Group.objects.get(name="Konstruktor"))
     assert "oauth.user_assembly" in perms_of(Group.objects.get(name="Sborkachi"))
 
 
 def test_default_groups_migration_is_idempotent_and_leaves_existing_alone():
     mod = importlib.import_module("oauth.migrations.0012_default_role_groups")
+    mod.create_default_groups(apps, None)  # brings back «Narxchi» (0013 deleted it)
     custom = Group.objects.get(name="Dizayner")
     custom.permissions.clear()  # the owner changed it by hand
     before = Group.objects.count()
@@ -208,6 +213,7 @@ def test_user_serializer_groups_make_staff():
 
 def test_default_groups_migration_matches_names_case_insensitively():
     mod = importlib.import_module("oauth.migrations.0012_default_role_groups")
+    mod.create_default_groups(apps, None)  # brings back «Narxchi» (0013 deleted it)
     Group.objects.filter(name="Rover").delete()
     Group.objects.create(name="rover")
     before = Group.objects.count()
@@ -217,7 +223,7 @@ def test_default_groups_migration_matches_names_case_insensitively():
 
 def test_assignees_hints_when_pools_empty(admin_api):
 
-    Group.objects.filter(name__in=["Dizayner", "Narxchi"]).delete()
+    Group.objects.filter(name__in=["Dizayner"]).delete()
     r = admin_api.get("/api/v1/meterings/assignees/")
     assert r.status_code == 200
-    assert "«Dizayner»" in r.data["designer_hint"] and "«Narxchi»" in r.data["pricer_hint"]
+    assert "«Dizayner»" in r.data["designer_hint"] and "«Menejer»" in r.data["pricer_hint"]

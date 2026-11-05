@@ -34,7 +34,7 @@ def test_plan_suggestions_cyrillic_and_latin():
         "Детали": "Konstruktor",
         "Ровер": "Rover",
         "Call-center": "Operator",
-        "Цены": "Narxchi",
+        "Цены": "Menejer",  # the price is the managers' job
         "Менеджер": "Menejer",
         "Производство Manager": "Bosh menejer",
     }

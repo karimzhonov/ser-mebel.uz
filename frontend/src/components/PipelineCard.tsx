@@ -18,7 +18,7 @@ export function pickPipeline(data: Record<string, unknown>): SalesPipeline | nul
 const ROLE_LABEL: Record<PipelineRole, string> = {
   zamerchi: "Zamerchilar",
   dizayner: "Dizaynerlar",
-  narxchi: "Narxchilar",
+  narxchi: "Narx (menejerlar)",
   menejer: "Menejerlar",
 };
 const ROLES: PipelineRole[] = ["zamerchi", "dizayner", "narxchi", "menejer"];

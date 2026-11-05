@@ -405,12 +405,15 @@ export interface Presentations {
 /** GET /meterings/assignees/ */
 export interface MeteringAssignees {
   designers: UserShort[];
+  /** who may calculate the price = the managers (Menejer + Bosh menejer) */
   pricers: UserShort[];
-  /** set when nobody holds «Dizayner» / «Narxchi» — what to do about it */
+  /** set when nobody holds «Dizayner» / «Menejer» — what to do about it */
   designer_hint?: string;
   pricer_hint?: string;
   managers?: UserShort[];
   default_manager?: number | null;
+  /** the only designer, preselected */
+  default_designer?: number | null;
   defaults?: { design_due_at: string; price_due_at: string };
   /** set when nobody holds «Menejer» */
   hint?: string;

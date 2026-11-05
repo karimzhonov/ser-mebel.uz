@@ -1528,7 +1528,7 @@ def test_designers_and_pricers_are_explicit_holders(make_staff, superuser):
     assert set(M.designers()) == {own, via_group}
     assert superuser not in set(M.designers()) and plain not in set(M.designers())
     narx = make_staff(name="Narx via group")
-    narx.groups.add(Group.objects.get(name="Narxchi"))
+    narx.groups.add(Group.objects.get(name="Menejer"))  # the managers calculate the price
     assert list(M.pricers()) == [narx]
     assert superuser not in set(M.pricers())
     # a superuser with the explicit flag is a designer
@@ -1606,3 +1606,65 @@ def test_pipeline_overview(
     ready_design(flow, designer)
     load = {(r["role"], r["person"]["id"]): r for r in M.pipeline_overview(NOW)["load"]}
     assert load[("menejer", manager.pk)]["open"] == 1
+
+
+# ------------------------------------------------------------------ owner's rule: no «Narxchi»
+def price_manager(make_staff, **extra):
+    """A manager who also calculates the price (Menejer lavozimi after oauth 0013)."""
+    return make_staff(
+        "metering.present_to_client", "metering.view_metering",
+        "price.view_price", "price.change_price", **extra,
+    )  # fmt: skip
+
+
+def test_finish_gives_the_price_to_the_chosen_manager(operator, ali, designer, make_staff):
+    """No pricer is picked: the price goes to the manager; the only designer is preselected."""
+    mgr = price_manager(make_staff, name="Menejer", telegram_id=9200)
+    price_manager(make_staff, name="Bosh menejer")  # two managers: the measurer chooses
+    m = finished(operator, ali, None, None, mgr, step="price")
+    assert m.price.user == mgr and m.manager == mgr
+    inv = lead(operator, "+998901112299")
+    m2 = M.create_metering(
+        client=inv.client, date_time=WHEN, invoice=inv, author=operator, measurer=ali
+    )
+    M.mark_metering_measured(m2, by=ali)
+    upload_file(m2)
+    M.finish_metering(m2, by=ali, note="ok", next_step="design_price", manager=mgr)
+    m2 = Metering.objects.get(pk=m2.pk)
+    assert m2.design.user == designer and m2.price.user == mgr
+
+
+def test_finish_refuses_a_manager_without_price_rights(operator, ali, manager):
+    with pytest.raises(ServiceError) as e:
+        finished(operator, ali, None, None, manager, step="price")
+    assert e.value.field == "manager"
+
+
+def test_the_boss_gets_a_copy_of_the_managers_cards(
+    operator, ali, designer, make_staff, bot_events
+):
+    boss = make_staff("metering.manage_metering", "metering.view_metering", telegram_id=9300)
+    mgr = price_manager(make_staff, name="Menejer", telegram_id=9200)
+    bot_events.clear()
+    m = finished(operator, ali, designer, None, mgr)
+    by_kind = {e["task"]["kind"]: e for e in bot_events.of("offer.assigned")}
+    # owner: not too many messages for the boss - no copies of the task cards
+    assert by_kind["price"]["to"] == [9200]
+    assert by_kind["design"]["to"] == [9001]
+    # design ready: the «tayyor» card goes to the manager and the boss
+    bot_events.clear()
+    ready_design(m, designer)
+    assert bot_events.one("offer.present")["to"] == [9200, 9300]
+    # the daily «no answer yet» reminder goes to the manager only
+    later = NOW + timedelta(days=2)
+    M.due_offer_reminders(later.replace(hour=10))
+    assert [e["to"] for e in bot_events.of("offer.present") if e["how"] == "reminder"] == [[9200]]
+    # the boss answers in the bot: the manager's copy is closed too
+    bot_events.clear()
+    DS.record_design_answer(m.design, by=boss, answer="approved")
+    assert bot_events.one("offer.changed")["to"] == [9200, 9300]
+    # price ready + agreed: the boss is told to make the order
+    PS.mark_price_done(m.price, by=mgr)
+    bot_events.clear()
+    PS.record_price_answer(m.price, by=mgr, answer="approved")
+    assert 9300 in bot_events.one("offer.order_ready")["to"]
