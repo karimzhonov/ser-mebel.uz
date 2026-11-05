@@ -22,6 +22,8 @@ export interface Me {
   telegram_link: string;
   /** the omborchi: sees only the «Ombor» section */
   is_warehouse_keeper: boolean;
+  /** lavozim (group) names, e.g. «Menejer», «Bosh menejer» */
+  lavozims?: string[];
 }
 
 export interface UserShort {

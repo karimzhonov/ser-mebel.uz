@@ -295,3 +295,10 @@ def test_personal_rights_are_not_set_on_the_users_page(admin_api, make_staff):
     assert r.status_code == 200 and r.data["removed"] == 2
     assert not User.objects.get(pk=u.pk).user_permissions.exists()
     assert admin_api.get(f"/api/v1/users/{u.pk}/").data["personal_rights"] == []
+
+
+def test_me_lists_the_lavozims(api):
+    """The SPA picks the manager's home by the lavozim name, not by a stray right."""
+    c = api("metering.manage_metering")  # a right left from the old per-person switches
+    Group.objects.get(name="Menejer").user_set.add(c.user)
+    assert c.get("/api/v1/auth/me/").data["lavozims"] == ["Menejer"]
