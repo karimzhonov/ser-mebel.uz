@@ -12,6 +12,7 @@ from call_center.services import create_invoice, invoice_is_editable, set_invoic
 from client.models import Client
 from core.geo import UNSET
 from metering.models import Metering
+from metering.services import metering_queryset_for
 from oauth.models import User
 from order.models import Order
 
@@ -66,16 +67,32 @@ class ClientViewSet(
         data = {"invoices": [], "meterings": [], "orders": []}
         if request.user.has_perm("call_center.view_invoice"):
             invoices = CC.with_task_annotations(
-                Invoice.objects.filter(client=client).select_related(
-                    "client", "metering", "assigned_to", "created_by"
+                Invoice.objects.filter(client=client)
+                .select_related(
+                    "client",
+                    "metering__measurer",
+                    "metering__manager",
+                    "metering__design__user",
+                    "metering__price__user",
+                    "assigned_to",
+                    "created_by",
                 )
+                .prefetch_related("metering__offer_answers")
             )
             data["invoices"] = InvoiceSerializer(
                 invoices.order_by("-create_date"), many=True, context=ctx
             ).data
         if request.user.has_perm("metering.view_metering"):
-            meterings = Metering.objects.filter(client=client).select_related(
-                "client", "design", "price", "order"
+            meterings = metering_queryset_for(
+                request.user, Metering.objects.filter(client=client)
+            ).select_related(
+                "client",
+                "design",
+                "price",
+                "order",
+                "measurer",
+                "created_by",
+                "invoice__assigned_to",
             )
             data["meterings"] = MeteringSerializer(
                 meterings.order_by("-create_date"), many=True, context=ctx
@@ -110,7 +127,15 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
     def base_queryset(self):
         # No aggregates here: `stats` groups on this queryset.
-        qs = Invoice.objects.select_related("client", "metering", "assigned_to", "created_by")
+        qs = Invoice.objects.select_related(
+            "client",
+            "metering__measurer",
+            "metering__manager",
+            "metering__design__user",
+            "metering__price__user",
+            "assigned_to",
+            "created_by",
+        ).prefetch_related("metering__offer_answers")
         return apply_period(qs, "create_date", self.request.query_params)
 
     def get_queryset(self):

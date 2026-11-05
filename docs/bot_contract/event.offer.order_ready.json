@@ -1,0 +1,44 @@
+{
+  "id": "00000000-0000-0000-0000-000000003105",
+  "event": "offer.order_ready",
+  "data": {
+    "task": {
+      "kind": "price",
+      "id": 12,
+      "rev": 3,
+      "metering_id": 57,
+      "round": 1,
+      "stage": "approved",
+      "stage_label": "Tasdiqlandi",
+      "client": {
+        "fio": "Ali Valiyev",
+        "phone": "+998901112244"
+      },
+      "address": "Chilonzor 9, 14-uy",
+      "map_url": "https://yandex.uz/maps/?ll=69.279737,41.311081&pt=69.279737,41.311081&z=17&l=map",
+      "due_at": "2026-11-06T18:00:00",
+      "done_at": null,
+      "assignee": {
+        "id": 9,
+        "name": "Dilnoza Dizayner"
+      },
+      "manager": {
+        "id": 4,
+        "name": "Sardor Menejer"
+      },
+      "measurer": {
+        "id": 7,
+        "name": "Ali Zamerchi"
+      },
+      "note": "3 xonali kvartira, oshxona",
+      "last_comment": null,
+      "next_step": "design_price",
+      "url": "https://ser-mebel.uz/prices/12",
+      "present_url": "https://ser-mebel.uz/presentations?open=p12"
+    },
+    "to": [
+      555000666
+    ],
+    "url": "https://ser-mebel.uz/orders/new?metering=57&design=31"
+  }
+}

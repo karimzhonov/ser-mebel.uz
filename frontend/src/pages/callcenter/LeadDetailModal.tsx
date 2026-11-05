@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowRightLeft,
+  Brush,
+  Calculator,
+  CalendarClock,
   CheckCircle2,
   ClipboardList,
   MapPin,
@@ -14,18 +17,21 @@ import {
   Sparkles,
   Tag,
   UserRound,
+  XCircle,
 } from "lucide-react";
 import { api } from "@/api/client";
 import { useAction, useGet, useMeta } from "@/api/hooks";
-import type { Invoice, InvoiceTask, Metering, Order, TimelineEntry } from "@/api/types";
+import type { Invoice, InvoiceTask, Metering, OfferBrief, Order, TimelineEntry } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
-import { AddressLink, MeteringStatusBadge, OrderStatusBadge, PhoneLink, SolutionBadge } from "@/components/domain";
+import { AddressLink, FolderButton, MeteringStatusBadge, OrderStatusBadge, PhoneLink, SolutionBadge } from "@/components/domain";
 import { LocationEditModal } from "@/components/LocationField";
 import { Button, Empty, Field, IconButton, Input, KV, Modal, Select, Spinner, Textarea, TONES } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { dateTime } from "@/lib/format";
 import { yandexPointUrl } from "@/lib/geo";
 import { MeteringCreateModal } from "../Meterings";
+import { NEXT_STEP_LABEL, personName } from "../meterings/actions";
+import { CLIENT_RESULT_LABEL, DueLabel, OfferStageBadge } from "../offers/actions";
 import { LeadCreateModal } from "./LeadCreateModal";
 import {
   AssigneeSelect,
@@ -70,6 +76,7 @@ export function LeadDetailModal({ id, onClose }: { id: number; onClose: () => vo
         {/* left: who / what / what next */}
         <div className="space-y-5">
           <LeadInfo invoice={invoice} canChange={canChange} />
+          {invoice.metering && <MeteringBlock metering={invoice.metering} />}
 
           {canChange && !served && (
             <div>
@@ -221,7 +228,7 @@ function LeadInfo({ invoice, canChange }: { invoice: Invoice; canChange: boolean
         ],
         ["Javob kodi", <SolutionBadge solution={invoice.solution} label={invoice.solution_label} />],
         ["Yaratilgan", `${dateTime(invoice.create_date)}${invoice.created_by ? " · " + invoice.created_by.name : ""}`],
-        ...(invoice.metering_id
+        ...(invoice.metering_id && !invoice.metering
           ? ([
               [
                 "O'lchov",
@@ -246,6 +253,97 @@ function LeadInfo({ invoice, canChange }: { invoice: Invoice; canChange: boolean
       />
     )}
     </>
+  );
+}
+
+/* ------------------------------------------------------------ zamer */
+
+function MeteringBlock({ metering: m }: { metering: NonNullable<Invoice["metering"]> }) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-700">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <div className="label mb-0 flex items-center gap-1.5">
+          <Ruler className="h-4 w-4" /> O'lchov
+        </div>
+        <MeteringStatusBadge status={m.status} label={m.status_label} />
+      </div>
+      <div className="space-y-1">
+        <div>
+          <span className="muted">Vaqt: </span>
+          {dateTime(m.date_time)}
+        </div>
+        <div>
+          <span className="muted">Zamerchi: </span>
+          {personName(m.measurer, "tayinlanmagan")}
+        </div>
+        {m.next_step && (
+          <div>
+            <span className="muted">Keyingi qadam: </span>
+            {NEXT_STEP_LABEL[m.next_step]}
+          </div>
+        )}
+        {m.result_note && <div className="whitespace-pre-line break-words rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-800/60">{m.result_note}</div>}
+        {m.manager && (
+          <div>
+            <span className="muted">Menejer: </span>
+            {personName(m.manager)}
+          </div>
+        )}
+        {m.design && <OfferRow kind="design" offer={m.design} />}
+        {m.price && <OfferRow kind="price" offer={m.price} />}
+        {m.client_result && (
+          <div
+            className={cn(
+              "rounded-lg px-2.5 py-1.5 font-medium",
+              m.client_result === "agreed"
+                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"
+                : "bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300",
+            )}
+          >
+            {CLIENT_RESULT_LABEL[m.client_result] ?? m.client_result}
+          </div>
+        )}
+        {m.status === "dont_need" && m.cancel_reason && (
+          <div className="whitespace-pre-line break-words rounded-lg bg-rose-50 px-2.5 py-1.5 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+            Bekor bo'ldi: {m.cancel_reason}
+          </div>
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <Link className="font-medium text-brand-700 hover:underline dark:text-brand-300" to={`/meterings/${m.id}`}>
+          O'lchovni ochish →
+        </Link>
+        <span className="ml-auto">
+          <FolderButton folderId={m.folder} />
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** a design / price line of the lead's zamer: stage, who, deadline (red when overdue), round, last comment */
+function OfferRow({ kind, offer: o }: { kind: "design" | "price"; offer: OfferBrief }) {
+  const Icon = kind === "design" ? Brush : Calculator;
+  return (
+    <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-800/60">
+      <div className="flex flex-wrap items-center gap-2">
+        <Icon className="h-3.5 w-3.5 text-slate-400" />
+        <Link className="font-medium hover:underline" to={`/${kind === "design" ? "designs" : "prices"}/${o.id}`}>
+          {kind === "design" ? "Dizayn" : "Narx"}
+        </Link>
+        <OfferStageBadge stage={o.stage} label={o.stage_label} overdue={o.is_overdue} />
+        {o.round > 1 && <span className="muted text-xs">{o.round}-raund</span>}
+      </div>
+      <div className="muted mt-0.5 flex flex-wrap gap-x-3 text-xs">
+        <span>{personName(o.user, "tayinlanmagan")}</span>
+        {o.stage === "work" && (
+          <span>
+            Muddat: <DueLabel value={o.due_at} overdue={o.is_overdue} className="text-xs" />
+          </span>
+        )}
+      </div>
+      {o.last_comment && o.round > 1 && <div className="mt-0.5 line-clamp-2 text-xs">✏️ {o.last_comment}</div>}
+    </div>
   );
 }
 
@@ -365,12 +463,34 @@ function NoteBox({ invoiceId }: { invoiceId: number }) {
 
 type Look = { icon: typeof MessageSquare; tone: keyof typeof TONES; title: string };
 
+/** stage 2 (dizayn va narx) events logged on the lead (log_metering meta.event) */
+const OFFER_EVENT: Record<string, Look> = {
+  design_done: { icon: Brush, tone: "info", title: "Dizayn tayyor" },
+  design_approved: { icon: CheckCircle2, tone: "ok", title: "Mijoz dizaynni tasdiqladi" },
+  design_changes: { icon: Pencil, tone: "warn", title: "Dizaynni o'zgartirish so'raldi" },
+  design_declined: { icon: XCircle, tone: "danger", title: "Mijoz dizaynni rad etdi" },
+  price_done: { icon: Calculator, tone: "info", title: "Narx tayyor" },
+  price_approved: { icon: CheckCircle2, tone: "ok", title: "Mijoz narxga rozi" },
+  price_recalc: { icon: Calculator, tone: "warn", title: "Narxni qayta hisoblash so'raldi" },
+  price_declined: { icon: XCircle, tone: "danger", title: "Narx mijozni qoniqtirmadi" },
+};
+
 /** icon + headline of one history line; `kind` matters for type=note only */
 function look(e: TimelineEntry): Look {
   if (e.type === "note") {
     if (e.kind === "solution") return { icon: PhoneCall, tone: "warn", title: "Javob kodi" };
     if (e.kind === "assigned") return { icon: UserRound, tone: "idle", title: "Mas'ul o'zgardi" };
     if (e.kind === "source") return { icon: Tag, tone: "idle", title: "Manba o'zgardi" };
+    if (e.kind === "metering") {
+      const ev = String(e.meta?.event ?? "");
+      if (ev === "measured") return { icon: Ruler, tone: "info", title: "O'lchov olindi" };
+      if (ev === "rescheduled") return { icon: CalendarClock, tone: "warn", title: "O'lchov vaqti o'zgardi" };
+      if (ev === "cancelled") return { icon: XCircle, tone: "danger", title: "O'lchov bekor bo'ldi" };
+      if (ev === "done") return { icon: CheckCircle2, tone: "ok", title: "O'lchov bajarildi" };
+      if (ev === "reassigned" || ev === "assigned") return { icon: UserRound, tone: "idle", title: "Zamerchi tayinlandi" };
+      if (ev in OFFER_EVENT) return OFFER_EVENT[ev];
+      return { icon: Ruler, tone: "info", title: "O'lchov" };
+    }
     if (e.kind === "location")
       return e.meta?.lat == null && !e.meta?.link
         ? { icon: MapPin, tone: "idle", title: "Lokatsiya o'chirildi" }
@@ -397,7 +517,9 @@ function Timeline({ invoiceId }: { invoiceId: number }) {
         {entries.map((e, i) => {
           const l = look(e);
           const Icon = l.icon;
-          const isNote = e.type === "note" && (e.kind === "note" || !e.kind);
+          const isNote = e.type === "note" && (e.kind === "note" || !e.kind || e.kind === "metering");
+          const metEvent = e.type === "note" && e.kind === "metering" ? String(e.meta?.event ?? "") : "";
+          const metId = metEvent && e.meta?.metering_id != null ? Number(e.meta.metering_id) : null;
           const href = e.link ? (e.link.kind === "order" ? `/orders/${e.link.id}` : `/meterings/${e.link.id}`) : null;
           return (
             <li key={i} className="relative">
@@ -438,6 +560,19 @@ function Timeline({ invoiceId }: { invoiceId: number }) {
                     <span className="muted text-xs"> · {Number(e.meta.closed_tasks)} ta vazifa yopildi</span>
                   )}
                 </div>
+              )}
+              {metEvent === "rescheduled" && !e.text && (e.meta?.from != null || e.meta?.to != null) && (
+                <div className="text-sm">
+                  {dateTime(e.meta.from ? String(e.meta.from) : null)} → <b>{dateTime(e.meta.to ? String(e.meta.to) : null)}</b>
+                </div>
+              )}
+              {metEvent === "done" && typeof e.meta?.next_step === "string" && e.meta.next_step in NEXT_STEP_LABEL && (
+                <div className="muted text-xs">Keyingi qadam: {NEXT_STEP_LABEL[e.meta.next_step as keyof typeof NEXT_STEP_LABEL]}</div>
+              )}
+              {metId && !href && (
+                <Link className="text-xs font-medium text-brand-700 hover:underline dark:text-brand-300" to={`/meterings/${metId}`}>
+                  O'lchovni ochish →
+                </Link>
               )}
               {e.type === "note" && e.kind === "location" && e.meta?.lat != null && e.meta?.lon != null && (
                 <a

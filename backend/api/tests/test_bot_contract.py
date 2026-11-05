@@ -33,7 +33,12 @@ def test_every_emitted_event_has_a_fixture_and_vice_versa():
     if not CONTRACT_DIR.exists():
         pytest.skip("docs/bot_contract is not available (mount ./docs at /docs)")
     emitted = set()
-    for f in ("accounting/events.py", "hr/events.py", "call_center/events.py"):
+    for f in (
+        "accounting/events.py",
+        "hr/events.py",
+        "call_center/events.py",
+        "metering/events.py",
+    ):
         emitted |= set(
             re.findall(
                 r'(?:emit|send_event_sync)\(\s*"([a-z_.]+)"',

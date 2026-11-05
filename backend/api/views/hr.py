@@ -128,7 +128,8 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         # Deleting wipes the person's attendance history too — admins only.
-        if self.action == "destroy":
+        # Merging deletes the old profile as well.
+        if self.action in ("destroy", "merge_into"):
             return [IsSuperUser()]
         return super().get_permissions()
 
@@ -154,6 +155,18 @@ class EmployeeViewSet(viewsets.ModelViewSet):
                 ).exists():
                     raise ValidationError({"telegram_id": "Bu Telegram ID allaqachon ro'yxatda."})
         raise ValidationError({"detail": "Saqlab bo'lmadi, qayta urinib ko'ring."})
+
+    @action(detail=True, methods=["post"], url_path="merge-into")
+    def merge_into(self, request, pk=None):
+        """POST {target}: this (old) profile's history moves to `target` (the worker's
+        new Telegram account), then this profile is deleted. Superusers only."""
+        source = self.get_object()
+        target = Employee.objects.filter(pk=int_param(request.data, "target") or 0).first()
+        if target is None:
+            raise ValidationError({"target": "Yangi profilni tanlang."})
+        out = S.merge_employee(source, target)
+        out["employee"] = EmployeeSerializer(out["employee"]).data
+        return Response(out)
 
 
 class WorkGroupViewSet(mixins.ListModelMixin, mixins.UpdateModelMixin, viewsets.GenericViewSet):

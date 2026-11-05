@@ -1,10 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { Brush, Calculator, CalendarClock, CheckCircle2, Pencil, Plus, Send, UserPlus, XCircle } from "lucide-react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { AlarmClockOff, Brush, Calculator, CalendarCheck, Pencil, Plus, Send, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 import { api, fieldErrors } from "@/api/client";
-import { useAction, useGet, useList, useMeta } from "@/api/hooks";
-import type { Metering, StatusStats, UserShort } from "@/api/types";
+import { useAction, useGet, useList } from "@/api/hooks";
+import type { Metering, MeteringAgenda, UserShort } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import {
   AddressLink,
@@ -14,17 +14,14 @@ import {
   MeteringStatusBadge,
   OrderStatusBadge,
   PhoneLink,
-  TimelineChart,
 } from "@/components/domain";
-import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { LocationEditModal, LocationField } from "@/components/LocationField";
 import {
   Button,
   Card,
   Check,
-  Chip,
-  Confirm,
   DataTable,
+  Empty,
   Field,
   IconButton,
   Input,
@@ -39,29 +36,47 @@ import {
   Textarea,
 } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { dateTime, money, phone, toLocalInput } from "@/lib/format";
+import { dateTime, money, phone } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
+import {
+  dayLabel,
+  METERING_INVALIDATE,
+  MeteringActionButtons,
+  NEXT_STEP_LABEL,
+  personName,
+  timeOnly,
+  useMeasurers,
+  useRowActions,
+} from "./meterings/actions";
+import { MeteringResultCard } from "./meterings/result";
 
-const ACTIVE = "created,other_day,metering_done";
 const ARCHIVE = "dont_need,done,sold_out";
 
+type Tab = "today" | "tomorrow" | "week" | "waiting" | "archive";
+const TABS: Tab[] = ["today", "tomorrow", "week", "waiting", "archive"];
+
+/** «O'lchovlar» — the measurer's day plan: overdue on top, then today / tomorrow / the week,
+ * the zamers waiting for files + result, and the archive. Made for a phone: time first,
+ * big buttons, the address opens Yandex Maps. */
 export function MeteringsPage() {
   const navigate = useNavigate();
   const { can } = useAuth();
-  const { data: meta } = useMeta();
-  const { state, page, set } = useUrlState({ search: "", status: ACTIVE, date_from: "", date_to: "" });
+  const manager = can("metering.manage_metering");
+  const { state, page, set } = useUrlState({ tab: "today", measurer: "", search: "" });
+  const tab: Tab = (TABS as string[]).includes(state.tab) ? (state.tab as Tab) : "today";
   const [creating, setCreating] = useState(false);
-  const { data, isFetching } = useList<Metering>("meterings", { ...state, page });
-  const { data: stats } = useGet<StatusStats>("/meterings/stats/", { search: state.search, date_from: state.date_from, date_to: state.date_to });
-  const counts = Object.fromEntries((stats?.by_status ?? []).map((s) => [s.key, s.count]));
-  const selected = state.status.split(",").filter(Boolean);
-  const tab = state.status === ACTIVE ? "active" : state.status === ARCHIVE ? "archive" : state.status ? "custom" : "all";
+  const measurers = useMeasurers(manager);
+  const filter = { measurer: manager ? state.measurer : "", search: state.search };
+  const { data: agenda, isLoading } = useGet<MeteringAgenda>("/meterings/agenda/", filter);
+  const archive = useList<Metering>("meterings", { ...filter, status: ARCHIVE, page }, tab === "archive");
+  const c = agenda?.counts;
+  const open = (m: Metering) => navigate(`/meterings/${m.id}`);
 
   return (
     <div>
       <PageHeader
         title="O'lchovlar"
-        subtitle="O'lchovga chiqish, dizayn va narx hisoblash"
+        subtitle="Zamerlar kun rejasi"
         actions={
           can("metering.add_metering") && (
             <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>
@@ -70,51 +85,59 @@ export function MeteringsPage() {
           )
         }
       />
-      <div className="mb-3 flex flex-wrap items-center gap-3">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
         <Segmented
           value={tab}
-          onChange={(v) => set({ status: v === "active" ? ACTIVE : v === "archive" ? ARCHIVE : "" })}
+          onChange={(v) => set({ tab: v })}
           options={[
-            { value: "active", label: "Faol" },
-            { value: "archive", label: "Bajarilgan" },
-            { value: "all", label: "Barchasi", count: stats?.total },
+            { value: "today", label: "Bugun", count: c?.today },
+            { value: "tomorrow", label: "Ertaga", count: c?.tomorrow },
+            { value: "week", label: "Shu hafta", count: c?.week },
+            { value: "waiting", label: "Ma'lumot kutilmoqda", count: c?.waiting },
+            { value: "archive", label: "Arxiv", count: c?.archive },
           ]}
         />
+        <div className="flex flex-1 flex-col gap-2 sm:flex-row lg:justify-end">
+          <SearchInput className="sm:max-w-xs sm:flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="Mijoz, telefon, manzil" />
+          {manager && (
+            <Select className="sm:w-auto sm:min-w-[200px]" value={state.measurer} onChange={(e) => set({ measurer: e.target.value })}>
+              <option value="">Barcha zamerchilar</option>
+              <option value="me">Mening zamerlarim</option>
+              {measurers.data?.items.map((u) => (
+                <option key={u.id} value={u.id}>{personName(u)}</option>
+              ))}
+            </Select>
+          )}
+        </div>
       </div>
-      <div className="mb-4 flex flex-wrap gap-2">
-        {meta?.metering_statuses.map((s) => (
-          <Chip
-            key={s.value}
-            tone={s.tone}
-            active={selected.includes(String(s.value))}
-            onClick={() =>
-              set({
-                status: (selected.includes(String(s.value))
-                  ? selected.filter((x) => x !== s.value)
-                  : [...selected, String(s.value)]
-                ).join(","),
-              })
-            }
-          >
-            {s.label} · {counts[String(s.value)] ?? 0}
-          </Chip>
-        ))}
-      </div>
-      <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
+
+      {tab !== "archive" && !!agenda?.overdue.length && (
+        <Card
+          className="mb-4 border-rose-200 dark:border-rose-500/30"
+          title={
+            <span className="flex items-center gap-2 text-rose-600 dark:text-rose-400">
+              <AlarmClockOff className="h-4 w-4" /> Javob kutilmoqda · {agenda.overdue.length}
+            </span>
+          }
+          padded={false}
+        >
+          <p className="muted px-5 pt-3 text-xs">Vaqti o'tdi — o'lchov olindimi, ko'chirildimi yoki bekor bo'ldimi, belgilang.</p>
+          <AgendaList rows={agenda.overdue} withDate showMeasurer={manager} onOpen={open} late />
+        </Card>
+      )}
+
+      {tab === "archive" ? (
         <Card padded={false}>
-          <div className="flex flex-col gap-3 border-b border-slate-100 p-4 sm:flex-row dark:border-slate-800">
-            <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="Mijoz, telefon, manzil" />
-            <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
-          </div>
           <DataTable
-            rows={data?.results}
-            loading={isFetching}
+            rows={archive.data?.results}
+            loading={archive.isFetching}
             rowKey={(r) => r.id}
-            onRowClick={(r) => navigate(`/meterings/${r.id}`)}
+            onRowClick={open}
             columns={[
               { key: "client", header: "Mijoz", cell: (r) => <div><div className="font-medium">{r.client.fio}</div><PhoneLink value={r.client.phone} /></div> },
               { key: "date", header: "O'lchov sanasi", cell: (r) => <span className="whitespace-nowrap">{dateTime(r.date_time)}</span> },
               { key: "status", header: "Holat", cell: (r) => <MeteringStatusBadge status={r.status} label={r.status_label} /> },
+              ...(manager ? [{ key: "measurer", header: "Zamerchi", cell: (r: Metering) => personName(r.measurer) }] : []),
               {
                 key: "flow",
                 header: "Dizayn / Narx",
@@ -150,6 +173,7 @@ export function MeteringsPage() {
                   {dateTime(r.date_time)} ·{" "}
                   <AddressLink nested address={r.address} link={r.address_link} mapUrl={r.map_url} lat={r.lat} lon={r.lon} />
                 </div>
+                {r.status === "dont_need" && r.cancel_reason && <div className="text-sm text-rose-600 dark:text-rose-400">{r.cancel_reason}</div>}
                 <div className="flex gap-1">
                   {r.design && <Check ok={r.design.done} label="Dizayn" />}
                   {r.price && <Check ok={r.price.done} label="Narx" />}
@@ -158,14 +182,93 @@ export function MeteringsPage() {
               </div>
             )}
           />
-          <Pagination page={page} count={data?.count ?? 0} onPage={(p) => set({ page: p })} />
+          <Pagination page={page} count={archive.data?.count ?? 0} onPage={(p) => set({ page: p })} />
         </Card>
-        <Card title="Kunlar bo'yicha o'lchovlar">
-          <TimelineChart data={stats?.timeline} />
+      ) : isLoading || !agenda ? (
+        <PageLoader />
+      ) : (
+        <Card padded={false}>
+          {agenda[tab].length ? (
+            <AgendaList rows={agenda[tab]} withDate={tab === "week" || tab === "waiting"} waiting={tab === "waiting"} showMeasurer={manager} onOpen={open} />
+          ) : (
+            <Empty
+              icon={<CalendarCheck className="h-6 w-6" />}
+              title={tab === "waiting" ? "Hamma natijalar topshirilgan" : "Zamer yo'q"}
+              text={tab === "today" ? "Bugunga zamer rejalashtirilmagan." : undefined}
+            />
+          )}
         </Card>
-      </div>
+      )}
       {creating && <MeteringCreateModal onClose={() => setCreating(false)} onCreated={(m) => navigate(`/meterings/${m.id}`)} />}
     </div>
+  );
+}
+
+function AgendaList({
+  rows,
+  withDate,
+  waiting,
+  late,
+  showMeasurer,
+  onOpen,
+}: {
+  rows: Metering[];
+  withDate?: boolean;
+  waiting?: boolean;
+  late?: boolean;
+  showMeasurer?: boolean;
+  onOpen: (m: Metering) => void;
+}) {
+  const allowed = useRowActions();
+  const navigate = useNavigate();
+  return (
+    <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+      {rows.map((m) => {
+        const when = waiting ? m.measured_at ?? m.date_time : m.date_time;
+        const act = allowed(m);
+        return (
+          <li
+            key={m.id}
+            onClick={() => onOpen(m)}
+            className={cn("cursor-pointer px-4 py-4 transition hover:bg-slate-50 sm:px-5 dark:hover:bg-slate-800/40", late && "bg-rose-50/40 dark:bg-rose-500/[.04]")}
+          >
+            <div className="flex gap-4">
+              <div className="w-16 shrink-0 sm:w-20">
+                <div className={cn("text-2xl font-bold tabular-nums leading-none tracking-tight", late ? "text-rose-600 dark:text-rose-400" : "text-slate-900 dark:text-white")}>
+                  {timeOnly(when)}
+                </div>
+                {withDate && when && <div className="muted mt-1 text-xs leading-tight">{dayLabel(when)}</div>}
+                {waiting && <div className="muted mt-1 text-[11px] leading-tight">olingan</div>}
+              </div>
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="text-base font-semibold text-slate-900 dark:text-white">{m.client.fio}</span>
+                  {m.status === "other_day" && <MeteringStatusBadge status={m.status} label={m.status_label} />}
+                </div>
+                <div className="text-sm">
+                  <PhoneLink value={m.client.phone} />
+                </div>
+                <div className="text-sm">
+                  <AddressLink nested address={m.address} link={m.address_link} mapUrl={m.map_url} lat={m.lat} lon={m.lon} empty="Manzil yo'q" />
+                </div>
+                {m.desc && <div className="muted line-clamp-2 text-sm">{m.desc}</div>}
+                <div className="muted flex flex-wrap gap-x-3 text-xs">
+                  {m.operator && <span>Operator: {personName(m.operator)}</span>}
+                  {showMeasurer && <span>Zamerchi: {personName(m.measurer, "tayinlanmagan")}</span>}
+                </div>
+              </div>
+            </div>
+            <MeteringActionButtons
+              className="mt-3 sm:pl-24"
+              big
+              metering={m}
+              allowed={act}
+              onResult={() => navigate(`/meterings/${m.id}#natija`)}
+            />
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -193,9 +296,20 @@ export function MeteringCreateModal({
     location: "",
     desc: "",
   });
+  const measurers = useMeasurers();
+  const [measurer, setMeasurer] = useState("");
+  // the only measurer is preselected
+  useEffect(() => {
+    const data = measurers.data;
+    const d = data?.default ?? (data?.items.length === 1 ? data.items[0].id : null);
+    if (d && !measurer) setMeasurer(String(d));
+  }, [measurers.data]); // eslint-disable-line react-hooks/exhaustive-deps
   const [errors, setErrors] = useState<Record<string, string>>({});
   const create = useAction(
-    () => api.post<Metering>("/meterings/", { ...form, invoice: initial?.invoice ?? null }).then((r) => r.data),
+    () =>
+      api
+        .post<Metering>("/meterings/", { ...form, invoice: initial?.invoice ?? null, ...(measurer ? { measurer: Number(measurer) } : {}) })
+        .then((r) => r.data),
     {
       success: "O'lchov yaratildi",
       invalidate: ["meterings", "invoices", "dashboard", "clients"],
@@ -206,6 +320,7 @@ export function MeteringCreateModal({
     },
   );
   const upd = (k: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [k]: e.target.value });
+  const items = measurers.data?.items ?? [];
   return (
     <Modal
       open
@@ -227,8 +342,28 @@ export function MeteringCreateModal({
         <Field label="F.I.Sh. (yangi mijoz uchun)" error={errors.client_fio}>
           <Input value={form.client_fio} disabled={!!initial?.invoice} onChange={upd("client_fio")} />
         </Field>
-        <Field label="O'lchov sanasi va vaqti" error={errors.date_time} className="sm:col-span-2">
+        <Field label="O'lchov sanasi va vaqti" error={errors.date_time}>
           <Input type="datetime-local" value={form.date_time} onChange={upd("date_time")} />
+        </Field>
+        <Field
+          label="Zamerchi"
+          error={errors.measurer}
+          hint={
+            measurers.data && !items.length ? (
+              <span className="text-amber-700 dark:text-amber-300">
+                {measurers.data.hint || "Zamerchi yo'q — xodimga «Metering» huquqini bering"}
+              </span>
+            ) : (
+              "Telegram orqali xabar boradi"
+            )
+          }
+        >
+          <Select value={measurer} onChange={(e) => setMeasurer(e.target.value)} disabled={!items.length}>
+            {items.length !== 1 && <option value="">— tanlang —</option>}
+            {items.map((u) => (
+              <option key={u.id} value={u.id}>{personName(u)}</option>
+            ))}
+          </Select>
         </Field>
         <Field label="Manzil" error={errors.address} className="sm:col-span-2">
           <Input value={form.address} onChange={upd("address")} />
@@ -251,29 +386,37 @@ export function MeteringCreateModal({
 export function MeteringDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { data: m, isLoading } = useGet<Metering>(`/meterings/${id}/`);
   const { can } = useAuth();
-  const [otherDay, setOtherDay] = useState(false);
   const [editLocation, setEditLocation] = useState(false);
   const [assign, setAssign] = useState(false);
-  const [confirm, setConfirm] = useState<null | "dont_need" | "metering_done">(null);
-  const [form, setForm] = useState({ date_time: "", desc: "" });
+  const [desc, setDesc] = useState("");
   useEffect(() => {
-    if (m) setForm({ date_time: toLocalInput(m.date_time), desc: m.desc ?? "" });
+    if (m) setDesc(m.desc ?? "");
   }, [m]);
+  const a = m?.actions ?? {};
+  const measurers = useMeasurers(!!a.set_measurer);
 
-  const inv = ["meterings", "dashboard", "designs", "prices"];
-  const run = useAction((path: string) => api.post(`/meterings/${id}/${path}/`), { success: "Tayyor", invalidate: inv });
-  const save = useAction(() => api.patch(`/meterings/${id}/`, form), { success: "Saqlandi", invalidate: inv });
-  const move = useAction(() => api.post(`/meterings/${id}/other-day/`, { date_time: form.date_time || null }), {
-    success: "Ko'chirildi",
-    invalidate: inv,
-    onSuccess: () => setOtherDay(false),
+  const scrollToResult = () =>
+    setTimeout(() => document.getElementById("natija")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+  // opened from the agenda's «Natija» button
+  useEffect(() => {
+    if (m && location.hash === "#natija") scrollToResult();
+  }, [m?.id, location.hash]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const run = useAction((path: string) => api.post(`/meterings/${id}/${path}/`), { success: "Tayyor", invalidate: METERING_INVALIDATE });
+  const save = useAction(() => api.patch(`/meterings/${id}/`, { desc }), { success: "Saqlandi", invalidate: METERING_INVALIDATE });
+  const setMeasurer = useAction((measurer: number) => api.post(`/meterings/${id}/measurer/`, { measurer }), {
+    success: "Zamerchi almashtirildi",
+    invalidate: METERING_INVALIDATE,
   });
 
   if (isLoading || !m) return <PageLoader />;
-  const a = m.actions!;
-  const dirty = form.desc !== (m.desc ?? "") || form.date_time !== toLocalInput(m.date_time);
+  const dirty = desc !== (m.desc ?? "");
+  const showResult = !!(a.finish || a.upload || m.status === "done");
+  const measurerItems = measurers.data?.items ?? [];
+  const measurerKnown = !m.measurer || measurerItems.some((u) => u.id === m.measurer!.id);
 
   return (
     <div>
@@ -284,34 +427,39 @@ export function MeteringDetailPage() {
         actions={
           <>
             <FolderButton folderId={m.folder} />
-            {a.other_day && (
-              <Button variant="outline" icon={<CalendarClock className="h-4 w-4" />} onClick={() => setOtherDay(true)}>
-                Boshqa kun
-              </Button>
-            )}
-            {a.assign && (
-              <Button icon={<UserPlus className="h-4 w-4" />} onClick={() => setAssign(true)}>
+            {a.assign && !a.finish && (
+              <Button variant="outline" icon={<UserPlus className="h-4 w-4" />} onClick={() => setAssign(true)}>
                 Ijrochilarni tayinlash
-              </Button>
-            )}
-            {a.metering_done && (
-              <Button variant="success" icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setConfirm("metering_done")}>
-                O'lchov bajarildi
-              </Button>
-            )}
-            {a.dont_need && (
-              <Button variant="danger" icon={<XCircle className="h-4 w-4" />} onClick={() => setConfirm("dont_need")}>
-                Bekor qilish
               </Button>
             )}
           </>
         }
       />
+      <MeteringActionButtons
+        className="mb-4"
+        big
+        metering={m}
+        allowed={{
+          measured: a.measured ?? a.metering_done,
+          reschedule: a.reschedule ?? a.other_day,
+          cancel: a.cancel ?? a.dont_need,
+        }}
+        onMeasured={() => {
+          toast.success("O'lchov olindi — endi fayllarni yuklang");
+          scrollToResult();
+        }}
+      />
+      {m.is_overdue && (
+        <div className="mb-4 rounded-xl bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700 ring-1 ring-inset ring-rose-600/15 dark:bg-rose-500/10 dark:text-rose-300">
+          Zamer vaqti o'tdi — natijani belgilang.
+        </div>
+      )}
       <div className="grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
           <Card title="Ma'lumot">
             <KV
               items={[
+                ["Vaqt", <span className="whitespace-nowrap text-base font-semibold">{m.date_time ? `${dayLabel(m.date_time)} · ${timeOnly(m.date_time)}` : "—"}</span>],
                 ["Mijoz", <Link className="text-brand-700 hover:underline dark:text-brand-300" to={`/clients/${encodeURIComponent(m.client.phone)}`}>{m.client.fio}</Link>],
                 ["Telefon", <PhoneLink value={m.client.phone} />],
                 [
@@ -325,20 +473,44 @@ export function MeteringDetailPage() {
                     )}
                   </span>,
                 ],
+                [
+                  "Zamerchi",
+                  a.set_measurer && measurerItems.length ? (
+                    <Select
+                      className="h-8 w-auto min-w-[180px] py-0 text-sm"
+                      value={measurerKnown ? m.measurer?.id ?? "" : ""}
+                      disabled={setMeasurer.isPending}
+                      onChange={(e) => e.target.value && setMeasurer.mutate(Number(e.target.value))}
+                    >
+                      {(!m.measurer || !measurerKnown) && <option value="">{m.measurer ? personName(m.measurer) : "— tanlang —"}</option>}
+                      {measurerItems.map((u) => (
+                        <option key={u.id} value={u.id}>{personName(u)}</option>
+                      ))}
+                    </Select>
+                  ) : (
+                    personName(m.measurer, "tayinlanmagan")
+                  ),
+                ],
+                ["Operator", personName(m.operator)],
                 ["Yaratilgan", dateTime(m.create_date)],
-                ...(m.invoice ? ([["Ariza", <Link className="text-brand-700 hover:underline" to={`/call-center?open=${m.invoice}`}>#{m.invoice}</Link>]] as [string, JSX.Element][]) : []),
+                ...(m.measured_at ? ([["O'lchov olingan", dateTime(m.measured_at)]] as [string, ReactNode][]) : []),
+                ...(m.done_at ? ([["Bajarilgan", dateTime(m.done_at)]] as [string, ReactNode][]) : []),
+                ...(m.next_step ? ([["Keyingi qadam", NEXT_STEP_LABEL[m.next_step]]] as [string, ReactNode][]) : []),
+                ...(m.status === "dont_need" && m.cancel_reason
+                  ? ([["Bekor sababi", <span className="whitespace-pre-line text-rose-600 dark:text-rose-400">{m.cancel_reason}</span>]] as [string, ReactNode][])
+                  : []),
+                ...(m.invoice ? ([["Ariza", <Link className="text-brand-700 hover:underline" to={`/call-center?open=${m.invoice}`}>#{m.invoice}</Link>]] as [string, ReactNode][]) : []),
               ]}
             />
           </Card>
-          <Card title="O'lchov tafsilotlari">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Sana va vaqt">
-                <Input type="datetime-local" disabled={!a.edit} value={form.date_time} onChange={(e) => setForm({ ...form, date_time: e.target.value })} />
-              </Field>
-              <Field label="Tavsif" className="sm:col-span-2">
-                <Textarea disabled={!a.edit} value={form.desc} onChange={(e) => setForm({ ...form, desc: e.target.value })} />
-              </Field>
-            </div>
+          {m.result_note && (
+            <Card title="Zamerchi izohi">
+              <p className="whitespace-pre-line break-words text-sm">{m.result_note}</p>
+            </Card>
+          )}
+          {showResult && <MeteringResultCard id="natija" metering={m} />}
+          <Card title="Tavsif">
+            <Textarea disabled={!a.edit} value={desc} onChange={(e) => setDesc(e.target.value)} />
             {a.edit && dirty && (
               <div className="mt-4 flex justify-end">
                 <Button loading={save.isPending} onClick={() => save.mutate()}>Saqlash</Button>
@@ -349,7 +521,8 @@ export function MeteringDetailPage() {
         <div className="space-y-4">
           <Card title="Bosqichlar">
             <ol className="space-y-3 text-sm">
-              <Step done={m.status !== "created" && m.status !== "other_day"} label="O'lchov" />
+              <Step done={m.status !== "created" && m.status !== "other_day" && m.status !== "dont_need"} label="O'lchov" hint={m.measured_at ? dateTime(m.measured_at) : undefined} />
+              <Step done={m.status === "done" || m.status === "sold_out"} label="Fayllar va natija" hint={m.next_step ? NEXT_STEP_LABEL[m.next_step] : undefined} />
               <Step
                 done={!!m.design?.done}
                 label="Dizayn"
@@ -357,7 +530,7 @@ export function MeteringDetailPage() {
                 action={
                   m.design ? (
                     <Link to={`/designs/${m.design.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Ochish</Link>
-                  ) : a.assign ? (
+                  ) : a.assign && !a.finish ? (
                     <Button size="sm" variant="outline" icon={<UserPlus className="h-3.5 w-3.5" />} onClick={() => setAssign(true)}>
                       Tayinlash
                     </Button>
@@ -375,7 +548,7 @@ export function MeteringDetailPage() {
                 action={
                   m.price ? (
                     <Link to={`/prices/${m.price.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Ochish</Link>
-                  ) : a.assign ? (
+                  ) : a.assign && !a.finish ? (
                     <Button size="sm" variant="outline" icon={<UserPlus className="h-3.5 w-3.5" />} onClick={() => setAssign(true)}>
                       Tayinlash
                     </Button>
@@ -411,32 +584,6 @@ export function MeteringDetailPage() {
         </div>
       </div>
 
-      <Modal
-        open={otherDay}
-        onClose={() => setOtherDay(false)}
-        title="Boshqa kunga ko'chirish"
-        size="sm"
-        footer={<Button loading={move.isPending} onClick={() => move.mutate()}>Ko'chirish</Button>}
-      >
-        <Field label="Yangi sana va vaqt">
-          <Input type="datetime-local" value={form.date_time} onChange={(e) => setForm({ ...form, date_time: e.target.value })} />
-        </Field>
-      </Modal>
-      <Confirm
-        open={!!confirm}
-        onClose={() => setConfirm(null)}
-        title={confirm === "dont_need" ? "O'lchov bekor qilinsinmi?" : "O'lchov bajarilgan deb belgilansinmi?"}
-        text={confirm === "dont_need" ? "O'lchov «Bajarilgan» bo'limiga o'tadi — keyin uni o'zgartirib bo'lmaydi." : "Shundan keyin dizayn va narx hisoblashni boshlash mumkin."}
-        variant={confirm === "dont_need" ? "danger" : "success"}
-        loading={run.isPending}
-        onConfirm={() =>
-          run.mutate(confirm === "dont_need" ? "dont-need" : "metering-done", {
-            onSettled: () => setConfirm(null),
-            // Next step after measuring: hand the design / price tasks out.
-            onSuccess: () => confirm === "metering_done" && setAssign(true),
-          })
-        }
-      />
       {assign && <AssignTasksModal metering={m} onClose={() => setAssign(false)} />}
       {editLocation && (
         <LocationEditModal

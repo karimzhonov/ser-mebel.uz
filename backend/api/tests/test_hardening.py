@@ -39,6 +39,10 @@ def test_order_needs_finished_design(admin_api, db_client, default_factory):
     body = {"metering": metering.pk, "design_type": design_type.pk, "address": "x"}
     assert admin_api.post("/api/v1/orders/", body, format="json").status_code == 400
     design.done = True
+    design.stage = "review"
+    design.save()  # ready but the client has not approved it
+    assert admin_api.post("/api/v1/orders/", body, format="json").status_code == 400
+    design.stage = "approved"
     design.save()
     assert admin_api.post("/api/v1/orders/", body, format="json").status_code == 201
 

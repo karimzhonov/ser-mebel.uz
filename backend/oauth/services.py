@@ -37,7 +37,8 @@ def staff_with_permission(codename: str):
 
     return User.objects.filter(
         models.Q(user_permissions__codename=codename)
-        | models.Q(groups__permissions__codename=codename)
+        | models.Q(groups__permissions__codename=codename),
+        is_active=True,
     ).distinct()
 
 
@@ -241,3 +242,288 @@ def delete_user(actor, user) -> None:
 
     with transaction.atomic():
         user.delete()
+
+
+# --- Groups = roles (Operator, Dizayner, Bosh menejer, ...) --------------------------
+
+
+def _group_name(name) -> str:
+    from core.exceptions import ServiceError
+
+    name = " ".join((name or "").split())
+    if not name:
+        raise ServiceError("Lavozim nomini kiriting", "name")
+    if len(name) > 150:
+        raise ServiceError("Lavozim nomi juda uzun", "name")
+    return name
+
+
+def _check_group_name_free(name, *, exclude=None) -> None:
+    from django.contrib.auth.models import Group
+
+    from core.exceptions import ServiceError
+
+    qs = Group.objects.filter(name__iexact=name)
+    if exclude is not None:
+        qs = qs.exclude(pk=exclude.pk)
+    if qs.exists():
+        raise ServiceError("Bunday nomli lavozim bor", "name")
+
+
+def _refuse_keeper(group=None, user=None) -> None:
+    """The omborchi is managed only on the Ombor page (assign_keeper): the role page
+    must not become a way around that rule."""
+    from core.exceptions import ServiceError
+    from warehouse.services import KEEPER_GROUP, is_keeper
+
+    if (group is not None and group.name == KEEPER_GROUP) or (user is not None and is_keeper(user)):
+        raise ServiceError("Omborchi Ombor sahifasida boshqariladi", "members")
+
+
+def create_group(name):
+    from django.contrib.auth.models import Group
+
+    name = _group_name(name)
+    _check_group_name_free(name)
+    return Group.objects.create(name=name)
+
+
+def rename_group(group, name):
+    _refuse_keeper(group)
+    name = _group_name(name)
+    _check_group_name_free(name, exclude=group)
+    group.name = name
+    group.save(update_fields=["name"])
+    return group
+
+
+def delete_group(group) -> None:
+    """A role with people in it cannot be deleted: move the people out first."""
+    from core.exceptions import ServiceError
+
+    _refuse_keeper(group)
+    n = group.user_set.count()
+    if n:
+        raise ServiceError(
+            f"Lavozimda {n} nafar xodim bor — avval ularni lavozimdan chiqaring", "members"
+        )
+    group.delete()
+
+
+def group_members(group):
+    return group.user_set.order_by("name", "phone")
+
+
+def add_group_member(group, user):
+    """Give the user the group's role. The group's permissions need panel login, so the
+    person becomes staff when the group has any permission."""
+    from django.db import transaction
+
+    _refuse_keeper(group, user)
+    with transaction.atomic():
+        group.user_set.add(user)
+        if not user.is_staff and group.permissions.exists():
+            user.is_staff = True
+            user.save(update_fields=["is_staff"])
+    for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+        user.__dict__.pop(attr, None)
+    return user
+
+
+def remove_group_member(group, user):
+    _refuse_keeper(group, user)
+    group.user_set.remove(user)
+    for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+        user.__dict__.pop(attr, None)
+    return user
+
+
+# --- Merging old groups into the default lavozims -------------------------------------
+
+DEFAULT_LAVOZIMS = (
+    "Operator",
+    "O'lcham oluvchi",
+    "Dizayner",
+    "Menejer",
+    "Bosh menejer",
+    "Konstruktor",
+    "Molyar",
+    "Sborkachi",
+    "Rover",
+)
+
+# first match wins (a substring of the lower-cased, trimmed name)
+_MERGE_RULES = (
+    (("производство manager", "bosh", "главный", "glavn"), "Bosh menejer"),
+    (("замер", "zamer", "o'lcham", "olcham", "ўлчам"), "O'lcham oluvchi"),
+    (("дизайн", "dizayn", "design"), "Dizayner"),
+    (("маляр", "моляр", "molyar", "malyar"), "Molyar"),
+    (("сборк", "установк", "sborka", "sborch", "ustanovk"), "Sborkachi"),
+    (("детал", "конструкт", "konstrukt", "detal"), "Konstruktor"),
+    (("ровер", "rover"), "Rover"),
+    (("call", "колл", "оператор", "operator"), "Operator"),
+    # owner's rule: the price is the managers' job, there is no «Narxchi» any more
+    (("narx", "цен", "прайс", "price"), "Menejer"),
+    (("менеджер", "menejer", "manager", "menedjer"), "Menejer"),
+)
+_PERSONAL_WORDS = ("filer", "файл")
+PERSONAL_REASON = "Fayllar huquqi — a'zolariga «Fayllar» bo'limi qo'shiladi"
+NO_MATCH_REASON = "Mos lavozim topilmadi — o'zingiz tanlang"
+
+
+def _suggest_lavozim(name: str):
+    low = " ".join((name or "").split()).lower()
+    if any(w in low for w in _PERSONAL_WORDS):
+        return "personal"
+    for words, target in _MERGE_RULES:
+        if any(w in low for w in words):
+            return target
+    return None
+
+
+def _perm_keys(group) -> set:
+    return {
+        f"{a}.{c}" for a, c in group.permissions.values_list("content_type__app_label", "codename")
+    }
+
+
+def merge_plan() -> dict:
+    """What to do with every group that is not a default lavozim (nothing is changed).
+
+    items[].action: «merge» (suggested = target), «rename» (rename_to; suggested stays null) (the group IS the default
+    lavozim written differently, e.g. «operator» → «Operator»), «to_personal» (no target:
+    permissions go to the members themselves), «choose» (nothing suggested)."""
+    from django.contrib.auth.models import Group
+    from django.db.models import Count
+
+    from warehouse.services import KEEPER_GROUP
+
+    groups = list(Group.objects.annotate(n=Count("user")).order_by("name"))
+    exact = {g.name: g for g in groups if g.name in DEFAULT_LAVOZIMS}
+    by_low = {d.lower(): d for d in DEFAULT_LAVOZIMS}
+    items = []
+    for g in groups:
+        if g.name == KEEPER_GROUP or g.name in exact and exact[g.name].pk == g.pk:
+            continue
+        item = {
+            "group": {
+                "id": g.pk,
+                "name": g.name,
+                "member_count": g.n,
+                "locked": False,
+            },
+            "suggested": None,
+            "rename_to": None,
+            "to_personal": False,
+            "action": "choose",
+            "reason": NO_MATCH_REASON,
+        }
+        default = by_low.get(" ".join(g.name.split()).lower())
+        if default and default not in exact:
+            item.update(
+                rename_to=default,
+                action="rename",
+                reason=f"Bu «{default}» lavozimining o'zi — nomi to'g'rilanadi",
+            )
+        else:
+            guess = default or _suggest_lavozim(g.name)
+            if guess == "personal":
+                item.update(action="to_personal", to_personal=True, reason=PERSONAL_REASON)
+            elif guess in exact:
+                t = exact[guess]
+                item.update(
+                    suggested={"id": t.pk, "name": t.name},
+                    action="merge",
+                    reason=f"Nomi bo'yicha «{t.name}» lavozimiga mos",
+                )
+        items.append(item)
+    targets = [{"id": g.pk, "name": g.name} for g in groups if g.name in exact]
+    return {"items": items, "targets": targets}
+
+
+def _perm_labels(keys) -> list:
+    """Permission codenames → section-level labels (access.py), else «app.codename»."""
+    from . import access as A
+
+    keys = set(keys)
+    out, left = [], set(keys)
+    for sec in A.SECTIONS:
+        view, edit = A._view(sec), A._edit(sec)
+        if sec.edit and edit <= keys:
+            out.append({"key": f"{sec.key}:edit", "label": f"{sec.label} — o'zgartirish"})
+            left -= edit
+        elif view <= keys and view:
+            out.append({"key": f"{sec.key}:view", "label": f"{sec.label} — ko'rish"})
+            left -= view
+    out += [{"key": k, "label": k} for k in sorted(left)]
+    return out
+
+
+def _merge_checks(source, target=None):
+    from core.exceptions import ServiceError
+    from warehouse.services import is_keeper
+
+    _refuse_keeper(source)
+    if target is not None:
+        _refuse_keeper(target)
+        if target.pk == source.pk:
+            raise ServiceError("Lavozimni o'ziga ko'chirib bo'lmaydi", "target")
+    if any(is_keeper(u) for u in source.user_set.all()):
+        raise ServiceError("Omborchi Ombor sahifasida boshqariladi", "members")
+
+
+def merge_preview(source, target=None) -> dict:
+    """What a merge would do. `target=None` = «shaxsiy huquq sifatida»."""
+    _merge_checks(source, target)
+    have = _perm_keys(target) if target is not None else set()
+    add = _perm_keys(source) - have
+    return {
+        "members": [
+            {"id": u.pk, "name": u.name, "phone": str(u.phone)} for u in group_members(source)
+        ],
+        "add_to_target": _perm_labels(add),
+        "target_member_count": target.user_set.count() if target is not None else None,
+    }
+
+
+def merge_group(source, target=None) -> dict:
+    """Move every member (and the union of the permissions, so nobody loses a right) of
+    `source` into `target`, or — target=None — give the permissions to each member
+    personally; then delete `source`."""
+    from django.contrib.auth.models import Permission
+    from django.db import transaction
+
+    _merge_checks(source, target)
+    with transaction.atomic():
+        members = list(source.user_set.all())
+        perms = list(source.permissions.all())
+        name = source.name
+        if target is not None:
+            added = {p for p in perms} - set(target.permissions.all())
+            target.permissions.add(*perms)
+            target.user_set.add(*members)
+        else:
+            added = set()
+            for u in members:
+                have = set(u.user_permissions.all())
+                missing = [p for p in perms if p not in have]
+                if missing:
+                    u.user_permissions.add(*missing)
+                    added.update(missing)
+        # members get panel access when they end up with any right (source or target)
+        if perms or (target is not None and target.permissions.exists()):
+            for u in members:
+                if not u.is_staff:
+                    u.is_staff = True
+                    u.save(update_fields=["is_staff"])
+        source.delete()
+    for u in members:
+        for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+            u.__dict__.pop(attr, None)
+    keys = sorted(
+        f"{p.content_type.app_label}.{p.codename}"
+        for p in Permission.objects.filter(pk__in=[p.pk for p in added]).select_related(
+            "content_type"
+        )
+    )
+    return {"moved_members": len(members), "added_permissions": keys, "deleted": name}

@@ -30,6 +30,7 @@ import type { Money, Overview, Tone } from "@/api/types";
 import { cn } from "@/lib/cn";
 import { dateTime, money, num, phone } from "@/lib/format";
 import { AddressLink, DeadlinePill } from "./domain";
+import { PipelineCard, pickPipeline } from "./PipelineCard";
 import { Badge, Card, Empty, PageLoader, TONES } from "./ui";
 
 const SERIES: Record<string, { label: string; color: string }> = {
@@ -47,7 +48,10 @@ function moneyList(items: Money[] | undefined) {
 export function OverviewPanel({ from, to }: { from: string; to: string }) {
   const { data, isLoading } = useGet<Overview>("/dashboard/overview/", { date_from: from, date_to: to });
   if (isLoading || !data) return <PageLoader />;
-  const { funnel, orders, money: cash, accounting, production, meterings, call_center } = data;
+  const { funnel, orders, money: cash, accounting, meterings, call_center } = data;
+  // the shop-floor block has `stages`; the «Zamer · Dizayn · Narx» block may arrive under the same key
+  const production = data.production && Array.isArray(data.production.stages) ? data.production : null;
+  const pipeline = pickPipeline(data as unknown as Record<string, unknown>);
   const count = (key: string) => funnel?.steps.find((s) => s.key === key)?.count;
   const range = from || to ? "davr uchun" : "butun davr";
 
@@ -180,6 +184,8 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
           </Card>
         )}
       </div>
+
+      {pipeline && <PipelineCard p={pipeline} />}
 
       {/* Production */}
       {production && (

@@ -1,3 +1,5 @@
+import copy
+
 from rest_framework import serializers
 
 from accounting.models import (
@@ -26,6 +28,7 @@ class TelegramMemberSerializer(serializers.ModelSerializer):
     role_label = serializers.CharField(source="get_role_display", read_only=True)
     is_task_only = serializers.BooleanField(read_only=True)
     has_wallet = serializers.BooleanField(read_only=True)
+    wallet_mode_label = serializers.CharField(source="get_wallet_mode_display", read_only=True)
 
     class Meta:
         model = TelegramMember
@@ -43,11 +46,38 @@ class TelegramMemberSerializer(serializers.ModelSerializer):
             "is_bonus_receiver",
             "is_deadline_receiver",
             "is_accountant",
+            "wallet_mode",
+            "wallet_mode_label",
             "is_task_only",
             "has_wallet",
             "joined_at",
         ]
         read_only_fields = ["username", "joined_at"]
+
+    def validate(self, attrs):
+        """A wallet with money in it can't disappear: the balance would vanish from
+        «Hamyonlar» and the reports. Move the money out first."""
+        m = self.instance
+        # only an explicit «Hamyon» change is guarded (blocking / duties keep working)
+        changing = "wallet_mode" in attrs and attrs["wallet_mode"] != getattr(
+            m, "wallet_mode", None
+        )
+        if m is not None and changing and m.has_wallet:
+            after = copy.copy(m)
+            for k, v in attrs.items():
+                setattr(after, k, v)
+            if not after.has_wallet:
+                from accounting.services import balance
+
+                left = balance(m)
+                if left:
+                    raise serializers.ValidationError(
+                        {
+                            "wallet_mode": f"Hamyonda {left:,.0f} so'm qoldiq bor — avval uni "
+                            "boshqa hamyonga o'tkazing, keyin hamyonsiz qiling.".replace(",", " ")
+                        }
+                    )
+        return attrs
 
     def validate_user(self, user):
         if (

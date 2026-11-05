@@ -34,7 +34,19 @@ class DesignAdmin(SimpleHistoryAdmin, ModelAdmin):
     actions_submit_line = ["done_action"]
     inlines = [DesignTypeInline]
     readonly_fields = ["metering_folder", "created_at"]
-    exclude = ["done", "metering", "confirm"]
+    # stage-2 fields are managed by the services / the SPA, not by hand
+    exclude = [
+        "done",
+        "metering",
+        "confirm",
+        "stage",
+        "due_at",
+        "assigned_at",
+        "done_at",
+        "done_by",
+        "round",
+        "rev",
+    ]
     list_filter = [get_date_filter("created_at"), "done"]
     list_filter_submit = True
 

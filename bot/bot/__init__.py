@@ -38,12 +38,17 @@ def build_dispatcher() -> Dispatcher:
     from bot.common import link, start
     from bot.crm import router as crm_router
     from bot.finance import router as finance_router
+    from bot.metering import router as metering_router
+    from bot.offer import router as offer_router
 
-    # Order matters: HR groups, site link, /start, CRM (lead form, task buttons), HR private,
-    # then finance (the rest).
+    # Order matters: HR groups, site link, /start, zamer buttons (own `mt:` callbacks and
+    # `Meter*` states only), design / price buttons (own `of:` callbacks and `Offer*` states
+    # only), CRM (lead form, task buttons), HR private, then finance (the rest).
     d.include_router(hr.group_router)
     d.include_router(link.router)
     d.include_router(start.router)
+    d.include_router(metering_router)
+    d.include_router(offer_router)
     d.include_router(crm_router)
     d.include_router(hr.private_router)
     d.include_router(finance_router)

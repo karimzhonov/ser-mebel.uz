@@ -1,19 +1,16 @@
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { CheckCircle2, FolderOpen, Package, Pencil, Plus, Trash2, UserCheck } from "lucide-react";
+import { CheckCircle2, FolderOpen, Package, Pencil, Plus, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
-import { useAction, useGet, useList } from "@/api/hooks";
+import { useAction, useGet } from "@/api/hooks";
 import type { Design, DesignType } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, BackLink, DeadlinePill, FolderButton, FolderModal, OrderStatusBadge, PhoneLink } from "@/components/domain";
-import { DateRangeFilter } from "@/components/DateRangeFilter";
 import {
   Badge,
   Button,
   Card,
-  Check,
   Confirm,
-  DataTable,
   Empty,
   Field,
   IconButton,
@@ -22,68 +19,16 @@ import {
   Modal,
   PageHeader,
   PageLoader,
-  Pagination,
-  SearchInput,
-  Segmented,
-  Chip,
 } from "@/components/ui";
-import { date, dateTime, phone } from "@/lib/format";
-import { useUrlState } from "@/lib/useUrlState";
+import { dateTime } from "@/lib/format";
+import { personName } from "./meterings/actions";
+import { OfferAgenda } from "./offers/OfferAgenda";
+import { OfferStatusCard } from "./offers/OfferStatusCard";
+import { CLIENT_RESULT_LABEL, Hint, OFFER_INVALIDATE, OfferStageBadge } from "./offers/actions";
 
+/** «Dizayn» — the designer's agenda (deadline first, overdue in red). */
 export function DesignsPage() {
-  const navigate = useNavigate();
-  const { state, page, set } = useUrlState({ search: "", confirm: "false", mine: "", date_from: "", date_to: "" });
-  const { data, isFetching } = useList<Design>("designs", { ...state, page });
-  return (
-    <div>
-      <PageHeader title="Dizayn" subtitle="O'lchovlar bo'yicha dizayn loyihalari" />
-      <Card padded={false}>
-        <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row dark:border-slate-800">
-          <Segmented
-            value={state.confirm}
-            onChange={(v) => set({ confirm: v })}
-            options={[
-              { value: "false", label: "Faol" },
-              { value: "true", label: "Bajarilgan" },
-              { value: "", label: "Barchasi" },
-            ]}
-          />
-          <Chip active={state.mine === "1"} onClick={() => set({ mine: state.mine === "1" ? "" : "1" })}>
-            <UserCheck className="h-3.5 w-3.5" /> Mening vazifalarim
-          </Chip>
-          <SearchInput className="flex-1" value={state.search} onChange={(v) => set({ search: v })} placeholder="Mijoz yoki telefon" />
-          <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
-        </div>
-        <DataTable
-          rows={data?.results}
-          loading={isFetching}
-          rowKey={(r) => r.id}
-          onRowClick={(r) => navigate(`/designs/${r.id}`)}
-          columns={[
-            { key: "client", header: "Mijoz", cell: (r) => <span className="font-medium">{r.metering.client.fio}</span> },
-            { key: "user", header: "Dizayner", cell: (r) => (r.user_detail ? r.user_detail.name || phone(r.user_detail.phone) : <span className="muted">—</span>) },
-            { key: "variants", header: "Variantlar", cell: (r) => r.types.map((t) => t.name).join(", ") || "—" },
-            { key: "state", header: "Holat", cell: (r) => <div className="flex gap-1"><Check ok={r.done} label="Tayyor" /><Check ok={r.confirm} label="Buyurtma" /></div> },
-            {
-              key: "order",
-              header: "Buyurtma",
-              cell: (r) =>
-                r.order ? (
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium">№{r.order.order_number}</span>
-                    <DeadlinePill deadline={r.order.deadline} />
-                  </div>
-                ) : (
-                  <span className="muted">—</span>
-                ),
-            },
-            { key: "created", header: "Yaratilgan", cell: (r) => <span className="muted">{date(r.created_at)}</span> },
-          ]}
-        />
-        <Pagination page={page} count={data?.count ?? 0} onPage={(p) => set({ page: p })} />
-      </Card>
-    </div>
-  );
+  return <OfferAgenda kind="design" />;
 }
 
 export function DesignDetailPage() {
@@ -95,9 +40,9 @@ export function DesignDetailPage() {
   const [variant, setVariant] = useState<{ id?: number; name: string } | null>(null);
   const [folder, setFolder] = useState<number | null>(null);
 
-  const inv = ["designs", "meterings", "dashboard"];
+  const inv = OFFER_INVALIDATE;
   const done = useAction(() => api.post(`/designs/${id}/done/`), {
-    success: "Dizayn bajarildi — call-markaz xabardor qilindi",
+    success: "Dizayn tayyor — menejerga yuborildi",
     invalidate: inv,
     onSuccess: () => setConfirmDone(false),
   });
@@ -115,24 +60,39 @@ export function DesignDetailPage() {
 
   if (isLoading || !d) return <PageLoader />;
   const m = d.metering;
+  const noFiles = d.file_count === 0;
   return (
     <div>
       <PageHeader
         back={<BackLink to="/designs">Dizayn</BackLink>}
         title={m.client.fio}
         subtitle={
-          <span className="flex gap-2">
-            {d.done ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="warn">Ishda</Badge>}
-            {d.confirm && <Badge tone="primary">Buyurtma rasmiylashtirildi</Badge>}
-            {d.user_detail && <span>Dizayner: {d.user_detail.name || phone(d.user_detail.phone)}</span>}
+          <span className="flex flex-wrap items-center gap-2">
+            {d.stage ? (
+              <OfferStageBadge stage={d.stage} label={d.stage_label} overdue={d.is_overdue} />
+            ) : d.done ? (
+              <Badge tone="ok">Bajarildi</Badge>
+            ) : (
+              <Badge tone="warn">Ishda</Badge>
+            )}
+            {d.order && <Badge tone="primary">Buyurtma rasmiylashtirildi</Badge>}
+            {d.client_result && <Badge tone={d.client_result === "agreed" ? "ok" : "danger"}>{CLIENT_RESULT_LABEL[d.client_result]}</Badge>}
+            {d.user_detail && <span>Dizayner: {personName(d.user_detail)}</span>}
           </span>
         }
         actions={
           <>
             <FolderButton folderId={m.folder} label="O'lchov fayllari" />
             {d.actions.done && (
-              <Button variant="success" icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setConfirmDone(true)}>
-                Dizaynni bajarish
+              <Button
+                size="lg"
+                variant="success"
+                className="w-full sm:w-auto"
+                icon={<CheckCircle2 className="h-5 w-5" />}
+                disabled={noFiles}
+                onClick={() => setConfirmDone(true)}
+              >
+                Tayyor
               </Button>
             )}
             {d.actions.create_order && (
@@ -146,6 +106,12 @@ export function DesignDetailPage() {
           </>
         }
       />
+      {(d.is_overdue && d.stage === "work") || (d.actions.done && noFiles) ? (
+        <div className="mb-4 space-y-2">
+          {d.is_overdue && d.stage === "work" && <Hint tone="danger">Muddat o'tdi — dizaynni tayyorlang yoki muddatni o'zgartiring.</Hint>}
+          {d.actions.done && noFiles && <Hint>Kamida bitta fayl yuklang — variant papkasiga dizayn fayllarini qo'ying, keyin «Tayyor»ni bosing.</Hint>}
+        </div>
+      ) : null}
       <div className="grid gap-4 lg:grid-cols-3">
         <Card
           className="lg:col-span-2"
@@ -189,6 +155,14 @@ export function DesignDetailPage() {
           </ul>
         </Card>
         <div className="space-y-4">
+          <OfferStatusCard
+            kind="design"
+            id={d.id}
+            offer={d}
+            assignee={d.user_detail}
+            actions={{ due: d.actions.due, reassign: d.actions.reassign, answer: d.actions.answer }}
+            client={m.client.fio}
+          />
           <Card title="O'lchov">
             <KV
               items={[
@@ -217,7 +191,8 @@ export function DesignDetailPage() {
         open={confirmDone}
         onClose={() => setConfirmDone(false)}
         title="Dizayn tayyormi?"
-        text="Call-markazga dizayn tayyorligi haqida xabar boradi."
+        text="Menejerga xabar boradi — u dizaynni mijozga ko'rsatadi."
+        confirmLabel="Ha, tayyor"
         variant="success"
         loading={done.isPending}
         onConfirm={() => done.mutate()}

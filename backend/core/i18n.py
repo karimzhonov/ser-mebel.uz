@@ -20,7 +20,7 @@ METERING_STATUS = {
     "created": "Ariza olindi",
     "dont_need": "Bekor qilindi",
     "other_day": "Boshqa kunga ko'chirildi",
-    "metering_done": "O'lchovga borildi",
+    "metering_done": "Ma'lumot kutilmoqda",
     "done": "Bajarildi",
     "sold_out": "Sotildi",
 }

@@ -3,7 +3,7 @@ panel API, fill-down limits, data migrations, history users, candidates ordering
 dashboard cards)."""
 
 import importlib
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -12,9 +12,9 @@ from api.tests.test_location import (
     INV_PERMS,
     MET_PERMS,
     NOW,
-    P,
     P2,
     YA,
+    P,
     _order_chain,
     _order_payload,
     mk,
@@ -30,7 +30,7 @@ from metering.services import create_metering, set_metering_location
 from order.models import Order
 from order.services import set_order_location
 
-pytestmark = pytest.mark.django_db
+pytestmark = [pytest.mark.django_db, pytest.mark.usefixtures("default_measurer")]
 
 
 # ------------------------------------------------------------ inheritance via the panel API
@@ -290,7 +290,7 @@ def test_candidates_gating_per_kind(bot_client, make_staff, seller):
     assert _items(r) == [("invoice", inv.pk)]
     # metering perms only: never invoices, even by phone
     make_staff(*MET_PERMS, telegram_id=4601)
-    r = bot_client.get(f"crm/locations/candidates/?phone=%2B998901113301", actor=4601)
+    r = bot_client.get("crm/locations/candidates/?phone=%2B998901113301", actor=4601)
     assert _items(r) == [("metering", m.pk)]
     r = bot_client.get("crm/locations/candidates/?phone=%2B998901112233", actor=4601)
     assert r.data["items"] == []
@@ -312,7 +312,10 @@ def test_board_cards_carry_map_url(admin_api, seller):
 
 def test_overview_upcoming_without_a_point_falls_back_to_text_search(admin_api, seller):
     m = mk_metering(mk(seller), address="Chilonzor 5")
-    Metering.objects.filter(pk=m.pk).update(address="Chilonzor 5")
+    # the dashboard lists zamers from the real today on, not from the frozen NOW
+    Metering.objects.filter(pk=m.pk).update(
+        address="Chilonzor 5", date_time=datetime.now() + timedelta(days=1)
+    )
     up = admin_api.get("/api/v1/dashboard/overview/").data["meterings"]["upcoming"]
     row = next(u for u in up if u["id"] == m.pk)
     assert row["lat"] is None and "text=Chilonzor%205" in row["map_url"]

@@ -1441,6 +1441,77 @@ def set_active(e: Employee, active: bool) -> Employee:
     return e
 
 
+def _richer(a: Attendance) -> tuple:
+    """Which of two rows of the same day keeps more of what happened."""
+    return (a.in_time is not None, a.out_time is not None, a.finalized, bool(a.status))
+
+
+def merge_employee(source: Employee, target: Employee) -> dict:
+    """The worker moved to another Telegram account: the bot then made a second
+    employee. Move everything of the old one (`source`) to the new one (`target`) —
+    attendance, points, leaves, wins — and delete the old one.
+
+    Both have a row on the same day (the switch day) → the row with the report
+    (in/out time) stays, the other is dropped. The target keeps its own Telegram ID,
+    number and name; hours, off days, filial and the finance link are taken from the
+    old one only where the new one has none."""
+    if source.pk == target.pk:
+        raise ServiceError("Xodimni o'ziga birlashtirib bo'lmaydi.", "target")
+    with transaction.atomic():
+        source = Employee.objects.select_for_update().get(pk=source.pk)
+        target = Employee.objects.select_for_update().get(pk=target.pk)
+        theirs = {a.day: a for a in Attendance.objects.filter(employee=target)}
+        moved = dropped = 0
+        for a in Attendance.objects.filter(employee=source):
+            other = theirs.get(a.day)
+            if other is None:
+                a.employee = target
+                a.save(update_fields=["employee"])
+                moved += 1
+                continue
+            dropped += 1
+            if _richer(a) > _richer(other):
+                other.delete()
+                a.employee = target
+                a.save(update_fields=["employee"])
+            else:
+                a.delete()
+        points = PointAdjustment.objects.filter(employee=source).update(employee=target)
+        leaves = Leave.objects.filter(employee=source).update(employee=target)
+        wins = Winner.objects.filter(employee=source).update(employee=target)
+
+        fields = []
+        if source.created_on and (not target.created_on or source.created_on < target.created_on):
+            target.created_on = source.created_on
+            fields.append("created_on")
+        if not target.work_start and not target.work_end and (source.work_start or source.work_end):
+            target.work_start, target.work_end = source.work_start, source.work_end
+            fields += ["work_start", "work_end"]
+        if target.off_days is None and source.off_days is not None:
+            target.off_days = source.off_days
+            fields.append("off_days")
+        if target.group_id is None and source.group_id is not None:
+            target.group_id = source.group_id
+            fields.append("group")
+        member = source.member_id if target.member_id is None else None
+        name = source.name
+        source.delete()  # frees the one-to-one finance link before it moves
+        if member is not None:
+            target.member_id = member
+            fields.append("member")
+        if fields:
+            target.save(update_fields=fields)
+    return {
+        "employee": target,
+        "deleted": name,
+        "attendance": moved + dropped,
+        "same_day": dropped,
+        "points": points,
+        "leaves": leaves,
+        "wins": wins,
+    }
+
+
 def delete_leave(number: int) -> bool:
     return bool(Leave.objects.filter(number=int(number)).delete()[0])
 

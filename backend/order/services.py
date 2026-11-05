@@ -269,7 +269,7 @@ def create_order(*, count_days=None, author=None, **fields):
     from call_center.constants import SolutionChoice
     from core.exceptions import ServiceError
     from core.geo import make_point
-    from metering.constants import MeteringStatus
+    from metering.constants import ClientResult, MeteringStatus, OfferStage
 
     from .constants import DEFAULT_FACTORY_NAME
     from .models import Factory, Order
@@ -283,10 +283,17 @@ def create_order(*, count_days=None, author=None, **fields):
         design = getattr(metering, "design", None)
         if metering.status == MeteringStatus.dont_need:
             raise ServiceError("O'lchov bekor qilingan — buyurtma yaratib bo'lmaydi")
-        if design is None or not design.done:
-            raise ServiceError("Dizayn hali tayyor emas — avval dizaynni bajaring")
-        if design_type is None or design_type.design_id != design.pk:
-            raise ServiceError("Shu o'lchov dizaynidan variant tanlang")
+        if metering.client_result in (ClientResult.design_declined, ClientResult.price_declined):
+            raise ServiceError("Mijoz rad etgan — buyurtma yaratib bo'lmaydi")
+        if design is None and metering.next_step == "price" and design_type is None:
+            pass  # «Faqat narx»: the client wants no design
+        else:
+            if design is None or not design.done:
+                raise ServiceError("Dizayn hali tayyor emas — avval dizaynni bajaring")
+            if design.stage != OfferStage.approved:
+                raise ServiceError("Dizayn mijoz tomonidan tasdiqlanmagan")
+            if design_type is None or design_type.design_id != design.pk:
+                raise ServiceError("Shu o'lchov dizaynidan variant tanlang")
         fields.setdefault("client", metering.client)
 
     # location: this call's own, else the metering's (point, pasted link, address)

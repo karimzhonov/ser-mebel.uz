@@ -1,6 +1,7 @@
 SMS_METERING_ASSIGNED = "{xodim_ism}, sizga yangi zamer tayinlandi. Mijoz: {mijoz_ism}, tel: {mijoz_tel}. Manzil: {manzil}. Sana: {sana}, soat: {vaqt}\n{url}"
 SMS_DESIGN_ASSIGNED = "{xodim_ism}, sizga yangi loyiha tushdi (buyurtma №{buyurtma_raqami}). Zamer natijalari tizimda\n{url}"
 SMS_DESIGN_READY = "{xodim_ism}, {mijoz_ism} dizayni tayyor\n{url}"
+SMS_PRICE_READY = "{xodim_ism}, {mijoz_ism} narxi tayyor\n{url}"
 SMS_PRICE_NEEDED = (
     "{xodim_ism}, buyurtma №{buyurtma_raqami} bo'yicha narx-hisob chiqarish kerak.\n{url}"
 )

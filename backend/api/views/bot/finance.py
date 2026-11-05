@@ -512,7 +512,7 @@ class MonthReportView(BotAPIView):
 
     def post(self, request):
         me = self.require_active()
-        if me.is_task_only:
+        if not me.has_wallet:
             raise PermissionDenied("Siz oylik hisob topshirmaysiz.")
         ym = str(request.data.get("month") or S.month_report_target(me))
         if not _YM.match(ym) or ym > cur_month():

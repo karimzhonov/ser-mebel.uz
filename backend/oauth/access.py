@@ -74,6 +74,14 @@ SECTIONS: tuple[Section, ...] = (
         edit=False,
         hint="Hamma xodimlarning vazifalarini ko'radi va filtrlaydi",
     ),
+    Section(
+        "flag_call_center",
+        "Sotuv",
+        "Call-center operatori",
+        (),
+        edit=False,
+        hint="Arizalar va telefon ishlari uning ro'yxatida chiqadi. «Call-center»da «O'zgartirish» ham kerak",
+    ),
     Section("clients", "Sotuv", "Mijozlar", ("client.client",)),
     Section(
         "meterings",
@@ -82,7 +90,31 @@ SECTIONS: tuple[Section, ...] = (
         ("metering.metering",),
         extra=("metering.change_status",),
     ),
+    Section(
+        "metering_measurer",
+        "O'lchov",
+        "Zamerchi",
+        (),
+        edit=False,
+        hint="Zamerlar unga biriktiriladi, bot eslatib turadi. «O'lchovlar»da kamida «Ko'rish» ham kerak",
+    ),
+    Section(
+        "metering_manager",
+        "O'lchov",
+        "Bosh menejer (zamer, dizayn, narx)",
+        (),
+        edit=False,
+        hint="Hamma zamer, dizayn va narx ishlarini ko'radi, ijrochi va muddatni o'zgartiradi, bosh sahifada umumiy ko'rinish",
+    ),
     Section("designs", "O'lchov", "Dizayn", ("design.design", "design.designtype")),
+    Section(
+        "design_designer",
+        "O'lchov",
+        "Dizayner",
+        (),
+        edit=False,
+        hint="Dizaynlar unga biriktiriladi, bot eslatadi. «Dizayn»da «O'zgartirish» ham kerak",
+    ),
     Section(
         "prices",
         "O'lchov",
@@ -98,6 +130,14 @@ SECTIONS: tuple[Section, ...] = (
         ),
         reads=CATALOG,
         hint="Katalogni ham ko'radi (narx tanlash uchun)",
+    ),
+    Section(
+        "metering_presenter",
+        "O'lchov",
+        "Menejer (dizayn/narxni mijozga ko'rsatadi)",
+        (),
+        edit=False,
+        hint="Dizayn va Narx hisoblashda kamida «Ko'rish» ham kerak",
     ),
     Section("catalog", "O'lchov", "Mahsulotlar (katalog)", CATALOG),
     Section(
@@ -127,6 +167,38 @@ SECTIONS: tuple[Section, ...] = (
         ("assembly.assembly",),
         extra=("assembly.manager",),
         hint="O'zgartirish = menejer: hamma ishlarni ko'radi va taqsimlaydi",
+    ),
+    Section(
+        "flag_detailing",
+        "Buyurtmalar",
+        "Konstruktor (detalirovka ijrochisi)",
+        (),
+        edit=False,
+        hint="Detalirovka vazifalari unga biriktiriladi va Telegram'ga xabar boradi",
+    ),
+    Section(
+        "flag_rover",
+        "Buyurtmalar",
+        "Rover (ijrochi)",
+        (),
+        edit=False,
+        hint="Rover vazifalari va Telegram xabarlari",
+    ),
+    Section(
+        "flag_painter",
+        "Buyurtmalar",
+        "Molyar (ijrochi)",
+        (),
+        edit=False,
+        hint="Bo'yash vazifalari va Telegram xabarlari",
+    ),
+    Section(
+        "flag_assembly",
+        "Buyurtmalar",
+        "Sborkachi (ijrochi)",
+        (),
+        edit=False,
+        hint="Yig'ish vazifalari unga biriktiriladi va Telegram xabarlari",
     ),
     Section("factories", "Buyurtmalar", "Zavodlar", ("order.factory",)),
     Section(
@@ -199,6 +271,15 @@ _SINGLE = {
     "order_price": "order.view_order_price",
     "finance_all": "accounting.view_all_operations",
     "call_center_manager": "call_center.manage_invoice",
+    "flag_call_center": "oauth.user_call_center",
+    "flag_detailing": "oauth.user_detailing",
+    "flag_rover": "oauth.user_rover",
+    "flag_painter": "oauth.user_painter",
+    "flag_assembly": "oauth.user_assembly",
+    "metering_measurer": "oauth.user_metering",
+    "metering_manager": "metering.manage_metering",
+    "design_designer": "oauth.user_design",
+    "metering_presenter": "metering.present_to_client",
 }
 
 
@@ -228,6 +309,23 @@ def _names(qs) -> set[str]:
     return {f"{a}.{c}" for a, c in qs.values_list("content_type__app_label", "codename")}
 
 
+def _sections_report(own: set[str], groups: set[str]) -> list[dict]:
+    return [
+        {
+            "key": s.key,
+            "title": s.title,
+            "label": s.label,
+            "hint": s.hint,
+            "can_edit": s.edit,
+            # one yes/no permission (shown as «Yo'q / Ha» instead of «Ko'rish»)
+            "is_flag": s.key in _SINGLE,
+            "level": _level(s, own),
+            "from_groups": _level(s, groups),
+        }
+        for s in SECTIONS
+    ]
+
+
 def access(user) -> dict:
     from warehouse.services import is_keeper
 
@@ -236,19 +334,43 @@ def access(user) -> dict:
     return {
         "is_superuser": user.is_superuser,
         "is_keeper": is_keeper(user),
-        "sections": [
-            {
-                "key": s.key,
-                "title": s.title,
-                "label": s.label,
-                "hint": s.hint,
-                "can_edit": s.edit,
-                "level": _level(s, own),
-                "from_groups": _level(s, groups),
-            }
-            for s in SECTIONS
-        ],
+        "sections": _sections_report(own, groups),
     }
+
+
+def _validate_levels(levels: dict) -> dict:
+    by_key = {s.key: s for s in SECTIONS}
+    for key, lvl in levels.items():
+        if key not in by_key:
+            raise ServiceError(f"Noma'lum bo'lim: {key}")
+        if lvl not in LEVELS or (lvl == "edit" and not by_key[key].edit):
+            raise ServiceError(f"«{by_key[key].label}»: noto'g'ri daraja")
+    return by_key
+
+
+def _wanted(levels: dict, own: set[str], by_key: dict) -> tuple[set[str], set[str]]:
+    """(the permission names to hold after, the ones this change grants)."""
+    target = {s.key: levels.get(s.key) or _level(s, own) for s in SECTIONS}
+    drop = set().union(*(by_key[k].all_perms() | _view(by_key[k]) for k in levels))
+    keep = set().union(
+        *(_required(s, target[s.key]) for s in SECTIONS if target[s.key] in ("view", "edit"))
+    )
+    return (own - drop) | keep, keep
+
+
+def _perm_objects(names: set[str]) -> dict:
+    return {
+        f"{p.content_type.app_label}.{p.codename}": p
+        for p in Permission.objects.select_related("content_type").filter(
+            content_type__app_label__in={x.split(".")[0] for x in names}
+        )
+    }
+
+
+def _forget_perm_cache(user) -> None:
+    # Django caches permissions on the instance
+    for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+        user.__dict__.pop(attr, None)
 
 
 def set_access(user, levels: dict) -> dict:
@@ -263,33 +385,46 @@ def set_access(user, levels: dict) -> dict:
         raise ServiceError(
             "Bu xodim — omborchi. Uning huquqlari Ombor → Omborchi sahifasida boshqariladi."
         )
-    by_key = {s.key: s for s in SECTIONS}
-    for key, lvl in levels.items():
-        if key not in by_key:
-            raise ServiceError(f"Noma'lum bo'lim: {key}")
-        if lvl not in LEVELS or (lvl == "edit" and not by_key[key].edit):
-            raise ServiceError(f"«{by_key[key].label}»: noto'g'ri daraja")
-
+    by_key = _validate_levels(levels)
     own = _names(user.user_permissions.all())
-    target = {s.key: levels.get(s.key) or _level(s, own) for s in SECTIONS}
-    drop = set().union(*(by_key[k].all_perms() | _view(by_key[k]) for k in levels))
-    keep = set().union(
-        *(_required(s, target[s.key]) for s in SECTIONS if target[s.key] in ("view", "edit"))
-    )
-    wanted = (own - drop) | keep
-
-    perms = {
-        f"{p.content_type.app_label}.{p.codename}": p
-        for p in Permission.objects.select_related("content_type").filter(
-            content_type__app_label__in={x.split(".")[0] for x in wanted | own}
-        )
-    }
+    wanted, keep = _wanted(levels, own, by_key)
+    perms = _perm_objects(wanted | own)
     with transaction.atomic():
         user.user_permissions.set([perms[x] for x in wanted if x in perms])
         if keep and not user.is_staff:
             user.is_staff = True  # a section without panel login would be useless
             user.save(update_fields=["is_staff"])
-    # Django caches permissions on the instance
-    for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
-        user.__dict__.pop(attr, None)
+    _forget_perm_cache(user)
     return access(user)
+
+
+# --- Groups = roles: the same sections, stored on group.permissions --------------------
+
+
+def group_access(group) -> dict:
+    """The group's section levels (same payload as access(); `from_groups` is none)."""
+    own = _names(group.permissions.all())
+    return {
+        "is_superuser": False,
+        "is_keeper": False,
+        "sections": _sections_report(own, set()),
+    }
+
+
+def set_group_access(group, levels: dict) -> dict:
+    """Like set_access, on the group's permissions. Members who must now log in to the
+    panel become staff."""
+    from oauth.services import _refuse_keeper
+
+    _refuse_keeper(group)
+    by_key = _validate_levels(levels)
+    own = _names(group.permissions.all())
+    wanted, keep = _wanted(levels, own, by_key)
+    perms = _perm_objects(wanted | own)
+    with transaction.atomic():
+        group.permissions.set([perms[x] for x in wanted if x in perms])
+        if wanted:
+            group.user_set.filter(is_staff=False).update(is_staff=True)
+    for member in group.user_set.all():
+        _forget_perm_cache(member)
+    return group_access(group)

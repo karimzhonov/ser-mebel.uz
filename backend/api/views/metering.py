@@ -15,9 +15,16 @@ from call_center.models import Invoice
 from client.models import Client
 from core.exceptions import ServiceError
 from core.geo import UNSET
+from metering import services as metering_services
 from metering.constants import MeteringStatus
 from metering.design.models import Design, DesignType
-from metering.design.services import add_design_type, mark_design_done
+from metering.design.services import (
+    add_design_type,
+    mark_design_done,
+    record_design_answer,
+    set_design_due,
+    set_designer,
+)
 from metering.models import Metering
 from metering.price.models import (
     Calculate,
@@ -39,52 +46,80 @@ from metering.price.services import (
     delete_room_image,
     mark_price_done,
     move_inventory_type,
+    record_price_answer,
     rename_room,
     reorder_rooms,
     retire_object_type,
     save_calculation,
     save_version,
     set_image_furniture,
+    set_price_due,
+    set_pricer,
     split_inventory_type,
     version_offer_data,
 )
 from metering.services import (
     assign_metering_tasks,
+    cancel_metering,
     create_metering,
+    default_designer,
+    default_manager,
+    default_measurer,
     designers,
-    mark_metering_done,
-    mark_metering_dont_need,
-    mark_metering_other_day,
+    finish_metering,
+    managers,
+    mark_metering_measured,
+    measurers,
+    metering_agenda,
+    metering_files,
     metering_is_editable,
+    metering_queryset_for,
+    offer_agenda,
+    offer_defaults,
+    offer_queryset_for,
+    presentations,
     pricers,
+    reschedule_metering,
+    save_metering_files,
     set_metering_location,
+    set_metering_measurer,
     start_design,
     start_price,
 )
-from oauth.constants import METERING_PERMISSION
 
+from ..fields import MoneyField
 from ..permissions import IsStaffUser, ModelPermissions, require_perm
 from ..serializers.common import LocationSetSerializer, UserShortSerializer
 from ..serializers.metering import (
     AssignTasksSerializer,
     CalculationInputSerializer,
+    DesignDetailSerializer,
     DesignSerializer,
     DesignTypeSerializer,
+    DontNeedSerializer,
+    FinishSerializer,
     InventorySerializer,
     InventoryTypeSerializer,
     MeteringCreateSerializer,
     MeteringDetailSerializer,
     MeteringSerializer,
+    MeteringShortSerializer,
     MeteringUpdateSerializer,
     ObjectTypeSerializer,
+    OfferAnswerInputSerializer,
+    OfferDueSerializer,
+    OfferPersonSerializer,
     OtherDaySerializer,
     PriceDetailSerializer,
     PriceSerializer,
     RoomInputSerializer,
     RoomTypeSerializer,
+    SetMeasurerSerializer,
     can_assign_tasks,
 )
+from ..serializers.offers import offer_brief
 from ..utils import apply_period, csv_values, int_param, timeseries
+from .files import _file_row
 
 
 def _bool_param(value):
@@ -99,10 +134,34 @@ def _assignee_filter(qs, request):
     """?mine=1 — tasks assigned to me; ?user=<id> — tasks of one executor."""
     if _bool_param(request.query_params.get("mine")):
         qs = qs.filter(user=request.user)
+    if request.query_params.get("user") == "me":
+        return qs.filter(user=request.user)
     user = int_param(request.query_params, "user")
     if user is not None:
         qs = qs.filter(user_id=user)
     return qs
+
+
+def _presentation_row(row, ctx):
+    """One «Mijozga ko'rsatish» row: serialized metering + design / price briefs."""
+    from ..serializers.metering import _user
+
+    m = row["metering"]
+    design, price = row["design"], row["price"]
+    design_brief = offer_brief(design, "design", ctx)
+    if design_brief is not None:
+        design_brief["types"] = DesignTypeSerializer(design.designtype_set.all(), many=True).data
+    price_brief = offer_brief(price, "price", ctx)
+    if price_brief is not None:
+        price_brief["price"] = MoneyField().to_representation(price.price)
+    return {
+        "metering": MeteringShortSerializer(m, context=ctx).data,
+        "design": design_brief,
+        "price": price_brief,
+        "manager": _user(m.manager),
+        "waiting_for": row["waiting_for"],
+        "is_overdue": row["is_overdue"],
+    }
 
 
 class MeteringViewSet(viewsets.ModelViewSet):
@@ -112,6 +171,12 @@ class MeteringViewSet(viewsets.ModelViewSet):
     ordering = ["-date_time"]
     http_method_names = ["get", "post", "patch", "head", "options"]
 
+    def get_permissions(self):
+        # these check their own (offer) permissions: view_metering is not required
+        if self.action in ("presentations", "assignees"):
+            return [IsStaffUser()]
+        return super().get_permissions()
+
     def get_serializer_class(self):
         if self.action == "retrieve":
             return MeteringDetailSerializer
@@ -120,14 +185,36 @@ class MeteringViewSet(viewsets.ModelViewSet):
         return MeteringSerializer
 
     def base_queryset(self):
-        qs = Metering.objects.select_related("client", "design__user", "price__user", "order")
+        qs = Metering.objects.select_related(
+            "client",
+            "design__user",
+            "price__user",
+            "order",
+            "measurer",
+            "manager",
+            "created_by",
+            "invoice__assigned_to",
+        ).prefetch_related("offer_answers")
         return apply_period(qs, "create_date", self.request.query_params)
 
     def get_queryset(self):
-        qs = self.base_queryset()
-        statuses = csv_values(self.request.query_params.get("status"))
+        qs = metering_queryset_for(self.request.user, self.base_queryset())
+        params = self.request.query_params
+        statuses = csv_values(params.get("status"))
         if statuses:
             qs = qs.filter(status__in=statuses)
+        return self._by_measurer(qs)
+
+    def _by_measurer(self, qs):
+        """?measurer=<id>|me"""
+        value = self.request.query_params.get("measurer")
+        if value == "me":
+            return qs.filter(measurer=self.request.user)
+        if value not in (None, ""):
+            try:
+                return qs.filter(measurer_id=int(value))
+            except ValueError:
+                return qs.none()
         return qs
 
     def _detail(self, metering, code=status.HTTP_200_OK):
@@ -145,13 +232,17 @@ class MeteringViewSet(viewsets.ModelViewSet):
         fio = (data.pop("client_fio", "") or "").strip()
         invoice_id = data.pop("invoice", None)
         invoice = get_object_or_404(Invoice, pk=invoice_id) if invoice_id else None
+        measurer_id = data.pop("measurer", None)
+        measurer = get_object_or_404(get_user_model(), pk=measurer_id) if measurer_id else None
         with transaction.atomic():  # no orphan client if the metering is refused
             client = Client.objects.filter(phone=phone).first()
             if client is None:
                 if not fio:
                     raise ServiceError("Yangi mijoz uchun F.I.Sh. kiriting")
                 client = Client.objects.create(phone=phone, fio=fio)
-            metering = create_metering(client=client, invoice=invoice, author=request.user, **data)
+            metering = create_metering(
+                client=client, invoice=invoice, author=request.user, measurer=measurer, **data
+            )
         return self._detail(metering, status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):
@@ -181,46 +272,208 @@ class MeteringViewSet(viewsets.ModelViewSet):
         response.data = {**response.data, "short": d["short"]}
         return response
 
-    @action(detail=True, methods=["post"], url_path="dont-need")
+    @action(
+        detail=True, methods=["post"], url_path="dont-need", serializer_class=DontNeedSerializer
+    )
     def dont_need(self, request, pk=None):
-        require_perm(request.user, "metering.change_metering")
-        return self._detail(mark_metering_dont_need(self.get_object()))
+        """Cancel the zamer: {reason}. The lead goes back to its operator as a call task."""
+        serializer = DontNeedSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        metering, returned = cancel_metering(
+            self.get_object(), by=request.user, reason=serializer.validated_data["reason"]
+        )
+        response = self._detail(metering)
+        response.data["lead_returned"] = returned
+        return response
 
     @action(
         detail=True, methods=["post"], url_path="other-day", serializer_class=OtherDaySerializer
     )
     def other_day(self, request, pk=None):
-        require_perm(request.user, "metering.change_metering")
+        """Move the zamer to another time: {date_time} (required)."""
         serializer = OtherDaySerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        metering = mark_metering_other_day(
-            self.get_object(), serializer.validated_data.get("date_time")
+        metering = reschedule_metering(
+            self.get_object(), by=request.user, date_time=serializer.validated_data["date_time"]
         )
         return self._detail(metering)
 
     @action(detail=True, methods=["post"], url_path="metering-done")
     def metering_done(self, request, pk=None):
-        require_perm(request.user, f"oauth.{METERING_PERMISSION}")
-        return self._detail(mark_metering_done(self.get_object()))
+        """«O'lchov oldim»: the measurer (or a zamer manager) took the measurements."""
+        return self._detail(mark_metering_measured(self.get_object(), by=request.user))
+
+    @action(detail=True, methods=["post"], serializer_class=FinishSerializer)
+    def finish(self, request, pk=None):
+        """«Bajarildi»: {note, next_step: design_price|price, designer?, pricer?, manager,
+        design_due_at?, price_due_at?} - needs at least one uploaded file."""
+        serializer = FinishSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d = serializer.validated_data
+        User = get_user_model()
+        designer = get_object_or_404(User, pk=d["designer"]) if d.get("designer") else None
+        pricer = get_object_or_404(User, pk=d["pricer"]) if d.get("pricer") else None
+        manager = get_object_or_404(User, pk=d["manager"]) if d.get("manager") else None
+        result = finish_metering(
+            self.get_object(),
+            by=request.user,
+            note=d["note"],
+            next_step=d["next_step"],
+            designer=designer,
+            pricer=pricer,
+            manager=manager,
+            design_due_at=d.get("design_due_at"),
+            price_due_at=d.get("price_due_at"),
+        )
+        response = self._detail(result["metering"])
+        response.data["assigned"] = result["assigned"]
+        return response
+
+    @action(detail=True, methods=["post"], serializer_class=SetMeasurerSerializer)
+    def measurer(self, request, pk=None):
+        """Hand the zamer to another measurer: {measurer}."""
+        serializer = SetMeasurerSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = get_object_or_404(get_user_model(), pk=serializer.validated_data["measurer"])
+        return self._detail(
+            set_metering_measurer(self.get_object(), measurer=user, by=request.user)
+        )
+
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def files(self, request, pk=None):
+        """GET: files of the metering folder tree. POST multipart `file`: upload (one file
+        per request from the SPA, so a big video shows real progress)."""
+        metering = self.get_object()
+        if request.method == "POST":
+            uploads = request.FILES.getlist("file")
+            if not uploads:
+                raise ServiceError("Fayl tanlang", "files")
+            created = save_metering_files(metering, uploads, by=request.user)
+            return Response([_file_row(f) for f in created], status=status.HTTP_201_CREATED)
+        rows = metering_files(metering).order_by("-uploaded_at")
+        return Response([_file_row(f) for f in rows])
+
+    @action(detail=False, methods=["get"])
+    def measurers(self, request):
+        """Who can be picked as the measurer: {items: [UserShort], default: id|null}."""
+        if not (
+            request.user.has_perm("metering.add_metering")
+            or request.user.has_perm("metering.change_metering")
+            or request.user.has_perm("metering.manage_metering")
+        ):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+        default = default_measurer()
+        items = UserShortSerializer(measurers(), many=True).data
+        body = {"items": items, "default": default.pk if default else None}
+        if not items:
+            body["hint"] = (
+                "Zamerchi yo'q: xodimga «Metering» (user_metering) huquqini bering. "
+                "Hozircha zamer zamerchisiz yaratiladi."
+            )
+        return Response(body)
+
+    @action(detail=False, methods=["get"])
+    def agenda(self, request):
+        """The «Zamerlar» day agenda: counts + overdue / today / tomorrow / week / waiting."""
+        qs = metering_queryset_for(request.user, self.base_queryset())
+        qs = self._by_measurer(qs)
+        search = (request.query_params.get("search") or "").strip()
+        if search:
+            from django.db.models import Q
+
+            qs = qs.filter(
+                Q(client__fio__icontains=search)
+                | Q(client__phone__icontains=search)
+                | Q(address__icontains=search)
+            )
+        data = metering_agenda(qs, now=metering_services._now())
+        ctx = self.get_serializer_context()
+        out = {"counts": data["counts"]}
+        for key in ("overdue", "today", "tomorrow", "week", "waiting"):
+            out[key] = MeteringSerializer(data[key], many=True, context=ctx).data
+        return Response(out)
 
     @action(detail=True, methods=["post"], url_path="create-design")
     def create_design(self, request, pk=None):
         require_perm(request.user, "design.add_design")
         metering = self.get_object()
-        start_design(metering)
+        start_design(metering, by=request.user)
         return self._detail(metering)
 
     @action(detail=False, methods=["get"])
     def assignees(self, request):
-        """Who can be picked in "Назначить исполнителей"."""
-        if not can_assign_tasks(request.user):
+        """Who can be picked in "Назначить исполнителей" and «Bajarildi»: designers,
+        pricers, managers (+ the preselected one), and the default deadlines."""
+        user = request.user
+        if not (
+            can_assign_tasks(user)
+            or user.has_perm("metering.manage_metering")
+            or user.has_perm("metering.present_to_client")
+        ):
             raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
-        return Response(
-            {
-                "designers": UserShortSerializer(designers(), many=True).data,
-                "pricers": UserShortSerializer(pricers(), many=True).data,
-            }
+        manager_list = list(managers())
+        default = default_manager()
+        designer = default_designer()
+        body = {
+            "designers": UserShortSerializer(designers(), many=True).data,
+            "pricers": UserShortSerializer(pricers(), many=True).data,
+            "managers": UserShortSerializer(manager_list, many=True).data,
+            "default_manager": default.pk if default else None,
+            "default_designer": designer.pk if designer else None,
+            "defaults": {
+                k: (v.isoformat() if hasattr(v, "isoformat") else v)
+                for k, v in offer_defaults(metering_services._now()).items()
+            },
+        }
+        if not body["designers"]:
+            body["designer_hint"] = (
+                "Dizayner yo'q — Xodimlar → Lavozimlar: «Dizayner» lavozimiga xodim qo'shing"
+            )
+        if not body["pricers"]:
+            body["pricer_hint"] = (
+                "Menejer yo'q — narxni menejer hisoblaydi. Xodimlar → Lavozimlar: "
+                "«Menejer» yoki «Bosh menejer» lavozimiga xodim qo'shing"
+            )
+        if not manager_list:
+            body["hint"] = (
+                "Menejer yo'q — Xodimlar → Lavozimlar: «Menejer» yoki «Bosh menejer» "
+                "lavozimiga xodim qo'shing. Usiz zamerni yakunlab bo'lmaydi."
+            )
+        return Response(body)
+
+    @action(detail=False, methods=["get"])
+    def presentations(self, request):
+        """«Mijozga ko'rsatish»: ?manager=me|<id>&search= -> {counts, review, working,
+        order_ready}; row = {metering, design, price, manager, waiting_for, is_overdue}."""
+        user = request.user
+        if not (
+            user.is_superuser
+            or user.has_perm("metering.present_to_client")
+            or user.has_perm("metering.manage_metering")
+        ):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+        wanted = request.query_params.get("manager")
+        if wanted == "me":
+            wanted = user.pk
+        else:
+            wanted = int_param(request.query_params, "manager")
+        data = presentations(
+            user,
+            now=metering_services._now(),
+            manager=wanted,
+            search=request.query_params.get("search") or "",
         )
+        ctx = self.get_serializer_context()
+        out = {
+            key: [_presentation_row(r, ctx) for r in data[key]]
+            for key in ("review", "working", "order_ready")
+        }
+        out["counts"] = data["counts"]
+        return Response(out)
 
     @action(detail=True, methods=["post"], serializer_class=AssignTasksSerializer)
     def assign(self, request, pk=None):
@@ -234,7 +487,7 @@ class MeteringViewSet(viewsets.ModelViewSet):
         User = get_user_model()
         designer = get_object_or_404(User, pk=ids["designer"]) if ids.get("designer") else None
         pricer = get_object_or_404(User, pk=ids["pricer"]) if ids.get("pricer") else None
-        result = assign_metering_tasks(metering, designer=designer, pricer=pricer)
+        result = assign_metering_tasks(metering, designer=designer, pricer=pricer, by=request.user)
         response = self._detail(metering)
         response.data["assigned"] = result
         return response
@@ -243,13 +496,13 @@ class MeteringViewSet(viewsets.ModelViewSet):
     def create_price(self, request, pk=None):
         require_perm(request.user, "price.add_price")
         metering = self.get_object()
-        start_price(metering)
+        start_price(metering, by=request.user)
         return self._detail(metering)
 
     @action(detail=False, methods=["get"])
     def stats(self, request):
         """Counts per status (the admin MeteringStatusBanner) + the line chart."""
-        qs = self.filter_queryset(self.base_queryset())
+        qs = self.filter_queryset(metering_queryset_for(request.user, self.base_queryset()))
         counts = {
             row["status"]: row["c"]
             for row in qs.order_by().values("status").annotate(c=Count("pk"))
@@ -265,32 +518,125 @@ class MeteringViewSet(viewsets.ModelViewSet):
         )
 
 
+def _offer_agenda_response(view, request, qs, kind):
+    """GET agenda/: counts + overdue / today / work / review rows
+    (?user=<id>|me, ?search=)."""
+    from django.db.models import Q
+
+    qs = offer_queryset_for(request.user, qs, kind=kind)
+    who = request.query_params.get("user")
+    if who == "me":
+        qs = qs.filter(user=request.user)
+    elif who not in (None, ""):  # (validated by _assignee_filter via the permission check)
+        qs = qs.filter(user_id=int_param(request.query_params, "user") or 0)
+    search = (request.query_params.get("search") or "").strip()
+    if search:
+        qs = qs.filter(
+            Q(metering__client__fio__icontains=search)
+            | Q(metering__client__phone__icontains=search)
+            | Q(metering__address__icontains=search)
+        )
+    data = offer_agenda(qs, now=metering_services._now())
+    ctx = view.get_serializer_context()
+    out = {"counts": data["counts"]}
+    for key in ("overdue", "today", "work", "review"):
+        out[key] = view.get_serializer_class()(data[key], many=True, context=ctx).data
+    return Response(out)
+
+
 class DesignViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
     """Designs are only created from a metering (MeteringViewSet.create_design)."""
 
     serializer_class = DesignSerializer
     permission_classes = [ModelPermissions]
     search_fields = ["metering__client__fio", "metering__client__phone"]
-    ordering_fields = ["created_at"]
+    ordering_fields = ["created_at", "due_at"]
     ordering = ["-created_at"]
+
+    def get_serializer_class(self):
+        return (
+            DesignDetailSerializer
+            if self.action != "list" and self.action != "agenda"
+            else DesignSerializer
+        )
 
     def get_queryset(self):
         qs = Design.objects.select_related(
-            "metering__client", "metering__order", "user"
-        ).prefetch_related("designtype_set")
+            "metering__client",
+            "metering__order",
+            "metering__manager",
+            "metering__measurer",
+            "user",
+        ).prefetch_related("designtype_set", "metering__offer_answers")
         params = self.request.query_params
         qs = _assignee_filter(qs, self.request)
         for field in ("done", "confirm"):
             value = _bool_param(params.get(field))
             if value is not None:
                 qs = qs.filter(**{field: value})
+        stages = csv_values(params.get("stage"))
+        if stages:
+            qs = qs.filter(stage__in=stages)
         return apply_period(qs, "created_at", params)
+
+    def _detail(self, design):
+        design = self.get_queryset().get(pk=design.pk)
+        return Response(DesignDetailSerializer(design, context=self.get_serializer_context()).data)
+
+    @action(detail=False, methods=["get"])
+    def agenda(self, request):
+        return _offer_agenda_response(
+            self,
+            request,
+            Design.objects.select_related(
+                "metering__client",
+                "metering__order",
+                "metering__manager",
+                "metering__measurer",
+                "user",
+            ).prefetch_related("designtype_set", "metering__offer_answers"),
+            "design",
+        )
 
     @action(detail=True, methods=["post"])
     def done(self, request, pk=None):
         require_perm(request.user, "design.change_design")
-        design = mark_design_done(self.get_object())
-        return Response(self.get_serializer(design).data)
+        return self._detail(mark_design_done(self.get_object(), by=request.user))
+
+    @action(detail=True, methods=["post"], serializer_class=OfferDueSerializer)
+    def due(self, request, pk=None):
+        """Move the deadline: {due_at}."""
+        body = OfferDueSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        set_design_due(self.get_object(), by=request.user, due_at=body.validated_data["due_at"])
+        return self._detail(self.get_object())
+
+    @action(detail=True, methods=["post"], serializer_class=OfferPersonSerializer)
+    def designer(self, request, pk=None):
+        """Hand the design to another designer: {user}."""
+        body = OfferPersonSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        user = get_object_or_404(get_user_model(), pk=body.validated_data["user"])
+        set_designer(self.get_object(), by=request.user, user=user)
+        return self._detail(self.get_object())
+
+    @action(detail=True, methods=["post"], serializer_class=OfferAnswerInputSerializer)
+    def answer(self, request, pk=None):
+        """The client's answer, recorded by the manager: {answer: approved|changes|declined,
+        comment?, due_at?}."""
+        body = OfferAnswerInputSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        d = body.validated_data
+        result = record_design_answer(
+            self.get_object(),
+            by=request.user,
+            answer=d["answer"],
+            comment=d["comment"],
+            due_at=d["due_at"],
+        )
+        response = self._detail(result["task"])
+        response.data["closed_tasks"] = result["closed_tasks"]
+        return response
 
     @action(detail=True, methods=["post"], serializer_class=DesignTypeSerializer)
     def types(self, request, pk=None):
@@ -300,8 +646,7 @@ class DesignViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
         serializer = DesignTypeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         add_design_type(design, serializer.validated_data["name"])
-        design = self.get_queryset().get(pk=design.pk)
-        return Response(DesignSerializer(design, context=self.get_serializer_context()).data)
+        return self._detail(design)
 
 
 class DesignTypeViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
@@ -335,25 +680,77 @@ class PriceViewSet(viewsets.ModelViewSet):
         return PriceSerializer
 
     def get_queryset(self):
-        qs = Price.objects.select_related("metering__client", "metering__order", "user")
+        qs = self._base()
         params = self.request.query_params
         qs = _assignee_filter(qs, self.request)
         done = _bool_param(params.get("done"))
         if done is not None:
             qs = qs.filter(done=done)
+        stages = csv_values(params.get("stage"))
+        if stages:
+            qs = qs.filter(stage__in=stages)
         has_metering = _bool_param(params.get("has_metering"))
         if has_metering is not None:
             qs = qs.filter(metering__isnull=not has_metering)
         return apply_period(qs, "created_at", params)
 
+    @staticmethod
+    def _base():
+        return Price.objects.select_related(
+            "metering__client",
+            "metering__order",
+            "metering__manager",
+            "metering__measurer",
+            "user",
+        ).prefetch_related("metering__offer_answers")
+
     def _detail(self, price):
         price = self.get_queryset().get(pk=price.pk)
         return Response(PriceDetailSerializer(price, context=self.get_serializer_context()).data)
 
+    @action(detail=False, methods=["get"])
+    def agenda(self, request):
+        return _offer_agenda_response(self, request, self._base(), "price")
+
     @action(detail=True, methods=["post"])
     def done(self, request, pk=None):
         require_perm(request.user, "price.change_price")
-        return self._detail(mark_price_done(self.get_object()))
+        return self._detail(mark_price_done(self.get_object(), by=request.user))
+
+    @action(detail=True, methods=["post"], serializer_class=OfferDueSerializer)
+    def due(self, request, pk=None):
+        """Move the deadline: {due_at}."""
+        body = OfferDueSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        set_price_due(self.get_object(), by=request.user, due_at=body.validated_data["due_at"])
+        return self._detail(self.get_object())
+
+    @action(detail=True, methods=["post"], serializer_class=OfferPersonSerializer)
+    def pricer(self, request, pk=None):
+        """Hand the calculation to another person: {user}."""
+        body = OfferPersonSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        user = get_object_or_404(get_user_model(), pk=body.validated_data["user"])
+        set_pricer(self.get_object(), by=request.user, user=user)
+        return self._detail(self.get_object())
+
+    @action(detail=True, methods=["post"], serializer_class=OfferAnswerInputSerializer)
+    def answer(self, request, pk=None):
+        """The client's answer, recorded by the manager: {answer: approved|recalc|declined,
+        comment?, due_at?}."""
+        body = OfferAnswerInputSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        d = body.validated_data
+        result = record_price_answer(
+            self.get_object(),
+            by=request.user,
+            answer=d["answer"],
+            comment=d["comment"],
+            due_at=d["due_at"],
+        )
+        response = self._detail(result["task"])
+        response.data["closed_tasks"] = result["closed_tasks"]
+        return response
 
     @action(detail=True, methods=["get"])
     def excel(self, request, pk=None):

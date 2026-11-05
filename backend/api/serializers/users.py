@@ -42,9 +42,28 @@ class MeSerializer(serializers.ModelSerializer):
 
 
 class GroupSerializer(serializers.ModelSerializer):
+    """A role. `member_count` is the head count (annotated by the viewset)."""
+
+    member_count = serializers.IntegerField(source="n_members", read_only=True, default=0)
+    locked = serializers.SerializerMethodField()
+
     class Meta:
         model = Group
-        fields = ["id", "name"]
+        fields = ["id", "name", "member_count", "locked"]
+
+    def get_locked(self, obj) -> bool:
+        """The omborchi role is managed on the Ombor page only."""
+        from warehouse.services import KEEPER_GROUP
+
+        return obj.name == KEEPER_GROUP
+
+
+class GroupMemberSerializer(serializers.ModelSerializer):
+    phone = PhoneNumberField(region="UZ", read_only=True)
+
+    class Meta:
+        model = User
+        fields = ["id", "phone", "name", "telegram_id", "is_active"]
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -83,6 +102,9 @@ class UserSerializer(serializers.ModelSerializer):
             user.set_unusable_password()
             user.save(update_fields=["password"])
         user.groups.set(groups)
+        if not user.is_staff and any(g.permissions.exists() for g in groups):
+            user.is_staff = True  # group permissions need panel login
+            user.save(update_fields=["is_staff"])
         return user
 
     def update(self, instance, validated_data):
@@ -97,6 +119,13 @@ class UserSerializer(serializers.ModelSerializer):
                 )
         password = validated_data.pop("password", None)
         user = super().update(instance, validated_data)
+        if (
+            "groups" in validated_data
+            and not user.is_staff
+            and any(g.permissions.exists() for g in validated_data["groups"])
+        ):
+            user.is_staff = True
+            user.save(update_fields=["is_staff"])
         if password:
             user.set_password(password)
             user.save(update_fields=["password"])
