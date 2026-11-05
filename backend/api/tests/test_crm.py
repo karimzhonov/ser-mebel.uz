@@ -1,5 +1,7 @@
 """Call-centre CRM: notes, tasks, board, timeline, reminders and the bot channel."""
 
+from api.tests.accesskit import set_levels  # noqa: E402
+
 from datetime import datetime, timedelta
 
 import pytest
@@ -938,20 +940,14 @@ def test_call_center_manager_section(admin_api, make_staff):
     sec = next(s for s in SECTIONS if s.key == "call_center_manager")
     assert sec.edit is False
     u = make_staff()
-    r = admin_api.post(
-        f"/api/v1/users/{u.pk}/access/", {"levels": {"call_center_manager": "view"}}, format="json"
-    )
+    r = set_levels(u, {"call_center_manager": "view"})
     assert r.status_code == 200, r.data
     from oauth.models import User
 
     assert User.objects.get(pk=u.pk).has_perm("call_center.manage_invoice")
-    r = admin_api.post(
-        f"/api/v1/users/{u.pk}/access/", {"levels": {"call_center_manager": "edit"}}, format="json"
-    )
+    r = set_levels(u, {"call_center_manager": "edit"})
     assert r.status_code == 400
-    admin_api.post(
-        f"/api/v1/users/{u.pk}/access/", {"levels": {"call_center_manager": "none"}}, format="json"
-    )
+    set_levels(u, {"call_center_manager": "none"})
     assert not User.objects.get(pk=u.pk).has_perm("call_center.manage_invoice")
     # the call_center section does not leak the new models
     cc = next(s for s in SECTIONS if s.key == "call_center")

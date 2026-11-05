@@ -7,11 +7,14 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from oauth.access import access as section_access
-from oauth.access import group_access, set_access, set_group_access
+from core.exceptions import ServiceError
+from oauth.access import group_access, set_group_access
 from oauth.models import User
 from oauth.services import (
+    PERSONAL_RIGHTS_OFF,
     TEST_MESSAGE_TEXT,
     add_group_member,
+    clear_personal_rights,
     create_group,
     delete_group,
     delete_user,
@@ -32,7 +35,9 @@ from ..serializers.users import GroupMemberSerializer, GroupSerializer, UserSeri
 class UserViewSet(viewsets.ModelViewSet):
     """Staff accounts — superusers only (fine-grained permissions stay in /admin/)."""
 
-    queryset = User.objects.prefetch_related("groups").order_by("name", "phone")
+    queryset = User.objects.prefetch_related("groups", "user_permissions__content_type").order_by(
+        "name", "phone"
+    )
     serializer_class = UserSerializer
     permission_classes = [IsSuperUser]
     search_fields = ["name", "phone"]
@@ -47,11 +52,14 @@ class UserViewSet(viewsets.ModelViewSet):
         only the sections sent."""
         user = self.get_object()
         if request.method == "POST":
-            levels = request.data.get("levels")
-            if not isinstance(levels, dict):
-                raise ValidationError({"levels": "Bo'limlar ro'yxati kerak"})
-            return Response(set_access(user, levels))
+            # owner's rule: rights are given only through the lavozim
+            raise ServiceError(PERSONAL_RIGHTS_OFF)
         return Response(section_access(user))
+
+    @action(detail=True, methods=["post"], url_path="clear-personal-rights")
+    def clear_personal_rights(self, request, pk=None):
+        """Drop the person's own (old per-person) rights; the lavozim's stay."""
+        return Response({"removed": clear_personal_rights(self.get_object())})
 
     @action(detail=True, methods=["post"], url_path="test-message")
     def test_message(self, request, pk=None):

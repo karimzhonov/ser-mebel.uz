@@ -152,3 +152,70 @@ def test_overview_new_blocks_need_their_permissions(api):
     assert data["warehouse"] is None
     assert data["hr"] is None
     assert data["wallets"] is None
+
+
+def _order(db_client, factory, price, paid=None, currency="USD", **kw):
+    from order.models import Order
+
+    t = date.today()
+    return Order.objects.create(
+        client=db_client,
+        reception_date=t,
+        end_date=t + timedelta(days=20),
+        address="x",
+        factory=factory,
+        price=Money(price, "USD"),
+        lost_money=Money(paid, currency) if paid is not None else None,
+        **kw,
+    )
+
+
+def test_underpaid_orders_are_under_65_percent(admin_api, api, db_client, default_factory):
+    """Owner's rule: the first payment is 70% — follow up whoever paid under 65%."""
+    from order.constants import OrderStatus
+
+    none = _order(db_client, default_factory, 1000)  # 0 %
+    low = _order(db_client, default_factory, 1000, 400)  # 40 %
+    _order(db_client, default_factory, 1000, 700)  # 70 %: paid the first payment
+    disc = _order(db_client, default_factory, 1000, 600, discount=10)  # 600/900 = 67 %
+    _order(db_client, default_factory, 1000, 100, currency="UZS")  # can't compare: left out
+    _order(db_client, default_factory, 1000, 0, status=OrderStatus.DONE)  # finished: left out
+    data = admin_api.get("/api/v1/dashboard/overview/").data["underpaid"]
+    assert data["threshold"] == 65 and data["count"] == 2
+    assert [(i["id"], i["paid_pct"]) for i in data["items"]] == [(none.pk, 0), (low.pk, 40)]
+    assert disc.pk not in [i["id"] for i in data["items"]]
+    r = admin_api.get("/api/v1/orders/?underpaid=1")
+    assert {o["id"] for o in r.data["results"]} == {none.pk, low.pk}
+    assert admin_api.get("/api/v1/orders/stats/").data["underpaid"] == 2
+    # money: not without the price permission
+    plain = api("order.view_order")
+    assert plain.get("/api/v1/orders/?underpaid=1").status_code == 403
+    assert plain.get("/api/v1/orders/stats/").data["underpaid"] is None
+    assert plain.get("/api/v1/dashboard/overview/").data["underpaid"] is None
+
+
+def test_bosh_menejer_home_is_sales_and_metering_only(api, db_client, default_factory):
+    boss = api(
+        "metering.manage_metering",
+        "metering.view_metering",
+        "call_center.view_invoice",
+        "order.view_order",
+        "order.view_order_price",
+        "hr.view_attendance",
+    )
+    _order(db_client, default_factory, 1000, 100)
+    data = boss.get("/api/v1/dashboard/overview/").data
+    assert data["sales_only"] is True
+    for block in ("orders", "money", "accounting", "production", "warehouse", "hr", "wallets"):
+        assert data[block] is None, block
+    assert data["funnel"] and data["meterings"] is not None and data["call_center"] is not None
+    assert data["underpaid"]["count"] == 1
+    assert "orders" not in data["timeline"]["series"]
+
+
+def test_bosh_menejer_boards_have_no_orders(api):
+    boss = api(
+        "metering.manage_metering", "metering.view_metering", "call_center.view_invoice", "order.view_order"
+    )
+    ids = [b["id"] for b in boss.get("/api/v1/dashboard/boards/").data["boards"]]
+    assert "orders" not in ids and "meterings" in ids

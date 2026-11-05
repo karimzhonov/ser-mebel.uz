@@ -187,6 +187,8 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
 
       {pipeline && <PipelineCard p={pipeline} />}
 
+      {data.underpaid && <UnderpaidCard u={data.underpaid} />}
+
       {/* Production */}
       {production && (
         <div className="grid gap-4 xl:grid-cols-3">
@@ -304,6 +306,35 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
         )}
       </div>
     </div>
+  );
+}
+
+/** Live orders whose client paid less than the threshold (the first payment is 70%). */
+function UnderpaidCard({ u }: { u: NonNullable<Overview["underpaid"]> }) {
+  return (
+    <Card title={`${u.threshold}% dan kam to'lagan mijozlar · ${u.count}`} padded={false} actions={<MoreLink to="/orders?underpaid=1" />}>
+      {!u.items.length && <Empty title="Hamma mijoz birinchi to'lovni qilgan" />}
+      <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+        {u.items.map((o) => (
+          <li key={o.id}>
+            <Link to={`/orders/${o.id}`} className="flex items-center justify-between gap-3 px-5 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50">
+              <span className="min-w-0">
+                <span className="block truncate">
+                  <b>№{o.number}</b> · {o.client}
+                </span>
+                <span className="muted block truncate text-xs">{phone(o.phone)}</span>
+              </span>
+              <span className="whitespace-nowrap text-right tabular-nums">
+                <b className={o.paid_pct < 30 ? "text-rose-600" : "text-amber-600"}>{o.paid_pct}%</b>
+                <span className="muted block text-xs">
+                  {money(o.paid)} / {money(o.total)}
+                </span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

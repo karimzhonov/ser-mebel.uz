@@ -5,7 +5,6 @@ import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useList } from "@/api/hooks";
 import type { StaffGroup, StaffUser } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
-import { AccessEditor } from "@/components/AccessEditor";
 import { PhoneLink } from "@/components/domain";
 import { Badge, Button, Card, Confirm, DataTable, Empty, Field, IconButton, Input, Modal, PageHeader, Pagination, SearchInput, Segmented } from "@/components/ui";
 import { GroupsPanel } from "./users/Groups";
@@ -90,6 +89,7 @@ export default function UsersPage() {
                     {r.is_superuser && <Badge tone="primary">Admin</Badge>}
                     {r.is_active ? <Badge tone="ok">Faol</Badge> : <Badge tone="danger">O'chirilgan</Badge>}
                     {r.telegram_id && <Badge tone="info">Telegram</Badge>}
+                    {!r.is_superuser && !!r.personal_rights?.length && <Badge tone="warn">shaxsiy huquq: {r.personal_rights.length}</Badge>}
                   </div>
                 ),
               },
@@ -99,9 +99,9 @@ export default function UsersPage() {
                 header: "",
                 cell: (r) => (
                   <div className="flex justify-end gap-1">
-                    {!r.is_superuser && (
-                      <IconButton label="Bo'limlar huquqi" onClick={() => setRights(r)}>
-                        <KeyRound className="h-4 w-4" />
+                    {!r.is_superuser && !!r.personal_rights?.length && (
+                      <IconButton label="Shaxsiy huquqlar (eski)" onClick={() => setRights(r)}>
+                        <KeyRound className="h-4 w-4 text-amber-600" />
                       </IconButton>
                     )}
                     <IconButton label="Test xabari" onClick={() => test.mutate(r.id)}><Send className="h-4 w-4" /></IconButton>
@@ -161,7 +161,7 @@ export default function UsersPage() {
           </div>
         )}
       </Modal>
-      {rights && <AccessModal user={rights} onClose={() => setRights(null)} />}
+      {rights && <PersonalRightsModal user={rights} onClose={() => setRights(null)} />}
       <Confirm
         open={!!del}
         onClose={() => setDel(null)}
@@ -180,11 +180,36 @@ export default function UsersPage() {
   );
 }
 
-/** Per-section access: none / view / edit, saved as the person's own permissions. */
-function AccessModal({ user, onClose }: { user: StaffUser; onClose: () => void }) {
+/** Owner's rule: rights come from the lavozim. The person's own rights left from the old
+ * per-person switches are only listed here and can be dropped in one go. */
+function PersonalRightsModal({ user, onClose }: { user: StaffUser; onClose: () => void }) {
+  const clear = useAction(() => api.post(`/users/${user.id}/clear-personal-rights/`), {
+    success: "Shaxsiy huquqlar olib tashlandi",
+    invalidate: ["users"],
+    onSuccess: onClose,
+  });
   return (
-    <Modal open onClose={onClose} title={`Bo'limlar huquqi — ${user.name || user.phone}`} size="lg">
-      <AccessEditor path={`/users/${user.id}/access/`} subject="user" invalidate={["users"]} onSaved={onClose} />
+    <Modal
+      open
+      onClose={onClose}
+      title={`Shaxsiy huquqlar — ${user.name || user.phone}`}
+      footer={
+        <Button variant="danger" loading={clear.isPending} onClick={() => clear.mutate()}>
+          Olib tashlash
+        </Button>
+      }
+    >
+      <p className="muted mb-3 text-sm">
+        Huquqlar endi faqat lavozim orqali beriladi (Xodimlar → Lavozimlar). Bu xodimda eski tizimdan qolgan shaxsiy huquqlar bor — ular lavozimdagi
+        cheklovlarga qaramay ishlaydi. Olib tashlansa, xodimda faqat lavozimining huquqlari qoladi. Kerakli bo'limlar lavozimda yoqilganini avval tekshiring.
+      </p>
+      <ul className="flex flex-wrap gap-1.5">
+        {user.personal_rights?.map((p) => (
+          <li key={p.key}>
+            <Badge dot={false}>{p.label}</Badge>
+          </li>
+        ))}
+      </ul>
     </Modal>
   );
 }

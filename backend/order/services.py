@@ -413,3 +413,47 @@ def send_order_to_assembly(order):
         )
     order.change_status(OrderStatus.ASSEMBLY)
     return assembly
+
+
+# Owner's rule: the first payment is 70% of the contract. An order whose client has
+# paid less than this share is followed up by the bosh menejer (home page, «Buyurtmalar»).
+UNDERPAID_PCT = 65
+
+
+def underpaid_orders(qs=None):
+    """Live orders (waiting or in work) whose client paid less than UNDERPAID_PCT % of
+    the price after discount. Nothing paid yet counts as 0 %. An order paid in another
+    currency than its price cannot be compared and is left out (like money_left).
+    Annotates `paid_share` (0..1) and `total_sum`."""
+    from django.db.models import Case, ExpressionWrapper, F, FloatField, Q, Value, When
+
+    from .models import Order
+
+    if qs is None:
+        qs = Order.objects.all()
+    total = ExpressionWrapper(F("price") * (1 - F("discount") / 100.0), output_field=FloatField())
+    return (
+        qs.filter(
+            status__in=[OrderStatus.WAITING, *OrderStatus.active_statuses()],
+            price__isnull=False,
+            price__gt=0,
+        )
+        .annotate(total_sum=total)
+        .filter(total_sum__gt=0)
+        .filter(
+            Q(lost_money__isnull=True)
+            | Q(
+                lost_money_currency=F("price_currency"),
+                lost_money__lt=F("total_sum") * (UNDERPAID_PCT / 100.0),
+            )
+        )
+        .annotate(
+            paid_share=Case(
+                When(lost_money__isnull=True, then=Value(0.0)),
+                default=ExpressionWrapper(
+                    F("lost_money") / F("total_sum"), output_field=FloatField()
+                ),
+                output_field=FloatField(),
+            )
+        )
+    )

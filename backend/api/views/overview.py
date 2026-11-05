@@ -28,6 +28,7 @@ from order.assembly.services import ready_for_assembly
 from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
 from order.detailing.models import Detailing
 from order.models import Order
+from order.services import UNDERPAID_PCT, underpaid_orders
 from order.painter.models import Painter
 from order.painter.services import ready_for_painter
 from order.rover.models import Rover
@@ -49,6 +50,11 @@ OPEN_METERING = [MeteringStatus.created, MeteringStatus.other_day]
 LIVE_ORDER = [OrderStatus.WAITING, *OrderStatus.active_statuses()]
 
 
+def sales_only(user) -> bool:
+    """The bosh menejer (manage_metering, not an administrator): Sotuv + O'lchov only."""
+    return not user.is_superuser and user.has_perm("metering.manage_metering")
+
+
 def _pct(part, whole):
     return round(part * 100 / whole) if whole else None
 
@@ -58,24 +64,58 @@ class OverviewView(APIView):
         params = request.query_params
         start, end = date_range(params)
         user = request.user
+        # owner's rule: the bosh menejer's home shows only Sotuv + O'lchov, and from the
+        # orders only the clients who have not paid the first payment yet
+        sales = sales_only(user)
+        full = not sales
         return Response(
             {
                 "range": {"from": start, "to": end},
                 "monthly": monthly_buckets(params),
+                "sales_only": sales,
                 "funnel": self.funnel(user, params),
-                "orders": self.orders(user, params),
-                "money": self.money(user, params),
-                "accounting": self.accounting(user, params),
-                "production": self.production(user),
+                "orders": self.orders(user, params) if full else None,
+                "money": self.money(user, params) if full else None,
+                "accounting": self.accounting(user, params) if full else None,
+                "production": self.production(user) if full else None,
                 "meterings": self.meterings(user),
                 "pipeline": self.pipeline(user),
                 "call_center": self.call_center(user),
-                "warehouse": self.warehouse(user, params),
-                "hr": self.hr(user),
-                "wallets": self.wallets(user),
-                "timeline": self.timeline(user, params),
+                "underpaid": self.underpaid(user),
+                "warehouse": self.warehouse(user, params) if full else None,
+                "hr": self.hr(user) if full else None,
+                "wallets": self.wallets(user) if full else None,
+                "timeline": self.timeline(user, params, orders=full),
             }
         )
+
+    # --- orders whose client has not paid the first payment ------------------------
+
+    def underpaid(self, user):
+        if not user.has_perms(["order.view_order", f"order.{ORDER_VIEW_PRICE_PERMISSION}"]):
+            return None
+        qs = underpaid_orders().select_related("client").order_by("paid_share", "-order_number")
+        rows = list(qs[:10])
+        return {
+            "threshold": UNDERPAID_PCT,
+            "count": qs.count(),
+            "items": [
+                {
+                    "id": o.pk,
+                    "number": o.order_number,
+                    "client": str(o.client) if o.client_id else "—",
+                    "phone": str(o.client.phone) if o.client_id else "",
+                    "status": o.status,
+                    "paid_pct": round(o.paid_share * 100),
+                    "total": {"amount": round(float(o.total_sum), 2), "currency": o.price_currency},
+                    "paid": {
+                        "amount": float(o.lost_money.amount) if o.lost_money is not None else 0,
+                        "currency": o.price_currency,
+                    },
+                }
+                for o in rows
+            ],
+        }
 
     # --- sales funnel -------------------------------------------------------------
 
@@ -469,7 +509,7 @@ class OverviewView(APIView):
 
     # --- combined chart ---------------------------------------------------------------
 
-    def timeline(self, user, params):
+    def timeline(self, user, params, orders=True):
         series = {}
         if user.has_perm("call_center.view_invoice"):
             qs = apply_period(Invoice.objects.all(), "create_date", params)
@@ -477,7 +517,7 @@ class OverviewView(APIView):
         if user.has_perm("metering.view_metering"):
             qs = apply_period(Metering.objects.all(), "create_date", params)
             series["meterings"] = timeseries(qs, "create_date", params)
-        if user.has_perm("order.view_order"):
+        if orders and user.has_perm("order.view_order"):
             qs = apply_period(Order.objects.all(), "reception_date", params)
             series["orders"] = timeseries(qs, "reception_date", params)
         merged = defaultdict(dict)
