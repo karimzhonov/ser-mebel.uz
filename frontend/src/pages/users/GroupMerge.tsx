@@ -7,6 +7,10 @@ import type { GroupMergePlan, GroupMergePreview, GroupMergeResult, StaffUser } f
 import { Badge, Button, Confirm, Empty, Modal, PageLoader, Select } from "@/components/ui";
 
 type Item = GroupMergePlan["items"][number];
+interface MergeAllResult {
+  done: { group: string; to: string | null; action: string }[];
+  skipped: { group: string; reason: string }[];
+}
 type Member = Pick<StaffUser, "id" | "phone" | "name">;
 /** a target lavozim id, «personal» (add to each member's own rights) or «skip» */
 type Choice = string;
@@ -23,8 +27,48 @@ const defaultChoice = (it: Item): Choice =>
  * members join the target lavozim and the target also gets every right of the old group (nobody loses
  * a right), or — for Filer-like groups — the rights go to each member personally; then the old group is deleted. */
 export function MergeModal({ plan, onClose }: { plan: GroupMergePlan; onClose: () => void }) {
+  const [askAll, setAskAll] = useState(false);
+  const ready = plan.items.filter((it) => it.action === "merge" || it.action === "rename" || it.action === "to_personal");
+  const all = useAction(() => api.post<MergeAllResult>("/groups/merge-all/").then((r) => r.data), {
+    invalidate: ["groups", "users"],
+    onSuccess: (r: MergeAllResult) => {
+      setAskAll(false);
+      toast.success(`${r.done.length} ta guruh lavozimlarga ko'chirildi${r.skipped.length ? `, ${r.skipped.length} tasi qoldi` : ""}`);
+      if (!r.skipped.length) onClose();
+    },
+  });
   return (
     <Modal open onClose={onClose} title="Eski guruhlarni lavozimlarga ko'chirish" size="xl">
+      {ready.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-slate-50 p-3 text-sm dark:bg-slate-800/50">
+          <span>
+            Takror guruhlar: <b>{ready.length}</b> tasi uchun lavozim topildi.
+          </span>
+          <Button size="sm" onClick={() => setAskAll(true)}>
+            Hammasini birlashtirish
+          </Button>
+        </div>
+      )}
+      <Confirm
+        open={askAll}
+        onClose={() => setAskAll(false)}
+        onConfirm={() => all.mutate()}
+        loading={all.isPending}
+        confirmLabel="Birlashtirish"
+        title="Takror guruhlarni birlashtirish"
+        text={
+          <>
+            {ready.map((it) => (
+              <span key={it.group.id} className="block">
+                {it.group.name} → <b>{it.action === "rename" ? it.rename_to : it.action === "to_personal" ? "shaxsiy huquq" : it.suggested?.name}</b>
+              </span>
+            ))}
+            <span className="muted mt-2 block text-xs">
+              A'zolar lavozimga o'tadi, lavozimga eski guruhning huquqlari qo'shiladi, eski guruh o'chiriladi. Lavozim topilmaganlari o'z holicha qoladi.
+            </span>
+          </>
+        }
+      />
       <p className="muted mb-4 text-xs">
         Har bir eski guruh uchun qaysi lavozimga ko'chishini tanlang. «Ko'chirish» bosilganda guruh a'zolari tanlangan lavozimga qo'shiladi, lavozimga esa guruhning
         barcha huquqlari ham qo'shiladi — hech kim huquqini yo'qotmaydi. Shundan keyin eski guruh o'chiriladi. «Tegmaslik» — guruh o'z holicha qoladi.

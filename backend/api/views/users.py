@@ -16,6 +16,7 @@ from oauth.services import (
     delete_group,
     delete_user,
     group_members,
+    merge_all,
     merge_group,
     merge_plan,
     merge_preview,
@@ -102,6 +103,11 @@ class GroupViewSet(viewsets.GenericViewSet):
     def merge_plan(self, request):
         """Review screen data: old groups and where each should go (changes nothing)."""
         return Response(merge_plan())
+
+    @action(detail=False, methods=["post"], url_path="merge-all")
+    def merge_all(self, request):
+        """Every suggestion of the plan at once; groups without one are left alone."""
+        return Response(merge_all())
 
     def _target(self, value):
         if isinstance(value, bool) or not isinstance(value, int):

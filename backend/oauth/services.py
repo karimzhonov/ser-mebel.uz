@@ -477,6 +477,8 @@ def merge_preview(source, target=None) -> dict:
     _merge_checks(source, target)
     have = _perm_keys(target) if target is not None else set()
     add = _perm_keys(source) - have
+    if _is_operator_lavozim(target):
+        add -= {f"metering.{c}" for c in OPERATOR_NEVER}
     return {
         "members": [
             {"id": u.pk, "name": u.name, "phone": str(u.phone)} for u in group_members(source)
@@ -484,6 +486,42 @@ def merge_preview(source, target=None) -> dict:
         "add_to_target": _perm_labels(add),
         "target_member_count": target.user_set.count() if target is not None else None,
     }
+
+
+# owner's rule: the operator books a zamer (add) and only views it afterwards
+OPERATOR_LAVOZIM = "operator"
+OPERATOR_NEVER = ("change_metering", "delete_metering", "change_status")
+_STEERS = (("oauth", "user_metering"), ("metering", "manage_metering"))
+
+
+def _is_operator_lavozim(group) -> bool:
+    return group is not None and " ".join(group.name.split()).lower() == OPERATOR_LAVOZIM
+
+
+def _operator_never(perms) -> list:
+    return [
+        p
+        for p in perms
+        if not (p.content_type.app_label == "metering" and p.codename in OPERATOR_NEVER)
+    ]
+
+
+def operators_view_meterings_only(users) -> None:
+    """Take the zamer editing from these operators' own rights, unless the person also
+    steers zamers (zamerchi / bosh menejer) or is an administrator."""
+    from django.contrib.auth.models import Permission
+
+    edit = list(
+        Permission.objects.filter(
+            content_type__app_label="metering", codename__in=OPERATOR_NEVER
+        )
+    )
+    for u in users:
+        if u.is_superuser or any(u.has_perm(f"{a}.{c}") for a, c in _STEERS):
+            continue
+        u.user_permissions.remove(*edit)
+        for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
+            u.__dict__.pop(attr, None)
 
 
 def merge_group(source, target=None) -> dict:
@@ -496,8 +534,10 @@ def merge_group(source, target=None) -> dict:
     _merge_checks(source, target)
     with transaction.atomic():
         members = list(source.user_set.all())
-        perms = list(source.permissions.all())
+        perms = list(source.permissions.select_related("content_type"))
         name = source.name
+        if _is_operator_lavozim(target):
+            perms = _operator_never(perms)  # an old call-centre group must not undo the rule
         if target is not None:
             added = {p for p in perms} - set(target.permissions.all())
             target.permissions.add(*perms)
@@ -517,6 +557,8 @@ def merge_group(source, target=None) -> dict:
                     u.is_staff = True
                     u.save(update_fields=["is_staff"])
         source.delete()
+        if _is_operator_lavozim(target):
+            operators_view_meterings_only(members)
     for u in members:
         for attr in ("_perm_cache", "_user_perm_cache", "_group_perm_cache"):
             u.__dict__.pop(attr, None)
@@ -527,3 +569,47 @@ def merge_group(source, target=None) -> dict:
         )
     )
     return {"moved_members": len(members), "added_permissions": keys, "deleted": name}
+
+
+def merge_all() -> dict:
+    """Apply every suggestion of merge_plan() at once: «rename» renames, «merge» moves the
+    group into its lavozim, «to_personal» gives its rights to the members; «choose»
+    (nothing suggested) is left for the owner. One group failing does not stop the rest.
+    Nobody loses a right (merge_group). Repeats while something still happens: a
+    rename can give a later group its target."""
+    done, skipped = [], {}
+    for _ in range(3):
+        before = len(done)
+        _merge_pass(done, skipped)
+        if len(done) == before:
+            break
+    left = {i["group"]["name"] for i in merge_plan()["items"]}
+    return {"done": done, "skipped": [s for n, s in skipped.items() if n in left]}
+
+
+def _merge_pass(done: list, skipped: dict) -> None:
+    from django.contrib.auth.models import Group
+
+    from core.exceptions import ServiceError
+
+    for item in merge_plan()["items"]:
+        name = item["group"]["name"]
+        group = Group.objects.filter(pk=item["group"]["id"]).first()
+        if group is None:
+            continue
+        try:
+            if item["action"] == "rename":
+                rename_group(group, item["rename_to"])
+                done.append({"group": name, "to": item["rename_to"], "action": "rename"})
+            elif item["action"] == "merge":
+                target = Group.objects.get(pk=item["suggested"]["id"])
+                merge_group(group, target)
+                done.append({"group": name, "to": target.name, "action": "merge"})
+            elif item["action"] == "to_personal":
+                merge_group(group, None)
+                done.append({"group": name, "to": None, "action": "to_personal"})
+            else:
+                skipped[name] = {"group": name, "reason": item["reason"]}
+        except (ServiceError, Group.DoesNotExist) as e:
+            skipped[name] = {"group": name, "reason": str(getattr(e, "message", e))}
+

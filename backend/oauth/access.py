@@ -91,6 +91,15 @@ SECTIONS: tuple[Section, ...] = (
         extra=("metering.change_status",),
     ),
     Section(
+        "metering_booker",
+        "O'lchov",
+        "O'lchovga yozish (arizadan)",
+        (),
+        edit=False,
+        hint="Mijozni arizadan zamerga yozadi. O'lchovni ko'rish uchun «O'lchovlar»da «Ko'rish», "
+        "o'zgartirish uchun «O'zgartirish» kerak",
+    ),
+    Section(
         "metering_measurer",
         "O'lchov",
         "Zamerchi",
@@ -276,6 +285,7 @@ _SINGLE = {
     "flag_rover": "oauth.user_rover",
     "flag_painter": "oauth.user_painter",
     "flag_assembly": "oauth.user_assembly",
+    "metering_booker": "metering.add_metering",
     "metering_measurer": "oauth.user_metering",
     "metering_manager": "metering.manage_metering",
     "design_designer": "oauth.user_design",
@@ -350,6 +360,14 @@ def _validate_levels(levels: dict) -> dict:
 
 def _wanted(levels: dict, own: set[str], by_key: dict) -> tuple[set[str], set[str]]:
     """(the permission names to hold after, the ones this change grants)."""
+    # «O'lchovga yozish» is the section's own add permission: whoever had it only through
+    # «O'zgartirish» loses it with the section, not becomes a booker by accident
+    if (
+        "meterings" in levels
+        and "metering_booker" not in levels
+        and _level(by_key["meterings"], own) == "edit"
+    ):
+        levels = {**levels, "metering_booker": "none"}
     target = {s.key: levels.get(s.key) or _level(s, own) for s in SECTIONS}
     drop = set().union(*(by_key[k].all_perms() | _view(by_key[k]) for k in levels))
     keep = set().union(

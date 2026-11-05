@@ -201,3 +201,45 @@ def test_empty_source_into_a_target_with_rights_makes_members_staff(db):
     merge_group(src, dst)
     u.refresh_from_db()
     assert u.is_staff and dst.user_set.filter(pk=u.pk).exists()
+
+
+def test_merge_all_applies_every_suggestion(api, admin_api, make_staff):
+    from oauth.models import User
+
+    src = old("Дизайнер", "design.view_design", "oauth.user_design")
+    u = make_staff()
+    src.user_set.add(u)
+    old("Filer", "filer.view_file")
+    Group.objects.create(name="Nomalum")
+    assert api("oauth.view_user").post("/api/v1/groups/merge-all/").status_code == 403
+    r = admin_api.post("/api/v1/groups/merge-all/", {}, format="json")
+    assert r.status_code == 200, r.content
+    done = {d["group"]: d for d in r.json()["done"]}
+    assert done["Дизайнер"]["to"] == "Dizayner" and done["Filer"]["action"] == "to_personal"
+    assert "Nomalum" in [s["group"] for s in r.json()["skipped"]]
+    assert not Group.objects.filter(name__in=["Дизайнер", "Filer"]).exists()
+    assert Group.objects.filter(name="Nomalum").exists()
+    assert Group.objects.get(name="Dizayner") in User.objects.get(pk=u.pk).groups.all()
+    left = {i["group"]["name"] for i in merge_plan()["items"]}
+    assert "Nomalum" in left and not {"Дизайнер", "Filer"} & left
+
+
+
+def test_old_call_centre_group_does_not_give_the_operator_zamer_editing(admin_api, make_staff):
+    """Owner's rule: the operator only views zamers — merging an old group with the
+    editing rights into «Operator» must not bring them back."""
+    from oauth.models import User
+
+    edit = ["metering.change_metering", "metering.delete_metering", "metering.change_status"]
+    src = old("Оператор", "metering.view_metering", "metering.add_metering", *edit)
+    u = make_staff(*edit)  # the old per-person setup
+    src.user_set.add(u)
+    target = Group.objects.get(name="Operator")
+    r = admin_api.get(f"/api/v1/groups/{src.pk}/merge-preview/?target={target.pk}").json()
+    assert not any("O'lchovlar — o'zgartirish" == x["label"] for x in r["add_to_target"])
+    r = admin_api.post(f"/api/v1/groups/{src.pk}/merge-into/", {"target": target.pk}, format="json")
+    assert r.status_code == 200, r.content
+    have = {f"{p.content_type.app_label}.{p.codename}" for p in target.permissions.all()}
+    assert not set(edit) & have and "metering.add_metering" in have
+    u = User.objects.get(pk=u.pk)
+    assert u.has_perm("metering.add_metering") and not any(u.has_perm(p) for p in edit)
