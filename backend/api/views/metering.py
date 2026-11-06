@@ -5,7 +5,7 @@ from django.db import transaction
 from django.db.models import Count, Prefetch
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, PermissionDenied
 from rest_framework.parsers import FormParser, MultiPartParser
@@ -667,6 +667,12 @@ class DesignTypeViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, views
         instance.delete()
 
 
+class AssignPricesSerializer(serializers.Serializer):
+    user = serializers.IntegerField()
+    due_at = serializers.DateTimeField()
+    count = serializers.IntegerField(required=False, allow_null=True, min_value=1)
+
+
 class PriceViewSet(viewsets.ModelViewSet):
     permission_classes = [ModelPermissions]
     search_fields = ["metering__client__fio", "metering__client__phone", "desc"]
@@ -715,6 +721,23 @@ class PriceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def agenda(self, request):
         return _offer_agenda_response(self, request, self._base(), "price")
+
+    @action(detail=False, methods=["get", "post"], url_path="assign")
+    def assign_unassigned(self, request):
+        """Prices in work nobody calculates. GET {unassigned}; POST {user, due_at, count?}
+        gives the oldest `count` (all) to that manager with the deadline (admin / bosh
+        menejer; the manager gets them in the bot)."""
+        from metering.price.services import assign_prices, unassigned_prices
+
+        if request.method == "GET":
+            return Response({"unassigned": unassigned_prices().count()})
+        body = AssignPricesSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        d = body.validated_data
+        user = get_object_or_404(get_user_model(), pk=d["user"])
+        return Response(
+            assign_prices(by=request.user, user=user, due_at=d["due_at"], count=d.get("count"))
+        )
 
     @action(detail=True, methods=["post"])
     def done(self, request, pk=None):
