@@ -191,6 +191,26 @@ export interface Bonus {
   receiver: string;
 }
 
+/** GET /finance/bonuses/unpaid/ — Готов orders whose rest is not collected yet */
+export interface UnpaidReady {
+  count: number;
+  rest: Record<string, string>;
+  results: {
+    order_id: number;
+    order_ref: string;
+    client: string;
+    phone: string;
+    total: string;
+    currency: string;
+    rest: string;
+    ready_date: string | null;
+    days: number | null;
+    bonus_id: number | null;
+    bonus_status: "waiting" | "done" | "expired" | null;
+    bonus_status_label: string | null;
+  }[];
+}
+
 export interface Warranty {
   id: number;
   order_ref: string;

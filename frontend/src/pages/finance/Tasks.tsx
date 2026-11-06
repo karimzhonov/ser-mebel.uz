@@ -1,14 +1,15 @@
 import { useState } from "react";
 import { Check as CheckIcon, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import { api } from "@/api/client";
 import { useAction, useGet, useList } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
-import { Badge, Button, Card, DataTable, Empty, Field, Input, Modal, PageHeader, Pagination, Segmented, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Card, DataTable, Empty, Field, Input, Modal, PageHeader, Pagination, SearchInput, Segmented, Select, Textarea } from "@/components/ui";
 import { date, dateTime } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 import { inCur, som, useFinMe, useMembers, usd } from "./shared";
-import type { Bonus, Feedback, Issue, MoneyRequest, MonthReport, Operation, SiteEntry, Warranty } from "./types";
+import type { Bonus, UnpaidReady, Feedback, Issue, MoneyRequest, MonthReport, Operation, SiteEntry, Warranty } from "./types";
 
 /* ------------------------------------------------------------------ requests */
 export function FinanceRequestsPage() {
@@ -215,7 +216,7 @@ export function FinanceFollowupPage() {
 function BonusTab() {
   const { can } = useAuth();
   const { state, page, set } = useUrlState({ status: "waiting", search: "", date_from: "", date_to: "" });
-  const { data, isFetching } = useList<Bonus>("finance/bonuses", { ...state, page });
+  const { data, isFetching } = useList<Bonus>("finance/bonuses", { ...state, page }, state.status !== "waiting");
   const close = useAction((id: number) => api.post(`/finance/bonuses/${id}/close/`), { success: "Yopildi", invalidate: ["finance"] });
   return (
     <Card padded={false}>
@@ -230,8 +231,14 @@ function BonusTab() {
             { value: "", label: "Hammasi" },
           ]}
         />
-        <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
+        {state.status === "waiting" ? (
+          <SearchInput className="lg:w-72" value={state.search} onChange={(search) => set({ search })} placeholder="Zakaz №, mijoz, telefon" />
+        ) : (
+          <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
+        )}
       </div>
+      {state.status === "waiting" ? <UnpaidList search={state.search} /> : (
+      <>
       <DataTable
         rows={data?.results}
         loading={isFetching}
@@ -260,7 +267,59 @@ function BonusTab() {
         ]}
       />
       <Pagination page={page} count={data?.count ?? 0} onPage={(p) => set({ page: p })} />
+      </>
+      )}
     </Card>
+  );
+}
+
+/** «Kutilmoqda»: every Готов order whose rest is not collected yet (GET /finance/bonuses/unpaid/). */
+function UnpaidList({ search }: { search: string }) {
+  const { can } = useAuth();
+  const { data, isFetching } = useGet<UnpaidReady>("/finance/bonuses/unpaid/", { search });
+  const close = useAction((id: number) => api.post(`/finance/bonuses/${id}/close/`), { success: "Yopildi", invalidate: ["finance"] });
+  const rest = Object.entries(data?.rest ?? {});
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-b border-slate-100 px-4 py-3 text-sm dark:border-slate-800">
+        <span>
+          «Готов», qoldig'i olinmagan: <b className="text-base tabular-nums">{data?.count ?? "…"}</b> ta zakaz
+        </span>
+        {rest.length > 0 && (
+          <span>
+            Jami qoldiq: <b className="tabular-nums">{rest.map(([cur, v]) => inCur(v, cur)).join(" + ")}</b>
+          </span>
+        )}
+      </div>
+      <DataTable
+        rows={data?.results}
+        loading={isFetching}
+        rowKey={(r) => r.order_id}
+        empty={<Empty title="Qoldig'i olinmagan «Готов» zakaz yo'q" />}
+        columns={[
+          { key: "o", header: "Zakaz", cell: (r) => <Link to={`/orders/${r.order_id}`} className="hover:underline"><b>{r.order_ref}</b> · {r.client}</Link> },
+          { key: "p", header: "Telefon", cell: (r) => r.phone || "—", hideOnMobile: true },
+          { key: "r", header: "Готов", cell: (r) => <span>{date(r.ready_date)}{r.days !== null && <span className="muted"> · {r.days} kun</span>}</span> },
+          { key: "t", header: "Umumiy", cell: (r) => <span className="tabular-nums">{inCur(r.total, r.currency)}</span> },
+          { key: "q", header: "Qoldiq", cell: (r) => <span className="font-semibold tabular-nums text-rose-600 dark:text-rose-400">{inCur(r.rest, r.currency)}</span> },
+          {
+            key: "b",
+            header: "Bonus",
+            cell: (r) => (r.bonus_status ? <Badge tone={r.bonus_status === "waiting" ? "warn" : "danger"}>{r.bonus_status_label}</Badge> : <span className="muted text-sm">kuzatilmaydi</span>),
+          },
+          {
+            key: "x",
+            header: "",
+            cell: (r) =>
+              r.bonus_id && r.bonus_status === "waiting" && can("accounting.change_orderbonus") ? (
+                <Button size="sm" variant="outline" onClick={() => confirm(`${r.order_ref} yopilsinmi? (qoldiq 0 bo'lishi kerak)`) && close.mutate(r.bonus_id!)}>
+                  Yopish
+                </Button>
+              ) : null,
+          },
+        ]}
+      />
+    </>
   );
 }
 

@@ -1942,3 +1942,65 @@ def receive_feedback_photo(
             )
             url = default_storage.url(path)
         return feedback_receive(fb, by_name, (caption or "")[:300], file_id, url)
+
+
+def unpaid_ready_orders(search: str = "") -> list[dict]:
+    """«Kutilmoqda»: every «Готов» site order whose rest is not collected yet — with or
+    without bonus tracking (orders that became Готов before FIN_BONUS_SINCE have no
+    OrderBonus row). A bonus marked «Olindi» counts as collected (the site may lag,
+    that is the «Saytga kiritish» task); a waiting bonus also counts the «💰 Pul oldim»
+    entries the site doesn't show yet (like money_state). Newest Готов first."""
+    orders = list(
+        _site_orders_qs().filter(status=OrderStatus.DONE, price__isnull=False, price__gt=0)
+    )
+    bonuses = {
+        b.order_ref: b
+        for b in OrderBonus.objects.filter(order_ref__in=[str(o.order_number) for o in orders])
+    }
+    rows = []
+    for o in orders:
+        ref = str(o.order_number)
+        bn = bonuses.get(ref)
+        if bn is not None and bn.status == "done":
+            continue
+        total, cur, paid = _order_money(o)
+        if not total:
+            continue
+        rest = max(ZERO, total - (paid or ZERO))
+        if bn is not None and bn.status == "waiting" and bn.rest_base is not None:
+            rest = min(rest, max(ZERO, bn.rest_base - (bn.got or ZERO)))
+        if rest <= bonus_tolerance(cur):
+            continue
+        rows.append((o, bn, total, cur, rest))
+    q = (search or "").strip().lower()
+    if q:
+        rows = [
+            r
+            for r in rows
+            if q in str(r[0].order_number)
+            or (r[0].client and q in (r[0].client.fio or "").lower())
+            or (r[0].client and q in str(r[0].client.phone or ""))
+        ]
+    done = _done_dates([o.id for o, bn, *_ in rows if bn is None])
+    out = []
+    for o, bn, total, cur, rest in rows:
+        ready = bn.ready_date if bn is not None else (done.get(o.id) or o.end_date)
+        client = o.client
+        out.append(
+            {
+                "order_id": o.id,
+                "order_ref": str(o.order_number),
+                "client": (client.fio if client else "") or f"Mijoz #{o.order_number}",
+                "phone": str(client.phone) if client and client.phone else "",
+                "total": total,
+                "currency": cur,
+                "rest": rest,
+                "ready_date": ready,
+                "days": days_between(ready, today()) if ready else None,
+                "bonus_id": bn.pk if bn is not None else None,
+                "bonus_status": bn.status if bn is not None else None,
+                "bonus_status_label": bn.get_status_display() if bn is not None else None,
+            }
+        )
+    out.sort(key=lambda r: (r["ready_date"] or date.min, r["order_ref"]), reverse=True)
+    return out
