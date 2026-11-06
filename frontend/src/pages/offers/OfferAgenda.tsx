@@ -1,11 +1,12 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { AlarmClockOff, CalendarCheck, ChevronRight } from "lucide-react";
-import { useGet, useList } from "@/api/hooks";
+import { api, fieldErrors } from "@/api/client";
+import { useAction, useGet, useList } from "@/api/hooks";
 import type { Design, OfferAgenda as Agenda, OfferKind, Price } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, PhoneLink } from "@/components/domain";
-import { Button, Card, DataTable, Empty, PageHeader, PageLoader, Pagination, SearchInput, Segmented, Select } from "@/components/ui";
+import { Button, Card, DataTable, Empty, Field, Input, Modal, PageHeader, PageLoader, Pagination, SearchInput, Segmented, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
@@ -282,11 +283,59 @@ function ToOrder({ r }: { r: Row }) {
         №{r.order.order_number}
       </button>
     );
-  if (!r.metering) return <span className="muted text-xs">o'lchovsiz</span>;
+  if (!r.metering) return <AddZamer r={r} />;
   const m = r.metering;
   return (
     <Button size="sm" variant="outline" onClick={(e) => (e.stopPropagation(), navigate(`/orders/new?metering=${m.id}`))}>
       Buyurtmaga o'tkazish
     </Button>
+  );
+}
+
+/** Archive, a calculation without a zamer (admin): make its zamer first — the client by
+ * phone, the address — then upload the measurement files there and make the order. */
+function AddZamer({ r }: { r: Row }) {
+  const navigate = useNavigate();
+  const [open, setOpen] = useState(false);
+  const [f, setF] = useState({ client_phone: "+998", client_fio: clientOf(r).fio, address: "" });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const make = useAction(() => api.post<{ metering: number }>(`/prices/${r.id}/zamer/`, f).then((x) => x.data), {
+    success: "Zamer yaratildi — o'lchov fayllarini yuklang",
+    invalidate: ["prices", "meterings"],
+    onSuccess: (x) => navigate(`/meterings/${x.metering}#natija`),
+  });
+  return (
+    // the row opens the calculation on click: nothing in here (the modal too) bubbles up
+    <span onClick={(e) => e.stopPropagation()}>
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
+        Zamer yaratish
+      </Button>
+      {open && (
+        <Modal
+          open
+          onClose={() => setOpen(false)}
+          title="O'lchovsiz hisob-kitobga zamer"
+          size="sm"
+          footer={
+            <Button loading={make.isPending} onClick={() => make.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>
+              Yaratish
+            </Button>
+          }
+        >
+          <div className="space-y-3">
+            <p className="muted text-sm">Zamer «Bajarildi» holatida yaratiladi: keyin o'lchov fayllarini yuklaysiz va arxivdan buyurtmaga o'tkazasiz. Hech kimga xabar bormaydi.</p>
+            <Field label="Mijoz telefoni" error={errors.client_phone}>
+              <Input inputMode="tel" value={f.client_phone} onChange={(e) => setF({ ...f, client_phone: e.target.value })} />
+            </Field>
+            <Field label="F.I.Sh." hint="telefon bo'yicha mijoz topilsa, o'zgarmaydi" error={errors.client_fio}>
+              <Input value={f.client_fio} onChange={(e) => setF({ ...f, client_fio: e.target.value })} />
+            </Field>
+            <Field label="Manzil" error={errors.address}>
+              <Input value={f.address} onChange={(e) => setF({ ...f, address: e.target.value })} />
+            </Field>
+          </div>
+        </Modal>
+      )}
+    </span>
   );
 }

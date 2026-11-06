@@ -5,6 +5,7 @@ from django.db import transaction
 from django.db.models import Count, Prefetch
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
+from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import MethodNotAllowed, PermissionDenied, ValidationError
@@ -675,6 +676,12 @@ class DesignTypeViewSet(mixins.UpdateModelMixin, mixins.DestroyModelMixin, views
         instance.delete()
 
 
+class PriceZamerSerializer(serializers.Serializer):
+    client_phone = PhoneNumberField(region="UZ")
+    client_fio = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    address = serializers.CharField(required=False, allow_blank=True)
+
+
 class AssignPricesSerializer(serializers.Serializer):
     user = serializers.IntegerField()
     due_at = serializers.DateTimeField()
@@ -747,6 +754,24 @@ class PriceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def agenda(self, request):
         return _offer_agenda_response(self, request, self._base(), "price")
+
+    @action(detail=True, methods=["post"], url_path="zamer")
+    def zamer(self, request, pk=None):
+        """Admin, archive: a calculation without a zamer gets one {client_phone,
+        client_fio?, address?} to upload the files to and then make the order."""
+        from metering.price.services import give_price_a_zamer
+
+        body = PriceZamerSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        d = body.validated_data
+        m = give_price_a_zamer(
+            self.get_object(),
+            by=request.user,
+            phone=d["client_phone"],
+            fio=d.get("client_fio", ""),
+            address=d.get("address", ""),
+        )
+        return Response({"metering": m.pk}, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"], url_path="unassigned")
     def unassigned(self, request):

@@ -1732,3 +1732,28 @@ def test_admin_turns_an_archived_client_into_an_order(flow, make_staff, default_
     with pytest.raises(ServiceError):  # still one order per zamer
         create_order(author=admin, metering=flow, address="x", factory=default_factory)
     assert Order.objects.filter(metering=flow).count() == 1
+
+
+def test_admin_gives_an_archived_calculation_a_zamer_then_an_order(
+    admin_api, api, default_factory, bot_events
+):
+    """A calculation made without a zamer: the admin makes its (finished) zamer by the
+    client's phone, uploads the files there, then turns it into an order."""
+    from metering.price.models import Price
+    from order.services import create_order
+
+    p = Price.objects.create(desc="Eski mijoz", stage="approved", done=True)
+    url = f"/api/v1/prices/{p.pk}/zamer/"
+    body = {"client_phone": "+998901234567", "address": "Yunusobod"}
+    assert api("price.view_price", "price.change_price").post(url, body, format="json").status_code == 400
+    bot_events.clear()
+    r = admin_api.post(url, body, format="json")
+    assert r.status_code == 201, r.data
+    m = Metering.objects.get(pk=r.data["metering"])
+    assert m.status == MeteringStatus.done and m.client.fio == "Eski mijoz"
+    assert Price.objects.get(pk=p.pk).metering_id == m.pk
+    assert bot_events.of("metering.assigned") == []  # history, nobody is told
+    assert admin_api.post(url, body, format="json").status_code == 400  # has one now
+    admin = admin_api.user
+    order = create_order(author=admin, metering=m, address="", factory=default_factory)
+    assert order.metering_id == m.pk
