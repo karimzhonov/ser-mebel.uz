@@ -775,6 +775,62 @@ def set_pricer(price, *, by, user):
     return M.reassign_offer(price, "price", by=by, user=user, boss_perm=MANAGE, pool=M.pricers())
 
 
+def unassigned_prices():
+    """Prices in work that nobody calculates (from before the managers got the price
+    job): oldest first."""
+    from .models import Price
+
+    return Price.objects.filter(stage="work", user__isnull=True).order_by("created_at", "pk")
+
+
+def assign_prices(*, by, user, due_at, count=None) -> dict:
+    """Admin / bosh menejer: give the `count` oldest unassigned prices in work (all when
+    None) to the manager `user` with the deadline `due_at`. With a zamer the manager gets
+    the bot card (like «Bajarildi») and becomes the zamer's manager when it has none, so
+    «tayyor» comes back to them. Returns {"assigned", "left"}."""
+    from metering import services as M
+
+    from .models import Price
+
+    if not (by.is_superuser or by.has_perm(MANAGE)):
+        raise ServiceForbidden("Narxni menejerga berish huquqi yo'q")
+    if not M.pricers().filter(pk=user.pk).exists():
+        raise ServiceError(
+            "Bu xodimda narx huquqi yo'q — Xodimlar → Lavozimlar: lavozimida «Narx "
+            "hisoblash» bo'limini (o'zgartirish) yoqing",
+            "user",
+        )
+    if due_at is None:
+        raise ServiceError("Muddatni tanlang", "due_at")
+    if count is not None and count < 1:
+        raise ServiceError("Nechta ish berishni yozing", "count")
+    ids = list(unassigned_prices().values_list("pk", flat=True)[:count])
+    now = M._now()
+    assigned = 0
+    for pk in ids:
+        with transaction.atomic():
+            price = Price.objects.select_related("metering").get(pk=pk)
+            if price.metering_id is None:  # a price without a zamer: no bot card to show
+                n = Price.objects.filter(pk=pk, stage="work", user__isnull=True).update(
+                    user=user, due_at=due_at, assigned_at=now
+                )
+                assigned += n
+                continue
+            m, _, _, row = M.offer_locked(price, "price")
+            if row.stage != "work" or row.user_id is not None:
+                continue  # taken meanwhile
+            row.due_at = due_at
+            row.rev += 1
+            row._history_user = by
+            row.save(update_fields=["due_at", "rev"])
+            if m.manager_id is None:
+                m.manager = user
+                m.save(update_fields=["manager"])
+            M._hand_over(row, "price", user, by=by, now=now)
+            assigned += 1
+    return {"assigned": assigned, "left": unassigned_prices().count()}
+
+
 def record_price_answer(price, *, by, answer, comment="", due_at=None):
     """The manager's record of what the client said: approved | recalc | declined.
     Returns {"task": price, "closed_tasks": n}."""

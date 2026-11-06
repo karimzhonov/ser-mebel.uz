@@ -1668,3 +1668,31 @@ def test_the_boss_gets_a_copy_of_the_managers_cards(
     bot_events.clear()
     PS.record_price_answer(m.price, by=mgr, answer="approved")
     assert 9300 in bot_events.one("offer.order_ready")["to"]
+
+
+def test_admin_gives_old_unassigned_prices_to_a_manager(
+    flow, pricer, admin_api, api, bot_events
+):
+    """Prices from before the managers got the price job: nobody calculates them. The
+    admin gives them (oldest first, N of them) to a manager with a deadline."""
+    from metering.price.models import Price
+
+    Price.objects.filter(metering=flow).update(user=None, due_at=None)
+    Metering.objects.filter(pk=flow.pk).update(manager=None)
+    loose = Price.objects.create(desc="O'lchovsiz", stage="work")
+    url = "/api/v1/prices/assign/"
+    assert admin_api.get(url).data == {"unassigned": 2}
+    body = {"user": pricer.pk, "due_at": "2026-11-05T18:00:00", "count": 1}
+    assert api("price.view_price", "price.add_price").post(url, body, format="json").status_code == 400
+    bot_events.clear()
+    r = admin_api.post(url, body, format="json")
+    assert r.status_code == 200, r.data
+    assert r.data == {"assigned": 1, "left": 1}  # the oldest: the zamer's price
+    p = Price.objects.get(metering=flow)
+    assert p.user_id == pricer.pk and p.due_at == datetime(2026, 11, 5, 18, 0)
+    assert Metering.objects.get(pk=flow.pk).manager_id == pricer.pk  # «tayyor» comes back
+    ev = bot_events.one("offer.assigned")
+    assert ev["to"] == [9002] and ev["task"]["id"] == p.pk
+    r = admin_api.post(url, {**body, "count": None}, format="json")
+    assert r.data == {"assigned": 1, "left": 0}
+    assert Price.objects.get(pk=loose.pk).user_id == pricer.pk
