@@ -7,7 +7,7 @@ from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import MethodNotAllowed, PermissionDenied
+from rest_framework.exceptions import MethodNotAllowed, PermissionDenied, ValidationError
 from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 
@@ -721,6 +721,38 @@ class PriceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def agenda(self, request):
         return _offer_agenda_response(self, request, self._base(), "price")
+
+    @action(detail=False, methods=["get"], url_path="unassigned")
+    def unassigned(self, request):
+        """Admin: the prices nobody calculates, to review before deleting the old ones."""
+        from metering.price.services import unassigned_prices
+
+        if not request.user.is_superuser:
+            raise PermissionDenied("Faqat administrator uchun")
+        rows = unassigned_prices().select_related("metering__client", "metering__order")
+        out = []
+        for p in rows:
+            m = p.metering
+            out.append(
+                {
+                    "id": p.pk,
+                    "client": m.client.fio if m else (p.desc or f"#{p.pk}"),
+                    "phone": str(m.client.phone) if m else "",
+                    "created_at": p.created_at,
+                    "has_order": bool(m and getattr(m, "order", None)),
+                }
+            )
+        return Response(out)
+
+    @action(detail=False, methods=["post"], url_path="unassigned/delete")
+    def delete_unassigned(self, request):
+        """Admin: {ids: [...]} — delete those old prices (one that became an order stays)."""
+        from metering.price.services import delete_unassigned_prices
+
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not all(isinstance(i, int) for i in ids):
+            raise ValidationError({"ids": "Narxlar ro'yxati kerak"})
+        return Response(delete_unassigned_prices(by=request.user, ids=ids))
 
     @action(detail=False, methods=["get", "post"], url_path="assign")
     def assign_unassigned(self, request):

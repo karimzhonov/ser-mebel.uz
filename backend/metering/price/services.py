@@ -831,6 +831,28 @@ def assign_prices(*, by, user, due_at, count=None) -> dict:
     return {"assigned": assigned, "left": unassigned_prices().count()}
 
 
+def delete_unassigned_prices(*, by, ids) -> dict:
+    """Admin only: delete old prices nobody calculates (still in work, no assignee) that
+    are not needed any more — with their calculations, rooms and versions. A price whose
+    zamer already became an order is kept. Returns {"deleted", "kept"}."""
+    if not by.is_superuser:
+        raise ServiceForbidden("Narxni faqat administrator o'chiradi")
+    wanted = {int(i) for i in ids or []}
+    if not wanted:
+        raise ServiceError("O'chiriladigan narxlarni tanlang", "ids")
+    from .models import Price
+
+    with transaction.atomic():
+        ok = list(
+            unassigned_prices()
+            .filter(pk__in=wanted, metering__order__isnull=True)
+            .values_list("pk", flat=True)
+        )
+        # re-checked in the delete itself: nobody took it meanwhile
+        Price.objects.filter(pk__in=ok, stage="work", user__isnull=True).delete()
+    return {"deleted": len(ok), "kept": len(wanted) - len(ok)}
+
+
 def record_price_answer(price, *, by, answer, comment="", due_at=None):
     """The manager's record of what the client said: approved | recalc | declined.
     Returns {"task": price, "closed_tasks": n}."""
