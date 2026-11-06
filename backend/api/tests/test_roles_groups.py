@@ -302,3 +302,20 @@ def test_me_lists_the_lavozims(api):
     c = api("metering.manage_metering")  # a right left from the old per-person switches
     Group.objects.get(name="Menejer").user_set.add(c.user)
     assert c.get("/api/v1/auth/me/").data["lavozims"] == ["Menejer"]
+
+
+def test_old_menejer_lavozim_gets_the_manager_flag(make_staff):
+    """oauth 0015: a «Menejer» lavozim made before 0012 had no present_to_client, so the
+    zamerchi could pick only the bosh menejer for the price."""
+    from metering.services import managers
+
+    g = Group.objects.get(name="Menejer")
+    g.permissions.clear()  # like a lavozim from before the default roles
+    u = make_staff()
+    g.user_set.add(u)
+    assert u.pk not in set(managers().values_list("pk", flat=True))
+    mod = importlib.import_module("oauth.migrations.0015_menejer_presents_to_client")
+    mod.menejer_presents(apps, None)
+    mod.menejer_presents(apps, None)  # safe twice
+    assert {"metering.present_to_client", "metering.view_metering", "price.view_price"} <= perms_of(g)
+    assert u.pk in set(managers().values_list("pk", flat=True))
