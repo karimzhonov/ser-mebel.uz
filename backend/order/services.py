@@ -379,18 +379,22 @@ def set_order_location(order, *, point, link=UNSET, address=UNSET, by=None):
     return order, bool(fields)
 
 
-def send_order_to_detailing(order):
-    """Mirrors OrderActions.detailing_action."""
+def send_order_to_detailing(order, *, due_at):
+    """The bosh menejer sends a «Yaratildi» order to detailing with a deadline."""
     from core.exceptions import ServiceError
 
     from .detailing.models import Detailing
+    from .detailing.services import clean_detailing_due
 
     if order.status != OrderStatus.CREATED:
         raise ServiceError("Detalirovkaga faqat «Yaratildi» holatidagi buyurtma yuboriladi")
+    due_at = clean_detailing_due(due_at)
     from django.db import transaction
 
     with transaction.atomic():
-        Detailing.objects.get_or_create(order=order)
+        detailing, _ = Detailing.objects.get_or_create(order=order)
+        detailing.due_at = due_at
+        detailing.save(update_fields=["due_at"])
         order.change_status(OrderStatus.DETAILING)
     return order
 

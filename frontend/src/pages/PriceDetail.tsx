@@ -25,6 +25,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api, downloadFile, errorMessage, fetchBlob } from "@/api/client";
 import { useAction, useAll, useGet } from "@/api/hooks";
+import { useAuth } from "@/auth/AuthContext";
 import type { Accessory, Calculation, Inventory, InventoryType, ObjectType, OfferSheet, Price, PriceVersion, Room, RoomImage, RoomType } from "@/api/types";
 import { AddressLink, BackLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink } from "@/components/domain";
 import {
@@ -68,6 +69,7 @@ function sizeCount(unit: "kv" | "pog", h: string, w: string): number | null {
 /* =================================================================== page */
 export function PriceDetailPage() {
   const { id } = useParams();
+  const { can } = useAuth();
   const { data: p, isLoading } = useGet<Price>(`/prices/${id}/`);
   const { data: objects } = useAll<ObjectType>("object-types");
   const { data: roomTypes } = useAll<RoomType>("room-types");
@@ -101,12 +103,14 @@ export function PriceDetailPage() {
   const pdfName = `Taklif — ${title}.pdf`;
   // a lead's approximate price: its workers have no «Narx hisoblash» list to go back to
   const estimate = p.stage === "estimate";
-  const backTo = estimate ? (p.metering ? `/meterings/${p.metering.id}` : "/call-center") : "/prices";
+  // the managers / zamerchi reach a client's price from its zamer, not from the list
+  const fromClient = estimate || !can("price.view_price");
+  const backTo = fromClient ? (p.metering ? `/meterings/${p.metering.id}` : "/call-center") : "/prices";
 
   return (
     <div>
       <PageHeader
-        back={<BackLink to={backTo}>{estimate ? (p.metering ? "O'lchov" : "Call-center") : "Narx hisoblash"}</BackLink>}
+        back={<BackLink to={backTo}>{fromClient ? (p.metering ? "O'lchov" : "Call-center") : "Narx hisoblash"}</BackLink>}
         title={title}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
@@ -165,7 +169,9 @@ export function PriceDetailPage() {
       {p.locked && (
         <div className="mb-4 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           <Lock className="h-4 w-4 shrink-0" />
-          Buyurtma detalirovkaga o'tgan — hisob-kitob qulflangan. Taklifni ko'rish va yuklab olish mumkin.
+          {canEdit
+            ? "Buyurtma xomashyo buyurtmasiga o'tgan — narxni faqat administrator o'zgartiradi (siz o'zgartira olasiz)."
+            : "Buyurtma xomashyo buyurtmasiga o'tgan — narxni faqat administrator o'zgartiradi. Taklifni ko'rish va yuklab olish mumkin."}
         </div>
       )}
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">

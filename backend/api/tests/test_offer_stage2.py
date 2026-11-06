@@ -1757,3 +1757,38 @@ def test_admin_gives_an_archived_calculation_a_zamer_then_an_order(
     admin = admin_api.user
     order = create_order(author=admin, metering=m, address="", factory=default_factory)
     assert order.metering_id == m.pk
+
+
+def test_client_workers_continue_the_price_and_after_the_order_only_the_boss(
+    flow, manager, ali, make_staff, default_factory
+):
+    """Owner's rule: the managers and the zamerchi of the client edit its price; once the
+    zamer became an order only the bosh menejer (and the admin) does."""
+    from rest_framework.test import APIClient
+
+    from order.services import create_order
+
+    def c(u):
+        x = APIClient()
+        x.force_authenticate(u)
+        return x
+
+    p = flow.price
+    url = f"/api/v1/prices/{p.pk}/"
+    assert not manager.has_perm("price.change_price")
+    assert c(manager).patch(url, {"variant": "A"}, format="json").status_code == 200
+    assert c(ali).patch(url, {"variant": "B"}, format="json").status_code == 200  # the zamerchi
+    stranger = make_staff("oauth.user_metering", "metering.view_metering")  # not their zamer
+    assert c(stranger).patch(url, {"variant": "C"}, format="json").status_code == 403
+    assert c(manager).get(url).data["actions"]["edit"] is True
+
+    boss = make_staff(
+        "metering.manage_metering", "metering.view_metering", "order.view_order", name="Boss"
+    )
+    admin = make_staff(superuser=True)
+    order = create_order(author=admin, metering=flow, address="x", factory=default_factory)
+    assert c(manager).patch(url, {"variant": "D"}, format="json").status_code == 403
+    assert c(manager).get(url).data["actions"]["edit"] is False
+    assert c(boss).patch(url, {"variant": "E"}, format="json").status_code == 200
+    calc = c(boss).get(f"/api/v1/orders/{order.pk}/").data["calculation"]
+    assert calc == {"id": p.pk, "can_edit": True}

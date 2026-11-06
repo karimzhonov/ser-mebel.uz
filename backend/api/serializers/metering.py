@@ -673,20 +673,14 @@ class PriceDetailSerializer(PriceSerializer):
         return CalculationSerializer(qs, many=True, context=self.context).data
 
     def get_actions(self, obj):
-        from metering.price.services import can_estimate, is_estimate
+        from metering.price.services import can_edit_price, can_open_estimate, is_estimate
 
         user = self.context["request"].user
-        can_change = user.has_perm("price.change_price")
-        # a lead's approximate price: whoever works the lead edits / deletes it
-        estimate = is_estimate(obj) and can_estimate(user)
         return {
-            "edit": (
-                estimate
-                or can_change
-                and user.has_perms(["price.add_calculate", "price.change_calculate"])
-            )
-            and not self.get_locked(obj),
-            "delete": estimate,
+            # owner's rule: the client's workers continue it; after the order only the
+            # bosh menejer (can_edit_price); detailing locks it for everyone
+            "edit": can_edit_price(user, obj),  # past the raw-material order: admin only
+            "delete": is_estimate(obj) and can_open_estimate(user, obj),
             **_offer_actions(user, obj, "price"),
         }
 

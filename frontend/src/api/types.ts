@@ -656,6 +656,8 @@ export interface ProductionRow {
 }
 
 export interface OrderDetail extends Order {
+  /** the zamer's price calculation; after the order only the bosh menejer edits it */
+  calculation?: { id: number; can_edit: boolean } | null;
   design_type: { id: number; name: string; folder: number | null } | null;
   production: {
     detailing: {
@@ -665,6 +667,7 @@ export interface OrderDetail extends Order {
       square: number;
       painter_square: number;
       rover_square: number;
+      due_at: string | null;
       folder: number | null;
     } | null;
     rover: ProductionRow | null;
@@ -707,6 +710,7 @@ export interface ProductionItem {
   working_done?: boolean;
   painter_square?: number;
   rover_square?: number;
+  due_at?: string | null;
   // painter
   type?: number | null;
   type_detail?: { id: number; name: string } | null;

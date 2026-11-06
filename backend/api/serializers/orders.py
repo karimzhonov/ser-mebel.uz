@@ -101,12 +101,18 @@ def _production_row(obj, **extra):
 
 
 class OrderDetailSerializer(OrderSerializer):
+    calculation = serializers.SerializerMethodField()
     design_type = serializers.SerializerMethodField()
     production = serializers.SerializerMethodField()
     actions = serializers.SerializerMethodField()
 
     class Meta(OrderSerializer.Meta):
-        fields = OrderSerializer.Meta.fields + ["design_type", "production", "actions"]
+        fields = OrderSerializer.Meta.fields + [
+            "design_type",
+            "production",
+            "actions",
+            "calculation",
+        ]
         read_only_fields = fields
 
     def get_design_type(self, obj):
@@ -129,6 +135,7 @@ class OrderDetailSerializer(OrderSerializer):
                     "square": detailing.square,
                     "painter_square": detailing.painter_square,
                     "rover_square": detailing.rover_square,
+                    "due_at": detailing.due_at,
                     "folder": detailing.folder_id,
                 }
                 if detailing
@@ -152,6 +159,20 @@ class OrderDetailSerializer(OrderSerializer):
                 price=money(assembly.price) if assembly and show_price else None,
             ),
         }
+
+    def get_calculation(self, obj):
+        """The zamer's price calculation: {id, can_edit} for who may open it (owner's
+        rule: after the order only the bosh menejer edits it), else null."""
+        from metering.price.models import Price
+        from metering.price.services import can_edit_price, can_view_price
+
+        if obj.metering_id is None:
+            return None
+        price = Price.objects.filter(metering_id=obj.metering_id).first()
+        user = self.context["request"].user
+        if price is None or not can_view_price(user, price):
+            return None
+        return {"id": price.pk, "can_edit": can_edit_price(user, price)}
 
     def get_actions(self, obj):
         user = self.context["request"].user
@@ -276,15 +297,24 @@ class DetailingSerializer(serializers.ModelSerializer):
             "square",
             "painter_square",
             "rover_square",
+            "due_at",
             "folder",
             "actions",
         ]
-        read_only_fields = ["order", "created_at", "done", "working_done", "folder"]
+        read_only_fields = ["order", "created_at", "done", "working_done", "due_at", "folder"]
 
     def get_actions(self, obj):
         user = self.context["request"].user
         can_change = user.has_perm("detailing.change_detailing")
-        return {"edit": can_change, "done": can_change and not obj.done}
+        return {
+            "edit": can_change,
+            "done": can_change and not obj.done,
+            "due": user.has_perm("detailing.add_detailing") and not obj.done,
+        }
+
+
+class DetailingDueSerializer(serializers.Serializer):
+    due_at = serializers.DateTimeField()
 
 
 class RoverSerializer(serializers.ModelSerializer):

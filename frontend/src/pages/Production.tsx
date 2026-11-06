@@ -7,6 +7,7 @@ import type { PainterType, ProductionItem, UserShort } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink, ROW_TONE } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
+import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
 import {
   Button,
   Card,
@@ -108,6 +109,9 @@ function ProductionList({ kind }: { kind: Kind }) {
             { key: "client", header: "Mijoz", cell: (r) => r.order.client?.fio ?? "—" },
             { key: "status", header: "Buyurtma holati", cell: (r) => <OrderStatusBadge status={r.order.status} label={r.order.status_label} /> },
             { key: "deadline", header: "Muddat", cell: (r) => <DeadlinePill deadline={r.order.deadline} /> },
+            ...(kind === "detailing"
+              ? [{ key: "due_at", header: "Detalirovka muddati", cell: (r: ProductionItem) => <DetailingDue dueAt={r.due_at} done={r.done} /> }]
+              : []),
             ...(kind === "assembly"
               ? [{ key: "user", header: "Yig'uvchi", cell: (r: ProductionItem) => r.user_detail?.name || (r.user_detail ? phone(r.user_detail.phone) : <span className="muted">—</span>) }]
               : []),
@@ -135,6 +139,12 @@ function ProductionList({ kind }: { kind: Kind }) {
                 <DeadlinePill deadline={r.order.deadline} />
                 <span className="muted">{num(r.square)} m²</span>
               </div>
+              {kind === "detailing" && (
+                <div className="text-sm">
+                  <span className="muted">Detalirovka: </span>
+                  <DetailingDue dueAt={r.due_at} done={r.done} />
+                </div>
+              )}
             </div>
           )}
         />
@@ -170,6 +180,7 @@ function ProductionModal({
   const { data: painterTypes } = useAll<PainterType>("painter-types", {}, kind === "painter");
   const [squares, setSquares] = useState({ square: "", painter_square: "", rover_square: "" });
   const [confirm, setConfirm] = useState<null | string>(null);
+  const [moveDue, setMoveDue] = useState(false);
   useEffect(() => {
     if (item && kind === "detailing")
       setSquares({
@@ -209,6 +220,19 @@ function ProductionModal({
             ["Telefon", <PhoneLink value={o.client?.phone} />],
             ["Manzil", <AddressLink address={o.address} link={o.address_link} mapUrl={o.map_url} lat={o.lat} lon={o.lon} />],
             ["Topshirish sanasi", date(o.end_date, "ko'rsatilmagan")],
+            ...(kind === "detailing"
+              ? ([[
+                  "Detalirovka muddati",
+                  <span className="flex flex-wrap items-center gap-2">
+                    <DetailingDue dueAt={item.due_at} done={item.done} />
+                    {a.due && (
+                      <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setMoveDue(true)}>
+                        o'zgartirish
+                      </button>
+                    )}
+                  </span>,
+                ]] as [string, JSX.Element][])
+              : []),
             ["Buyurtma", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Buyurtmani ochish →</Link>],
             ...(kind !== "detailing" ? ([["Maydon", num(item.square)], ["Narx", money(item.price)]] as [string, string][]) : []),
           ]}
@@ -299,6 +323,7 @@ function ProductionModal({
         loading={run.isPending}
         onConfirm={() => confirm && run.mutate(confirm)}
       />
+      {moveDue && <DetailingDueModal detailingId={item.id} dueAt={item.due_at} onClose={() => setMoveDue(false)} />}
     </Modal>
   );
 }

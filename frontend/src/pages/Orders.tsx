@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BookOpen,
+  Calculator,
   CheckCircle2,
   Clock,
   Hammer,
@@ -38,6 +39,7 @@ import {
 } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { LocationEditModal, LocationField } from "@/components/LocationField";
+import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
 import {
   Button,
   Card,
@@ -244,7 +246,9 @@ export function OrderDetailPage() {
   const { can } = useAuth();
   const [editing, setEditing] = useState(false);
   const [editLocation, setEditLocation] = useState(false);
-  const [confirm, setConfirm] = useState<null | "detailing" | "next-status" | "go-to-assembly">(null);
+  const [confirm, setConfirm] = useState<null | "next-status" | "go-to-assembly">(null);
+  const [sendDetailing, setSendDetailing] = useState(false);
+  const [moveDetailingDue, setMoveDetailingDue] = useState(false);
 
   const inv = ["orders", "dashboard", "detailings", "assemblies", "meterings"];
   const run = useAction(
@@ -263,7 +267,6 @@ export function OrderDetailPage() {
   const a = o.actions;
   const p = o.production;
   const CONFIRM_TEXT = {
-    detailing: ["Detalirovkaga yuborilsinmi?", "Detalirovka xodimlariga xabar boradi."],
     "next-status": [`«${a.next_status_label}» holatiga o'tkazilsinmi?`, "Mas'ullarga SMS/Telegram xabari boradi."],
     "go-to-assembly": ["Yig'ishga yuborilsinmi?", "Buyurtma «Yig'ish» holatiga o'tadi."],
   } as const;
@@ -282,13 +285,18 @@ export function OrderDetailPage() {
         actions={
           <>
             <FolderButton folderId={o.folder} />
+            {o.calculation && (
+              <Button variant="outline" icon={<Calculator className="h-4 w-4" />} onClick={() => navigate(`/prices/${o.calculation!.id}`)}>
+                {o.calculation.can_edit ? "Narx tahrirlash" : "Narx hisob-kitobi"}
+              </Button>
+            )}
             {a.edit && (
               <Button variant="outline" icon={<Pencil className="h-4 w-4" />} onClick={() => setEditing(true)}>
                 Tahrirlash
               </Button>
             )}
             {a.detailing && (
-              <Button variant="success" icon={<BookOpen className="h-4 w-4" />} onClick={() => setConfirm("detailing")}>
+              <Button variant="success" icon={<BookOpen className="h-4 w-4" />} onClick={() => setSendDetailing(true)}>
                 Detalirovkaga
               </Button>
             )}
@@ -378,6 +386,17 @@ export function OrderDetailPage() {
               ["Maydon", num(p.detailing.square)],
               ["Bo'yash maydoni", num(p.detailing.painter_square)],
               ["Rover maydoni", num(p.detailing.rover_square)],
+              [
+                "Muddat",
+                <span className="flex flex-wrap items-center gap-2">
+                  <DetailingDue dueAt={p.detailing.due_at} done={p.detailing.done} />
+                  {!p.detailing.done && can("detailing.add_detailing") && (
+                    <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setMoveDetailingDue(true)}>
+                      o'zgartirish
+                    </button>
+                  )}
+                </span>,
+              ],
               ["Bajarildi", <Check ok={p.detailing.done} />],
             ]}
           />
@@ -435,6 +454,10 @@ export function OrderDetailPage() {
           invalidate={["orders", "dashboard", "detailings", "assemblies", "paintings", "rovers", "production"]}
           onClose={() => setEditLocation(false)}
         />
+      )}
+      {sendDetailing && <DetailingDueModal orderId={o.id} onClose={() => setSendDetailing(false)} />}
+      {moveDetailingDue && p.detailing && (
+        <DetailingDueModal detailingId={p.detailing.id} dueAt={p.detailing.due_at} onClose={() => setMoveDetailingDue(false)} />
       )}
       <Confirm
         open={!!confirm}

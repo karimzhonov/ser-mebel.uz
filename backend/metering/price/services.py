@@ -1,3 +1,6 @@
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 from django.db import transaction
 from filer.models.foldermodels import Folder
 
@@ -53,8 +56,26 @@ def recompute_price_total(price) -> None:
 
 # --- Lock: the calculation can change until the order goes to detailing -------------
 
-EDITABLE_ORDER_STATUSES = ("waiting", "created")
-LOCKED_MESSAGE = "Buyurtma detalirovkaga o'tgan — hisob-kitobni endi o'zgartirib bo'lmaydi"
+# owner's rule: until the order goes to the raw-material order («Заказ на сырье») the
+# bosh menejer may still change the price; from then on only the admin does
+EDITABLE_ORDER_STATUSES = ("waiting", "created", "detailing")
+LOCKED_MESSAGE = (
+    "Buyurtma xomashyo buyurtmasiga o'tgan — narxni faqat administrator o'zgartiradi"
+)
+
+# The API turns this on for an administrator's request (PriceViewSet): the services'
+# lock below then lets them through. A context variable, so every service called while
+# serving that request sees it without passing the user down.
+_ADMIN_EDIT = ContextVar("price_admin_edit", default=False)
+
+
+@contextmanager
+def admin_edit(on: bool):
+    token = _ADMIN_EDIT.set(bool(on))
+    try:
+        yield
+    finally:
+        _ADMIN_EDIT.reset(token)
 
 
 def price_locked(price) -> bool:
@@ -73,7 +94,7 @@ def price_locked(price) -> bool:
 def assert_editable(price) -> None:
     from core.exceptions import ServiceError
 
-    if price_locked(price):
+    if price_locked(price) and not _ADMIN_EDIT.get():
         raise ServiceError(LOCKED_MESSAGE)
 
 
@@ -767,6 +788,62 @@ def is_estimate(price) -> bool:
     from metering.constants import PRICE_ESTIMATE
 
     return price is not None and price.stage == PRICE_ESTIMATE
+
+
+# --- Who opens / edits a calculation (owner's rule) --------------------------------------
+# Every client's price is continued by the people working that client: the managers and
+# the zamerchi (who see the zamer) as well as the price staff. Once the zamer became an
+# order, only the bosh menejer (and the admin) changes it — the bosh menejer until the
+# order goes to the raw-material order (price_locked), the admin always.
+
+PRICE_EDIT_PERMS = ("price.change_price", "price.add_calculate", "price.change_calculate")
+_WORKER_PERMS = ("metering.present_to_client", "metering.manage_metering", "oauth.user_metering")
+
+
+def _works_the_zamer(user, price) -> bool:
+    """A manager / bosh menejer / zamerchi who sees this calculation's zamer."""
+    from metering.services import metering_queryset_for
+
+    if price.metering_id is None or not any(user.has_perm(p) for p in _WORKER_PERMS):
+        return False
+    return metering_queryset_for(user).filter(pk=price.metering_id).exists()
+
+
+def _has_order(price) -> bool:
+    from order.models import Order
+
+    return price.metering_id is not None and Order.objects.filter(
+        metering_id=price.metering_id
+    ).exists()
+
+
+def can_edit_price(user, price) -> bool:
+    if user is None or not user.is_active:
+        return False
+    if user.is_superuser:
+        return True  # even past the raw-material order (owner's rule)
+    if is_estimate(price):
+        return can_open_estimate(user, price)
+    if _has_order(price):
+        # only the bosh menejer after the order, and only until the raw-material order
+        return user.has_perm(MANAGE) and not price_locked(price)
+    return user.has_perms(PRICE_EDIT_PERMS) or _works_the_zamer(user, price)
+
+
+def can_view_price(user, price) -> bool:
+    if user is None or not user.is_active:
+        return False
+    if user.is_superuser or user.has_perm("price.view_price"):
+        return True
+    if is_estimate(price):
+        return can_open_estimate(user, price)
+    return _works_the_zamer(user, price)
+
+
+def can_reach_prices(user) -> bool:
+    """May open some calculation without the price rights (an estimate or a client's
+    price): then PriceAccess checks the row."""
+    return can_estimate(user) or any(user.has_perm(p) for p in _WORKER_PERMS)
 
 
 def create_estimate(*, by, invoice=None, metering=None):
