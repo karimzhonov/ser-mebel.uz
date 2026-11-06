@@ -723,6 +723,161 @@ def create_price(metering, *, user, due_at, days, by=None):
     return price
 
 
+# --- The approximate price on a lead (ariza) ------------------------------------------
+# Owner's rule: the operator, the manager and the zamerchi may add an approximate price to
+# a lead to tell the client; not needed -> delete it; needed -> it goes on with the lead
+# and «Bajarildi» gives it to the chosen manager to finish (no new price is made).
+
+
+def can_estimate(user) -> bool:
+    """Who may add / edit / delete a lead's approximate price, without the price rights:
+    whoever WORKS the lead or its zamer — the operator (changes leads), the zamerchi, the
+    manager / bosh menejer, a pricer. A read-only viewer may not."""
+    if user is None or not user.is_active:
+        return False
+    return user.is_superuser or any(
+        user.has_perm(p)
+        for p in (
+            "call_center.change_invoice",
+            "oauth.user_metering",
+            "metering.present_to_client",
+            "metering.manage_metering",
+            "price.change_price",
+        )
+    )
+
+
+def can_open_estimate(user, price) -> bool:
+    """«Only for that price»: an estimate is opened by who may make estimates AND sees its
+    lead or zamer (a plain zamerchi sees only their own zamers)."""
+    from metering.services import metering_queryset_for
+
+    if not (is_estimate(price) and can_estimate(user)):
+        return False
+    if user.is_superuser:
+        return True
+    if price.metering_id is not None and metering_queryset_for(user).filter(
+        pk=price.metering_id
+    ).exists():
+        return True
+    return price.invoice_id is not None and user.has_perm("call_center.view_invoice")
+
+
+def is_estimate(price) -> bool:
+    from metering.constants import PRICE_ESTIMATE
+
+    return price is not None and price.stage == PRICE_ESTIMATE
+
+
+def create_estimate(*, by, invoice=None, metering=None):
+    """The approximate price of a lead (from the lead) or of a zamer (from the zamer
+    page): one per lead / zamer. Made on a lead that already has a zamer, it is joined to
+    that zamer (when it has no price yet) — «Bajarildi» then hands it on."""
+    from metering.constants import PRICE_ESTIMATE
+    from metering.models import Metering
+
+    from .models import Price
+
+    if not can_estimate(by):
+        raise ServiceForbidden("Taxminiy narx qo'shish huquqi yo'q")
+    from metering import services as M
+
+    if metering is not None and invoice is None:
+        invoice = metering.invoice
+    with transaction.atomic():
+        if invoice is not None:  # lock order: Invoice -> Metering
+            type(invoice).objects.select_for_update().get(pk=invoice.pk)
+            if Price.objects.filter(invoice=invoice, stage=PRICE_ESTIMATE).exists():
+                raise ServiceError("Bu arizada taxminiy narx bor")
+            if metering is None:
+                metering = Metering.objects.filter(invoice=invoice).first()
+                if metering is not None and metering.status == "dont_need":
+                    metering = None  # a cancelled zamer: the estimate waits on the lead
+        if metering is not None:
+            metering = M._lock(metering)
+            if metering.status in ("done", "sold_out", "dont_need"):
+                raise ServiceError("Zamer yakunlangan — narxni menejer hisoblaydi")
+            if Price.objects.filter(metering=metering).exists():
+                raise ServiceError("Bu mijozning narxi allaqachon hisoblanmoqda")
+        if invoice is not None:
+            # a re-booked lead: its old (finished) price lets go of the lead
+            Price.objects.filter(invoice=invoice).exclude(stage=PRICE_ESTIMATE).update(
+                invoice=None
+            )
+        client = invoice.client if invoice is not None else metering.client
+        price = Price(
+            invoice=invoice,
+            metering=metering,
+            stage=PRICE_ESTIMATE,
+            desc=(client.fio if client is not None else "") or None,
+        )
+        price._history_user = by
+        price.save()
+    return price
+
+
+def delete_estimate(price, *, by) -> None:
+    """Not needed: drop the approximate price with its calculations. Only while it is
+    still an estimate (until the zamer is finished)."""
+    if not can_estimate(by):
+        raise ServiceForbidden("Taxminiy narxni o'chirish huquqi yo'q")
+    with transaction.atomic():
+        from .models import Price
+
+        locked = Price.objects.select_for_update().filter(pk=price.pk).first()
+        if locked is None:
+            return
+        done = locked.metering_id is not None and locked.metering.status in ("done", "sold_out")
+        if not is_estimate(locked) or done:
+            raise ServiceError(
+                "Zamer yakunlangan — narx endi menejerning vazifasi, uni faqat tahrirlash mumkin"
+            )
+        locked.delete()
+
+
+def attach_estimate(metering, invoice, *, by=None) -> None:
+    """A zamer was booked for the lead: its approximate price goes with it. Inside the
+    caller's transaction."""
+    from metering.constants import PRICE_ESTIMATE
+
+    from .models import Price
+
+    est = (
+        Price.objects.select_for_update()
+        .filter(invoice=invoice, stage=PRICE_ESTIMATE)
+        .exclude(metering=metering)
+        .first()
+    )
+    if est is None or Price.objects.filter(metering=metering).exists():
+        return
+    est.metering = metering
+    est._history_user = by
+    est.save(update_fields=["metering"])
+    if est.folder_id is None:  # made on the lead alone: its folder goes under the zamer's
+        create_price_folder(est)
+
+
+def estimate_to_task(price, *, user, due_at, days, by=None):
+    """«Bajarildi»: the zamer's approximate price becomes the chosen manager's price task
+    (stage work, deadline) — they finish it instead of starting a new one. Inside the
+    caller's transaction, row locked."""
+    from metering import events
+    from metering import services as M
+
+    price.stage = "work"
+    price.user = user
+    price.due_at = due_at
+    price.assigned_at = M._now()
+    price.duration_days = days
+    price.rev += 1
+    price._history_user = by
+    price.save(update_fields=["stage", "user", "due_at", "assigned_at", "duration_days", "rev"])
+    if user is not None:
+        events.offer_assigned(price, "price", how="new")
+        M.queue_offer_sms(price, "price", "assigned")
+    return price
+
+
 def can_work_price(user, price) -> bool:
     """May press «Tayyor» / move the deadline: the pricer, a price boss, a superuser;
     anyone who can change prices while nobody is assigned."""
@@ -740,6 +895,8 @@ def mark_price_done(price, *, by):
     client."""
     from metering import services as M
 
+    if is_estimate(price):
+        raise ServiceError("Taxminiy narx — zamer yakunlanganda u menejerga beriladi")
     if price.metering_id is None:
         # a calculation made in the admin without a zamer: nobody to show it to
         if price.done:

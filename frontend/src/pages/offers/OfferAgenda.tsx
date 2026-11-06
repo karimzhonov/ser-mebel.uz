@@ -44,7 +44,9 @@ function assigneeOf(r: Row) {
  * The same look as the zamer agenda (big time on the left, big buttons on a phone). */
 export function OfferAgenda({ kind, actions }: { kind: OfferKind; actions?: ReactNode }) {
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  // owner's rule: the admin turns old clients of the price archive into orders
+  const toOrder = kind === "price" && !!user?.is_superuser;
   // a superuser (can() is always true for them) or «Bosh menejer» sees everyone's rows
   const manager = can("metering.manage_metering");
   const { state, page, set } = useUrlState({ tab: "work", user: "", search: "" });
@@ -77,6 +79,7 @@ export function OfferAgenda({ kind, actions }: { kind: OfferKind; actions?: Reac
             ...(manager ? [{ key: "user", header: ASSIGNEE_LABEL[kind], cell: (r: Row) => personName(assigneeOf(r)) }] : []),
             { key: "done", header: "Tayyor bo'lgan", cell: (r) => <span className="muted">{date(r.done_at)}</span> },
             { key: "created", header: "Yaratilgan", cell: (r) => <span className="muted">{date(r.created_at)}</span>, hideOnMobile: true },
+            ...(toOrder ? [{ key: "order", header: "Buyurtma", cell: (r: Row) => <ToOrder r={r} /> }] : []),
           ]}
           mobileCard={(r) => (
             <div className="space-y-1">
@@ -88,6 +91,7 @@ export function OfferAgenda({ kind, actions }: { kind: OfferKind; actions?: Reac
                 {date(r.done_at ?? r.created_at)}
                 {manager && ` · ${personName(assigneeOf(r))}`}
               </div>
+              {toOrder && <ToOrder r={r} />}
             </div>
           )}
         />
@@ -263,5 +267,26 @@ function OfferList({
         );
       })}
     </ul>
+  );
+}
+
+/** Archive row (admin): the order made from this zamer, or «Buyurtmaga o'tkazish». */
+function ToOrder({ r }: { r: Row }) {
+  const navigate = useNavigate();
+  if (r.order)
+    return (
+      <button
+        className="text-brand-700 hover:underline dark:text-brand-300"
+        onClick={(e) => (e.stopPropagation(), navigate(`/orders/${r.order!.id}`))}
+      >
+        №{r.order.order_number}
+      </button>
+    );
+  if (!r.metering) return <span className="muted text-xs">o'lchovsiz</span>;
+  const m = r.metering;
+  return (
+    <Button size="sm" variant="outline" onClick={(e) => (e.stopPropagation(), navigate(`/orders/new?metering=${m.id}`))}>
+      Buyurtmaga o'tkazish
+    </Button>
   );
 }

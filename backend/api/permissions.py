@@ -12,7 +12,7 @@ matching admin button checks, via `require_perm`.
 """
 
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.permissions import BasePermission, DjangoModelPermissions
+from rest_framework.permissions import SAFE_METHODS, BasePermission, DjangoModelPermissions
 
 
 def is_staff(user) -> bool:
@@ -29,6 +29,64 @@ class IsStaffUser(BasePermission):
 class IsSuperUser(BasePermission):
     def has_permission(self, request, view):
         return is_staff(request.user) and request.user.is_superuser
+
+
+class PriceAccess(BasePermission):
+    """«Narx hisoblash»: the price rights (ModelPermissions) — or, for a lead's approximate
+    price (stage «estimate»), whoever works the lead / zamer (price.services.can_estimate):
+    they open and edit that one price, nothing else (owner's rule)."""
+
+    ESTIMATE_ACTIONS = {
+        "retrieve",
+        "partial_update",
+        "update",
+        "destroy",
+        "excel",
+        "pdf",
+        "add_version",
+        "version_pdf",
+        "accessory_image",
+        "add_room",
+        "reorder_rooms",
+        "room",
+        "room_images",
+        "room_image",
+        "add_calculation",
+        "calculation",
+    }
+
+    def _model(self, request, view):
+        return ModelPermissions().has_permission(request, view)
+
+    def has_permission(self, request, view):
+        from metering.price.services import can_estimate
+
+        if self._model(request, view):
+            return True
+        return (
+            is_staff(request.user)
+            and getattr(view, "action", None) in self.ESTIMATE_ACTIONS
+            and can_estimate(request.user)
+        )
+
+    def has_object_permission(self, request, view, obj):
+        from metering.price.services import can_open_estimate
+
+        if self._model(request, view):
+            return True
+        return can_open_estimate(request.user, obj)
+
+
+class CatalogRead(BasePermission):
+    """The catalog (objects, room types, products): its own rights, plus reading it for
+    whoever may make a lead's approximate price."""
+
+    def has_permission(self, request, view):
+        from metering.price.services import can_estimate
+
+        if request.method in SAFE_METHODS and is_staff(request.user) and can_estimate(request.user):
+            return True
+        return ModelPermissions().has_permission(request, view)
 
 
 class ModelPermissions(DjangoModelPermissions):

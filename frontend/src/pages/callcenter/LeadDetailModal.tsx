@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   ArrowRightLeft,
   Brush,
@@ -27,7 +27,7 @@ import { AddressLink, FolderButton, MeteringStatusBadge, OrderStatusBadge, Phone
 import { LocationEditModal } from "@/components/LocationField";
 import { Button, Empty, Field, IconButton, Input, KV, Modal, Select, Spinner, Textarea, TONES } from "@/components/ui";
 import { cn } from "@/lib/cn";
-import { dateTime } from "@/lib/format";
+import { dateTime, money } from "@/lib/format";
 import { yandexPointUrl } from "@/lib/geo";
 import { MeteringCreateModal } from "../Meterings";
 import { NEXT_STEP_LABEL, personName } from "../meterings/actions";
@@ -77,6 +77,7 @@ export function LeadDetailModal({ id, onClose }: { id: number; onClose: () => vo
         <div className="space-y-5">
           <LeadInfo invoice={invoice} canChange={canChange} />
           {invoice.metering && <MeteringBlock metering={invoice.metering} />}
+          <EstimateBlock invoice={invoice} />
 
           {canChange && !served && (
             <div>
@@ -635,6 +636,44 @@ function ClientHistory({ invoice, onAnother }: { invoice: Invoice; onAnother?: (
           </Link>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** The lead's approximate price (to tell the client): add / open. Not needed → it is
+ * deleted on its page; needed → it goes on with the lead and «Bajarildi» gives it to
+ * the chosen manager to finish. */
+function EstimateBlock({ invoice }: { invoice: Invoice }) {
+  const navigate = useNavigate();
+  const add = useAction(() => api.post<{ id: number }>(`/invoices/${invoice.id}/estimate/`).then((r) => r.data), {
+    invalidate: CRM_INVALIDATE,
+    onSuccess: (r) => navigate(`/prices/${r.id}`),
+  });
+  const est = invoice.estimate;
+  const zamerPrice = invoice.metering?.price;
+  // the zamer already has its real price task: that one is the price now
+  if (!est && zamerPrice && zamerPrice.stage !== "estimate") return null;
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 p-3 dark:border-slate-800">
+      <div className="text-sm">
+        <div className="font-medium">Taxminiy narx</div>
+        <div className="muted text-xs">
+          {est
+            ? est.stage === "estimate"
+              ? `${est.total ? money(est.total) : "hali hisoblanmagan"} · kerak bo'lmasa o'chiring, kerak bo'lsa zamerdan keyin menejer davom ettiradi`
+              : `${est.total ? money(est.total) + " · " : ""}${est.stage_label}`
+            : "Mijozga taxminiy narx aytish uchun hisob-kitob"}
+        </div>
+      </div>
+      {est ? (
+        <Button size="sm" variant="outline" icon={<Calculator className="h-4 w-4" />} onClick={() => navigate(`/prices/${est.id}`)}>
+          Ochish
+        </Button>
+      ) : (
+        <Button size="sm" variant="outline" icon={<Calculator className="h-4 w-4" />} loading={add.isPending} onClick={() => add.mutate()}>
+          Hisob-kitob qo'shish
+        </Button>
+      )}
     </div>
   );
 }

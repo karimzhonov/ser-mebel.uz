@@ -4,7 +4,7 @@ shown on a lead, a metering and the «Mijozga ko'rsatish» page."""
 from rest_framework import serializers
 
 from metering import services as metering_services
-from metering.constants import OfferStage
+from metering.constants import OfferStage, stage_label
 from metering.models import OfferAnswer
 
 from .common import UserShortSerializer
@@ -62,7 +62,7 @@ def offer_brief(obj, kind, context) -> dict | None:
     return {
         "id": obj.pk,
         "stage": obj.stage,
-        "stage_label": OfferStage(obj.stage).label,
+        "stage_label": stage_label(obj.stage),
         "due_at": _iso(obj.due_at),
         "done_at": _iso(obj.done_at),
         "is_overdue": is_offer_overdue(obj, now_of(context)),
@@ -118,7 +118,7 @@ class OfferFieldsMixin(serializers.Serializer):
     ]
 
     def get_stage_label(self, obj):
-        return OfferStage(obj.stage).label
+        return stage_label(obj.stage)
 
     def get_is_overdue(self, obj):
         return is_offer_overdue(obj, now_of(self.context))

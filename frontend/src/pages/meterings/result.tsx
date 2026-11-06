@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { AlertCircle, Brush, Calculator, Camera, CheckCircle2, FileText, Loader2, RotateCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { api, errorMessage, fieldErrors, refreshNow } from "@/api/client";
@@ -306,6 +307,14 @@ export function MeteringResultCard({ metering, id }: { metering: Metering; id?: 
                     >
                       <Input className="h-12 text-base" type="datetime-local" value={designDue} onChange={(e) => setDesignDue(e.target.value)} />
                     </Field>
+                  )}
+                  {metering.price?.stage === "estimate" && (
+                    <div className="rounded-xl bg-sky-50 p-3 text-sm text-sky-900 sm:col-span-2 dark:bg-sky-500/10 dark:text-sky-200">
+                      Mijozning taxminiy narxi bor — yangi narx ochilmaydi: tanlangan menejer uni o'lchov bo'yicha tahrirlab yakunlaydi.{" "}
+                      <Link className="font-medium underline" to={`/prices/${metering.price.id}`}>
+                        Tahrirlash
+                      </Link>
+                    </div>
                   )}
                   <Field
                     label="Narx muddati"

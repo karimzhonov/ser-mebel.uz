@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ObjectDoesNotExist
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import serializers
 
@@ -37,6 +38,7 @@ class InvoiceSerializer(LocationFieldsMixin, serializers.ModelSerializer):
     next_task = serializers.SerializerMethodField()
     open_tasks = serializers.SerializerMethodField()
     needs_task = serializers.SerializerMethodField()
+    estimate = serializers.SerializerMethodField()
 
     class Meta:
         model = Invoice
@@ -63,6 +65,7 @@ class InvoiceSerializer(LocationFieldsMixin, serializers.ModelSerializer):
             "next_task",
             "open_tasks",
             "needs_task",
+            "estimate",
         ]
         read_only_fields = [
             "create_date",
@@ -72,6 +75,24 @@ class InvoiceSerializer(LocationFieldsMixin, serializers.ModelSerializer):
             "address",
             "address_link",
         ]
+
+    def get_estimate(self, obj):
+        """The lead's approximate price: {id, stage, stage_label, total} or null."""
+        from metering.constants import stage_label
+
+        try:
+            p = obj.estimate
+        except ObjectDoesNotExist:
+            return None
+        if p is None:
+            return None
+        current = getattr(obj, "metering", None) if hasattr(obj, "metering") else None
+        if p.stage != "estimate" and (current is None or p.metering_id != current.pk):
+            return None  # the price of an earlier (let go) zamer
+        total = None
+        if p.price is not None and p.price.amount is not None:
+            total = {"amount": float(p.price.amount), "currency": str(p.price.currency)}
+        return {"id": p.pk, "stage": p.stage, "stage_label": stage_label(p.stage), "total": total}
 
     def get_solution_label(self, obj):
         return uz.solution(obj.solution)

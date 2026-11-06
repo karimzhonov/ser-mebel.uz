@@ -237,6 +237,10 @@ def create_metering(
         if invoice is not None:
             from call_center.services import log_solution
 
+            from .price.services import attach_estimate
+
+            attach_estimate(metering, invoice, by=author)
+
             old = invoice.solution
             invoice.solution = SolutionChoice.go_for_measured
             invoice.save()
@@ -968,10 +972,12 @@ def start_design(metering, *, by=None):
 def start_price(metering, *, by=None):
     from core.exceptions import ServiceError
 
+    from .constants import PRICE_ESTIMATE
     from .price.models import Price
     from .price.services import create_price
 
-    if Price.objects.filter(metering=metering).exists():
+    existing = Price.objects.filter(metering=metering).first()
+    if existing is not None and existing.stage != PRICE_ESTIMATE:
         raise ServiceError("Narx hisoblash allaqachon yaratilgan")
     from .design.models import Design
 
@@ -979,7 +985,18 @@ def start_price(metering, *, by=None):
     _refuse_if_declined(metering, design, price=True)
     now = _now()
     days = _cfg("PRICE_DAYS")
-    return create_price(metering, user=None, due_at=default_due(days, now=now), days=days, by=by)
+    due = default_due(days, now=now)
+    if existing is not None:  # the lead's approximate price becomes the price task
+        from django.db import transaction
+
+        from .price.services import estimate_to_task
+
+        with transaction.atomic():
+            _, _, locked = _lock_offer(metering)
+            if locked is None or locked.stage != PRICE_ESTIMATE:
+                raise ServiceError("Narx hisoblash allaqachon yaratilgan")
+            return estimate_to_task(locked, user=None, due_at=due, days=days, by=by)
+    return create_price(metering, user=None, due_at=due, days=days, by=by)
 
 
 # --- Assigning the design / price tasks after the metering --------------------------
@@ -1052,9 +1069,9 @@ def assign_metering_tasks(
 
     from core.exceptions import ServiceError
 
-    from .constants import OfferStage
+    from .constants import PRICE_ESTIMATE, OfferStage
     from .design.services import create_design
-    from .price.services import create_price
+    from .price.services import create_price, estimate_to_task
 
     if designer is None and pricer is None:
         raise ServiceError("Dizayner va/yoki narx hisoblovchini tanlang")
@@ -1077,7 +1094,8 @@ def assign_metering_tasks(
                     raise ServiceError("Dizayn allaqachon bajarilgan — qayta tayinlab bo'lmaydi")
                 if design.stage != OfferStage.work:
                     raise ServiceError("Dizayn yopilgan — qayta tayinlab bo'lmaydi")
-            if pricer is not None and price is not None:
+            estimate = price is not None and price.stage == PRICE_ESTIMATE
+            if pricer is not None and price is not None and not estimate:
                 if price.done:
                     raise ServiceError("Narx allaqachon hisoblangan — qayta tayinlab bo'lmaydi")
                 if price.stage != OfferStage.work:
@@ -1093,11 +1111,15 @@ def assign_metering_tasks(
                     _hand_over(design, "design", designer, by=by, now=now)
                     result["design"] = "reassigned"
             if pricer is not None:
-                if price is None:
+                if price is None or estimate:
                     days = _cfg("PRICE_DAYS")
                     due = price_due_at or default_due(days, now=now)
-                    create_price(locked, user=pricer, due_at=due, days=days, by=by)
-                    result["price"] = "created"
+                    if estimate:  # the lead's approximate price: the manager finishes it
+                        estimate_to_task(price, user=pricer, due_at=due, days=days, by=by)
+                        result["price"] = "from_estimate"
+                    else:
+                        create_price(locked, user=pricer, due_at=due, days=days, by=by)
+                        result["price"] = "created"
                 elif price.user_id != pricer.pk:
                     _hand_over(price, "price", pricer, by=by, now=now)
                     result["price"] = "reassigned"

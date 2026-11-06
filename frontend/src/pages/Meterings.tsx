@@ -407,6 +407,11 @@ export function MeteringDetailPage() {
   }, [m?.id, location.hash]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = useAction((path: string) => api.post(`/meterings/${id}/${path}/`), { success: "Tayyor", invalidate: METERING_INVALIDATE });
+  // the zamer's approximate price (before «Bajarildi»): opened at once to calculate
+  const estimate = useAction(() => api.post<{ id: number }>(`/meterings/${id}/estimate/`).then((r) => r.data), {
+    invalidate: [...METERING_INVALIDATE, "invoices"],
+    onSuccess: (r) => navigate(`/prices/${r.id}`),
+  });
   const save = useAction(() => api.patch(`/meterings/${id}/`, { desc }), { success: "Saqlandi", invalidate: METERING_INVALIDATE });
   const setMeasurer = useAction((measurer: number) => api.post(`/meterings/${id}/measurer/`, { measurer }), {
     success: "Zamerchi almashtirildi",
@@ -545,19 +550,30 @@ export function MeteringDetailPage() {
               <Step
                 done={!!m.price?.done}
                 label="Narx hisoblash"
-                hint={m.price ? assigneeLabel(m.price.user) : undefined}
+                hint={m.price ? (m.price.stage === "estimate" ? "Taxminiy narx — «Bajarildi»da menejerga beriladi" : assigneeLabel(m.price.user)) : undefined}
                 action={
                   m.price ? (
-                    <Link to={`/prices/${m.price.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Ochish</Link>
-                  ) : a.assign && !a.finish ? (
-                    <Button size="sm" variant="outline" icon={<UserPlus className="h-3.5 w-3.5" />} onClick={() => setAssign(true)}>
-                      Tayinlash
-                    </Button>
-                  ) : a.create_price ? (
-                    <Button size="sm" variant="outline" icon={<Calculator className="h-3.5 w-3.5" />} loading={run.isPending} onClick={() => run.mutate("create-price")}>
-                      Boshlash
-                    </Button>
-                  ) : null
+                    <Link to={`/prices/${m.price.id}`} className="text-brand-700 hover:underline dark:text-brand-300">
+                      {m.price.stage === "estimate" ? "Tahrirlash" : "Ochish"}
+                    </Link>
+                  ) : (
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {a.assign && !a.finish ? (
+                        <Button size="sm" variant="outline" icon={<UserPlus className="h-3.5 w-3.5" />} onClick={() => setAssign(true)}>
+                          Tayinlash
+                        </Button>
+                      ) : a.create_price ? (
+                        <Button size="sm" variant="outline" icon={<Calculator className="h-3.5 w-3.5" />} loading={run.isPending} onClick={() => run.mutate("create-price")}>
+                          Boshlash
+                        </Button>
+                      ) : null}
+                      {["created", "other_day", "metering_done"].includes(m.status) && (
+                        <Button size="sm" variant="outline" icon={<Calculator className="h-3.5 w-3.5" />} loading={estimate.isPending} onClick={() => estimate.mutate()}>
+                          Taxminiy narx
+                        </Button>
+                      )}
+                    </div>
+                  )
                 }
               />
               <Step

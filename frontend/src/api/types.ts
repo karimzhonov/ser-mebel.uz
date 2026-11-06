@@ -117,6 +117,8 @@ export interface Invoice extends Located {
   created_by: UserRef | null;
   next_task: { id: number; text: string; due_at: string } | null;
   open_tasks: number;
+  /** the lead's approximate price (to tell the client) */
+  estimate?: { id: number; stage: string; stage_label: string; total: Money | null } | null;
   /** an active lead (new / re-phone / info / location) with no open task */
   needs_task: boolean;
   address?: string;
@@ -268,7 +270,8 @@ export interface Metering extends Located {
   invoice: number | null;
   folder: number | null;
   design: { id: number; done: boolean; confirm: boolean; user: UserShort | null } | null;
-  price: { id: number; done: boolean; user: UserShort | null } | null;
+  /** stage «estimate» = the lead's approximate price, before «Bajarildi» */
+  price: { id: number; done: boolean; user: UserShort | null; stage?: OfferStage } | null;
   order: OrderSummary | null;
   is_editable: boolean;
   /** who goes to measure (null = not assigned) */
@@ -313,7 +316,8 @@ export type OfferKind = "design" | "price";
 
 /** work → review (at the client) → approved / declined; cancelled */
 /* "waiting" is a legacy value only (old rows); nothing new creates it */
-export type OfferStage = "waiting" | "work" | "review" | "approved" | "declined" | "cancelled";
+/** «estimate»: a Price only — the approximate price on a lead, before the zamer is finished */
+export type OfferStage = "waiting" | "work" | "review" | "approved" | "declined" | "cancelled" | "estimate";
 
 export type ClientResult = "" | "agreed" | "design_declined" | "price_declined";
 
@@ -607,7 +611,10 @@ export interface Price extends Partial<OfferFields> {
   locked?: boolean;
   /** design_price: days the pricer gets once the design is approved */
   duration_days?: number;
-  actions?: { edit: boolean; done: boolean; due?: boolean; reassign?: boolean; answer?: boolean };
+  /** delete: a lead's approximate price, until the zamer is finished */
+  actions?: { edit: boolean; done: boolean; due?: boolean; reassign?: boolean; answer?: boolean; delete?: boolean };
+  /** the lead (ariza) whose approximate price this is */
+  invoice?: number | null;
 }
 
 export interface Factory {

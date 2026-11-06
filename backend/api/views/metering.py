@@ -88,7 +88,7 @@ from metering.services import (
 )
 
 from ..fields import MoneyField
-from ..permissions import IsStaffUser, ModelPermissions, require_perm
+from ..permissions import CatalogRead, IsStaffUser, ModelPermissions, PriceAccess, require_perm
 from ..serializers.common import LocationSetSerializer, UserShortSerializer
 from ..serializers.metering import (
     AssignTasksSerializer,
@@ -360,6 +360,14 @@ class MeteringViewSet(viewsets.ModelViewSet):
             return Response([_file_row(f) for f in created], status=status.HTTP_201_CREATED)
         rows = metering_files(metering).order_by("-uploaded_at")
         return Response([_file_row(f) for f in rows])
+
+    @action(detail=True, methods=["post"])
+    def estimate(self, request, pk=None):
+        """The zamer's approximate price before «Bajarildi»: {id} — opened at /prices/{id}."""
+        from metering.price.services import create_estimate
+
+        price = create_estimate(metering=self.get_object(), by=request.user)
+        return Response({"id": price.pk}, status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=["get"])
     def measurers(self, request):
@@ -674,7 +682,8 @@ class AssignPricesSerializer(serializers.Serializer):
 
 
 class PriceViewSet(viewsets.ModelViewSet):
-    permission_classes = [ModelPermissions]
+    # the price rights, or a lead's approximate price for whoever works the lead
+    permission_classes = [PriceAccess]
     search_fields = ["metering__client__fio", "metering__client__phone", "desc"]
     ordering_fields = ["created_at"]
     ordering = ["-created_at"]
@@ -682,7 +691,24 @@ class PriceViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def destroy(self, request, *args, **kwargs):
-        raise MethodNotAllowed("DELETE")
+        """Only a lead's approximate price, until the zamer is finished."""
+        from metering.price.services import delete_estimate, is_estimate
+
+        price = self.get_object()
+        if not is_estimate(price):
+            raise MethodNotAllowed("DELETE")
+        delete_estimate(price, by=request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def _need(self, request, *perms):
+        """The price rights — or this price is a lead's approximate price (PriceAccess
+        already let only its workers reach it)."""
+        from metering.price.services import can_open_estimate
+
+        if request.user.has_perms(perms):
+            return
+        if not can_open_estimate(request.user, self.get_object()):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
 
     def get_serializer_class(self):
         if self.action in ("retrieve", "create", "partial_update", "update"):
@@ -837,7 +863,7 @@ class PriceViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="versions")
     def add_version(self, request, pk=None):
-        require_perm(request.user, "price.change_price")
+        self._need(request, "price.change_price")
         price = self.get_object()
         save_version(request.user, price, (request.data.get("label") or "").strip())
         return self._detail(price)
@@ -886,9 +912,7 @@ class PriceViewSet(viewsets.ModelViewSet):
     # --- rooms ---------------------------------------------------------------------
 
     def _editable_price(self, request):
-        require_perm(
-            request.user, "price.change_price", "price.add_calculate", "price.change_calculate"
-        )
+        self._need(request, "price.change_price", "price.add_calculate", "price.change_calculate")
         return self.get_object()
 
     def _room_of(self, price, room_id):
@@ -918,7 +942,7 @@ class PriceViewSet(viewsets.ModelViewSet):
         price = self._editable_price(request)
         room = self._room_of(price, room_id)
         if request.method == "DELETE":
-            require_perm(request.user, "price.delete_calculate")
+            self._need(request, "price.delete_calculate")
             delete_room(room)
         else:
             rename_room(room, request.data.get("name", ""))
@@ -969,7 +993,7 @@ class PriceViewSet(viewsets.ModelViewSet):
         serializer_class=CalculationInputSerializer,
     )
     def add_calculation(self, request, pk=None):
-        require_perm(request.user, "price.change_price", "price.add_calculate")
+        self._need(request, "price.change_price", "price.add_calculate")
         price = self.get_object()
         serializer = CalculationInputSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -999,11 +1023,11 @@ class PriceViewSet(viewsets.ModelViewSet):
         serializer_class=CalculationInputSerializer,
     )
     def calculation(self, request, pk=None, calc_id=None):
-        require_perm(request.user, "price.change_price")
+        self._need(request, "price.change_price")
         price = self.get_object()
         calc = get_object_or_404(Calculate, pk=calc_id, price=price)
-        require_perm(
-            request.user,
+        self._need(
+            request,
             "price.delete_calculate" if request.method == "DELETE" else "price.change_calculate",
         )
         if request.method == "DELETE":
@@ -1038,7 +1062,7 @@ class ObjectTypeViewSet(viewsets.ModelViewSet):
 
     queryset = ObjectType.objects.order_by("pk")
     serializer_class = ObjectTypeSerializer
-    permission_classes = [ModelPermissions]
+    permission_classes = [CatalogRead]
     pagination_class = None
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
@@ -1065,7 +1089,10 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
         return super().get_permissions()
 
     def list(self, request, *args, **kwargs):
-        require_perm(request.user, "price.view_price")
+        from metering.price.services import can_estimate
+
+        if not can_estimate(request.user):  # else the price staff: price.view_price
+            require_perm(request.user, "price.view_price")
         return super().list(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
@@ -1076,7 +1103,7 @@ class RoomTypeViewSet(viewsets.ModelViewSet):
 
 class InventoryTypeViewSet(viewsets.ModelViewSet):
     serializer_class = InventoryTypeSerializer
-    permission_classes = [ModelPermissions]
+    permission_classes = [CatalogRead]
     pagination_class = None
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
@@ -1109,7 +1136,7 @@ class InventoryTypeViewSet(viewsets.ModelViewSet):
 
 class InventoryViewSet(viewsets.ModelViewSet):
     serializer_class = InventorySerializer
-    permission_classes = [ModelPermissions]
+    permission_classes = [CatalogRead]
     pagination_class = None
     search_fields = ["name"]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]

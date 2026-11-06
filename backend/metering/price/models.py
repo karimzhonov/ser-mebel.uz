@@ -9,7 +9,7 @@ from simple_history.models import HistoricalRecords
 
 from core.djmoney import ConvertedCostManager
 
-from metering.constants import OfferStage
+from metering.constants import PRICE_STAGE_CHOICES, OfferStage
 
 from .services import create_price_folder
 
@@ -17,6 +17,15 @@ from .services import create_price_folder
 class Price(models.Model):
     metering = models.OneToOneField(
         "metering.Metering", models.CASCADE, verbose_name="Замер", blank=True, null=True
+    )
+    # the lead whose approximate price this is (stage «estimate»); kept after «Bajarildi»
+    invoice = models.OneToOneField(
+        "call_center.Invoice",
+        models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="estimate",
+        verbose_name="Ariza (taxminiy narx)",
     )
     price = MoneyField(max_digits=12, blank=True, null=True, verbose_name="Цена")
     folder = FilerFolderField(
@@ -36,7 +45,7 @@ class Price(models.Model):
 
     # Stage 2 (docs/BOT_CONTRACT.md, "Dizayn va narx"); same invariant as Design.
     stage = models.CharField(
-        max_length=10, choices=OfferStage.choices, default=OfferStage.work, db_index=True
+        max_length=10, choices=PRICE_STAGE_CHOICES, default=OfferStage.work, db_index=True
     )
     due_at = models.DateTimeField(null=True, blank=True)
     assigned_at = models.DateTimeField(null=True, blank=True)

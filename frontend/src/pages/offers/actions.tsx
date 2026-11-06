@@ -27,6 +27,7 @@ export const STAGE_LABEL: Record<OfferStage, string> = {
   approved: "Tasdiqlandi",
   declined: "Rad etildi",
   cancelled: "Bekor",
+  estimate: "Taxminiy narx",
 };
 
 const STAGE_TONE: Record<OfferStage, Tone> = {
@@ -36,6 +37,7 @@ const STAGE_TONE: Record<OfferStage, Tone> = {
   approved: "ok",
   declined: "danger",
   cancelled: "idle",
+  estimate: "primary",
 };
 
 export const CLIENT_RESULT_LABEL: Record<string, string> = {

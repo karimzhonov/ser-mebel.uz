@@ -1715,3 +1715,20 @@ def test_admin_deletes_old_unassigned_prices(flow, pricer, admin_api, api):
     assert r.status_code == 200 and r.data == {"deleted": 1, "kept": 1}
     assert not Price.objects.filter(pk=old.pk).exists() and Price.objects.filter(pk=taken.pk).exists()
     assert admin_api.post(url, {"ids": "x"}, format="json").status_code == 400
+
+
+def test_admin_turns_an_archived_client_into_an_order(flow, make_staff, default_factory):
+    """Owner's rule: from the «Narx hisoblash» archive the admin makes the order even when
+    the old zamer's design was never approved; everyone else keeps the normal checks."""
+    from order.models import Order
+    from order.services import create_order
+
+    boss = make_staff("order.add_order", "order.view_order")
+    with pytest.raises(ServiceError):
+        create_order(author=boss, metering=flow, address="x", factory=default_factory)
+    admin = make_staff(superuser=True)
+    order = create_order(author=admin, metering=flow, address="x", factory=default_factory)
+    assert order.metering_id == flow.pk and order.client_id == flow.client_id
+    with pytest.raises(ServiceError):  # still one order per zamer
+        create_order(author=admin, metering=flow, address="x", factory=default_factory)
+    assert Order.objects.filter(metering=flow).count() == 1
