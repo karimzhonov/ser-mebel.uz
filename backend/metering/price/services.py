@@ -1010,6 +1010,55 @@ def delete_unassigned_prices(*, by, ids) -> dict:
     return {"deleted": len(ok), "kept": len(wanted) - len(ok)}
 
 
+def give_price_a_zamer(price, *, by, phone, fio="", address="", date_time=None):
+    """Admin, «Narx hisoblash» archive: an old calculation made without a zamer gets one
+    — the client (found by phone, else created), an already finished zamer to upload the
+    measurement files to — so it can then become an order like any other. Nobody is
+    notified (it is history being filled in). Returns the zamer."""
+    from client.models import Client
+    from metering import services as M
+    from metering.constants import PRICE_ESTIMATE, MeteringStatus, NextStep
+    from metering.models import Metering
+
+    from .models import Price
+
+    if not by.is_superuser:
+        raise ServiceForbidden("Faqat administrator")
+    fio = (fio or "").strip()
+    with transaction.atomic():
+        price = Price.objects.select_for_update().get(pk=price.pk)
+        if price.metering_id is not None:
+            raise ServiceError("Bu hisob-kitobning zameri bor")
+        if price.stage == PRICE_ESTIMATE:
+            raise ServiceError("Taxminiy narx zamerga ariza orqali bog'lanadi")
+        client = Client.objects.filter(phone=phone).first()
+        if client is None:
+            fio = fio or (price.desc or "").strip()
+            if not fio:
+                raise ServiceError("Yangi mijoz uchun F.I.Sh. kiriting", "client_fio")
+            client = Client.objects.create(phone=phone, fio=fio[:255])
+        now = M._now()
+        m = Metering(
+            client=client,
+            date_time=date_time or now,
+            address=(address or "").strip() or None,
+            desc="Arxivdagi o'lchovsiz hisob-kitobdan",
+            created_by=by,
+            scheduled_at=now,
+            measured_at=now,
+            status=MeteringStatus.done,
+            done_at=now,
+            done_by=by,
+            next_step=NextStep.price,
+        )
+        m._history_user = by
+        m.save()
+        price.metering = m
+        price._history_user = by
+        price.save(update_fields=["metering"])
+    return m
+
+
 def record_price_answer(price, *, by, answer, comment="", due_at=None):
     """The manager's record of what the client said: approved | recalc | declined.
     Returns {"task": price, "closed_tasks": n}."""
