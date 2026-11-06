@@ -714,6 +714,11 @@ class PriceViewSet(viewsets.ModelViewSet):
             self._admin_edit = None
         return super().finalize_response(request, response, *args, **kwargs)
 
+    def create(self, request, *args, **kwargs):
+        """Owner's rule: no calculation without a zamer — prices come from the zamer
+        (create_price) or a lead's approximate price, never from a bare POST."""
+        raise MethodNotAllowed("POST")
+
     def destroy(self, request, *args, **kwargs):
         """Only a lead's approximate price, until the zamer is finished."""
         from metering.price.services import delete_estimate, is_estimate
