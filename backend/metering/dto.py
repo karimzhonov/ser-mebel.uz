@@ -33,7 +33,7 @@ def metering_brief(m) -> dict:
 def offer_task(obj, kind: str) -> dict:
     """A Design (kind "design") or Price (kind "price") as the bot shows it
     (docs/BOT_CONTRACT.md, "OfferTask")."""
-    from .constants import OfferStage
+    from .constants import stage_label
     from .events import offer_url, present_url
 
     m = obj.metering
@@ -47,7 +47,7 @@ def offer_task(obj, kind: str) -> dict:
         "metering_id": m.pk,
         "round": obj.round,
         "stage": obj.stage,
-        "stage_label": OfferStage(obj.stage).label,
+        "stage_label": stage_label(obj.stage),
         "client": {"fio": m.client.fio, "phone": str(m.client.phone)},
         "address": m.address or "",
         "map_url": obj_map_url(m),

@@ -24,6 +24,18 @@ class OfferStage(TextChoices):
     cancelled = ("cancelled", "Bekor")
 
 
+# A Price only: the approximate price on a lead (ariza), before the zamer is finished.
+# Never a task (no assignee, no deadline, never sent to the bot); «Bajarildi» turns it
+# into the manager's price task (stage work).
+PRICE_ESTIMATE = "estimate"
+PRICE_STAGE_CHOICES = [*OfferStage.choices, (PRICE_ESTIMATE, "Taxminiy narx")]
+_STAGE_LABELS = dict(PRICE_STAGE_CHOICES)
+
+
+def stage_label(stage) -> str:
+    return _STAGE_LABELS.get(stage, stage)
+
+
 class ClientResult(TextChoices):
     """The client's final answer, kept on the metering."""
 

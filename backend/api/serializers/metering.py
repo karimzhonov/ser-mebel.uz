@@ -569,10 +569,12 @@ class PriceSerializer(OfferFieldsMixin, serializers.ModelSerializer):
             "client_title",
             "variant",
             "duration_days",
+            "invoice",
             *OfferFieldsMixin.OFFER_FIELDS,
         ]
         # the stage-2 state moves only through the services (finish / done / due / answer)
         read_only_fields = [
+            "invoice",
             "metering",
             "price",
             "done",
@@ -671,12 +673,20 @@ class PriceDetailSerializer(PriceSerializer):
         return CalculationSerializer(qs, many=True, context=self.context).data
 
     def get_actions(self, obj):
+        from metering.price.services import can_estimate, is_estimate
+
         user = self.context["request"].user
         can_change = user.has_perm("price.change_price")
+        # a lead's approximate price: whoever works the lead edits / deletes it
+        estimate = is_estimate(obj) and can_estimate(user)
         return {
-            "edit": can_change
-            and user.has_perms(["price.add_calculate", "price.change_calculate"])
+            "edit": (
+                estimate
+                or can_change
+                and user.has_perms(["price.add_calculate", "price.change_calculate"])
+            )
             and not self.get_locked(obj),
+            "delete": estimate,
             **_offer_actions(user, obj, "price"),
         }
 

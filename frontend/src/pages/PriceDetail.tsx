@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ArrowDown,
   ArrowUp,
@@ -76,6 +76,13 @@ export function PriceDetailPage() {
   const [addingRoom, setAddingRoom] = useState(false);
   const [confirmDone, setConfirmDone] = useState(false);
   const [pdfOpen, setPdfOpen] = useState(false);
+  const [askDelete, setAskDelete] = useState(false);
+  const navigate = useNavigate();
+  const remove = useAction(() => api.delete(`/prices/${id}/`), {
+    success: "Taxminiy narx o'chirildi",
+    invalidate: [...INV, "invoices"],
+    onSuccess: () => navigate(-1),
+  });
 
   const done = useAction(() => api.post(`/prices/${id}/done/`), {
     success: "Narx tayyor — menejerga yuborildi",
@@ -92,11 +99,14 @@ export function PriceDetailPage() {
   const sheet = p.sheet;
   const roomTotal = (roomId: number | null) => sheet?.rooms.find((r) => r.id === roomId)?.total ?? 0;
   const pdfName = `Taklif — ${title}.pdf`;
+  // a lead's approximate price: its workers have no «Narx hisoblash» list to go back to
+  const estimate = p.stage === "estimate";
+  const backTo = estimate ? (p.metering ? `/meterings/${p.metering.id}` : "/call-center") : "/prices";
 
   return (
     <div>
       <PageHeader
-        back={<BackLink to="/prices">Narx hisoblash</BackLink>}
+        back={<BackLink to={backTo}>{estimate ? (p.metering ? "O'lchov" : "Call-center") : "Narx hisoblash"}</BackLink>}
         title={title}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
@@ -115,6 +125,11 @@ export function PriceDetailPage() {
           <>
             <FolderButton folderId={p.metering?.folder} label="O'lchov fayllari" />
             <FolderButton folderId={p.folder} label="Hisob-kitob fayllari" />
+            {p.actions?.delete && (
+              <Button variant="ghost" className="text-rose-600" icon={<Trash2 className="h-4 w-4" />} onClick={() => setAskDelete(true)}>
+                Kerak emas — o'chirish
+              </Button>
+            )}
             {p.actions?.done && (
               <Button size="lg" variant="success" className="w-full sm:w-auto" icon={<CheckCircle2 className="h-5 w-5" />} onClick={() => setConfirmDone(true)}>
                 Tayyor
@@ -124,6 +139,24 @@ export function PriceDetailPage() {
         }
       />
 
+      {estimate && (
+        <div className="mb-4">
+          <Hint tone="info">
+            Taxminiy narx — mijozga oldindan aytish uchun. Kerak bo'lmasa o'chiring. Kerak bo'lsa arizada qoladi: zamer «Bajarildi» bo'lganda zamerchi tanlagan menejerga
+            beriladi va u o'lchov bo'yicha tahrirlab yakunlaydi.
+          </Hint>
+        </div>
+      )}
+      <Confirm
+        open={askDelete}
+        onClose={() => setAskDelete(false)}
+        onConfirm={() => remove.mutate()}
+        loading={remove.isPending}
+        variant="danger"
+        confirmLabel="O'chirish"
+        title="Taxminiy narxni o'chirish"
+        text="Hisob-kitob butunlay o'chiriladi. Kerak bo'lsa, arizadan qaytadan qo'shish mumkin."
+      />
       {p.is_overdue && p.stage === "work" && (
         <div className="mb-4">
           <Hint tone="danger">Muddat o'tdi — narxni hisoblang yoki muddatni o'zgartiring.</Hint>

@@ -74,6 +74,7 @@ class ClientViewSet(
                     "metering__manager",
                     "metering__design__user",
                     "metering__price__user",
+                    "estimate",
                     "assigned_to",
                     "created_by",
                 )
@@ -133,6 +134,7 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             "metering__manager",
             "metering__design__user",
             "metering__price__user",
+            "estimate",
             "assigned_to",
             "created_by",
         ).prefetch_related("metering__offer_answers")
@@ -186,6 +188,14 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             serializer.save()
             if desc and desc != (serializer.instance.desc or "").strip():
                 CC.add_note(serializer.instance, author=self.request.user, text=desc)
+
+    @action(detail=True, methods=["post"])
+    def estimate(self, request, pk=None):
+        """The lead's approximate price (to tell the client): {id} — opened at /prices/{id}."""
+        from metering.price.services import create_estimate
+
+        price = create_estimate(invoice=self.get_object(), by=request.user)
+        return Response({"id": price.pk}, status=201)
 
     @action(detail=True, methods=["post"], serializer_class=InvoiceSolutionSerializer)
     def solution(self, request, pk=None):
