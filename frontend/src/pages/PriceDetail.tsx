@@ -169,7 +169,9 @@ export function PriceDetailPage() {
       {p.locked && (
         <div className="mb-4 flex items-center gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           <Lock className="h-4 w-4 shrink-0" />
-          Buyurtma detalirovkaga o'tgan — hisob-kitob qulflangan. Taklifni ko'rish va yuklab olish mumkin.
+          {canEdit
+            ? "Buyurtma xomashyo buyurtmasiga o'tgan — narxni faqat administrator o'zgartiradi (siz o'zgartira olasiz)."
+            : "Buyurtma xomashyo buyurtmasiga o'tgan — narxni faqat administrator o'zgartiradi. Taklifni ko'rish va yuklab olish mumkin."}
         </div>
       )}
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">

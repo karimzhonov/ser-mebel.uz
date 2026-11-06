@@ -294,8 +294,8 @@ def test_versions_are_kept_and_deduplicated(admin_api, price, catalog):
     assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
 
 
-def test_price_is_locked_once_the_order_is_in_detailing(
-    admin_api, db_client, catalog, order_factory
+def test_price_is_locked_for_the_boss_from_the_raw_material_order(
+    api, admin_api, db_client, catalog, order_factory
 ):
     from datetime import datetime
 
@@ -311,18 +311,24 @@ def test_price_is_locked_once_the_order_is_in_detailing(
     order = order_factory(metering=metering)
     assert admin_api.get(url(price)).data["locked"] is False  # «Yaratildi»: still editable
 
+    # owner's rule: during detailing the bosh menejer still changes it ...
+    boss = api("metering.manage_metering", "metering.view_metering", "price.view_price")
     order.status = OrderStatus.DETAILING
     order.save(update_fields=["status"])
-    data = admin_api.get(url(price)).data
+    data = boss.get(url(price)).data
+    assert data["locked"] is False and data["actions"]["edit"] is True
+    r = boss.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json")
+    assert r.status_code == 200, r.data
+    # ... from the raw-material order on only the admin does
+    order.status = OrderStatus.WORKING
+    order.save(update_fields=["status"])
+    data = boss.get(url(price)).data
     assert data["locked"] is True and data["actions"]["edit"] is False
-    for resp in (
-        add_kitchen(admin_api, price, room_id, catalog),
-        admin_api.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json"),
-        admin_api.delete(url(price, f"rooms/{room_id}/")),
-    ):
-        assert resp.status_code == 400 and "detalirovka" in resp.data["detail"]
-    # the offer can still be saved / printed
-    assert admin_api.post(url(price, "versions/"), {}, format="json").status_code == 200
+    r = boss.post(url(price, "rooms/"), {"room_type": catalog["oshxona"].pk}, format="json")
+    assert r.status_code == 403
+    assert admin_api.get(url(price)).data["actions"]["edit"] is True
+    assert add_kitchen(admin_api, price, room_id, catalog).status_code == 200
+    assert admin_api.delete(url(price, f"rooms/{room_id}/")).status_code == 200
 
 
 def test_room_picture_can_be_attached_to_furniture(admin_api, price, catalog, settings, tmp_path):

@@ -164,7 +164,7 @@ class OrderDetailSerializer(OrderSerializer):
         """The zamer's price calculation: {id, can_edit} for who may open it (owner's
         rule: after the order only the bosh menejer edits it), else null."""
         from metering.price.models import Price
-        from metering.price.services import can_edit_price, can_view_price, price_locked
+        from metering.price.services import can_edit_price, can_view_price
 
         if obj.metering_id is None:
             return None
@@ -172,7 +172,7 @@ class OrderDetailSerializer(OrderSerializer):
         user = self.context["request"].user
         if price is None or not can_view_price(user, price):
             return None
-        return {"id": price.pk, "can_edit": can_edit_price(user, price) and not price_locked(price)}
+        return {"id": price.pk, "can_edit": can_edit_price(user, price)}
 
     def get_actions(self, obj):
         user = self.context["request"].user

@@ -679,7 +679,7 @@ class PriceDetailSerializer(PriceSerializer):
         return {
             # owner's rule: the client's workers continue it; after the order only the
             # bosh menejer (can_edit_price); detailing locks it for everyone
-            "edit": can_edit_price(user, obj) and not self.get_locked(obj),
+            "edit": can_edit_price(user, obj),  # past the raw-material order: admin only
             "delete": is_estimate(obj) and can_open_estimate(user, obj),
             **_offer_actions(user, obj, "price"),
         }

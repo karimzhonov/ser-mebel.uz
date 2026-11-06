@@ -697,6 +697,23 @@ class PriceViewSet(viewsets.ModelViewSet):
     # DELETE is only for the nested calculations / rooms / images, never the price itself
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
+    def initial(self, request, *args, **kwargs):
+        # owner's rule: past the raw-material order only the admin changes a price — the
+        # services' lock (assert_editable) lets an administrator's request through
+        from metering.price import services as PS
+
+        super().initial(request, *args, **kwargs)
+        self._admin_edit = PS._ADMIN_EDIT.set(bool(request.user.is_superuser))
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        from metering.price import services as PS
+
+        token = getattr(self, "_admin_edit", None)
+        if token is not None:
+            PS._ADMIN_EDIT.reset(token)
+            self._admin_edit = None
+        return super().finalize_response(request, response, *args, **kwargs)
+
     def destroy(self, request, *args, **kwargs):
         """Only a lead's approximate price, until the zamer is finished."""
         from metering.price.services import delete_estimate, is_estimate
