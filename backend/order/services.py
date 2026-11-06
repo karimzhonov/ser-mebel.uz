@@ -281,11 +281,22 @@ def create_order(*, count_days=None, author=None, **fields):
             raise ServiceError("Bu o'lchov uchun buyurtma allaqachon yaratilgan")
         # Reverse OneToOne: getattr with a default swallows RelatedObjectDoesNotExist.
         design = getattr(metering, "design", None)
-        if metering.status == MeteringStatus.dont_need:
+        # owner's rule: the admin turns old clients from the «Narx hisoblash» archive into
+        # orders — no design / answer checks; a variant, when picked, must be this design's
+        admin = author is not None and author.is_superuser
+        if admin:
+            if design_type is not None and (design is None or design_type.design_id != design.pk):
+                raise ServiceError("Shu o'lchov dizaynidan variant tanlang")
+        elif metering.status == MeteringStatus.dont_need:
             raise ServiceError("O'lchov bekor qilingan — buyurtma yaratib bo'lmaydi")
-        if metering.client_result in (ClientResult.design_declined, ClientResult.price_declined):
+        elif metering.client_result in (
+            ClientResult.design_declined,
+            ClientResult.price_declined,
+        ):
             raise ServiceError("Mijoz rad etgan — buyurtma yaratib bo'lmaydi")
-        if design is None and metering.next_step == "price" and design_type is None:
+        if admin:
+            pass
+        elif design is None and metering.next_step == "price" and design_type is None:
             pass  # «Faqat narx»: the client wants no design
         else:
             if design is None or not design.done:

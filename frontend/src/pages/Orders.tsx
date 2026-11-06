@@ -653,8 +653,9 @@ export function OrderCreatePage() {
   const { can } = useAuth();
   const { data: meta } = useMeta();
   const meteringId = params.get("metering");
-  const designId = params.get("design");
   const { data: metering } = useGet<Metering>(meteringId ? `/meterings/${meteringId}/` : null);
+  // from the price archive (admin) no ?design= comes: the zamer's own design, if any
+  const designId = params.get("design") ?? (metering?.design ? String(metering.design.id) : null);
   const { data: design } = useGet<Design>(designId ? `/designs/${designId}/` : null);
   const { data: price } = useGet<{ price: { amount: number; currency: string } | null }>(
     metering?.price ? `/prices/${metering.price.id}/` : null,
