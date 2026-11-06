@@ -67,7 +67,7 @@ from ..serializers.finance import (
     WarrantyLetterSerializer,
     WorkerSerializer,
 )
-from ..utils import date_range, int_param
+from ..utils import apply_period, date_range, int_param
 
 log = logging.getLogger("finance.api")
 
@@ -891,7 +891,8 @@ class OrderBonusViewSet(mixins.ListModelMixin, mixins.UpdateModelMixin, viewsets
     def get_queryset(self):
         qs = super().get_queryset()
         st = self.request.query_params.get("status")
-        return qs.filter(status=st) if st else qs
+        qs = qs.filter(status=st) if st else qs
+        return apply_period(qs, "ready_date", self.request.query_params)
 
     @action(detail=True, methods=["post"])
     def close(self, request, pk=None):
@@ -923,7 +924,8 @@ class WarrantyLetterViewSet(
     def get_queryset(self):
         qs = super().get_queryset()
         g = self.request.query_params.get("given")
-        return qs.filter(given=g == "1") if g in ("0", "1") else qs
+        qs = qs.filter(given=g == "1") if g in ("0", "1") else qs
+        return apply_period(qs, "ready_date", self.request.query_params)
 
     @action(detail=True, methods=["post"])
     def give(self, request, pk=None):
@@ -942,7 +944,8 @@ class SiteEntryTaskViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     def get_queryset(self):
         qs = super().get_queryset()
         d = self.request.query_params.get("done")
-        return qs.filter(is_done=d == "1") if d in ("0", "1") else qs
+        qs = qs.filter(is_done=d == "1") if d in ("0", "1") else qs
+        return apply_period(qs, "date", self.request.query_params)
 
     @action(detail=True, methods=["post"])
     def done(self, request, pk=None):
@@ -964,7 +967,8 @@ class ClientFeedbackViewSet(
     def get_queryset(self):
         qs = super().get_queryset()
         st = self.request.query_params.get("status")
-        return qs.filter(status=st) if st else qs
+        qs = qs.filter(status=st) if st else qs
+        return apply_period(qs, "ready_date", self.request.query_params)
 
 
 class HandoverView(APIView):

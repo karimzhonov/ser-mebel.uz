@@ -3,6 +3,7 @@ import { Check as CheckIcon, X } from "lucide-react";
 import { api } from "@/api/client";
 import { useAction, useGet, useList } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
+import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Badge, Button, Card, DataTable, Empty, Field, Input, Modal, PageHeader, Pagination, Segmented, Select, Textarea } from "@/components/ui";
 import { date, dateTime } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
@@ -213,12 +214,12 @@ export function FinanceFollowupPage() {
 
 function BonusTab() {
   const { can } = useAuth();
-  const { state, page, set } = useUrlState({ status: "waiting", search: "" });
+  const { state, page, set } = useUrlState({ status: "waiting", search: "", date_from: "", date_to: "" });
   const { data, isFetching } = useList<Bonus>("finance/bonuses", { ...state, page });
   const close = useAction((id: number) => api.post(`/finance/bonuses/${id}/close/`), { success: "Yopildi", invalidate: ["finance"] });
   return (
     <Card padded={false}>
-      <div className="border-b border-slate-100 p-4 dark:border-slate-800">
+      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between dark:border-slate-800">
         <Segmented
           value={state.status}
           onChange={(status) => set({ status })}
@@ -229,6 +230,7 @@ function BonusTab() {
             { value: "", label: "Hammasi" },
           ]}
         />
+        <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
       </div>
       <DataTable
         rows={data?.results}
@@ -300,13 +302,14 @@ function HandoverTab() {
 }
 
 function WarrantyTab() {
-  const { state, page, set } = useUrlState({ given: "0", search: "" });
+  const { state, page, set } = useUrlState({ given: "0", search: "", date_from: "", date_to: "" });
   const { data, isFetching } = useList<Warranty>("finance/warranty", { ...state, page });
   const give = useAction((id: number) => api.post(`/finance/warranty/${id}/give/`), { success: "Berildi", invalidate: ["finance"] });
   return (
     <Card padded={false}>
-      <div className="border-b border-slate-100 p-4 dark:border-slate-800">
+      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between dark:border-slate-800">
         <Segmented value={state.given} onChange={(given) => set({ given })} options={[{ value: "0", label: "❌ Berilmagan" }, { value: "1", label: "✅ Berilgan" }, { value: "", label: "Hammasi" }]} />
+        <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
       </div>
       <DataTable
         rows={data?.results}
@@ -325,13 +328,14 @@ function WarrantyTab() {
 }
 
 function SiteTab() {
-  const { state, page, set } = useUrlState({ done: "0" });
+  const { state, page, set } = useUrlState({ done: "0", date_from: "", date_to: "" });
   const { data, isFetching } = useList<SiteEntry>("finance/site-entry", { ...state, page });
   const done = useAction((id: number) => api.post(`/finance/site-entry/${id}/done/`), { success: "Belgilandi", invalidate: ["finance"] });
   return (
     <Card padded={false}>
-      <div className="border-b border-slate-100 p-4 dark:border-slate-800">
+      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between dark:border-slate-800">
         <Segmented value={state.done} onChange={(v) => set({ done: v })} options={[{ value: "0", label: "⏳ Kiritilmagan" }, { value: "1", label: "✅ Kiritilgan" }, { value: "", label: "Hammasi" }]} />
+        <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
       </div>
       <DataTable
         rows={data?.results}
@@ -366,17 +370,18 @@ function Screenshot({ url, onClose }: { url: string; onClose: () => void }) {
 }
 
 function FeedbackTab() {
-  const { state, page, set } = useUrlState({ status: "asked" });
+  const { state, page, set } = useUrlState({ status: "asked", date_from: "", date_to: "" });
   const [shot, setShot] = useState<string | null>(null);
   const { data, isFetching } = useList<Feedback>("finance/feedback", { ...state, page });
   return (
     <Card padded={false}>
-      <div className="border-b border-slate-100 p-4 dark:border-slate-800">
+      <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row lg:items-center lg:justify-between dark:border-slate-800">
         <Segmented
           value={state.status}
           onChange={(status) => set({ status })}
           options={[{ value: "asked", label: "⏳ Kutilmoqda" }, { value: "received", label: "✅ Olindi" }, { value: "scheduled", label: "Rejada" }, { value: "", label: "Hammasi" }]}
         />
+        <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
       </div>
       <DataTable
         rows={data?.results}
