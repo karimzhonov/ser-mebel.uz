@@ -6,6 +6,7 @@ import { cleanParams, useGet, useMeta } from "@/api/hooks";
 import type { Invoice, LeadBoard as LeadBoardData, LeadBoardColumn } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { MeteringCreateModal } from "../Meterings";
+import { SolutionCommentModal } from "./SolutionCommentModal";
 import { AddressLink, PhoneLink } from "@/components/domain";
 import { Empty, PageLoader, TONES } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -42,6 +43,8 @@ export function LeadBoard({ filters, onOpen }: { filters: Record<string, string>
   const [dragging, setDragging] = useState<{ id: number; from: string } | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const [metering, setMetering] = useState<Invoice | null>(null);
+  // a drop waits for its comment before it is saved
+  const [pending, setPending] = useState<{ card: Invoice; to: LeadBoardColumn; solution: number; label: string } | null>(null);
 
   const canChange = can("call_center.change_invoice");
   const canMeter = can("metering.add_metering");
@@ -64,10 +67,15 @@ export function LeadBoard({ filters, onOpen }: { filters: Record<string, string>
       setMetering(card);
       return;
     }
+    const label = meta?.solutions.find((s) => s.value === solution)?.label ?? to.title;
+    setPending({ card, to, solution, label });
+  }
+
+  async function save(card: Invoice, to: LeadBoardColumn, solution: number, label: string, comment: string) {
+    setPending(null);
     // stop an in-flight board refetch from overwriting the optimistic move
     await qc.cancelQueries({ queryKey });
     const previous = qc.getQueryData<LeadBoardData>(queryKey);
-    const label = meta?.solutions.find((s) => s.value === solution)?.label ?? to.title;
     if (previous)
       qc.setQueryData<LeadBoardData>(queryKey, {
         ...previous,
@@ -80,7 +88,7 @@ export function LeadBoard({ filters, onOpen }: { filters: Record<string, string>
         }),
       });
     try {
-      await api.post(`/invoices/${card.id}/solution/`, { solution });
+      await api.post(`/invoices/${card.id}/solution/`, { solution, comment });
       toast.success(`#${card.id} → ${label}`);
     } catch (e) {
       // don't restore a snapshot (it may be stale by now) — the refetch below brings the real board back
@@ -201,6 +209,13 @@ export function LeadBoard({ filters, onOpen }: { filters: Record<string, string>
         })}
       </div>
 
+      {pending && (
+        <SolutionCommentModal
+          label={pending.label}
+          onSubmit={(comment) => save(pending.card, pending.to, pending.solution, pending.label, comment)}
+          onClose={() => setPending(null)}
+        />
+      )}
       {metering && (
         <MeteringCreateModal
           initial={{ client_phone: metering.client.phone, client_fio: metering.client.fio, invoice: metering.id }}

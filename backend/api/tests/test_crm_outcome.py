@@ -245,6 +245,12 @@ def test_site_api_done_shape_and_errors(api, seller):
     )
     assert r.status_code == 400 and r.data["field"] == "next_task"
     r = c.post(url, {"outcome": "re_phone", "next_task": {"preset": "tomorrow"}}, format="json")
+    assert r.status_code == 400 and r.data["field"] == "note"  # a panel result needs a comment
+    r = c.post(
+        url,
+        {"note": "ertaga", "outcome": "re_phone", "next_task": {"preset": "tomorrow"}},
+        format="json",
+    )
     assert r.status_code == 200, r.content
     assert r.data["id"] == t.pk and r.data["is_done"] is True
     assert r.data["next_task"]["due_at"].startswith("2026-11-04T10:00:00")
@@ -259,7 +265,7 @@ def test_site_api_closing_reports_closed_tasks(api, seller):
     new_task(inv, seller)
     c = api()
     c.force_authenticate(seller)
-    r = c.post(f"/api/v1/invoice-tasks/{t.pk}/done/", {"outcome": "dont_need"}, format="json")
+    r = c.post(f"/api/v1/invoice-tasks/{t.pk}/done/", {"note": "kerak emas", "outcome": "dont_need"}, format="json")
     assert r.status_code == 200 and r.data["closed_tasks"] == 1 and r.data["next_task"] is None
     assert r.data["invoice"]["solution"] == 0
 
@@ -392,7 +398,7 @@ def test_board_solution_endpoint_to_dont_need_closes_tasks(api, seller):
     new_task(inv, seller)
     c = api(*PERMS)
     c.force_authenticate(seller)
-    r = c.post(f"/api/v1/invoices/{inv.pk}/solution/", {"solution": 0}, format="json")
+    r = c.post(f"/api/v1/invoices/{inv.pk}/solution/", {"solution": 0, "comment": "x"}, format="json")
     assert r.status_code == 200, r.content
     assert inv.tasks.filter(done_at__isnull=True).count() == 0
     assert inv.notes.filter(kind=NoteKind.solution).latest("pk").meta["closed_tasks"] == 2
@@ -403,7 +409,7 @@ def test_board_solution_response_has_no_closed_tasks(api, seller):
     new_task(inv, seller)
     c = api(*PERMS)
     c.force_authenticate(seller)
-    r = c.post(f"/api/v1/invoices/{inv.pk}/solution/", {"solution": 0}, format="json")
+    r = c.post(f"/api/v1/invoices/{inv.pk}/solution/", {"solution": 0, "comment": "x"}, format="json")
     assert r.status_code == 200, r.content
     assert r.data["open_tasks"] == 0
 

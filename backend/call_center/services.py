@@ -412,8 +412,9 @@ def close_lead_from_offer(invoice, *, by, solution, reason, metering_id, event) 
     return closed
 
 
-def set_invoice_solution(invoice, solution: int, *, author=None):
-    """Record the call-centre answer for an invoice.
+def set_invoice_solution(invoice, solution: int, *, author=None, comment=""):
+    """Record the call-centre answer for an invoice. Owner's rule: every answer comes
+    with a comment (what was said), like the zamer has one; it goes into the history.
 
     "Замерга борилади" is not accepted here: it is set by creating the metering
     (metering.services.create_metering), exactly as the admin button redirects to the
@@ -424,6 +425,9 @@ def set_invoice_solution(invoice, solution: int, *, author=None):
         raise ServiceError("O'lchov yarating — javob kodi avtomatik o'zgaradi")
     if solution == SolutionChoice.sold_out:
         raise ServiceError("«Sotildi» buyurtma yaratilganda avtomatik qo'yiladi")
+    comment = (comment or "").strip()
+    if not comment:
+        raise ServiceError("Izoh yozing: mijoz bilan nima gaplashildi?", "comment")
 
     with transaction.atomic():
         # re-read under a lock: a concurrent metering/order may have just served it
@@ -436,6 +440,7 @@ def set_invoice_solution(invoice, solution: int, *, author=None):
         if invoice.solution in SERVED_SOLUTIONS:
             raise ServiceError(f"Mijozga ({invoice.client.fio}) xizmat ko'rsatilgan")
         _apply_solution(invoice, solution, author)
+        add_note(invoice, author=author, text=comment)
     return invoice
 
 
@@ -759,6 +764,10 @@ def complete_task(
                 due, text = _next_due(next_task, now)
             else:
                 raise ServiceError("Yopilgan arizaga vazifa qo'shib bo'lmaydi", "next_task")
+        # owner's rule: a call result chosen in the panel needs a comment (the bot's
+        # reminder buttons stay one-tap — docs/BOT_CONTRACT.md)
+        if via != "bot" and outcome != KEEP and not (note or "").strip():
+            raise ServiceError("Izoh yozing: mijoz bilan nima gaplashildi?", "note")
 
         task.done_at = now
         task.done_by = by

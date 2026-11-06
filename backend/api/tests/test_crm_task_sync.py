@@ -41,7 +41,7 @@ def test_panel_done_emits_once_with_payload(api, seller, bot_events):
     t = new_task(inv, seller)
     r = panel(api, seller).post(
         f"/api/v1/invoice-tasks/{t.pk}/done/",
-        {"outcome": "re_phone", "next_task": {"preset": "tomorrow"}},
+        {"note": "x", "outcome": "re_phone", "next_task": {"preset": "tomorrow"}},
         format="json",
     )
     assert r.status_code == 200, r.content
@@ -101,7 +101,7 @@ def test_board_drag_to_closing_column_emits_auto(api, seller, bot_events):
     a, b = new_task(inv, seller), new_task(inv, seller)
     r = panel(api, seller).post(
         f"/api/v1/invoices/{inv.pk}/solution/",
-        {"solution": int(SolutionChoice.declined)},
+        {"solution": int(SolutionChoice.declined), "comment": "x"},
         format="json",
     )
     assert r.status_code == 200, r.content

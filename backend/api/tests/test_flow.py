@@ -42,7 +42,7 @@ def test_full_pipeline(admin_api, catalog):
 
     resp = admin_api.post(
         f"/api/v1/invoices/{invoice_id}/solution/",
-        {"solution": SolutionChoice.re_phone},
+        {"solution": SolutionChoice.re_phone, "comment": "keyin qo'ng'iroq"},
         format="json",
     )
     assert resp.status_code == 200 and resp.data["solution"] == SolutionChoice.re_phone
