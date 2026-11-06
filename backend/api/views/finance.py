@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from decimal import Decimal
 from urllib.parse import quote
 
 from constance import config
@@ -891,8 +892,28 @@ class OrderBonusViewSet(mixins.ListModelMixin, mixins.UpdateModelMixin, viewsets
     def get_queryset(self):
         qs = super().get_queryset()
         st = self.request.query_params.get("status")
+        if st == "waiting":
+            # money still to collect: shown whatever the period, however old the Готов
+            return qs.filter(status=st)
         qs = qs.filter(status=st) if st else qs
         return apply_period(qs, "ready_date", self.request.query_params)
+
+    @action(detail=False, methods=["get"])
+    def unpaid(self, request):
+        """«Kutilmoqda»: every Готов order whose rest is not collected yet (bonus tracked
+        or not), with the count and the rest per currency."""
+        rows = S.unpaid_ready_orders(request.query_params.get("search", ""))
+        totals: dict[str, Decimal] = {}
+        for r in rows:
+            totals[r["currency"]] = totals.get(r["currency"], Decimal(0)) + r["rest"]
+            r["total"], r["rest"] = str(r["total"]), str(r["rest"])
+        return Response(
+            {
+                "count": len(rows),
+                "rest": {cur: str(v) for cur, v in totals.items()},
+                "results": rows,
+            }
+        )
 
     @action(detail=True, methods=["post"])
     def close(self, request, pk=None):
