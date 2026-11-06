@@ -1696,3 +1696,22 @@ def test_admin_gives_old_unassigned_prices_to_a_manager(
     r = admin_api.post(url, {**body, "count": None}, format="json")
     assert r.data == {"assigned": 1, "left": 0}
     assert Price.objects.get(pk=loose.pk).user_id == pricer.pk
+
+
+def test_admin_deletes_old_unassigned_prices(flow, pricer, admin_api, api):
+    """Only the admin; only prices nobody calculates; a sold zamer's price stays."""
+    from metering.price.models import Price
+
+    Price.objects.filter(metering=flow).update(user=None)
+    old = Price.objects.create(desc="eski", stage="work")
+    taken = Price.objects.create(desc="ishda", stage="work", user=pricer)
+    rows = admin_api.get("/api/v1/prices/unassigned/").data
+    assert {r["id"] for r in rows} == {flow.price.pk, old.pk}
+    url = "/api/v1/prices/unassigned/delete/"
+    staff = api("price.view_price", "price.add_price", "price.change_price")
+    assert staff.get("/api/v1/prices/unassigned/").status_code == 403
+    assert staff.post(url, {"ids": [old.pk]}, format="json").status_code == 400
+    r = admin_api.post(url, {"ids": [old.pk, taken.pk]}, format="json")
+    assert r.status_code == 200 and r.data == {"deleted": 1, "kept": 1}
+    assert not Price.objects.filter(pk=old.pk).exists() and Price.objects.filter(pk=taken.pk).exists()
+    assert admin_api.post(url, {"ids": "x"}, format="json").status_code == 400
