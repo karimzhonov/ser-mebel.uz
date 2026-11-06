@@ -22,7 +22,7 @@ from order.constants import (
     OrderStatus,
 )
 from order.detailing.models import Detailing
-from order.detailing.services import mark_detailing_done
+from order.detailing.services import mark_detailing_done, set_detailing_due
 from order.models import Factory, Order
 from order.painter.models import Painter, PainterType
 from order.painter.services import assign_painter_type, mark_painter_done, ready_for_painter
@@ -41,6 +41,7 @@ from ..permissions import ModelPermissions, require_perm
 from ..serializers.common import LocationSetSerializer, UserShortSerializer, can_view_price
 from ..serializers.orders import (
     AssemblySerializer,
+    DetailingDueSerializer,
     DetailingSerializer,
     FactorySerializer,
     OrderCreateSerializer,
@@ -224,11 +225,14 @@ class OrderViewSet(viewsets.ModelViewSet):
         response.data = {**response.data, "short": d["short"]}
         return response
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], serializer_class=DetailingDueSerializer)
     def detailing(self, request, pk=None):
+        """Send to detailing with its deadline: {due_at}."""
         require_perm(request.user, "detailing.add_detailing")
         order = self.get_object()
-        send_order_to_detailing(order)
+        body = DetailingDueSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        send_order_to_detailing(order, due_at=body.validated_data["due_at"])
         return self._detail(order)
 
     @action(detail=True, methods=["post"], url_path="next-status")
@@ -337,6 +341,16 @@ class DetailingViewSet(_ProductionViewSet):
     def done(self, request, pk=None):
         require_perm(request.user, "detailing.change_detailing")
         return self._respond(mark_detailing_done(self.get_object()))
+
+    @action(detail=True, methods=["post"], serializer_class=DetailingDueSerializer)
+    def due(self, request, pk=None):
+        """Move the deadline (whoever may send to detailing): {due_at}."""
+        require_perm(request.user, "detailing.add_detailing")
+        body = DetailingDueSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            set_detailing_due(self.get_object(), due_at=body.validated_data["due_at"])
+        )
 
 
 class RoverViewSet(_ProductionViewSet):

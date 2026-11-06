@@ -1,4 +1,7 @@
+from datetime import timedelta
+
 import pytest
+from django.utils import timezone
 from djmoney.money import Money
 
 from order.constants import OrderStatus
@@ -32,9 +35,11 @@ def test_action_needs_the_admin_permission(api, order_factory, today):
     order = order_factory(end_date=today)
     assert order.status == OrderStatus.CREATED
     viewer = api("order.view_order")
-    assert viewer.post(f"/api/v1/orders/{order.pk}/detailing/").status_code == 403
+    due = {"due_at": (timezone.now() + timedelta(days=2)).isoformat()}
+    url = f"/api/v1/orders/{order.pk}/detailing/"
+    assert viewer.post(url, due, format="json").status_code == 403
     allowed = api("order.view_order", "detailing.add_detailing")
-    assert allowed.post(f"/api/v1/orders/{order.pk}/detailing/").status_code == 200
+    assert allowed.post(url, due, format="json").status_code == 200
 
 
 def test_assembler_sees_only_own_jobs(api, make_staff, order_factory):

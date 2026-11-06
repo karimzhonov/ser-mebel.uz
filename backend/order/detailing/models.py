@@ -22,6 +22,10 @@ class Detailing(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Дата создания")
     done = models.BooleanField(default=False, verbose_name="Выполнено деталировка")
     working_done = models.BooleanField(default=False, verbose_name="Выполнено заказ на сырье")
+    # Set by the bosh menejer when the order is sent to detailing (null on old rows).
+    due_at = models.DateTimeField(
+        null=True, blank=True, db_index=True, verbose_name="Срок деталировки"
+    )
 
     square = models.FloatField(default=0, verbose_name="Площадь")
     painter_square = models.FloatField(default=0, blank=True, verbose_name="Площадь покраски")

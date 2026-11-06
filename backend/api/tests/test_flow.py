@@ -1,7 +1,10 @@
 """The whole pipeline through the API, the way staff walk it in the admin:
 call-centre → замер → дизайн → нарх → заказ → деталировка → сборка → готов."""
 
+from datetime import timedelta
+
 import pytest
+from django.utils import timezone
 
 from api.tests.offerkit import design_file
 from djmoney.money import Money
@@ -175,7 +178,13 @@ def test_full_pipeline(admin_api, catalog):
 
     # Production.
     resp = admin_api.post(f"/api/v1/orders/{order_id}/detailing/")
+    assert resp.status_code == 400  # the detailing deadline is required
+    due = (timezone.now() + timedelta(days=3)).replace(microsecond=0)
+    resp = admin_api.post(
+        f"/api/v1/orders/{order_id}/detailing/", {"due_at": due.isoformat()}, format="json"
+    )
     assert resp.data["status"] == OrderStatus.DETAILING
+    assert resp.data["production"]["detailing"]["due_at"] == due
     detailing_id = resp.data["production"]["detailing"]["id"]
 
     resp = admin_api.patch(
