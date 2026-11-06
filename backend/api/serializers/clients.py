@@ -204,3 +204,4 @@ class InvoiceCreateSerializer(LocationInputMixin, serializers.Serializer):
 
 class InvoiceSolutionSerializer(serializers.Serializer):
     solution = serializers.ChoiceField(choices=SolutionChoice.choices)
+    comment = serializers.CharField(required=False, allow_blank=True, default="")

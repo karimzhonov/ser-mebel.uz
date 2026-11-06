@@ -63,7 +63,13 @@ export function CompleteTaskDialog({ task, onClose }: { task: InvoiceTask; onClo
   const needsTime = outcome === "re_phone";
   const followUp = !!outcome && FOLLOW_UP_OUTCOMES.includes(outcome);
   const closing = !!outcome && CLOSING_OUTCOMES.includes(outcome);
-  const ready = !!outcome && outcome !== "go_for_measured" && (!needsTime || (next !== null && next !== "none"));
+  // owner's rule: a call result needs a comment (backend: complete_task); «keep» only closes the task
+  const needsNote = !!outcome && outcome !== "keep";
+  const ready =
+    !!outcome &&
+    outcome !== "go_for_measured" &&
+    (!needsNote || !!note.trim()) &&
+    (!needsTime || (next !== null && next !== "none"));
 
   const submit = (o: TaskOutcome = outcome!) => {
     const body: DoneBody = { outcome: o };
@@ -143,7 +149,7 @@ export function CompleteTaskDialog({ task, onClose }: { task: InvoiceTask; onClo
         <Textarea
           autoFocus
           rows={2}
-          placeholder="Natija (ixtiyoriy): nima gaplashildi?"
+          placeholder={needsNote ? "Izoh (majburiy): mijoz bilan nima gaplashildi?" : "Izoh (ixtiyoriy): nima gaplashildi?"}
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />

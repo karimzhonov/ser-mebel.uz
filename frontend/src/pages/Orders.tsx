@@ -9,7 +9,6 @@ import {
   Clock,
   Hammer,
   Pencil,
-  Plus,
   Wallet,
 } from "lucide-react";
 import { api, fieldErrors } from "@/api/client";
@@ -91,13 +90,6 @@ export function OrdersPage() {
       <PageHeader
         title="Buyurtmalar"
         subtitle={`Jami: ${stats?.total ?? "…"}`}
-        actions={
-          can("order.add_order") && (
-            <Button icon={<Plus className="h-4 w-4" />} onClick={() => navigate("/orders/new")}>
-              Yangi buyurtma
-            </Button>
-          )
-        }
       />
 
       <div className={`mb-4 grid grid-cols-1 gap-3 ${showMoney ? "sm:grid-cols-2 lg:grid-cols-4" : "sm:grid-cols-3"}`}>

@@ -203,7 +203,12 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         invoice = self.get_object()
         serializer = InvoiceSolutionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        set_invoice_solution(invoice, serializer.validated_data["solution"], author=request.user)
+        set_invoice_solution(
+            invoice,
+            serializer.validated_data["solution"],
+            author=request.user,
+            comment=serializer.validated_data["comment"],
+        )
         # re-fetch with the task annotations: a closing answer just closed the open tasks
         fresh = CC.with_task_annotations(self.base_queryset()).get(pk=invoice.pk)
         return Response(self._data(fresh))

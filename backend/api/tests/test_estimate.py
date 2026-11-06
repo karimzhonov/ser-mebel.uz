@@ -122,3 +122,12 @@ def test_cancelled_zamer_leaves_the_estimate_on_the_lead(operator, ali):
     )
     est.refresh_from_db()
     assert est.metering_id == m2.pk  # the re-booked zamer takes it
+
+
+def test_no_calculation_without_a_zamer(admin_api):
+    """Owner's rule: «O'lchovsiz hisob-kitob» is gone — a bare POST /prices/ is refused."""
+    from metering.price.models import Price
+
+    before = Price.objects.count()
+    assert admin_api.post("/api/v1/prices/", {"desc": "x"}, format="json").status_code == 405
+    assert Price.objects.count() == before

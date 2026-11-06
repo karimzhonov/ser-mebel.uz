@@ -1,30 +1,21 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { Plus, Trash2, UserPlus } from "lucide-react";
+import { Trash2, UserPlus } from "lucide-react";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useGet } from "@/api/hooks";
-import type { MeteringAssignees, Price } from "@/api/types";
+import type { MeteringAssignees } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
-import { Badge, Button, Confirm, Field, Input, Modal, Select, Textarea } from "@/components/ui";
+import { Badge, Button, Confirm, Field, Input, Modal, Select } from "@/components/ui";
 import { date } from "@/lib/format";
 import { OfferAgenda } from "./offers/OfferAgenda";
 
-/** «Narx hisoblash» — the pricer's agenda (deadline first, overdue in red) + a price without a zamer. */
+/** «Narx hisoblash» — the pricer's agenda (deadline first, overdue in red) */
 export function PricesPage() {
-  const navigate = useNavigate();
   const { can, user } = useAuth();
   const boss = !!user?.is_superuser || can("metering.manage_metering");
   const { data: free } = useGet<{ unassigned: number }>(boss ? "/prices/assign/" : null);
   const [giving, setGiving] = useState(false);
   const [cleaning, setCleaning] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [desc, setDesc] = useState("");
-  const create = useAction(() => api.post<Price>("/prices/", { desc }).then((r) => r.data), {
-    success: "Hisob-kitob yaratildi",
-    invalidate: ["prices"],
-    onSuccess: (p) => navigate(`/prices/${p.id}`),
-  });
 
   return (
     <>
@@ -42,27 +33,11 @@ export function PricesPage() {
                 Eskilarini o'chirish
               </Button>
             )}
-            {can("price.add_price") && (
-              <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>
-                O'lchovsiz hisob-kitob
-              </Button>
-            )}
           </div>
         }
       />
       {giving && free && <AssignPricesModal total={free.unassigned} onClose={() => setGiving(false)} />}
       {cleaning && <DeleteOldPricesModal onClose={() => setCleaning(false)} />}
-      <Modal
-        open={creating}
-        onClose={() => setCreating(false)}
-        title="O'lchovsiz hisob-kitob"
-        size="sm"
-        footer={<Button loading={create.isPending} onClick={() => create.mutate()}>Yaratish</Button>}
-      >
-        <Field label="Tavsif" hint="Masalan, mijoz ismi yoki obyekt">
-          <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} />
-        </Field>
-      </Modal>
     </>
   );
 }

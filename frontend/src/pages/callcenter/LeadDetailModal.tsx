@@ -33,6 +33,7 @@ import { MeteringCreateModal } from "../Meterings";
 import { NEXT_STEP_LABEL, personName } from "../meterings/actions";
 import { CLIENT_RESULT_LABEL, DueLabel, OfferStageBadge } from "../offers/actions";
 import { LeadCreateModal } from "./LeadCreateModal";
+import { SolutionCommentModal } from "./SolutionCommentModal";
 import {
   AssigneeSelect,
   CRM_INVALIDATE,
@@ -52,12 +53,17 @@ export function LeadDetailModal({ id, onClose }: { id: number; onClose: () => vo
   const { data: invoice } = useGet<Invoice>(`/invoices/${id}/`);
   const [metering, setMetering] = useState(false);
   const [another, setAnother] = useState(false);
+  const [picked, setPicked] = useState<{ value: number; label: string } | null>(null);
   const canChange = can("call_center.change_invoice");
 
-  const setSolution = useAction((solution: number) => api.post(`/invoices/${id}/solution/`, { solution }), {
-    success: "Javob kodi saqlandi",
-    invalidate: CRM_INVALIDATE,
-  });
+  const setSolution = useAction(
+    (body: { solution: number; comment: string }) => api.post(`/invoices/${id}/solution/`, body),
+    {
+      success: "Javob kodi saqlandi",
+      invalidate: CRM_INVALIDATE,
+      onSuccess: () => setPicked(null),
+    },
+  );
 
   if (!invoice)
     return (
@@ -103,7 +109,7 @@ export function LeadDetailModal({ id, onClose }: { id: number; onClose: () => vo
                       <button
                         key={s.value}
                         disabled={setSolution.isPending}
-                        onClick={() => setSolution.mutate(Number(s.value))}
+                        onClick={() => setPicked({ value: Number(s.value), label: s.label })}
                         className={cn(
                           "flex items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-medium ring-1 ring-inset transition hover:brightness-95",
                           TONES[s.tone].badge,
@@ -129,6 +135,14 @@ export function LeadDetailModal({ id, onClose }: { id: number; onClose: () => vo
         </div>
       </div>
 
+      {picked && (
+        <SolutionCommentModal
+          label={picked.label}
+          loading={setSolution.isPending}
+          onSubmit={(comment) => setSolution.mutate({ solution: picked.value, comment })}
+          onClose={() => setPicked(null)}
+        />
+      )}
       {metering && (
         <MeteringCreateModal
           initial={{

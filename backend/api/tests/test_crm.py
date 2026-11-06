@@ -160,6 +160,10 @@ def test_board_and_solution_history(api, seller):
     inv = lead(seller, source="phone")
     c = api(*PERMS)
     r = c.post(f"/api/v1/invoices/{inv.pk}/solution/", {"solution": 1}, format="json")
+    assert r.status_code == 400 and r.data["field"] == "comment"  # an answer needs a comment
+    r = c.post(
+        f"/api/v1/invoices/{inv.pk}/solution/", {"solution": 1, "comment": "ertaga"}, format="json"
+    )
     assert r.status_code == 200
     assert InvoiceNote.objects.get(invoice=inv, kind=NoteKind.solution).meta == {
         "from": None,
