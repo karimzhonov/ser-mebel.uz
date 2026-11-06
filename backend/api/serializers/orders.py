@@ -180,8 +180,9 @@ class OrderDetailSerializer(OrderSerializer):
             "edit": user.has_perm("order.change_order"),
             "detailing": user.has_perm("detailing.add_detailing")
             and obj.status == OrderStatus.CREATED,
+            # «Yaratildi» → detailing only through «Detalirovkaga yuborish» (with a deadline)
             "next_status": user.has_perm(f"order.{ORDER_CHANGE_STATUS_PERMISSION}")
-            and OrderStatus.next_status(obj.status) is not None,
+            and OrderStatus.next_status(obj.status) not in (None, OrderStatus.DETAILING),
             "next_status_label": (
                 uz.order_status(OrderStatus.next_status(obj.status))
                 if OrderStatus.next_status(obj.status)

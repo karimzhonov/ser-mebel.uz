@@ -405,6 +405,11 @@ def advance_order_status(order):
     from core.exceptions import ServiceError
 
     next_status = OrderStatus.next_status(order.status)
+    if next_status == OrderStatus.DETAILING:
+        # owner's rule: detailing always gets a deadline — only via «Detalirovkaga yuborish»
+        raise ServiceError(
+            "Detalirovkaga «Detalirovkaga yuborish» tugmasi bilan, muddatini belgilab yuboring"
+        )
     if next_status is None:
         raise ServiceError(
             f"Holatni o'zgartirib bo'lmaydi: «{order_status_uz(order.status)}» — yakuniy holat."
