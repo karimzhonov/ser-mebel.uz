@@ -66,3 +66,16 @@ def test_deadline_shown_and_moved(api, order_factory, today):
     detailing.save(update_fields=["done"])
     resp = boss.post(f"{url}due/", {"due_at": _future(7).isoformat()}, format="json")
     assert resp.status_code == 400
+
+
+def test_next_status_does_not_skip_the_detailing_deadline(admin_api, order_factory):
+    """«Keyingi bosqich» from «Yaratildi» would reach detailing without a deadline."""
+    from datetime import date, timedelta
+
+    from order.constants import OrderStatus
+
+    order = order_factory(end_date=date.today() + timedelta(days=30))
+    assert order.status == OrderStatus.CREATED
+    assert admin_api.get(f"/api/v1/orders/{order.pk}/").data["actions"]["next_status"] is False
+    r = admin_api.post(f"/api/v1/orders/{order.pk}/next-status/")
+    assert r.status_code == 400 and "muddat" in r.data["detail"]
