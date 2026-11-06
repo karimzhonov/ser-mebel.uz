@@ -32,19 +32,18 @@ class IsSuperUser(BasePermission):
 
 
 class PriceAccess(BasePermission):
-    """«Narx hisoblash»: the price rights (ModelPermissions) — or, for a lead's approximate
-    price (stage «estimate»), whoever works the lead / zamer (price.services.can_estimate):
-    they open and edit that one price, nothing else (owner's rule)."""
+    """«Narx hisoblash» (owner's rule, metering/price/services.py can_edit_price):
+    the lists and the task buttons need the price rights (ModelPermissions); opening and
+    editing ONE calculation goes by the row — the people working that client (managers,
+    zamerchi, the lead's approximate price for the operator), and after the order only
+    the bosh menejer edits."""
 
-    ESTIMATE_ACTIONS = {
-        "retrieve",
+    VIEW_ACTIONS = {"retrieve", "excel", "pdf", "version_pdf"}
+    EDIT_ACTIONS = {
         "partial_update",
         "update",
         "destroy",
-        "excel",
-        "pdf",
         "add_version",
-        "version_pdf",
         "accessory_image",
         "add_room",
         "reorder_rooms",
@@ -59,22 +58,25 @@ class PriceAccess(BasePermission):
         return ModelPermissions().has_permission(request, view)
 
     def has_permission(self, request, view):
-        from metering.price.services import can_estimate
+        from metering.price.services import can_reach_prices
 
-        if self._model(request, view):
-            return True
-        return (
-            is_staff(request.user)
-            and getattr(view, "action", None) in self.ESTIMATE_ACTIONS
-            and can_estimate(request.user)
-        )
+        action = getattr(view, "action", None)
+        if action in self.VIEW_ACTIONS | self.EDIT_ACTIONS:
+            # decided by the row (has_object_permission)
+            return is_staff(request.user) and (
+                self._model(request, view) or can_reach_prices(request.user)
+            )
+        return self._model(request, view)
 
     def has_object_permission(self, request, view, obj):
-        from metering.price.services import can_open_estimate
+        from metering.price.services import can_edit_price, can_view_price
 
-        if self._model(request, view):
-            return True
-        return can_open_estimate(request.user, obj)
+        action = getattr(view, "action", None)
+        if action in self.EDIT_ACTIONS:
+            return can_edit_price(request.user, obj)
+        if action in self.VIEW_ACTIONS:
+            return can_view_price(request.user, obj)
+        return self._model(request, view)
 
 
 class CatalogRead(BasePermission):

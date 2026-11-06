@@ -649,14 +649,15 @@ function EstimateBlock({ invoice }: { invoice: Invoice }) {
     invalidate: CRM_INVALIDATE,
     onSuccess: (r) => navigate(`/prices/${r.id}`),
   });
-  const est = invoice.estimate;
   const zamerPrice = invoice.metering?.price;
-  // the zamer already has its real price task: that one is the price now
-  if (!est && zamerPrice && zamerPrice.stage !== "estimate") return null;
+  // the zamer already has its real price: that one is continued (owner's rule)
+  const est =
+    invoice.estimate ??
+    (zamerPrice ? { id: zamerPrice.id, stage: zamerPrice.stage, stage_label: zamerPrice.stage_label, total: null } : null);
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-100 p-3 dark:border-slate-800">
       <div className="text-sm">
-        <div className="font-medium">Taxminiy narx</div>
+        <div className="font-medium">{est && est.stage !== "estimate" ? "Narx hisoblash" : "Taxminiy narx"}</div>
         <div className="muted text-xs">
           {est
             ? est.stage === "estimate"
@@ -667,7 +668,7 @@ function EstimateBlock({ invoice }: { invoice: Invoice }) {
       </div>
       {est ? (
         <Button size="sm" variant="outline" icon={<Calculator className="h-4 w-4" />} onClick={() => navigate(`/prices/${est.id}`)}>
-          Ochish
+          Narx tahrirlash
         </Button>
       ) : (
         <Button size="sm" variant="outline" icon={<Calculator className="h-4 w-4" />} loading={add.isPending} onClick={() => add.mutate()}>

@@ -769,6 +769,61 @@ def is_estimate(price) -> bool:
     return price is not None and price.stage == PRICE_ESTIMATE
 
 
+# --- Who opens / edits a calculation (owner's rule) --------------------------------------
+# Every client's price is continued by the people working that client: the managers and
+# the zamerchi (who see the zamer) as well as the price staff. Once the zamer became an
+# order, only the bosh menejer (and the admin) changes it — until the order reaches
+# detailing, when it is locked for everyone (price_locked).
+
+PRICE_EDIT_PERMS = ("price.change_price", "price.add_calculate", "price.change_calculate")
+_WORKER_PERMS = ("metering.present_to_client", "metering.manage_metering", "oauth.user_metering")
+
+
+def _works_the_zamer(user, price) -> bool:
+    """A manager / bosh menejer / zamerchi who sees this calculation's zamer."""
+    from metering.services import metering_queryset_for
+
+    if price.metering_id is None or not any(user.has_perm(p) for p in _WORKER_PERMS):
+        return False
+    return metering_queryset_for(user).filter(pk=price.metering_id).exists()
+
+
+def _has_order(price) -> bool:
+    from order.models import Order
+
+    return price.metering_id is not None and Order.objects.filter(
+        metering_id=price.metering_id
+    ).exists()
+
+
+def can_edit_price(user, price) -> bool:
+    if user is None or not user.is_active:
+        return False
+    if user.is_superuser:
+        return True
+    if is_estimate(price):
+        return can_open_estimate(user, price)
+    if _has_order(price):
+        return user.has_perm(MANAGE)  # only the bosh menejer after the order
+    return user.has_perms(PRICE_EDIT_PERMS) or _works_the_zamer(user, price)
+
+
+def can_view_price(user, price) -> bool:
+    if user is None or not user.is_active:
+        return False
+    if user.is_superuser or user.has_perm("price.view_price"):
+        return True
+    if is_estimate(price):
+        return can_open_estimate(user, price)
+    return _works_the_zamer(user, price)
+
+
+def can_reach_prices(user) -> bool:
+    """May open some calculation without the price rights (an estimate or a client's
+    price): then PriceAccess checks the row."""
+    return can_estimate(user) or any(user.has_perm(p) for p in _WORKER_PERMS)
+
+
 def create_estimate(*, by, invoice=None, metering=None):
     """The approximate price of a lead (from the lead) or of a zamer (from the zamer
     page): one per lead / zamer. Made on a lead that already has a zamer, it is joined to

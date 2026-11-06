@@ -554,7 +554,7 @@ export function MeteringDetailPage() {
                 action={
                   m.price ? (
                     <Link to={`/prices/${m.price.id}`} className="text-brand-700 hover:underline dark:text-brand-300">
-                      {m.price.stage === "estimate" ? "Tahrirlash" : "Ochish"}
+                      Narx tahrirlash
                     </Link>
                   ) : (
                     <div className="flex flex-wrap justify-end gap-2">

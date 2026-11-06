@@ -708,14 +708,10 @@ class PriceViewSet(viewsets.ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     def _need(self, request, *perms):
-        """The price rights — or this price is a lead's approximate price (PriceAccess
-        already let only its workers reach it)."""
-        from metering.price.services import can_open_estimate
-
-        if request.user.has_perms(perms):
-            return
-        if not can_open_estimate(request.user, self.get_object()):
-            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+        """Editing one calculation: the row decides (PriceAccess → can_edit_price: the
+        price staff, the managers / zamerchi of that client, after the order only the
+        bosh menejer). `perms` are kept as documentation of what the action does."""
+        self.get_object()
 
     def get_serializer_class(self):
         if self.action in ("retrieve", "create", "partial_update", "update"):
