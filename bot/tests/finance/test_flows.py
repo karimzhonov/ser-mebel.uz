@@ -179,3 +179,25 @@ async def test_other_salary_has_only_avans_and_oylik(be, cats, make_ctx):
     assert "uy uchun" not in texts(ctx)[-1]
     await CB.on_callback(ctx, "pay:Uy uchun")  # a forged button is ignored
     assert not (await ctx.st()).get("pay")
+
+
+async def test_advance_other_amount_posts_amount_text(be, make_ctx):
+    adv = fx("dto.advance.1")
+    be.routes[("POST", "finance/parse/")] = {"amount": "5400000.00", "cur": "UZS"}
+    be.routes[("POST", "finance/advances/12/accept/")] = {
+        "advance": {**adv, "status": "accepted", "got_text": "5 400 000 so'm"},
+        "balance": "5400000.00",
+    }
+    ctx = make_ctx(admin=True)
+    await CB.on_callback(ctx, "avs:12")
+    assert (await ctx.st())["step"] == "adv_sum"
+    await MN.on_text(ctx, "5.4 mln")
+    _, path, body, _ = be.calls[-1]
+    assert path == "finance/advances/12/accept/" and body == {"amount_text": "5.4 mln"}
+    assert await ctx.st() is None and "qabul qilindi" in texts(ctx)[-1]
+
+
+async def test_advance_buttons_are_for_the_boss_only(be, make_ctx):
+    ctx = make_ctx(admin=False)
+    await CB.on_callback(ctx, "avk:12")
+    assert not [c for c in be.calls if "advances" in c[1]]

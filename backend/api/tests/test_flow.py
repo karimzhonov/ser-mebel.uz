@@ -159,7 +159,9 @@ def test_full_pipeline(admin_api, catalog):
     assert resp.status_code == 201, resp.content
     order_id = resp.data["id"]
     assert resp.data["status"] == OrderStatus.CREATED
-    assert resp.data["money_left"] == {"amount": 130.0, "currency": "USD"}
+    # the advance waits for the boss («Avans tasdiqlash»): nothing is paid yet
+    assert resp.data["money_left"] == {"amount": 230.0, "currency": "USD"}
+    assert resp.data["advance_pending"]["amount"] == "100.00"
     assert resp.data["factory"]["name"] == DEFAULT_FACTORY_NAME
     metering = admin_api.get(f"/api/v1/meterings/{metering_id}/").data
     assert metering["status"] == MeteringStatus.sold_out

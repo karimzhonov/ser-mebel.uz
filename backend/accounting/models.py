@@ -226,6 +226,66 @@ class Operation(models.Model):
         return self.amount if self.kind == OpKind.INCOME else -self.amount
 
 
+class OperationChange(models.Model):
+    """Audit trail of «Amallar»: who edited / deleted / restored a row, when, and what
+    changed ({field: [old, new]} as text). Rows are never edited or deleted."""
+
+    ACTIONS = [("edit", "Tahrirlandi"), ("delete", "O'chirildi"), ("restore", "Tiklandi")]
+
+    operation = models.ForeignKey(Operation, models.CASCADE, related_name="changes")
+    action = models.CharField(max_length=16, choices=ACTIONS)
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+    by_user = models.ForeignKey(
+        "oauth.User", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    by_member = models.ForeignKey(
+        "oauth.TelegramMember", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    by_name = models.CharField(max_length=255, blank=True, default="")
+    via = models.CharField(max_length=8, blank=True, default="")  # site / bot
+    changes = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-at", "-id"]
+        verbose_name = "Amal o'zgarishi"
+        verbose_name_plural = "Amallar o'zgarishlari"
+
+
+class OrderAdvance(models.Model):
+    """«Avans tasdiqlash» (owner's rule): the advance a manager enters when he creates an
+    order does not count until the boss confirms he got the money — then it is booked into
+    the boss's cash (kirim «Avans») and the order's «Полученная сумма» goes up."""
+
+    STATUS = [
+        ("pending", "⏳ Tasdiq kutilmoqda"),
+        ("accepted", "✅ Qabul qilindi"),
+        ("rejected", "❌ Pul kelmadi"),
+    ]
+
+    order = models.ForeignKey("order.Order", models.CASCADE, related_name="advances")
+    amount = models.DecimalField(max_digits=16, decimal_places=2, verbose_name="Avans")
+    currency = models.CharField(max_length=3, default="UZS", verbose_name="Valyuta")
+    status = models.CharField(max_length=16, choices=STATUS, default="pending", db_index=True)
+    created_by = models.ForeignKey(
+        "oauth.User", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    answered_by = models.ForeignKey(
+        "oauth.TelegramMember", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    answered_at = models.DateTimeField(null=True, blank=True)
+    # what the boss really got (another amount than entered), e.g. «4 500 000 so'm»
+    got_text = models.CharField(max_length=64, blank=True, default="")
+    operation = models.ForeignKey(
+        Operation, models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "Buyurtma avansi"
+        verbose_name_plural = "Buyurtma avanslari"
+
+
 class MonthReport(models.Model):
     """«Oylik hisob»: a member confirms the month's entries are complete."""
 

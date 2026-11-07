@@ -35,6 +35,9 @@ CAT_TRANSFER = "otkazma"
 CAT_FROM_BOSS = "rahbar"
 CAT_ADVANCE = "avans"
 CAT_REST = "qoldiq"
+# «↩️ Qaytim / vozvrat»: money that came back for something already paid — it lowers
+# the expense, it is not income (summary)
+CAT_REFUND = "qaytim"
 
 # [code, emoji, name, keywords, color, flags]
 # flags: needs_order (checks warn when missing), no_order (never asked), admin_only,

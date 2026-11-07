@@ -556,7 +556,7 @@ class _HandoverAction(BotAPIView):
         client = info.client if info else ""
         sum_text = _money_text_of(op)
         if self.action == "drop":
-            S.handover_drop(op)
+            S.handover_drop(op, by_member=boss)
         else:
             S.handover_accept(op, boss)
         op.refresh_from_db()
@@ -571,6 +571,44 @@ class _HandoverAction(BotAPIView):
                 "member_balance": D.dec(S.balance(op.member)),
             }
         )
+
+
+# ===================================================================== order advance
+class AdvanceListView(BotAPIView):
+    def get(self, request):
+        from accounting.models import OrderAdvance
+
+        self.require_admin()
+        qs = OrderAdvance.objects.filter(status="pending").select_related(
+            "order__client", "created_by"
+        )
+        return Response([D.advance_dto(a) for a in qs[:50]])
+
+
+class _AdvanceAction(BotAPIView):
+    action = ""
+
+    def post(self, request, pk):
+        from accounting.models import OrderAdvance
+
+        boss = self.require_admin()
+        adv = OrderAdvance.objects.filter(pk=pk).first()
+        if not adv:
+            raise NotFound("Avans topilmadi.")
+        if self.action == "reject":
+            adv = S.advance_reject(adv, boss)
+        else:
+            text = str(request.data.get("amount_text") or "").strip() or None
+            adv = S.advance_accept(adv, boss, text)
+        return Response({"advance": D.advance_dto(adv), "balance": D.dec(S.balance(boss))})
+
+
+class AdvanceAcceptView(_AdvanceAction):
+    action = "accept"
+
+
+class AdvanceRejectView(_AdvanceAction):
+    action = "reject"
 
 
 class HandoverAcceptView(_HandoverAction):

@@ -379,7 +379,7 @@ class OperationViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(
                 "Faqat o'zingiz kiritgan, oxirgi 2 kundagi yozuvni o'chira olasiz."
             )
-        deleted = S.delete_operation(op)
+        deleted = S.delete_operation(op, by_user=request.user)
         E.operation_deleted(deleted, f"{request.user.name or request.user.phone} (sayt)")
         return Response(status=204)
 
@@ -389,8 +389,32 @@ class OperationViewSet(viewsets.ModelViewSet):
         op = Operation.objects.filter(pk=pk, is_deleted=True).first()
         if not op:
             raise NotFound()
-        S.restore_operation(op)
+        S.restore_operation(op, by_user=request.user)
         return Response(OperationSerializer(Operation.objects.get(pk=op.pk)).data)
+
+    @action(detail=True, methods=["get"])
+    def history(self, request, pk=None):
+        """Who edited / deleted / restored this row, and what changed."""
+        op = Operation.objects.filter(pk=pk).first()
+        if not op:
+            raise NotFound()
+        only = scoped_member(request)
+        if only and op.member_id != only.pk:
+            raise NotFound()
+        return Response(
+            [
+                {
+                    "id": c.id,
+                    "action": c.action,
+                    "action_label": c.get_action_display(),
+                    "at": c.at,
+                    "by": c.by_name,
+                    "via": c.via,
+                    "changes": c.changes,
+                }
+                for c in op.changes.all()
+            ]
+        )
 
     @action(detail=True, methods=["get"])
     def receipt(self, request, pk=None):
@@ -487,6 +511,7 @@ class FinanceSummaryView(APIView):
                 "boss_personal": f(sm["boss_personal"]),
                 "home": f(sm["home"]),
                 "transfers": f(sm["transfers"]),
+                "refund": f(sm["refund"]),
                 "count": sm["count"],
                 "expense_by_category": _items(sm["expense_by_category"]),
                 "income_by_category": _items(sm["income_by_category"]),
@@ -614,7 +639,11 @@ class WalletsView(APIView):
                 }
             )
         staff_total = sum(r["balance"] for r in rows if r["member"]["role"] == TelegramRole.STAFF)
-        return Response({"results": rows, "staff_total": f(staff_total)})
+        # owner's rule: the boss's wallet is the company cash
+        cash_total = sum(r["balance"] for r in rows if r["member"]["role"] == TelegramRole.ADMIN)
+        return Response(
+            {"results": rows, "staff_total": f(staff_total), "cash_total": f(cash_total)}
+        )
 
 
 def _order_row(info, st) -> dict:
@@ -1012,7 +1041,7 @@ class HandoverView(APIView):
         if not op:
             raise NotFound()
         if request.data.get("action") == "drop":
-            S.handover_drop(op)
+            S.handover_drop(op, by_user=request.user)
         else:
             boss = acting_member(request)
             if not boss or not boss.is_admin:
@@ -1021,6 +1050,46 @@ class HandoverView(APIView):
                 )
             S.handover_accept(op, boss)
         return Response(OperationSerializer(Operation.objects.get(pk=op.pk)).data)
+
+
+class OrderAdvanceView(APIView):
+    """«Avans tasdiqlash»: advances entered at order creation, waiting for the boss.
+    GET ?status=pending|accepted|rejected|all; POST {advance, action: accept|reject,
+    amount_text?} — accept books the money into the boss's cash."""
+
+    permission_classes = [ModelPermissions]
+    queryset = Operation.objects.none()
+
+    def get(self, request):
+        from accounting.dto import advance_dto
+        from accounting.models import OrderAdvance
+
+        require_perm(request.user, VIEW_ALL)
+        st = request.query_params.get("status") or "pending"
+        qs = OrderAdvance.objects.select_related("order__client", "created_by")
+        if st != "all":
+            qs = qs.filter(status=st)
+        return Response([advance_dto(a) for a in qs[:300]])
+
+    def post(self, request):
+        from accounting.dto import advance_dto
+        from accounting.models import OrderAdvance
+
+        require_perm(request.user, VIEW_ALL, "accounting.add_operation")
+        adv = OrderAdvance.objects.filter(pk=request.data.get("advance")).first()
+        if not adv:
+            raise NotFound()
+        boss = acting_member(request)
+        if not boss or not boss.is_admin:
+            raise ServiceError(
+                "Tasdiqlash uchun profilingiz Telegram'da «Rahbar» rolidagi a'zoga ulangan bo'lishi kerak."
+            )
+        if request.data.get("action") == "reject":
+            adv = S.advance_reject(adv, boss)
+        else:
+            text = str(request.data.get("amount_text") or "").strip() or None
+            adv = S.advance_accept(adv, boss, text, by_user=request.user)
+        return Response(advance_dto(adv))
 
 
 class MeFinanceView(APIView):

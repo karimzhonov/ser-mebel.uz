@@ -6,6 +6,7 @@ module is the one place the bot views import them from.
 """
 
 from accounting.dto import (  # noqa: F401
+    advance_dto,
     bonus_dto,
     car_dto,
     category_dto,

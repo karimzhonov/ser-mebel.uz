@@ -37,6 +37,7 @@ from .constants import (
     BONUS_TIERS,
     CAT_ADVANCE,
     CAT_FROM_BOSS,
+    CAT_REFUND,
     CAT_REST,
     CAT_SALARY,
     CAT_TRANSFER,
@@ -52,6 +53,7 @@ from .models import (
     MoneyRequest,
     MonthReport,
     Operation,
+    OrderAdvance,
     OrderBonus,
     SiteEntryTask,
     WarrantyLetter,
@@ -446,7 +448,9 @@ def order_stats(ref: str) -> dict:
     )
     st = {"spent": ZERO, "collected": ZERO, "cats": {}, "rows": rows}
     for t in rows:
-        if t.kind == OpKind.EXPENSE:
+        # a transfer carries the order ref (handing a client's money to the boss) but
+        # moves cash between wallets — it is not money spent on the order
+        if t.kind == OpKind.EXPENSE and t.category.kind != CategoryKind.INTERNAL:
             st["spent"] += t.amount
             st["cats"][t.category.code] = st["cats"].get(t.category.code, ZERO) + t.amount
         elif t.category.code in (CAT_ADVANCE, CAT_REST):
@@ -459,12 +463,12 @@ def order_stats_bulk(refs) -> dict[str, dict]:
     out: dict[str, dict] = {}
     rows = (
         Operation.objects.filter(order_ref__in=list(refs), is_deleted=False)
-        .values("order_ref", "kind", "category__code")
+        .values("order_ref", "kind", "category__code", "category__kind")
         .annotate(total=Sum("amount"))
     )
     for r in rows:
         st = out.setdefault(r["order_ref"], {"spent": ZERO, "collected": ZERO, "cats": {}})
-        if r["kind"] == OpKind.EXPENSE:
+        if r["kind"] == OpKind.EXPENSE and r["category__kind"] != CategoryKind.INTERNAL:
             st["spent"] += r["total"]
             st["cats"][r["category__code"]] = st["cats"].get(r["category__code"], ZERO) + r["total"]
         elif r["category__code"] in (CAT_ADVANCE, CAT_REST):
@@ -700,6 +704,56 @@ EDITABLE_FIELDS = {
 }
 
 
+AUDIT_FIELDS = (
+    "kind",
+    "amount",
+    "currency",
+    "orig_amount",
+    "rate",
+    "category",
+    "member",
+    "order_ref",
+    "comment",
+    "worker",
+    "pay_type",
+    "date",
+)
+
+
+def _audit_snapshot(op: Operation) -> dict:
+    def text(name):
+        v = getattr(op, name)
+        if name == "category":
+            return v.name if v else ""
+        if name == "member":
+            return v.name if v else ""
+        if name == "kind":
+            return op.get_kind_display()
+        return "" if v is None else str(v)
+
+    return {name: text(name) for name in AUDIT_FIELDS}
+
+
+def log_change(op: Operation, action: str, *, by_user=None, by_member=None, changes=None):
+    """One audit line for «Amallar» (OperationChange). via = site when a site user acted."""
+    from .models import OperationChange
+
+    name = ""
+    if by_user is not None:
+        name = by_user.name or str(by_user.phone or "")
+    elif by_member is not None:
+        name = by_member.name
+    return OperationChange.objects.create(
+        operation=op,
+        action=action,
+        by_user=by_user,
+        by_member=by_member,
+        by_name=name[:255],
+        via="site" if by_user is not None else ("bot" if by_member is not None else ""),
+        changes=changes or {},
+    )
+
+
 def update_operation(
     op: Operation, data: dict, site_user: User | None = None, actor_admin: bool = False
 ) -> Operation:
@@ -712,6 +766,7 @@ def update_operation(
         raise ServiceError("Tahrirlab bo'lmaydigan maydon: " + ", ".join(sorted(unknown)))
     with transaction.atomic():
         op = Operation.objects.select_for_update().select_related("category").get(pk=op.pk)
+        before = _audit_snapshot(op)
         pair = _pair_of(op)
         if pair or op.category.kind == CategoryKind.INTERNAL:
             current = {"kind": op.kind, "category_code": op.category.code, "member": op.member_id}
@@ -779,6 +834,10 @@ def update_operation(
             op.date = data["date"]
         op.site_user = site_user or op.site_user
         op.save()
+        after = _audit_snapshot(op)
+        diff = {k: [before[k], after[k]] for k in AUDIT_FIELDS if before[k] != after[k]}
+        if diff:
+            log_change(op, "edit", by_user=site_user, changes=diff)
         if pair:
             pair.amount, pair.currency, pair.orig_amount, pair.rate, pair.date = (
                 op.amount,
@@ -804,7 +863,7 @@ def can_delete(member: TelegramMember | None, op: Operation | None) -> bool:
     return can_modify(member, op, bool(member and member.is_admin))
 
 
-def delete_operation(op: Operation) -> list[Operation]:
+def delete_operation(op: Operation, *, by_user=None, by_member=None) -> list[Operation]:
     """Soft delete; a transfer is deleted on both sides. Returns what was deleted."""
     with transaction.atomic():
         deleted = []
@@ -813,11 +872,12 @@ def delete_operation(op: Operation) -> list[Operation]:
                 t.is_deleted = True
                 t.deleted_at = now()
                 t.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
+                log_change(t, "delete", by_user=by_user, by_member=by_member)
                 deleted.append(t)
     return deleted
 
 
-def restore_operation(op: Operation) -> Operation:
+def restore_operation(op: Operation, *, by_user=None, by_member=None) -> Operation:
     if op.handover == "deleted":
         raise ServiceError(
             "Bu yozuvni rahbar «alohida kiritganman» deb o'chirgan — tiklansa pul ikki marta hisoblanadi."
@@ -828,6 +888,7 @@ def restore_operation(op: Operation) -> Operation:
                 t.is_deleted = False
                 t.deleted_at = None
                 t.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
+                log_change(t, "restore", by_user=by_user, by_member=by_member)
     return op
 
 
@@ -945,10 +1006,19 @@ def summary(start: date | None, end: date | None, member: TelegramMember | None 
     """Totals for «📊 Ma'lumot» and the site dashboard (info_ / buildDashboard_)."""
     scope_all = member is None
     rows = list(period_ops(start, end, member))
-    exp = sum((t.amount for t in rows if is_company_expense(t, scope_all)), ZERO)
-    inc = sum((t.amount for t in rows if is_company_income(t, scope_all)), ZERO)
 
-    def group(pred):
+    def is_refund(t):
+        return t.kind == OpKind.INCOME and t.category.code == CAT_REFUND
+
+    def is_income(t):
+        return is_company_income(t, scope_all) and not is_refund(t)
+
+    refund = sum((t.amount for t in rows if is_refund(t)), ZERO)
+    # a refund lowers what was spent instead of counting as income
+    exp = sum((t.amount for t in rows if is_company_expense(t, scope_all)), ZERO) - refund
+    inc = sum((t.amount for t in rows if is_income(t)), ZERO)
+
+    def group(pred, sign=1):
         g: dict[str, dict] = {}
         for t in rows:
             if not pred(t):
@@ -965,7 +1035,7 @@ def summary(start: date | None, end: date | None, member: TelegramMember | None 
                     "n": 0,
                 },
             )
-            x["sum"] += t.amount
+            x["sum"] += sign * t.amount
             x["n"] += 1
         return sorted(g.values(), key=lambda x: -x["sum"])
 
@@ -1000,8 +1070,10 @@ def summary(start: date | None, end: date | None, member: TelegramMember | None 
             and t.category.code == CAT_TRANSFER
             and t.id not in boss_outs
         ),
-        "expense_by_category": group(lambda t: is_company_expense(t, scope_all)),
-        "income_by_category": group(lambda t: is_company_income(t, scope_all)),
+        "refund": refund,
+        "expense_by_category": group(lambda t: is_company_expense(t, scope_all))
+        + group(is_refund, sign=-1),
+        "income_by_category": group(is_income),
         "salary_by_worker": sorted(salary.items(), key=lambda kv: -kv[1]),
         "count": len(rows),
     }
@@ -1532,12 +1604,19 @@ def handover_accept(op: Operation, boss: TelegramMember) -> tuple[Operation, Ope
     return pair
 
 
-def handover_drop(op: Operation) -> Operation:
+def handover_drop(op: Operation, *, by_user=None, by_member=None) -> Operation:
     """The boss booked this money separately — delete the collector's row."""
     with transaction.atomic():
         op = _lock_handover(op)
         op.is_deleted, op.deleted_at, op.handover = True, now(), "deleted"
         op.save(update_fields=["is_deleted", "deleted_at", "handover", "updated_at"])
+        log_change(
+            op,
+            "delete",
+            by_user=by_user,
+            by_member=by_member,
+            changes={"handover": ["", "rahbar alohida kiritgan"]},
+        )
     return op
 
 
@@ -1809,7 +1888,7 @@ def delete_operation_as(actor: TelegramMember, number: int) -> list[Operation]:
         raise ServiceForbidden(
             "Bu amalni o'chira olmaysiz (sizniki emas yoki 2 kundan eski — rahbarga murojaat qiling)."
         )
-    return delete_operation(op)
+    return delete_operation(op, by_member=actor)
 
 
 def request_money(member: TelegramMember, amount_text: str, reason: str = "") -> MoneyRequest:
@@ -2025,3 +2104,86 @@ def unpaid_ready_orders(search: str = "") -> list[dict]:
         )
     out.sort(key=lambda r: (r["ready_date"] or date.min, r["order_ref"]), reverse=True)
     return out
+
+
+# =================================================================== order advance («Avans tasdiqlash»)
+def advance_text(amount, cur: str) -> str:
+    return f"{fmt_cur(D(amount), cur)} {cur_name(cur)}"
+
+
+def advance_open(order: Order, amount, currency: str, by_user: User | None = None):
+    """The manager entered an advance when creating the order: it waits for the boss
+    (Telegram card + «Avans tasdiqlash» on the site). None when there is no advance."""
+    amount = q2(D(amount or 0))
+    if amount <= 0:
+        return None
+    adv = OrderAdvance.objects.create(
+        order=order, amount=amount, currency=str(currency or "UZS"), created_by=by_user
+    )
+    from . import events as E
+
+    E.advance_requested(adv)
+    return adv
+
+
+def advance_accept(
+    adv: OrderAdvance, boss: TelegramMember, amount_text: str | None = None, by_user=None
+) -> OrderAdvance:
+    """The boss got the money: kirim «Avans» into his cash for this order and the
+    order's «Полученная сумма» goes up. amount_text: he got another amount."""
+    if not boss or not boss.is_admin:
+        raise ServiceForbidden("Avansni faqat rahbar tasdiqlaydi.")
+    if not boss.has_wallet:
+        raise ServiceError("Rahbar kassasi (hamyoni) yo'q.")
+    with transaction.atomic():
+        adv = OrderAdvance.objects.select_for_update().select_related("order").get(pk=adv.pk)
+        if adv.status != "pending":
+            raise ServiceConflict("Bu avansga allaqachon javob berilgan.")
+        if amount_text:
+            m = money_in(amount_text)
+        elif adv.currency == "USD":
+            rate = usd_rate()
+            if not rate:
+                raise ServiceError("Dollar kursi topilmadi — «Boshqa summa» bilan so'mda yozing.")
+            m = {"amount": q2(round(adv.amount * rate)), "cur": "USD", "orig": adv.amount,
+                 "rate": rate}
+        else:
+            m = {"amount": adv.amount, "cur": "UZS", "orig": None, "rate": None}
+        ref = str(adv.order.order_number or "")
+        op = create_operation(
+            internal=True,
+            member=boss,
+            author=boss,
+            kind=OpKind.INCOME,
+            amount=m["amount"],
+            category_code=CAT_ADVANCE,
+            currency=m["cur"],
+            orig_amount=m.get("orig"),
+            rate=m.get("rate"),
+            order_ref=ref,
+            comment=f"Buyurtma №{ref} avansi (rahbar tasdiqladi)",
+            source="site" if by_user else "bot",
+            site_user=by_user,
+        )
+        if ref:
+            _add_to_order_paid(ref, m)
+        adv.status = "accepted"
+        adv.answered_by = boss
+        adv.answered_at = now()
+        adv.operation = op
+        adv.got_text = money_text(m)[:64] if amount_text else ""
+        adv.save()
+    return adv
+
+
+def advance_reject(adv: OrderAdvance, boss: TelegramMember) -> OrderAdvance:
+    """The money did not come: nothing is booked, the order's paid sum stays."""
+    if not boss or not boss.is_admin:
+        raise ServiceForbidden("Avansni faqat rahbar tasdiqlaydi.")
+    with transaction.atomic():
+        adv = OrderAdvance.objects.select_for_update().get(pk=adv.pk)
+        if adv.status != "pending":
+            raise ServiceConflict("Bu avansga allaqachon javob berilgan.")
+        adv.status, adv.answered_by, adv.answered_at = "rejected", boss, now()
+        adv.save(update_fields=["status", "answered_by", "answered_at"])
+    return adv

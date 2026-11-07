@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { ArrowLeftRight, Minus, Paperclip, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowLeftRight, History, Minus, Paperclip, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { useAction, useGet, useList } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
-import { Badge, Button, Card, DataTable, IconButton, PageHeader, Pagination, SearchInput, Segmented, Select, StatTile } from "@/components/ui";
-import { date } from "@/lib/format";
+import { Badge, Button, Card, DataTable, Empty, IconButton, Modal, PageHeader, Pagination, SearchInput, Segmented, Select, StatTile } from "@/components/ui";
+import { date, dateTime } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 import { CatLabel, OperationModal, ReceiptModal, TransferModal, som, useCategories, useFinMe, useMembers, usd } from "./shared";
 import type { Operation } from "./types";
@@ -31,6 +31,7 @@ export default function FinanceOperationsPage() {
   const [edit, setEdit] = useState<Operation | "income" | "expense" | null>(null);
   const [receipt, setReceipt] = useState<Operation | null>(null);
   const [transfer, setTransfer] = useState(false);
+  const [history, setHistory] = useState<Operation | null>(null);
   const remove = useAction((id: number) => api.delete(`/finance/operations/${id}/`), { success: "O'chirildi", invalidate: ["finance"] });
   const restore = useAction((id: number) => api.post(`/finance/operations/${id}/restore/`), { success: "Tiklandi", invalidate: ["finance"] });
   const canAdd = can("accounting.add_operation");
@@ -161,6 +162,11 @@ export default function FinanceOperationsPage() {
               header: "",
               cell: (r) => (
                 <div className="flex justify-end gap-1" onClick={(e) => e.stopPropagation()}>
+                  {me?.view_all && (
+                    <IconButton label="O'zgarishlar tarixi" onClick={() => setHistory(r)}>
+                      <History className="h-4 w-4" />
+                    </IconButton>
+                  )}
                   {r.has_receipt && (
                     <IconButton label="Chek" onClick={() => setReceipt(r)}>
                       <Paperclip className="h-4 w-4" />
@@ -191,6 +197,7 @@ export default function FinanceOperationsPage() {
         />
         <Pagination page={page} count={data?.count ?? 0} onPage={(p) => set({ page: p })} />
       </Card>
+      {history && <OperationHistoryModal op={history} onClose={() => setHistory(null)} />}
       {edit && (
         <OperationModal
           op={typeof edit === "string" ? null : edit}
@@ -202,5 +209,66 @@ export default function FinanceOperationsPage() {
       {receipt && <ReceiptModal op={receipt} onClose={() => setReceipt(null)} />}
       {transfer && <TransferModal onClose={() => setTransfer(false)} />}
     </div>
+  );
+}
+
+const FIELD_LABEL: Record<string, string> = {
+  kind: "Turi",
+  amount: "Summa",
+  currency: "Valyuta",
+  orig_amount: "Dollar summasi",
+  rate: "Kurs",
+  category: "Kategoriya",
+  member: "Hamyon",
+  order_ref: "Buyurtma",
+  comment: "Izoh",
+  worker: "Kimga",
+  pay_type: "Oylik turi",
+  date: "Sana",
+  handover: "Topshiruv",
+};
+
+interface OperationChange {
+  id: number;
+  action: "edit" | "delete" | "restore";
+  action_label: string;
+  at: string;
+  by: string;
+  via: string;
+  changes: Record<string, [string, string]>;
+}
+
+/** Audit trail of one row: who edited / deleted / restored it and what changed. */
+function OperationHistoryModal({ op, onClose }: { op: Operation; onClose: () => void }) {
+  const { data, isFetching } = useGet<OperationChange[]>(`/finance/operations/${op.id}/history/`);
+  const tone = { edit: "info", delete: "danger", restore: "ok" } as const;
+  return (
+    <Modal open onClose={onClose} title={`#${op.number} — o'zgarishlar tarixi`}>
+      {isFetching && !data ? null : !data?.length ? (
+        <Empty title="O'zgarish yo'q" text="Bu yozuv kiritilganidan beri tahrirlanmagan va o'chirilmagan." />
+      ) : (
+        <ol className="space-y-3">
+          {data.map((c) => (
+            <li key={c.id} className="rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone={tone[c.action]}>{c.action_label}</Badge>
+                <span className="font-medium">{c.by || "noma'lum"}</span>
+                {c.via && <span className="muted text-xs">({c.via === "bot" ? "bot" : "sayt"})</span>}
+                <span className="muted ml-auto text-xs">{dateTime(c.at)}</span>
+              </div>
+              {Object.keys(c.changes).length > 0 && (
+                <ul className="mt-2 space-y-1">
+                  {Object.entries(c.changes).map(([k, [from, to]]) => (
+                    <li key={k}>
+                      <span className="muted">{FIELD_LABEL[k] ?? k}:</span> <s className="text-rose-600">{from || "—"}</s> → <b>{to || "—"}</b>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+    </Modal>
   );
 }

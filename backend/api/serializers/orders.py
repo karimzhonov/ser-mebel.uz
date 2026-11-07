@@ -105,6 +105,7 @@ class OrderDetailSerializer(OrderSerializer):
     design_type = serializers.SerializerMethodField()
     production = serializers.SerializerMethodField()
     actions = serializers.SerializerMethodField()
+    advance_pending = serializers.SerializerMethodField()
 
     class Meta(OrderSerializer.Meta):
         fields = OrderSerializer.Meta.fields + [
@@ -112,8 +113,16 @@ class OrderDetailSerializer(OrderSerializer):
             "production",
             "actions",
             "calculation",
+            "advance_pending",
         ]
         read_only_fields = fields
+
+    def get_advance_pending(self, obj):
+        """The advance entered at creation, still waiting for the boss (None if none)."""
+        a = obj.advances.filter(status="pending").first()
+        if a is None:
+            return None
+        return {"id": a.pk, "amount": str(a.amount), "currency": a.currency}
 
     def get_design_type(self, obj):
         dt = obj.design_type

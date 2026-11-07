@@ -155,6 +155,16 @@ def handover_kb(number: int):
     )
 
 
+def advance_kb(adv_id: int):
+    return ik(
+        [
+            [b("✅ Pulni qabul qildim", f"avk:{adv_id}")],
+            [b("✏️ Boshqa summa oldim", f"avs:{adv_id}")],
+            [b("❌ Pul kelmadi", f"avn:{adv_id}")],
+        ]
+    )
+
+
 def paid_kb(ref: str):
     return ik([[b("💰 Pul oldim", f"bpaid:{ref}")]])
 

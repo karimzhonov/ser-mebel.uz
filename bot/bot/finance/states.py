@@ -52,6 +52,10 @@ class BonusPay(StatesGroup):
     amount = State()
 
 
+class AdvanceSum(StatesGroup):
+    amount = State()
+
+
 class Feedback(StatesGroup):
     photo = State()
 
@@ -88,12 +92,24 @@ STEP_STATE = {
     "month_confirm": MonthReport.confirm,
     "month_note": MonthReport.note,
     "bpay": BonusPay.amount,
+    "adv_sum": AdvanceSum.amount,
     "fikr": Feedback.photo,
     "tpl": Template.photo,
 }
 
 ALL_STATES = [
     s
-    for grp in (Tx, Attach, Request, Transfer, ManualOrder, MonthReport, BonusPay, Feedback, Template)
+    for grp in (
+        Tx,
+        Attach,
+        Request,
+        Transfer,
+        ManualOrder,
+        MonthReport,
+        BonusPay,
+        AdvanceSum,
+        Feedback,
+        Template,
+    )
     for s in grp.__all_states__
 ]

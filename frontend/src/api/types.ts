@@ -656,6 +656,8 @@ export interface ProductionRow {
 }
 
 export interface OrderDetail extends Order {
+  /** the advance entered at creation, waiting for the boss («Avans tasdiqlash») */
+  advance_pending?: { id: number; amount: string; currency: string } | null;
   /** the zamer's price calculation; after the order only the bosh menejer edits it */
   calculation?: { id: number; can_edit: boolean } | null;
   design_type: { id: number; name: string; folder: number | null } | null;

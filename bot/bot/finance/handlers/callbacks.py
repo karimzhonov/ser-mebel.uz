@@ -51,6 +51,8 @@ async def on_callback(ctx: Ctx, data: str):
         return await TK.sayt_done(ctx, arg)
     if cmd in ("pqk", "pqd"):
         return await BN.handover_do(ctx, cmd, int(arg))
+    if cmd in ("avk", "avs", "avn"):
+        return await BN.advance_btn(ctx, cmd, int(arg))
     if cmd == "fko":
         return await TK.fikr_btn(ctx, arg)
     if cmd == "rol":

@@ -390,3 +390,147 @@ def test_site_receipt_comes_through_the_bot(boss_api, members, monkeypatch):
 
 def test_bot_webhook_route_is_gone(boss_api):
     assert boss_api.post("/api/v1/finance/telegram/update/", {}, format="json").status_code == 404
+
+
+# ------------------------------------------------ the expert review fixes
+def test_handing_client_money_to_the_boss_is_not_order_spending(members, site_order):
+    boss, ali, _ = members
+    op = S.create_operation(
+        member=ali,
+        author=ali,
+        kind="income",
+        amount=5_000_000,
+        category_code="qoldiq",
+        order_ref="406",
+        comment="Pul oldim (mijozdan qoldiq)",
+        internal=True,
+    )
+    S.create_operation(
+        member=ali, author=ali, kind="expense", amount=300_000, category_code="material",
+        order_ref="406",
+    )
+    S.handover_accept(op, boss)  # a transfer carrying order 406
+    assert S.order_stats("406")["spent"] == 300_000
+    assert S.order_stats_bulk(["406"])["406"]["spent"] == 300_000
+
+
+def test_edit_delete_restore_are_audited(boss_api, members):
+    from accounting.models import OperationChange
+
+    ali = members[1]
+    op = S.create_operation(member=ali, author=ali, kind="expense", amount=1000,
+                            category_code="ovqat", comment="non")
+    url = f"/api/v1/finance/operations/{op.id}/"
+    r = boss_api.patch(url, {"amount": "2500", "comment": "tushlik"}, format="json")
+    assert r.status_code == 200, r.data
+    boss_api.patch(url, {"comment": "tushlik"}, format="json")  # nothing changed: no line
+    assert boss_api.delete(url).status_code == 204
+    assert boss_api.post(f"{url}restore/").status_code == 200
+
+    h = boss_api.get(f"{url}history/").data
+    assert [x["action"] for x in h] == ["restore", "delete", "edit"]
+    assert h[-1]["changes"] == {"amount": ["1000.00", "2500.00"], "comment": ["non", "tushlik"]}
+    assert h[-1]["via"] == "site" and h[-1]["by"]
+    # the bot's delete is audited with the Telegram member
+    S.delete_operation_as(members[0], op.number)
+    last = OperationChange.objects.filter(operation=op).first()
+    assert last.action == "delete" and last.by_member_id == members[0].id and last.via == "bot"
+
+
+def test_wallets_show_the_boss_cash(boss_api, members):
+    boss, ali, _ = members
+    S.create_operation(member=boss, author=boss, kind="income", amount=7_000_000,
+                       category_code="avans", actor_admin=True)
+    S.create_operation(member=ali, author=ali, kind="income", amount=1_000_000,
+                       category_code="avans")
+    r = boss_api.get("/api/v1/finance/wallets/")
+    assert r.status_code == 200, r.data
+    assert r.data["cash_total"] == 7_000_000 and r.data["staff_total"] == 1_000_000
+
+
+def test_refund_lowers_expense_not_income(members):
+    boss, ali, _ = members
+    S.create_operation(member=ali, author=ali, kind="income", amount=1_000_000,
+                       category_code="avans")
+    S.create_operation(member=ali, author=ali, kind="expense", amount=400_000,
+                       category_code="material")
+    S.create_operation(member=ali, author=ali, kind="income", amount=100_000,
+                       category_code="qaytim")
+    sm = S.summary(None, None)
+    assert sm["income"] == 1_000_000  # the refund is not income
+    assert sm["expense"] == 400_000 - 100_000 and sm["refund"] == 100_000
+    assert sm["balance"] == 1_000_000 - 300_000
+    refund_row = next(x for x in sm["expense_by_category"] if x["code"] == "qaytim")
+    assert refund_row["sum"] == -100_000
+    assert "qaytim" not in {x["code"] for x in sm["income_by_category"]}
+
+
+
+# ------------------------------------------------ «Avans tasdiqlash»
+def _advance(site_order, amount="500", currency="USD"):
+    site_order.lost_money = None
+    site_order.save()
+    return S.advance_open(site_order, Decimal(amount), currency)
+
+
+def test_advance_waits_then_the_boss_accepts(bot_events, members, site_order):
+    boss = members[0]
+    adv = _advance(site_order)
+    assert adv.status == "pending"
+    assert bot_events.one("finance.advance_requested")["advance"]["id"] == adv.id
+    S.set_usd_rate(12000)
+    S.advance_accept(adv, boss)
+    adv.refresh_from_db()
+    site_order.refresh_from_db()
+    assert adv.status == "accepted" and adv.operation.member_id == boss.id
+    assert adv.operation.category.code == "avans" and adv.operation.amount == 6_000_000
+    assert site_order.lost_money.amount == 500  # USD, the order's currency
+    with pytest.raises(Exception):  # a second answer is refused
+        S.advance_accept(adv, boss)
+
+
+def test_advance_other_amount_and_reject(members, site_order):
+    from accounting.models import OrderAdvance
+
+    boss, ali, _ = members
+    adv = _advance(site_order)
+    with pytest.raises(Exception):  # staff can't confirm
+        S.advance_accept(adv, ali)
+    S.set_usd_rate(12000)
+    S.advance_accept(adv, boss, "450$")
+    adv.refresh_from_db()
+    assert adv.operation.orig_amount == 450 and adv.got_text
+    other = OrderAdvance.objects.create(order=site_order, amount=100, currency="USD")
+    S.advance_reject(other, boss)
+    other.refresh_from_db()
+    assert other.status == "rejected" and other.operation is None
+
+
+def test_order_created_with_advance_waits_for_the_boss(bot_events, boss_api, members):
+    from accounting.models import OrderAdvance
+    from client.models import Client
+
+    Client.objects.create(phone="+998901112233", fio="Test")
+    r = boss_api.post(
+        "/api/v1/orders/",
+        {
+            "client_phone": "+998901112233",
+            "address": "A",
+            "price": {"amount": 1000, "currency": "USD"},
+            "lost_money": {"amount": 300, "currency": "USD"},
+        },
+        format="json",
+    )
+    assert r.status_code == 201, r.data
+    assert r.data["advance_pending"]["amount"] == "300.00"
+    assert r.data["money_left"]["amount"] == 1000.0
+    adv = OrderAdvance.objects.get()
+    lst = boss_api.get("/api/v1/finance/advances/").data
+    assert [x["id"] for x in lst] == [adv.id]
+    S.set_usd_rate(12000)
+    r = boss_api.post(
+        "/api/v1/finance/advances/", {"advance": adv.id, "action": "accept"}, format="json"
+    )
+    assert r.status_code == 200, r.data
+    assert r.data["status"] == "accepted"
+    assert boss_api.get("/api/v1/finance/advances/").data == []

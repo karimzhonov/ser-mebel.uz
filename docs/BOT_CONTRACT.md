@@ -86,6 +86,7 @@ Decimals are strings like `"250000.00"`; dates ISO.
 - **Bonus** `{order_ref, client, description, total, currency, ready_date, status, rest, days, percent, bonus, note, got_text}`
 - **MoneyState** `{paid, rest, src}`
 - **MoneyRequest** `{number, member: Member, amount, currency, orig_amount, reason, status, answer, created_at, admin_messages: [[chat_id, message_id]], member_balance}`
+- **Advance** `{id, order_ref, order_id, client, phone, price_text, amount, currency, sum_text, by_name, status: pending|accepted|rejected, status_label, got_text, created_at}` — the advance a manager entered when creating an order, waiting for the boss («Avans tasdiqlash»)
 - **Worker** `{id, name, group, position, is_boss}` (`is_boss` = the boss's own salary row: its salary takes the extra `pay_type` «Uy uchun») · **Car** `{id, name}`
 - **SiteEntryTask** `{code, order_ref, client, sum_text, rest_text, taken_by, date, is_done}`
 - **Feedback** `{order_ref, client, phone, status, ready_date, asked_date}` · **Warranty** `{order_ref, client, given}`
@@ -163,6 +164,9 @@ Actor comes from `X-Bot-Actor`. Every role rule is enforced server-side.
 | GET | `finance/month-report/` | `{month, opening, income, expense, closing, count, submitted}` | `month_start` `:1641`; month choice → new `S.month_report_target(member)` |
 | GET | `finance/month-report/excel/?month=&member=<tg>` | xlsx bytes + `Content-Disposition`; admins any member, staff only themselves | `month_submitted` notify (sent to each admin) |
 | GET | `finance/handover/` (admin) | `[Operation]` | `S.handover_pending` |
+| GET | `finance/advances/` (admin) | `[Advance]` (pending) | `OrderAdvance` |
+| POST | `finance/advances/{id}/accept/` (admin) | `{amount_text?}` → `{advance, balance}`; `amount_text` = the boss got another amount («4.5 mln», «450$»); 409 if answered | `S.advance_accept` (kirim «Avans» into the boss's cash + the order's «Полученная сумма») | — |
+| POST | `finance/advances/{id}/reject/` (admin) | → `{advance, balance}`; 409 if answered | `S.advance_reject` | — |
 | GET | `finance/warranty/?given=0` (receiver/admin) | `[Warranty]` | `:1861` |
 | GET | `finance/tasks/` | `{site_entry: [Task], feedback: [Feedback]}`, scoped by duties | `tasks_view` `:1910` |
 | GET | `finance/requests/{n}/` (admin) | `MoneyRequest` | `:1592` |
@@ -261,6 +265,7 @@ Every event carries computed recipients (`to` / `admins` / `channel_id` / `group
 | finance.month_submitted | `member, month, summary, note, closing, admins, channel_id` (bot then GETs `finance/month-report/excel/` per admin) | bot |
 | finance.manual_order_created / manual_order_closed | `order, spent, channel_id` | bot |
 | finance.handover_requested | `operation, who, ref, client, sum_text, rest_text, admins` | bot collect |
+| finance.advance_requested | `advance: Advance, admins` — a new order came with an advance: the boss presses «✅ Pulni qabul qildim» / «✏️ Boshqa summa oldim» / «❌ Pul kelmadi» (`finance/advances/{id}/accept|reject/`) | order create (site) |
 | finance.handover_resolved | `operation, action, client, sum_text, member_balance` | bot |
 | finance.warranty_given | `letter, by_name, admins` | bot |
 | finance.site_entry_created | `task, collector_name, to, fallback` | bot collect |

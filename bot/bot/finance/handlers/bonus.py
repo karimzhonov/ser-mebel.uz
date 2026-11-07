@@ -152,6 +152,48 @@ async def handover_do(ctx: Ctx, cmd: str, number: int):
     )
 
 
+# ====================================================================== order advance
+async def advance_btn(ctx: Ctx, cmd: str, adv_id: int):
+    """«✅ Pulni qabul qildim» / «✏️ Boshqa summa oldim» / «❌ Pul kelmadi» on the new
+    order card. The backend books the money and refuses a second answer (409)."""
+    if not ctx.admin:
+        return await ctx.send("ℹ️ Bu tugma faqat rahbar uchun.")
+    if cmd == "avs":
+        await ctx.set_st({"step": "adv_sum", "id": adv_id})
+        return await ctx.send(
+            "✏️ Qancha oldingiz? Summani yozing (masalan <code>4500000</code>, <code>4.5 mln</code>"
+            " yoki <code>450$</code>):",
+            ik([[CANCEL]]),
+        )
+    await ctx.clear_kb()
+    if cmd == "avn":
+        res = await ctx.api("POST", f"finance/advances/{adv_id}/reject/")
+        a = res["advance"]
+        return await ctx.send(
+            f"❌ Buyurtma №{esc(a['order_ref'])} · {esc(a['client'])}: avans kelmadi deb"
+            " belgilandi. Hech narsa yozilmadi."
+        )
+    await advance_accept(ctx, adv_id, None)
+
+
+async def advance_sum_text(ctx: Ctx, d: dict, text: str):
+    if not await check_amount(ctx, text):
+        return
+    await ctx.clr_st()
+    await advance_accept(ctx, int(d["id"]), text)
+
+
+async def advance_accept(ctx: Ctx, adv_id: int, amount_text: str | None):
+    body = {"amount_text": amount_text} if amount_text else {}
+    res = await ctx.api("POST", f"finance/advances/{adv_id}/accept/", json=body)
+    a = res["advance"]
+    got = a.get("got_text") or a["sum_text"]
+    await ctx.send(
+        f"✅ Avans qabul qilindi: <b>{esc(got)}</b>\n🧾 Buyurtma №{esc(a['order_ref'])} ·"
+        f" {esc(a['client'])}\n💼 Kassangiz: {money(res['balance'])}"
+    )
+
+
 # ====================================================================== kafolat
 async def kafolat_give(ctx: Ctx, ref: str, from_btn: bool):
     if not is_receiver(ctx):

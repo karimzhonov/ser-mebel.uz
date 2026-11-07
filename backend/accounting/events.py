@@ -493,3 +493,10 @@ def admin_daily(day, summary: dict, rows, by_member: dict, silent: list[str], is
 @_safe
 def month_excel(month: str):
     emit("finance.month_excel", {"month": month, "admins": admin_ids()})
+
+
+# ------------------------------------------------------------------ order advance
+@_safe
+def advance_requested(adv):
+    """A new order came with an advance: the boss confirms he got the money."""
+    emit("finance.advance_requested", {"advance": dto.advance_dto(adv), "admins": admin_ids()})
