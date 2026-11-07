@@ -100,6 +100,8 @@ export interface Summary {
   boss_personal: number;
   home: number;
   transfers: number;
+  /** «Qaytim»: lowers the expense, not income */
+  refund: number;
   count: number;
   expense_by_category: CatItem[];
   income_by_category: CatItem[];

@@ -9,7 +9,7 @@ import { CatLabel, downloadFile, OperationModal, som, useFinMe, useMembers } fro
 import type { CatItem, Summary } from "./types";
 
 function CategoryList({ items, tone }: { items: CatItem[]; tone: "danger" | "ok" }) {
-  const total = items.reduce((s, i) => s + i.amount, 0) || 1;
+  const total = items.reduce((s, i) => s + Math.max(0, i.amount), 0) || 1;
   if (!items.length) return <Empty title="Bu davrda yo'q" />;
   return (
     <ul className="space-y-3">
@@ -18,12 +18,17 @@ function CategoryList({ items, tone }: { items: CatItem[]; tone: "danger" | "ok"
           <div className="mb-1 flex justify-between gap-2 text-sm">
             <CatLabel c={i} />
             <span className="whitespace-nowrap font-medium tabular-nums">
-              {som(tone === "danger" ? -i.amount : i.amount)} · {Math.round((i.amount * 100) / total)}%
+              {i.amount < 0 ? (
+                // «Qaytim»: money that came back lowers the expense
+                <span className="text-emerald-600">+{som(-i.amount)} qaytdi</span>
+              ) : (
+                <>{som(tone === "danger" ? -i.amount : i.amount)} · {Math.round((i.amount * 100) / total)}%</>
+              )}
               <span className="muted ml-1 font-normal">({i.count})</span>
             </span>
           </div>
           <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-800">
-            <div className="h-2 rounded-full" style={{ width: `${(i.amount * 100) / total}%`, background: i.color }} />
+            <div className="h-2 rounded-full" style={{ width: `${Math.max(0, (i.amount * 100) / total)}%`, background: i.color }} />
           </div>
         </li>
       ))}

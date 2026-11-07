@@ -88,6 +88,7 @@ v1 = [
     path("finance/export/", finance.ExportView.as_view(), name="api-finance-export"),
     path("finance/settings/", finance.FinanceSettingsView.as_view(), name="api-finance-settings"),
     path("finance/handover/", finance.HandoverView.as_view(), name="api-finance-handover"),
+    path("finance/advances/", finance.OrderAdvanceView.as_view(), name="api-finance-advances"),
     path("finance/me/", finance.MeFinanceView.as_view(), name="api-finance-me"),
     path(
         "warehouse/summary/", warehouse.WarehouseSummaryView.as_view(), name="api-warehouse-summary"

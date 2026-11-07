@@ -294,6 +294,22 @@ async def manual_order_closed(n: Notifier, d: dict):
     )
 
 
+# ------------------------------------------------------------------ order advance
+@on("finance.advance_requested")
+async def advance_requested(n: Notifier, d: dict):
+    a = d["advance"]
+    who = f"\n👤 Yaratdi: {esc(a['by_name'])}" if a.get("by_name") else ""
+    price = f"\n💵 Narxi: {esc(a['price_text'])}" if a.get("price_text") else ""
+    await n.many(
+        d.get("admins"),
+        f"🆕 <b>Buyurtma №{esc(a['order_ref'])} yaratildi</b>\n🧾 {esc(a['client'])}{price}"
+        f"\n💰 Avans: <b>{esc(a['sum_text'])}</b>{who}"
+        "\n\nPulni qo'lingizga olganingizda «✅ Pulni qabul qildim» ni bosing — avans"
+        " kassangizga yoziladi va buyurtmada tasdiqlanadi.",
+        K.advance_kb(a["id"]),
+    )
+
+
 # ------------------------------------------------------------------ money collected
 @on("finance.handover_requested")
 async def handover_requested(n: Notifier, d: dict):

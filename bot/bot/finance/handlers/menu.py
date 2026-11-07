@@ -228,6 +228,8 @@ async def on_text(ctx: Ctx, text: str):
             return await RQ.req_text(ctx, d, step, text)
         if step == "bpay":
             return await BN.bonus_pay_text(ctx, d, text)
+        if step == "adv_sum":
+            return await BN.advance_sum_text(ctx, d, text)
         if step == "fikr":
             return await ctx.send(
                 "📸 Iltimos, mijoz fikrining <b>skrinshotini</b> (rasm) yuboring. Fikr matnini rasm izohiga yozing.\nBekor qilish: /bekor"

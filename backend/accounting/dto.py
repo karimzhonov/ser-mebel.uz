@@ -279,3 +279,30 @@ def day_summary_dto(sm: dict) -> dict:
         "transfers": dec(sm["transfers"]),
         "count": sm["count"],
     }
+
+
+def advance_dto(a) -> dict:
+    """OrderAdvance («Avans tasdiqlash»)."""
+    o = a.order
+    client = o.client
+    price = ""
+    if o.price:
+        total, cur, _ = S._order_money(o)
+        price = S.advance_text(total, cur)
+    by = a.created_by
+    return {
+        "id": a.pk,
+        "order_ref": str(o.order_number or ""),
+        "order_id": o.pk,
+        "client": (client.fio if client else "") or "",
+        "phone": str(client.phone) if client and client.phone else "",
+        "price_text": price,
+        "amount": dec(a.amount),
+        "currency": a.currency,
+        "sum_text": S.advance_text(a.amount, a.currency),
+        "by_name": (by.name or str(by.phone or "")) if by else "",
+        "status": a.status,
+        "status_label": a.get_status_display(),
+        "got_text": a.got_text,
+        "created_at": a.created_at.strftime("%Y-%m-%dT%H:%M:%S") if a.created_at else None,
+    }

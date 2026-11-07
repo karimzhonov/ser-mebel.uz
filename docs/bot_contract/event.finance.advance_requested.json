@@ -1,0 +1,25 @@
+{
+  "id": "00000000-0000-0000-0000-0000000010a1",
+  "event": "finance.advance_requested",
+  "data": {
+    "advance": {
+      "id": 12,
+      "order_ref": "512",
+      "order_id": 640,
+      "client": "Nazira Karimova",
+      "phone": "+998901234567",
+      "price_text": "2,300.00 $",
+      "amount": "500.00",
+      "currency": "USD",
+      "sum_text": "500.00 $",
+      "by_name": "Maftuna",
+      "status": "pending",
+      "status_label": "⏳ Tasdiq kutilmoqda",
+      "got_text": "",
+      "created_at": "2026-11-07T11:20:00"
+    },
+    "admins": [
+      100
+    ]
+  }
+}

@@ -446,3 +446,91 @@ def test_wallets_show_the_boss_cash(boss_api, members):
     r = boss_api.get("/api/v1/finance/wallets/")
     assert r.status_code == 200, r.data
     assert r.data["cash_total"] == 7_000_000 and r.data["staff_total"] == 1_000_000
+
+
+def test_refund_lowers_expense_not_income(members):
+    boss, ali, _ = members
+    S.create_operation(member=ali, author=ali, kind="income", amount=1_000_000,
+                       category_code="avans")
+    S.create_operation(member=ali, author=ali, kind="expense", amount=400_000,
+                       category_code="material")
+    S.create_operation(member=ali, author=ali, kind="income", amount=100_000,
+                       category_code="qaytim")
+    sm = S.summary(None, None)
+    assert sm["income"] == 1_000_000  # the refund is not income
+    assert sm["expense"] == 400_000 - 100_000 and sm["refund"] == 100_000
+    assert sm["balance"] == 1_000_000 - 300_000
+    refund_row = next(x for x in sm["expense_by_category"] if x["code"] == "qaytim")
+    assert refund_row["sum"] == -100_000
+    assert "qaytim" not in {x["code"] for x in sm["income_by_category"]}
+
+
+
+# ------------------------------------------------ «Avans tasdiqlash»
+def _advance(site_order, amount="500", currency="USD"):
+    site_order.lost_money = None
+    site_order.save()
+    return S.advance_open(site_order, Decimal(amount), currency)
+
+
+def test_advance_waits_then_the_boss_accepts(bot_events, members, site_order):
+    boss = members[0]
+    adv = _advance(site_order)
+    assert adv.status == "pending"
+    assert bot_events.one("finance.advance_requested")["advance"]["id"] == adv.id
+    S.set_usd_rate(12000)
+    S.advance_accept(adv, boss)
+    adv.refresh_from_db()
+    site_order.refresh_from_db()
+    assert adv.status == "accepted" and adv.operation.member_id == boss.id
+    assert adv.operation.category.code == "avans" and adv.operation.amount == 6_000_000
+    assert site_order.lost_money.amount == 500  # USD, the order's currency
+    with pytest.raises(Exception):  # a second answer is refused
+        S.advance_accept(adv, boss)
+
+
+def test_advance_other_amount_and_reject(members, site_order):
+    from accounting.models import OrderAdvance
+
+    boss, ali, _ = members
+    adv = _advance(site_order)
+    with pytest.raises(Exception):  # staff can't confirm
+        S.advance_accept(adv, ali)
+    S.set_usd_rate(12000)
+    S.advance_accept(adv, boss, "450$")
+    adv.refresh_from_db()
+    assert adv.operation.orig_amount == 450 and adv.got_text
+    other = OrderAdvance.objects.create(order=site_order, amount=100, currency="USD")
+    S.advance_reject(other, boss)
+    other.refresh_from_db()
+    assert other.status == "rejected" and other.operation is None
+
+
+def test_order_created_with_advance_waits_for_the_boss(bot_events, boss_api, members):
+    from accounting.models import OrderAdvance
+    from client.models import Client
+
+    Client.objects.create(phone="+998901112233", fio="Test")
+    r = boss_api.post(
+        "/api/v1/orders/",
+        {
+            "client_phone": "+998901112233",
+            "address": "A",
+            "price": {"amount": 1000, "currency": "USD"},
+            "lost_money": {"amount": 300, "currency": "USD"},
+        },
+        format="json",
+    )
+    assert r.status_code == 201, r.data
+    assert r.data["advance_pending"]["amount"] == "300.00"
+    assert r.data["money_left"]["amount"] == 1000.0
+    adv = OrderAdvance.objects.get()
+    lst = boss_api.get("/api/v1/finance/advances/").data
+    assert [x["id"] for x in lst] == [adv.id]
+    S.set_usd_rate(12000)
+    r = boss_api.post(
+        "/api/v1/finance/advances/", {"advance": adv.id, "action": "accept"}, format="json"
+    )
+    assert r.status_code == 200, r.data
+    assert r.data["status"] == "accepted"
+    assert boss_api.get("/api/v1/finance/advances/").data == []

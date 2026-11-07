@@ -101,3 +101,15 @@ async def test_salary_due_reminds_the_accountant(be):
     assert {x["chat_id"] for x in delivered} == set(env["data"]["to"])
     text = bot.send_message.call_args.args[1]
     assert env["data"]["workers"][0]["name"] in text and "oylik chiqarish kerak" in text
+
+
+async def test_advance_requested_card_has_three_buttons(be):
+    env = fx("event.finance.advance_requested")
+    bot = fake_bot()
+    delivered = await dispatch(env, bot)
+    assert [x["chat_id"] for x in delivered] == env["data"]["admins"]
+    kw = bot.send_message.call_args.kwargs
+    text = bot.send_message.call_args.args[1] if len(bot.send_message.call_args.args) > 1 else kw["text"]
+    assert "№512" in text and "500.00 $" in text
+    datas = [btn.callback_data for row in kw["reply_markup"].inline_keyboard for btn in row]
+    assert datas == ["avk:12", "avs:12", "avn:12"]

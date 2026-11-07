@@ -511,6 +511,7 @@ class FinanceSummaryView(APIView):
                 "boss_personal": f(sm["boss_personal"]),
                 "home": f(sm["home"]),
                 "transfers": f(sm["transfers"]),
+                "refund": f(sm["refund"]),
                 "count": sm["count"],
                 "expense_by_category": _items(sm["expense_by_category"]),
                 "income_by_category": _items(sm["income_by_category"]),
@@ -1049,6 +1050,46 @@ class HandoverView(APIView):
                 )
             S.handover_accept(op, boss)
         return Response(OperationSerializer(Operation.objects.get(pk=op.pk)).data)
+
+
+class OrderAdvanceView(APIView):
+    """«Avans tasdiqlash»: advances entered at order creation, waiting for the boss.
+    GET ?status=pending|accepted|rejected|all; POST {advance, action: accept|reject,
+    amount_text?} — accept books the money into the boss's cash."""
+
+    permission_classes = [ModelPermissions]
+    queryset = Operation.objects.none()
+
+    def get(self, request):
+        from accounting.dto import advance_dto
+        from accounting.models import OrderAdvance
+
+        require_perm(request.user, VIEW_ALL)
+        st = request.query_params.get("status") or "pending"
+        qs = OrderAdvance.objects.select_related("order__client", "created_by")
+        if st != "all":
+            qs = qs.filter(status=st)
+        return Response([advance_dto(a) for a in qs[:300]])
+
+    def post(self, request):
+        from accounting.dto import advance_dto
+        from accounting.models import OrderAdvance
+
+        require_perm(request.user, VIEW_ALL, "accounting.add_operation")
+        adv = OrderAdvance.objects.filter(pk=request.data.get("advance")).first()
+        if not adv:
+            raise NotFound()
+        boss = acting_member(request)
+        if not boss or not boss.is_admin:
+            raise ServiceError(
+                "Tasdiqlash uchun profilingiz Telegram'da «Rahbar» rolidagi a'zoga ulangan bo'lishi kerak."
+            )
+        if request.data.get("action") == "reject":
+            adv = S.advance_reject(adv, boss)
+        else:
+            text = str(request.data.get("amount_text") or "").strip() or None
+            adv = S.advance_accept(adv, boss, text, by_user=request.user)
+        return Response(advance_dto(adv))
 
 
 class MeFinanceView(APIView):

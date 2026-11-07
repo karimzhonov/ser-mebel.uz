@@ -183,6 +183,9 @@ class OrderViewSet(viewsets.ModelViewSet):
             from djmoney.money import Money
 
             data["price"] = Money(0, dj_settings.DEFAULT_CURRENCY)
+        # owner's rule: the advance entered here waits for the boss («Avans tasdiqlash»);
+        # it reaches the order's «Полученная сумма» only once he confirms the money
+        advance = data.pop("lost_money", None)
         with transaction.atomic():  # no orphan client if the order is refused
             if phone and not data.get("metering"):
                 client = Client.objects.filter(phone=phone).first()
@@ -192,6 +195,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                     client = Client.objects.create(phone=phone, fio=fio)
                 data["client"] = client
             order = create_order(author=request.user, **data)
+            if advance is not None:
+                from accounting.services import advance_open
+
+                advance_open(order, advance.amount, str(advance.currency), by_user=request.user)
         return self._detail(order, status.HTTP_201_CREATED)
 
     def update(self, request, *args, **kwargs):

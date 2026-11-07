@@ -358,6 +358,14 @@ export function OrderDetailPage() {
                   items={[
                     ["Summa", money(o.price)],
                     ["Olingan", money(o.lost_money)],
+                    ...(o.advance_pending
+                      ? ([[
+                          "Avans",
+                          <span className="text-amber-600">
+                            ⏳ {money({ amount: Number(o.advance_pending.amount), currency: o.advance_pending.currency })} — rahbar tasdig'ini kutmoqda
+                          </span>,
+                        ]] as [string, JSX.Element][])
+                      : []),
                     ["Qoldiq", <MoneyLeft className="text-base" left={o.money_left} total={o.total_price} />],
                   ]}
                 />
@@ -815,7 +823,7 @@ export function OrderCreatePage() {
               <Field label="Umumiy summa" error={errors.price}>
                 <MoneyInput value={form.price} currencies={meta?.currencies} onChange={(price) => setForm({ ...form, price })} />
               </Field>
-              <Field label="Olingan" error={errors.lost_money}>
+              <Field label="Olingan avans" hint="Rahbar pulni qabul qilgach buyurtmaga yoziladi" error={errors.lost_money}>
                 <MoneyInput value={form.lost_money} currencies={meta?.currencies} onChange={(lost_money) => setForm({ ...form, lost_money })} />
               </Field>
               <Field label="Chegirma, %" error={errors.discount}>
