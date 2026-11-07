@@ -245,6 +245,7 @@ CONSTANCE_CONFIG = {
     'FIN_CHANNEL_ID': ('', "Moliya: Telegram kanal (@username yoki -100...)", str),
     'FIN_READY_DAYS': (30, "Moliya: «Готов» buyurtma qoldiq to'lov ro'yxatida necha kun turadi", int),
     'FIN_BONUS_SINCE': ('', "Moliya: shu sanadan keyin «Готов» bo'lganlarga bonus kuzatuvi (bo'sh — birinchi ishga tushgan kun)", str),
+    'FIN_WARRANTY_SINCE': ('', "Moliya: kafolat xati eslatmasi shu sanadan keyin «Готов» bo'lganlarga (bo'sh — birinchi ishga tushgan kun)", str),
     'FIN_REPORT_TEMPLATE': ('', "Moliya: hisob-kitob varaqasi fon rasmi (media yo'li)", str),
     # Zamer (measurer reminders in the bot)
     'METERING_DIGEST_HOUR': (20, "Zamer: ertangi zamerlar ro'yxati soat nechada yuboriladi", int),
@@ -303,6 +304,7 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
                 "FIN_CHANNEL_ID",
                 "FIN_READY_DAYS",
                 "FIN_BONUS_SINCE",
+                "FIN_WARRANTY_SINCE",
                 "FIN_REPORT_TEMPLATE",
             )
         },

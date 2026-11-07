@@ -116,10 +116,23 @@ WARRANTY_STEPS = (3, 7, 15, 30)
 WARRANTY_PER_PASS = 10
 
 
+def warranty_since() -> date:
+    """Set once on the first pass (the owner asked not to chase the old letters),
+    editable in settings."""
+    raw = str(config.FIN_WARRANTY_SINCE or "").strip()
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        d = today()
+        config.FIN_WARRANTY_SINCE = d.isoformat()
+        return d
+
+
 def warranty_remind(ok_hour: bool):
     """«Kafolat xati» not handed yet: remind the bonus receivers 3, 7, 15 and 30 days
-    after Готов, until «📜 Kafolat xati berdim» is pressed (orders that became Готов
-    since FIN_BONUS_SINCE). Only the latest step reached
+    after Готов, until «📜 Kafolat xati berdim» is pressed. Only orders that became
+    Готов on/after FIN_WARRANTY_SINCE (the day this went live): older letters are not
+    chased. Only the latest step reached
     is sent (a letter found 20 days late gets the 15-day one, not three at once), each
     step once (once-key). At most WARRANTY_PER_PASS per pass so an old backlog spreads
     over a few hours instead of flooding the chat."""
@@ -127,10 +140,8 @@ def warranty_remind(ok_hour: bool):
         return
     t = today()
     sent = 0
-    # same cut-off as the bonus cards: letters left over from the Apps Script era
-    # are not chased (and finished ones drop out once they are 30+ days past it)
     qs = WarrantyLetter.objects.filter(
-        given=False, ready_date__isnull=False, ready_date__gte=bonus_since()
+        given=False, ready_date__isnull=False, ready_date__gte=warranty_since()
     ).order_by("ready_date", "id")
     for w in qs:
         if sent >= WARRANTY_PER_PASS:

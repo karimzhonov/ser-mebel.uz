@@ -780,6 +780,7 @@ SETTING_KEYS = [
     "FIN_CHANNEL_ID",
     "FIN_READY_DAYS",
     "FIN_BONUS_SINCE",
+    "FIN_WARRANTY_SINCE",
 ]
 
 
@@ -816,7 +817,7 @@ class FinanceSettingsView(APIView):
             lo_hi = SETTING_RANGES.get(k)
             if lo_hi and not lo_hi[0] <= value <= lo_hi[1]:
                 raise ValidationError({k: f"{lo_hi[0]} dan {lo_hi[1]} gacha bo'lishi kerak."})
-            if k == "FIN_BONUS_SINCE" and value:
+            if k in ("FIN_BONUS_SINCE", "FIN_WARRANTY_SINCE") and value:
                 try:
                     date.fromisoformat(value)
                 except ValueError:

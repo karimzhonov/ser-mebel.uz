@@ -315,7 +315,7 @@ def test_warranty_reminder_3_7_15_30_until_given(members, bot_events, monkeypatc
     from accounting.models import WarrantyLetter
 
     start = date.today()
-    config.FIN_BONUS_SINCE = start.isoformat()
+    config.FIN_WARRANTY_SINCE = start.isoformat()
     WarrantyLetter.objects.create(order_ref="406", client="K", ready_date=start)
     for days, step in [(2, None), (3, 3), (5, None), (7, 7), (15, 15), (30, 30), (45, None)]:
         monkeypatch.setattr(followup, "today", lambda d=days: start + timedelta(days=d))
@@ -333,10 +333,10 @@ def test_warranty_reminder_latest_step_only_and_not_when_given(members, bot_even
     from accounting.models import WarrantyLetter
 
     old = date.today() - timedelta(days=20)
-    config.FIN_BONUS_SINCE = (old - timedelta(days=100)).isoformat()
+    config.FIN_WARRANTY_SINCE = (old - timedelta(days=100)).isoformat()
     WarrantyLetter.objects.create(order_ref="406", client="K", ready_date=old)
     WarrantyLetter.objects.create(order_ref="389", client="D", ready_date=old, given=True)
-    WarrantyLetter.objects.create(  # before FIN_BONUS_SINCE: legacy, not chased
+    WarrantyLetter.objects.create(  # before FIN_WARRANTY_SINCE: old, not chased
         order_ref="1", client="L", ready_date=old - timedelta(days=200)
     )
     followup.warranty_remind(ok_hour=True)
@@ -346,3 +346,15 @@ def test_warranty_reminder_latest_step_only_and_not_when_given(members, bot_even
     assert ev["to"] == [300] and ev["fallback"] is False and ev["also_admins"] == [100]
     followup.warranty_remind(ok_hour=False)
     assert len(bot_events.of("finance.warranty_remind")) == 1
+
+
+def test_warranty_reminder_first_run_skips_existing_letters(members, bot_events):
+    from accounting.models import WarrantyLetter
+
+    config.FIN_WARRANTY_SINCE = ""
+    WarrantyLetter.objects.create(
+        order_ref="406", client="K", ready_date=date.today() - timedelta(days=10)
+    )
+    followup.warranty_remind(ok_hour=True)
+    assert not bot_events.of("finance.warranty_remind")
+    assert config.FIN_WARRANTY_SINCE == date.today().isoformat()
