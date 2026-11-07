@@ -19,7 +19,7 @@ from oauth.models import TelegramMember
 
 from . import events as E
 from . import services as S
-from .models import ClientFeedback, OrderBonus, SiteEntryTask
+from .models import ClientFeedback, OrderBonus, SiteEntryTask, WarrantyLetter
 from .text import days_between, today
 
 log = logging.getLogger("finance.followup")
@@ -109,6 +109,40 @@ def site_entry_remind(ok_hour: bool):
         task.reminded = t
         task.save(update_fields=["reminded"])
         E.site_entry_remind(task)
+
+
+# ------------------------------------------------------------------ warranty letters
+WARRANTY_STEPS = (3, 7, 15, 30)
+WARRANTY_PER_PASS = 10
+
+
+def warranty_remind(ok_hour: bool):
+    """«Kafolat xati» not handed yet: remind the bonus receivers 3, 7, 15 and 30 days
+    after Готов, until «📜 Kafolat xati berdim» is pressed (orders that became Готов
+    since FIN_BONUS_SINCE). Only the latest step reached
+    is sent (a letter found 20 days late gets the 15-day one, not three at once), each
+    step once (once-key). At most WARRANTY_PER_PASS per pass so an old backlog spreads
+    over a few hours instead of flooding the chat."""
+    if not ok_hour:
+        return
+    t = today()
+    sent = 0
+    # same cut-off as the bonus cards: letters left over from the Apps Script era
+    # are not chased (and finished ones drop out once they are 30+ days past it)
+    qs = WarrantyLetter.objects.filter(
+        given=False, ready_date__isnull=False, ready_date__gte=bonus_since()
+    ).order_by("ready_date", "id")
+    for w in qs:
+        if sent >= WARRANTY_PER_PASS:
+            break
+        d = days_between(w.ready_date, t)
+        step = max((s for s in WARRANTY_STEPS if d >= s), default=0)
+        if not step:
+            continue
+        if not S.once(f"kfx:{w.order_ref}:{step}"):
+            continue
+        E.warranty_remind(w, d, step)
+        sent += 1
 
 
 # ------------------------------------------------------------------ the hourly order pass
@@ -232,3 +266,4 @@ def hourly_orders(ok_hour: bool):
             log.exception("bonus check %s", bn.order_ref)
     feedback_check(ok_hour)
     site_entry_remind(ok_hour)
+    warranty_remind(ok_hour)

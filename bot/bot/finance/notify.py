@@ -485,6 +485,20 @@ async def site_entry_remind(n: Notifier, d: dict):
     )
 
 
+@on("finance.warranty_remind")
+async def warranty_remind(n: Notifier, d: dict):
+    w = d["letter"]
+    text = (
+        f"📜 <b>Eslatma: kafolat xati hali berilmagan</b>\n🧾 <b>{esc(w['order_ref'])} · {esc(w['client'])}</b>"
+        f"\n📅 Готов: {ddmm(d.get('ready_date'))} ({d['days']} kun o'tdi)"
+        "\n\nMijozga kafolat xatini bering, keyin tugmani bosing."
+    )
+    kb = ik([[b("📜 Kafolat xati berdim", f"kfx:{w['order_ref']}")]])
+    await duty(n, d, text, kb=kb)
+    for chat in dict.fromkeys(d.get("also_admins") or []):
+        await n.send(chat, text, kb)
+
+
 @on("finance.deadline")
 async def deadline(n: Notifier, d: dict):
     import html

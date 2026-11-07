@@ -276,6 +276,7 @@ Every event carries computed recipients (`to` / `admins` / `channel_id` / `group
 | finance.bonus_zero / bonus_term_reminder | `bonus, money_state\|rest, percent, days\|label, pct, to, fallback` | `followup.bonus_check` |
 | finance.feedback_ask / feedback_remind | `feedback, to, fallback` | `followup.feedback_check` |
 | finance.site_entry_remind | `task, to, fallback` | `followup.site_entry_remind` |
+| finance.warranty_remind | `letter, ready_date, days, step (3\|7\|15\|30), to, fallback, fallback_who, also_admins` — the warranty letter is still not handed `days` after Готов: the bonus receivers (admins when nobody is) get «📜 Kafolat xati berdim» (`kfx:{ref}`); from step 15 the non-receiver admins too. Only the latest step reached, each once | `followup.warranty_remind` (hourly, 9–21, ≤10 per pass) |
 | finance.deadline | `order{ref, client, end_date, status_label, phone, address, lat\|null, lon\|null, map_url\|null}, left_days, key, to, fallback` | `followup.deadline_reminders` |
 | finance.salary_due | `workers[{id, name, group, position, pay_date, has_template}], to, fallback, fallback_who` — tomorrow is these workers' pay day: «oylik chiqarish kerak» to the accountant (`is_accountant`; the admins when nobody is) | `salary.remind` (celery `accounting.tasks.salary_reminder`, 10:00, once per worker + pay date) |
 | finance.daily_reminder | `member, balance` (one event per person) | `jobs.daily_reminder` |

@@ -382,6 +382,30 @@ def site_entry_remind(task):
 
 
 @_safe
+def warranty_remind(letter, days: int, step: int):
+    """The warranty letter is still not handed `days` after Готов (`step` = 3/7/15/30).
+    The bonus receivers (or the admins) get it with the button; from the 15-day step on
+    the admins who are not receivers get it too."""
+    target = duty_target("is_bonus_receiver", WHO_BONUS)
+    also = (
+        []
+        if target["fallback"] or step < 15
+        else [a for a in admin_ids() if a not in target["to"]]
+    )
+    emit(
+        "finance.warranty_remind",
+        {
+            "letter": dto.warranty_dto(letter),
+            "ready_date": dto.iso(letter.ready_date),
+            "days": days,
+            "step": step,
+            "also_admins": also,
+        }
+        | target,
+    )
+
+
+@_safe
 def deadline(info, left_days: int, key: str, receivers: list[TelegramMember], who: str):
     """`receivers` are the people to tell; the admins when it is empty."""
     fallback = not receivers
