@@ -265,6 +265,31 @@ def is_admin(tg_id) -> bool:
     return int(tg_id) in admin_ids()
 
 
+def head_manager_ids() -> list[int]:
+    """«Bosh menejer» with a linked Telegram account — the same rule as everywhere
+    (metering.services.bosses: active staff holding metering.manage_metering)."""
+    from metering.services import bosses
+
+    ids = bosses().filter(telegram_id__isnull=False).order_by("pk").values_list(
+        "telegram_id", flat=True
+    )
+    return list(dict.fromkeys(ids))
+
+
+def birthday_in(born: date, year: int) -> date:
+    """The birthday in `year` (29 February is the 28th in a non-leap year)."""
+    try:
+        return born.replace(year=year)
+    except ValueError:
+        return date(year, 2, 28)
+
+
+def age_on(born: date, day: date) -> int | None:
+    """How old they turn on `day`; None when the year looks unknown (e.g. 1900)."""
+    age = day.year - born.year
+    return age if 14 <= age <= 100 else None
+
+
 def finance_member(tg_id):
     from accounting.services import member_by_tg
 

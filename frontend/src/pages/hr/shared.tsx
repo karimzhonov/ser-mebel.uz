@@ -106,6 +106,7 @@ export interface Employee {
   work_end: string;
   hours: string;
   created_on: string | null;
+  birth_date: string | null;
   member: number | null;
   member_name: string | null;
 }

@@ -229,3 +229,32 @@ def winner_pick(kind: str, period: str, rows: list[dict]):
 @_safe
 def holiday_ask(day: date, name: str):
     emit("hr.holiday_ask", {"admins": admins(), "day": day.isoformat(), "name": name})
+
+
+@_safe
+def birthday(e: Employee, day: date, age: int | None):
+    """Today is their birthday: the bot congratulates them privately on behalf of HR
+    (in their work group when they never opened the bot)."""
+    emit(
+        "hr.birthday",
+        {"employee": S.employee_dto(e), "day": day.isoformat(), "age": age},
+    )
+
+
+@_safe
+def birthday_soon(e: Employee, day: date, left_days: int, age: int | None):
+    """`left_days` before the birthday: the Bosh menejer (the admins when nobody holds
+    the role or has linked Telegram) is reminded."""
+    to = S.head_manager_ids()
+    fallback = not to
+    emit(
+        "hr.birthday_soon",
+        {
+            "employee": S.employee_dto(e),
+            "day": day.isoformat(),
+            "left_days": left_days,
+            "age": age,
+            "to": to or admins(),
+            "fallback": fallback,
+        },
+    )

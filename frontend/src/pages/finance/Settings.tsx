@@ -437,6 +437,7 @@ interface Params {
   FIN_CHANNEL_ID: string;
   FIN_READY_DAYS: number;
   FIN_BONUS_SINCE: string;
+  FIN_WARRANTY_SINCE: string;
   usd_rate_effective: number;
 }
 
@@ -449,6 +450,7 @@ const PARAMS: [keyof Params, string, string][] = [
   ["FIN_CHANNEL_ID", "Telegram kanal (@username yoki -100…)", "text"],
   ["FIN_READY_DAYS", "«Готов» zakaz qoldiq to'lov ro'yxatida necha kun turadi", "number"],
   ["FIN_BONUS_SINCE", "Bonus kuzatuvi shu sanadan keyingi «Готов»lar uchun", "date"],
+  ["FIN_WARRANTY_SINCE", "Kafolat xati eslatmasi shu sanadan keyingi «Готов»lar uchun", "date"],
 ];
 
 function ParamsTab() {

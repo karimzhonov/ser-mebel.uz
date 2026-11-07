@@ -129,6 +129,50 @@ async def holiday_ask(n: Notifier, d: dict) -> None:
     await n.many(d["admins"], text, K.holiday_ask_kb(d["day"]))
 
 
+# ------------------------------------------------------------------ birthdays
+BIRTHDAY_WISHES = [
+    "Sizga mustahkam sog'liq, oilaviy baxt, ishlaringizda omad va yangi yutuqlar tilaymiz!",
+    "Hayotingiz quvonch va baraka bilan to'lsin, har bir kuningiz yangi muvaffaqiyat olib kelsin!",
+    "Orzularingiz ushalsin, oilangiz bilan doimo baxtli bo'ling, ishda esa yangi marralarni zabt eting!",
+]
+
+
+@on("hr.birthday")
+async def birthday(n: Notifier, d: dict) -> None:
+    e = d["employee"]
+    age = f" — {d['age']} yoshingiz muborak bo'lsin" if d.get("age") else ""
+    text = (
+        f"🎉🎂 <b>Hurmatli {esc(e['name'])}!</b>\n\n"
+        f"Bugun tug'ilgan kuningiz{age}! Butun jamoamiz nomidan sizni chin qalbdan tabriklaymiz.\n"
+        f"{random.choice(BIRTHDAY_WISHES)}\n\n"
+        "Jamoamizda ekaningizdan xursandmiz! 💐\n\n<i>Hurmat bilan, HR bo'limi</i>"
+    )
+    sent = await n.send(e["telegram_id"], text) if e.get("can_dm") is not False else None
+    if sent is None and e.get("group"):
+        who = f"@{esc(e['username'])}" if e.get("username") else f"<b>{esc(e['name'])}</b>"
+        await n.send(
+            e["group"]["chat_id"],
+            f"🎉🎂 Bugun {who} ning tug'ilgan kuni!\n\n"
+            f"Butun jamoa nomidan tabriklaymiz! {random.choice(BIRTHDAY_WISHES)} 💐"
+            "\n\n<i>Hurmat bilan, HR bo'limi</i>",
+        )
+
+
+@on("hr.birthday_soon")
+async def birthday_soon(n: Notifier, d: dict) -> None:
+    e = d["employee"]
+    age = f" ({d['age']} yosh)" if d.get("age") else ""
+    branch = f"\n🏢 {esc(e['group']['title'])}" if e.get("group") else ""
+    note = "ℹ️ <i>«Bosh menejer» Telegramga ulanmagan, shuning uchun sizga.</i>\n\n"
+    text = (
+        (note if d.get("fallback") else "")
+        + f"🎂 <b>{d['left_days']} kundan keyin tug'ilgan kun</b>\n"
+        f"👤 <b>{esc(e['name'])}</b>{age}{branch}\n📅 {fmt_day(_day(d['day']))}\n\n"
+        "Tabrik va sovg'ani oldindan tayyorlab qo'ying. 🎁"
+    )
+    await n.many(d.get("to"), text)
+
+
 # ------------------------------------------------------------------ live alerts and requests
 @on("hr.live_alert")
 async def live_alert(n: Notifier, d: dict) -> None:

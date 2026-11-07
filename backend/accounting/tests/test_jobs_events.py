@@ -308,3 +308,53 @@ def test_ready_card_failure_rolls_back_the_bonus_row(members, site_order, bot_ev
     with pytest.raises(RuntimeError):
         followup.hourly_orders(ok_hour=True)
     assert not OrderBonus.objects.exists()  # the next pass retries the card
+
+
+
+def test_warranty_reminder_3_7_15_30_until_given(members, bot_events, monkeypatch):
+    from accounting.models import WarrantyLetter
+
+    start = date.today()
+    config.FIN_WARRANTY_SINCE = start.isoformat()
+    WarrantyLetter.objects.create(order_ref="406", client="K", ready_date=start)
+    for days, step in [(2, None), (3, 3), (5, None), (7, 7), (15, 15), (30, 30), (45, None)]:
+        monkeypatch.setattr(followup, "today", lambda d=days: start + timedelta(days=d))
+        before = len(bot_events.of("finance.warranty_remind"))
+        followup.warranty_remind(ok_hour=True)
+        followup.warranty_remind(ok_hour=True)  # same step never twice
+        evs = bot_events.of("finance.warranty_remind")
+        if step is None:
+            assert len(evs) == before, days
+        else:
+            assert len(evs) == before + 1 and evs[-1]["step"] == step, days
+
+
+def test_warranty_reminder_latest_step_only_and_not_when_given(members, bot_events):
+    from accounting.models import WarrantyLetter
+
+    old = date.today() - timedelta(days=20)
+    config.FIN_WARRANTY_SINCE = (old - timedelta(days=100)).isoformat()
+    WarrantyLetter.objects.create(order_ref="406", client="K", ready_date=old)
+    WarrantyLetter.objects.create(order_ref="389", client="D", ready_date=old, given=True)
+    WarrantyLetter.objects.create(  # before FIN_WARRANTY_SINCE: old, not chased
+        order_ref="1", client="L", ready_date=old - timedelta(days=200)
+    )
+    followup.warranty_remind(ok_hour=True)
+    ev = bot_events.one("finance.warranty_remind")
+    assert ev["letter"]["order_ref"] == "406" and ev["step"] == 15 and ev["days"] == 20
+    # Vali (300) holds the bonus duty; the boss (100) is told too from step 15
+    assert ev["to"] == [300] and ev["fallback"] is False and ev["also_admins"] == [100]
+    followup.warranty_remind(ok_hour=False)
+    assert len(bot_events.of("finance.warranty_remind")) == 1
+
+
+def test_warranty_reminder_first_run_skips_existing_letters(members, bot_events):
+    from accounting.models import WarrantyLetter
+
+    config.FIN_WARRANTY_SINCE = ""
+    WarrantyLetter.objects.create(
+        order_ref="406", client="K", ready_date=date.today() - timedelta(days=10)
+    )
+    followup.warranty_remind(ok_hour=True)
+    assert not bot_events.of("finance.warranty_remind")
+    assert config.FIN_WARRANTY_SINCE == date.today().isoformat()

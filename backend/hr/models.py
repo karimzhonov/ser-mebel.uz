@@ -54,6 +54,8 @@ class Employee(models.Model):
     )
     work_end = models.CharField(max_length=5, blank=True, default="", verbose_name="Ish tugashi")
     created_on = models.DateField(null=True, blank=True, verbose_name="Ro'yxatga olingan")
+    # the bot congratulates them on the day, the Bosh menejer is told 3 days before
+    birth_date = models.DateField(null=True, blank=True, verbose_name="Tug'ilgan kun")
     member = models.OneToOneField(
         "oauth.TelegramMember",
         models.SET_NULL,
