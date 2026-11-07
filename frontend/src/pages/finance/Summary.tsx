@@ -94,8 +94,9 @@ export default function FinanceSummaryPage() {
         ) : (
           <>
             <StatTile label="💸 Xodimlarga berildi" value={som(s?.given_to_staff ?? 0)} tone="info" hint="daromad emas" />
-            <StatTile label="👔 Rahbarga (shaxsiy)" value={som(s?.boss_personal ?? 0)} tone="idle" />
-            <StatTile label="🏠 Uy uchun (shaxsiy)" value={som(s?.home ?? 0)} tone="idle" />
+            {/* the personal categories are retired: only old periods still show them */}
+            {!!Number(s?.boss_personal) && <StatTile label="👔 Rahbarga (shaxsiy, eski)" value={som(s?.boss_personal ?? 0)} tone="idle" />}
+            {!!Number(s?.home) && <StatTile label="🏠 Uy uchun (shaxsiy, eski)" value={som(s?.home ?? 0)} tone="idle" />}
           </>
         )}
       </div>

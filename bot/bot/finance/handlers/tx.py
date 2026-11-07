@@ -142,10 +142,19 @@ async def next_step(ctx: Ctx, d: dict):
             d["pay"] = "Avans"
         else:
             d["step"] = "paytype"
-            return await say(
-                "💵 Bu <b>avansmi</b> yoki <b>oylik</b>?",
-                ik([[b("💵 Avans", "pay:Avans"), b("🧾 Oylik", "pay:Oylik")], [CANCEL]]),
+            row = [b("💵 Avans", "pay:Avans"), b("🧾 Oylik", "pay:Oylik")]
+            name = d["worker"].strip().lower()
+            boss = any(
+                w.get("is_boss") and w["name"].strip().lower() == name
+                for w in await A.workers(ctx)
             )
+            if boss:  # the boss's own salary: what he takes home is booked apart
+                d["boss_pay"] = True
+                return await say(
+                    "💵 Bu <b>avans</b>, <b>oylik</b> yoki <b>uy uchun</b>mi?",
+                    ik([row, [b("🏠 Uy uchun", f"pay:{T.PAY_HOME}")], [CANCEL]]),
+                )
+            return await say("💵 Bu <b>avansmi</b> yoki <b>oylik</b>?", ik([row, [CANCEL]]))
     if kind == OP_EXPENSE and d["cat"] == CAT_FUEL and not d.get("worker"):
         d["step"] = "car"
         cars = await A.cars(ctx)
@@ -370,7 +379,12 @@ async def tx_callback(ctx: Ctx, cmd: str, arg: str, d: dict | None) -> bool:
             await edit("✔️ " + T.worker_line(name, workers))
             await next_step(ctx, d)
             return True
-    if cmd == "pay" and d and d.get("step") == "paytype" and arg in ("Avans", "Oylik"):
+    if (
+        cmd == "pay"
+        and d
+        and d.get("step") == "paytype"
+        and (arg in ("Avans", "Oylik") or (arg == T.PAY_HOME and d.get("boss_pay")))
+    ):
         d["pay"] = arg
         await edit("✔️ " + T.pay_label(arg))
         await next_step(ctx, d)

@@ -247,6 +247,18 @@ function WorkersTab() {
           { key: "n", header: "Ism", cell: (r) => <span className="font-medium">{r.name}</span> },
           { key: "p", header: "Lavozim", cell: (r) => r.position || "—" },
           {
+            key: "b",
+            header: "Rahbar",
+            cell: (r) => (
+              <input
+                type="checkbox"
+                title="Rahbar oyligi: «Avans / Oylik»dan tashqari «Uy uchun» turi ham bor"
+                checked={r.is_boss}
+                onChange={(e) => save.mutate({ id: r.id, body: { is_boss: e.target.checked } })}
+              />
+            ),
+          },
+          {
             key: "a",
             header: "Faol",
             cell: (r) => <input type="checkbox" checked={r.is_active} onChange={(e) => save.mutate({ id: r.id, body: { is_active: e.target.checked } })} />,

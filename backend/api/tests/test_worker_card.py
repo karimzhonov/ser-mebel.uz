@@ -72,3 +72,58 @@ def test_list_has_catalog_and_hand_written_workers(admin_api, paid):
 def test_staff_without_view_all_is_refused(api, paid):
     client = api("accounting.view_operation")
     assert client.get(URL).status_code == 403
+
+
+# ------------------------------------------------ the boss's own salary («Uy uchun»)
+def test_home_pay_type_only_on_the_boss_salary(admin_api, members):
+    from core.exceptions import ServiceError
+
+    boss = members[0]
+    Worker.objects.all().delete()
+    Worker.objects.create(group="Ofis", name="Mirmuxammad", position="rahbar", is_boss=True)
+    Worker.objects.create(group="Zavod", name="Jumaka", position="")
+    _pay(boss, 2_000_000, "Mirmuxammad", "Uy uchun", date(2026, 10, 4))
+    _pay(boss, 5_000_000, "Mirmuxammad", "Oylik", date(2026, 10, 25))
+    with pytest.raises(ServiceError):
+        _pay(boss, 100_000, "Jumaka", "Uy uchun")
+    with pytest.raises(ServiceError):
+        _pay(boss, 100_000, "Jumaka", "Bonus")
+
+    # the site API: same rule
+    url = "/api/v1/finance/operations/"
+    body = {"member": boss.id, "kind": "expense", "amount": "1000", "category_code": "oylik"}
+    r = admin_api.post(url, {**body, "worker": "Jumaka", "pay_type": "Uy uchun"}, format="json")
+    assert r.status_code == 400
+    boss_home = {**body, "worker": "Mirmuxammad", "pay_type": "Uy uchun"}
+    r = admin_api.post(url, boss_home, format="json")
+    assert r.status_code == 201, r.content
+
+    r = admin_api.get(
+        URL, {"worker": "Mirmuxammad", "date_from": "2026-10-01", "date_to": "2026-10-31"}
+    )
+    c = r.data["card"]
+    assert c["is_boss"] is True
+    assert (c["home"], c["salary"], c["advance"], c["other"]) == (2_000_000, 5_000_000, 0, 0)
+    assert {x["pay_type"] for x in c["rows"]} == {"Uy uchun", "Oylik"}
+
+
+def test_personal_categories_are_retired(members):
+    from accounting.models import FinanceCategory
+    from core.exceptions import ServiceError
+
+    boss = members[0]
+    assert not FinanceCategory.objects.filter(code__in=["uy", "rahbarga"], is_active=True).exists()
+    for code in ("uy", "rahbarga"):
+        with pytest.raises(ServiceError):
+            S.create_operation(
+                member=boss, kind="expense", amount=1000, category_code=code, actor_admin=True
+            )
+    assert "uy" not in {c.code for c in S.categories("expense")}
+
+
+def test_bot_worker_dto_carries_is_boss(bot_client, members):
+    Worker.objects.create(group="Ofis", name="Mirmuxammad", position="rahbar", is_boss=True)
+    r = bot_client.get("finance/workers/", actor=members[0].telegram_id)
+    assert r.status_code == 200, r.content
+    row = next(w for w in r.data if w["name"] == "Mirmuxammad")
+    assert row["is_boss"] is True

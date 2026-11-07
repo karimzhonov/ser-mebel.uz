@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { FileSpreadsheet, HardHat, Search } from "lucide-react";
 import { useGet } from "@/api/hooks";
 import { DateRangeFilter, iso, monthStartISO, rangeLabel } from "@/components/DateRangeFilter";
-import { Badge, Button, Card, Empty, Input, PageHeader, Select, Skeleton, StatTile } from "@/components/ui";
+import { Badge, Button, Card, Empty, Input, PageHeader, Segmented, Select, Skeleton, StatTile } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
@@ -91,8 +91,12 @@ const th = "sticky top-0 z-10 whitespace-nowrap border-b border-r border-emerald
 const td = "whitespace-nowrap border-b border-r border-slate-200 px-3 py-1.5 last:border-r-0 dark:border-slate-800";
 const rowNo = "w-10 select-none border-b border-r border-slate-200 bg-slate-50 px-2 py-1.5 text-center text-[11px] text-slate-400 dark:border-slate-800 dark:bg-slate-900/60";
 
-function PaymentsSheet({ card }: { card: WorkerCard }) {
-  if (!card.rows.length) return <Empty title="Bu davrda oylik yo'q" text="Davrni o'zgartirib ko'ring." />;
+type PayFilter = "" | "Avans" | "Oylik" | "Uy uchun";
+
+function PaymentsSheet({ card, filter }: { card: WorkerCard; filter: PayFilter }) {
+  const rows = filter ? card.rows.filter((r) => r.pay_type === filter) : card.rows;
+  const sum = rows.reduce((a, r) => a + Number(r.amount), 0);
+  if (!rows.length) return <Empty title={filter ? `Bu davrda «${filter}» yo'q` : "Bu davrda oylik yo'q"} text="Davrni o'zgartirib ko'ring." />;
   return (
     <div className="max-h-[60vh] overflow-auto">
       <table className="w-full border-separate border-spacing-0 text-sm">
@@ -109,7 +113,7 @@ function PaymentsSheet({ card }: { card: WorkerCard }) {
           </tr>
         </thead>
         <tbody>
-          {card.rows.map((r, i) => (
+          {rows.map((r, i) => (
             <tr key={r.id} className="even:bg-slate-50/60 hover:bg-brand-50/60 dark:even:bg-slate-800/20 dark:hover:bg-brand-500/5">
               <td className={rowNo}>{i + 1}</td>
               <td className={td}>{date(r.date)}</td>
@@ -123,6 +127,8 @@ function PaymentsSheet({ card }: { card: WorkerCard }) {
                   <Badge tone="ok">🧾 Oylik</Badge>
                 ) : r.pay_type === "Avans" ? (
                   <Badge tone="warn">💵 Avans</Badge>
+                ) : r.pay_type === "Uy uchun" ? (
+                  <Badge tone="info">🏠 Uy uchun</Badge>
                 ) : (
                   <Badge tone="idle">—</Badge>
                 )}
@@ -134,10 +140,10 @@ function PaymentsSheet({ card }: { card: WorkerCard }) {
           <tr className="font-semibold">
             <td className={cn(rowNo, "border-b-0 bg-slate-100 dark:bg-slate-800")}>Σ</td>
             <td colSpan={2} className="border-r border-slate-200 bg-slate-100 px-3 py-2 dark:border-slate-800 dark:bg-slate-800">
-              Jami · {card.count} ta
+              Jami · {rows.length} ta
             </td>
             <td className="border-r border-slate-200 bg-slate-100 px-3 py-2 text-right tabular-nums dark:border-slate-800 dark:bg-slate-800">
-              {som(card.total).replace(" so'm", "")}
+              {som(sum).replace(" so'm", "")}
             </td>
             <td colSpan={4} className="bg-slate-100 px-3 py-2 dark:bg-slate-800" />
           </tr>
@@ -174,6 +180,8 @@ function GiversTable({ card }: { card: WorkerCard }) {
 /* ------------------------------------------------------------------ one worker */
 function CardView({ card, period }: { card: WorkerCard; period: string }) {
   const [salary, setSalary] = useState(false);
+  const [filter, setFilter] = useState<PayFilter>("");
+  const withHome = card.is_boss || card.home > 0;
   return (
     <div className="space-y-4">
       {salary && <SalaryModal card={card} onClose={() => setSalary(false)} />}
@@ -198,9 +206,10 @@ function CardView({ card, period }: { card: WorkerCard; period: string }) {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className={cn("grid grid-cols-2 gap-3", withHome ? "xl:grid-cols-5" : "xl:grid-cols-4")}>
         <StatTile tone="warn" label="💵 Avans (shu davrda)" value={som(card.advance)} />
         <StatTile tone="ok" label="🧾 Oylik (shu davrda)" value={som(card.salary)} hint={card.other ? `Turi yozilmagan: ${som(card.other)}` : undefined} />
+        {withHome && <StatTile tone="info" label="🏠 Uy uchun (shu davrda)" value={som(card.home)} />}
         <StatTile tone="primary" label="💰 Jami (shu davrda)" value={som(card.total)} />
         <StatTile tone="info" label="📝 Necha marta · oxirgi" value={`${card.count} marta`} hint={card.last_date ? `oxirgi: ${date(card.last_date)}` : "hali berilmagan"} />
       </div>
@@ -209,8 +218,24 @@ function CardView({ card, period }: { card: WorkerCard; period: string }) {
         <Card title="👤 Kim bergan" padded={false} className="self-start overflow-hidden">
           <GiversTable card={card} />
         </Card>
-        <Card title="📋 Har bir oylik (yangisi tepada)" padded={false} className="overflow-hidden">
-          <PaymentsSheet card={card} />
+        <Card
+          title="📋 Har bir oylik (yangisi tepada)"
+          padded={false}
+          className="overflow-hidden"
+          actions={
+            <Segmented
+              value={filter}
+              onChange={(v) => setFilter(v as PayFilter)}
+              options={[
+                { value: "", label: "Hammasi" },
+                { value: "Oylik", label: "🧾 Oylik" },
+                { value: "Avans", label: "💵 Avans" },
+                ...(withHome ? [{ value: "Uy uchun", label: "🏠 Uy uchun" }] : []),
+              ]}
+            />
+          }
+        >
+          <PaymentsSheet card={card} filter={filter} />
         </Card>
       </div>
     </div>

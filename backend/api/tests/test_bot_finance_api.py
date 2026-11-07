@@ -607,20 +607,12 @@ def test_rahbar_income_is_not_company_income(members):
     S.create_operation(
         member=ali, author=ali, kind="expense", amount=200_000, category_code="ovqat"
     )
-    S.create_operation(
-        member=boss,
-        author=boss,
-        kind="expense",
-        amount=50_000,
-        category_code="uy",
-        actor_admin=True,
-    )
     sm = S.summary(None, None)
     assert (
         sm["income"] == 0
         and sm["expense"] == 200000
         and sm["given_to_staff"] == 1000000
-        and sm["home"] == 50000
+        and sm["home"] == 0  # «Uy uchun (shaxsiy)» is retired
     )
 
 

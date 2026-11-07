@@ -196,6 +196,7 @@ export function OperationModal({
   );
   const set = (patch: Partial<OpForm>) => setF((x) => ({ ...x, ...patch }));
   const total = f.currency === "USD" ? Number(f.orig_amount || 0) * Number(f.rate || 0) : Number(f.amount || 0);
+  const bossSalary = !!workers?.some((w) => w.is_boss && w.name.trim().toLowerCase() === f.worker.trim().toLowerCase());
   const workerOptions = f.category_code === "zapravka" ? (cars ?? []).filter((c) => c.is_active).map((c) => c.name) : (workers ?? []).filter((w) => w.is_active).map((w) => w.name);
 
   return (
@@ -280,6 +281,7 @@ export function OperationModal({
                 <Select value={f.pay_type || "Avans"} onChange={(e) => set({ pay_type: e.target.value })}>
                   <option value="Avans">💵 Avans</option>
                   <option value="Oylik">🧾 Oylik</option>
+                  {(bossSalary || f.pay_type === "Uy uchun") && <option value="Uy uchun">🏠 Uy uchun</option>}
                 </Select>
               </Field>
             )}

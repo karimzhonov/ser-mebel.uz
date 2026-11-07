@@ -2,5 +2,6 @@
   "id": 3,
   "name": "Dilmurod",
   "group": "Zavod (sex)",
-  "position": "Bosh usta"
+  "position": "Bosh usta",
+  "is_boss": false
 }

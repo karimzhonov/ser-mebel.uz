@@ -136,6 +136,7 @@ class WorkerSerializer(serializers.ModelSerializer):
             "position",
             "ordering",
             "is_active",
+            "is_boss",
             "pay_day",
             "has_template",
             "salary_template_name",
@@ -240,7 +241,7 @@ class OperationWriteSerializer(serializers.Serializer):
     order_ref = serializers.CharField(max_length=32, required=False, allow_blank=True)
     comment = serializers.CharField(required=False, allow_blank=True)
     worker = serializers.CharField(max_length=255, required=False, allow_blank=True)
-    pay_type = serializers.ChoiceField(choices=["", "Avans", "Oylik"], required=False)
+    pay_type = serializers.ChoiceField(choices=["", "Avans", "Oylik", "Uy uchun"], required=False)
     date = serializers.DateField(required=False)
 
 
