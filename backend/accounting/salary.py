@@ -92,7 +92,7 @@ def untyped(worker: Worker, start: date, end: date) -> list:
     return [
         t
         for t in _payments(worker, start, end)
-        if t.pay_type not in (PayType.ADVANCE, PayType.SALARY)
+        if t.pay_type not in PayType.values
     ]
 
 

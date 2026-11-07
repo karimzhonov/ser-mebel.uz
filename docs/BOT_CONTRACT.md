@@ -86,7 +86,7 @@ Decimals are strings like `"250000.00"`; dates ISO.
 - **Bonus** `{order_ref, client, description, total, currency, ready_date, status, rest, days, percent, bonus, note, got_text}`
 - **MoneyState** `{paid, rest, src}`
 - **MoneyRequest** `{number, member: Member, amount, currency, orig_amount, reason, status, answer, created_at, admin_messages: [[chat_id, message_id]], member_balance}`
-- **Worker** `{id, name, group, position}` · **Car** `{id, name}`
+- **Worker** `{id, name, group, position, is_boss}` (`is_boss` = the boss's own salary row: its salary takes the extra `pay_type` «Uy uchun») · **Car** `{id, name}`
 - **SiteEntryTask** `{code, order_ref, client, sum_text, rest_text, taken_by, date, is_done}`
 - **Feedback** `{order_ref, client, phone, status, ready_date, asked_date}` · **Warranty** `{order_ref, client, given}`
 - **Employee** `{telegram_id, number, name, username, is_active, can_dm, group: {chat_id, title}|null, work_start, work_end, hours_label, ontime_until, off_days, off_days_effective, off_label}`
@@ -175,7 +175,7 @@ Actor comes from `X-Bot-Actor`. Every role rule is enforced server-side.
 | Method | Path | Request → Response | Service | Events |
 |---|---|---|---|---|
 | POST | `finance/join/` | `{name, username}` → `{member, created}` | `S.register_member` | `finance.join_requested` (if created) |
-| POST | `finance/operations/` | `{member_tg, kind, amount, category, currency, orig_amount, rate, order_ref, comment, receipt_file_id, worker, pay_type}` → `{operation, balance}`; `actor_admin` derived server-side | `S.create_operation`, then `followup.bonus_check(ref, ok_hour=False)` for client payments | `operation_created` |
+| POST | `finance/operations/` | `{member_tg, kind, amount, category, currency, orig_amount, rate, order_ref, comment, receipt_file_id, worker, pay_type}` → `{operation, balance}`; `actor_admin` derived server-side; `pay_type` (salary only) is `Avans` / `Oylik` / `Uy uchun` — `Uy uchun` only when `worker` is an `is_boss` worker, else 400; non-admins always get `Avans`; an inactive category is refused (400) | `S.create_operation`, then `followup.bonus_check(ref, ok_hour=False)` for client payments | `operation_created` |
 | POST | `finance/operations/{n}/receipt/` | `{file_id}` → Operation (admin or author) | new `S.attach_receipt(op, file_id, actor)` | `receipt_attached` |
 | DELETE | `finance/operations/{n}/` | → `{deleted: [Operation]}` | `S.can_delete` + `S.delete_operation` | `operation_deleted` |
 | POST | `finance/transfers/` | `{to_tg, amount, comment}` → `{out, inc, balance}` | `S.create_transfer` | `transfer_created` |

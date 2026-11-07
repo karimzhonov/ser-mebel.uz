@@ -48,6 +48,8 @@ class Worker(models.Model):
     position = models.CharField(max_length=128, blank=True, default="", verbose_name="Lavozim")
     ordering = models.PositiveIntegerField(default=0, verbose_name="Tartib")
     is_active = models.BooleanField(default=True, verbose_name="Faol")
+    # the boss's own salary row: besides «Avans / Oylik» it takes «Uy uchun» (PayType.HOME)
+    is_boss = models.BooleanField(default=False, verbose_name="Rahbar")
     # «Oylik chiqarish»: the day of the month the salary is paid (the accountant is
     # reminded the day before) and this person's own Excel template (fixed / bonus /
     # task pay differ). The template is kept in the DB, not in public /media.

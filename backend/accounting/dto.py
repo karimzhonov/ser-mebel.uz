@@ -206,7 +206,13 @@ def request_dto(req: MoneyRequest, balance=None) -> dict:
 
 
 def worker_dto(w: Worker) -> dict:
-    return {"id": w.pk, "name": w.name, "group": w.group, "position": w.position}
+    return {
+        "id": w.pk,
+        "name": w.name,
+        "group": w.group,
+        "position": w.position,
+        "is_boss": w.is_boss,
+    }
 
 
 def car_dto(c: FinanceCar) -> dict:

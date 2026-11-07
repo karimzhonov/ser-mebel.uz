@@ -535,10 +535,14 @@ class WorkerCardView(APIView):
                         "group",
                         "position",
                         "in_catalog",
+                        "is_boss",
                         "count",
                     )
                 },
-                **{k: f(c[k]) for k in ("advance", "salary", "other", "total", "all_time")},
+                **{
+                    k: f(c[k])
+                    for k in ("advance", "salary", "home", "other", "total", "all_time")
+                },
                 "last_date": c["last_date"],
                 "by_giver": [
                     {"name": g["name"], "amount": f(g["sum"]), "count": g["count"]}

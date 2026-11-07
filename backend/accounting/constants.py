@@ -23,6 +23,8 @@ class Currency(models.TextChoices):
 class PayType(models.TextChoices):
     ADVANCE = "Avans", "Avans"
     SALARY = "Oylik", "Oylik"
+    # owner's rule: only the boss's own salary (Worker.is_boss) — money he takes home
+    HOME = "Uy uchun", "Uy uchun"
 
 
 # Codes the business rules refer to directly.

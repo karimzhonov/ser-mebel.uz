@@ -573,10 +573,14 @@ def create_operation(
     cat = category(category_code)
     if not cat:
         raise ServiceError("Kategoriya topilmadi.")
+    if not cat.is_active:
+        raise ServiceError(f"«{cat.name}» kategoriyasi endi ishlatilmaydi.")
     if cat.kind == CategoryKind.EXPENSE and kind != OpKind.EXPENSE:
         raise ServiceError("Bu kategoriya faqat chiqim uchun.")
     if cat.kind == CategoryKind.INCOME and kind != OpKind.INCOME:
         raise ServiceError("Bu kategoriya faqat kirim uchun.")
+    is_salary = kind == OpKind.EXPENSE and cat.code == CAT_SALARY
+    pay_type = clean_pay_type(pay_type or "Avans", worker) if is_salary else ""
     if currency == "USD" and (not orig_amount or not rate):
         raise ServiceError("Dollar summasi va kursi kerak.")
     if not internal:
@@ -611,11 +615,7 @@ def create_operation(
                     comment=(comment or "")[:2000],
                     receipt_file_id=receipt_file_id or "",
                     worker=(worker or "")[:255],
-                    pay_type=(
-                        (pay_type or "Avans")
-                        if kind == OpKind.EXPENSE and cat.code == CAT_SALARY
-                        else ""
-                    ),
+                    pay_type=pay_type,
                     source=source,
                 )
         except IntegrityError:
@@ -623,6 +623,21 @@ def create_operation(
                 raise ServiceError(f"#{number} raqamli amal allaqachon bor.")
             continue
     raise ServiceError("Amalni saqlab bo'lmadi, qayta urinib ko'ring.")
+
+
+def is_boss_worker(name: str) -> bool:
+    """The salary goes to a worker marked «Rahbar» (the boss's own salary row)."""
+    name = " ".join(str(name or "").split())
+    return bool(name) and Worker.objects.filter(is_boss=True, name__iexact=name).exists()
+
+
+def clean_pay_type(pay_type: str, worker: str) -> str:
+    """«Avans» / «Oylik» for everyone; «Uy uchun» only on the boss's own salary."""
+    if pay_type not in PayType.values:
+        raise ServiceError("Oylik turi noto'g'ri.", "pay_type")
+    if pay_type == PayType.HOME and not is_boss_worker(worker):
+        raise ServiceError("«Uy uchun» faqat rahbar oyligida tanlanadi.", "pay_type")
+    return pay_type
 
 
 STAFF_DAYS = 2  # staff may change/delete their own entries this many days back (canDelete_)
@@ -720,6 +735,8 @@ def update_operation(
             cat = category(data["category_code"])
             if not cat:
                 raise ServiceError("Kategoriya topilmadi.")
+            if not cat.is_active:
+                raise ServiceError(f"«{cat.name}» kategoriyasi endi ishlatilmaydi.")
             _check_category_allowed(cat, actor_admin)
             op.category = cat
         if op.category.kind == CategoryKind.EXPENSE and op.kind != OpKind.EXPENSE:
@@ -756,6 +773,8 @@ def update_operation(
             op.pay_type = data["pay_type"] or ""
         if op.category.code != CAT_SALARY or op.kind != OpKind.EXPENSE:
             op.pay_type = ""
+        elif op.pay_type and ("pay_type" in data or "worker" in data):
+            op.pay_type = clean_pay_type(op.pay_type, op.worker)
         if "date" in data and data["date"]:
             op.date = data["date"]
         op.site_user = site_user or op.site_user
@@ -1071,9 +1090,11 @@ def worker_card(name: str, start: date | None, end: date | None) -> dict:
         "group": w.group if w else "",
         "position": w.position if w else "",
         "in_catalog": bool(w),
+        "is_boss": bool(w and w.is_boss),
         "advance": total(lambda t: t.pay_type == PayType.ADVANCE),
         "salary": total(lambda t: t.pay_type == PayType.SALARY),
-        "other": total(lambda t: t.pay_type not in (PayType.ADVANCE, PayType.SALARY)),
+        "home": total(lambda t: t.pay_type == PayType.HOME),
+        "other": total(lambda t: t.pay_type not in PayType.values),
         "total": total(),
         "count": len(rows),
         "last_date": max((t.date for t in every), default=None),

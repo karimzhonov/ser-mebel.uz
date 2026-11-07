@@ -65,7 +65,7 @@ export interface Operation {
   order_ref: string;
   comment: string;
   worker: string;
-  pay_type: "" | "Avans" | "Oylik";
+  pay_type: "" | "Avans" | "Oylik" | "Uy uchun";
   member: number;
   member_detail: MemberShort;
   author_detail: MemberShort | null;
@@ -271,6 +271,8 @@ export interface Worker {
   position: string;
   ordering: number;
   is_active: boolean;
+  /** the boss's own salary row: its pay types include «Uy uchun» */
+  is_boss: boolean;
   pay_day: number | null;
   has_template: boolean;
   salary_template_name: string;
@@ -313,8 +315,10 @@ export interface WorkerCard {
   group: string;
   position: string;
   in_catalog: boolean;
+  is_boss: boolean;
   advance: number;
   salary: number;
+  home: number;
   other: number;
   total: number;
   all_time: number;

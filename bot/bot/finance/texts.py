@@ -122,7 +122,12 @@ def order_line(ref: str | None, info: dict | None = None) -> str:
     return f"🧾 {esc(ref)}" if ref else "🧾 Umumiy (buyurtmasiz)"
 
 
+PAY_HOME = "Uy uchun"  # only on the boss's own salary (Worker.is_boss)
+
+
 def pay_label(p: str) -> str:
+    if p == PAY_HOME:
+        return "🏠 <b>Uy uchun</b>"
     return "🧾 <b>Oylik</b>" if p == "Oylik" else "💵 <b>Avans</b>"
 
 

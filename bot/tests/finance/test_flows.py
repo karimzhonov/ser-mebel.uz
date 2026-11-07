@@ -151,3 +151,31 @@ def test_callback_data_unchanged():
     assert "🕘 Davomat" in [b.text for row in T.KB_ADMIN.keyboard for b in row]
     assert K.handover_kb(5).inline_keyboard[0][0].callback_data == "pqk:5"
     assert K.saved_kb(5, True).inline_keyboard[0][0].callback_data == "rcpt:5"
+
+
+async def _salary_to(be, cats, make_ctx, worker):
+    routes_for_tx(be, cats)
+    boss_row = {**fx("dto.worker.1"), "id": 9, "name": "Mirmuxammad", "group": "Ofis",
+                "position": "rahbar", "is_boss": True}
+    be.routes[("GET", "finance/workers/")] = [fx("dto.worker.1"), boss_row]
+    ctx = make_ctx(admin=True)
+    await ctx.set_st({"kind": "expense", "amount": "1000", "cat": "oylik", "worker": worker,
+                      "oa": True})
+    await TX.next_step(ctx, await ctx.st())
+    return ctx
+
+
+async def test_boss_salary_offers_home_pay_type(be, cats, make_ctx):
+    ctx = await _salary_to(be, cats, make_ctx, "Mirmuxammad")
+    assert (await ctx.st())["step"] == "paytype"
+    assert "uy uchun" in texts(ctx)[-1]
+    await CB.on_callback(ctx, "pay:Uy uchun")
+    assert (await ctx.st())["pay"] == "Uy uchun"
+
+
+async def test_other_salary_has_only_avans_and_oylik(be, cats, make_ctx):
+    ctx = await _salary_to(be, cats, make_ctx, "Dilmurod")
+    assert (await ctx.st())["step"] == "paytype"
+    assert "uy uchun" not in texts(ctx)[-1]
+    await CB.on_callback(ctx, "pay:Uy uchun")  # a forged button is ignored
+    assert not (await ctx.st()).get("pay")
