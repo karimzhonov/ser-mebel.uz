@@ -226,6 +226,31 @@ class Operation(models.Model):
         return self.amount if self.kind == OpKind.INCOME else -self.amount
 
 
+class OperationChange(models.Model):
+    """Audit trail of «Amallar»: who edited / deleted / restored a row, when, and what
+    changed ({field: [old, new]} as text). Rows are never edited or deleted."""
+
+    ACTIONS = [("edit", "Tahrirlandi"), ("delete", "O'chirildi"), ("restore", "Tiklandi")]
+
+    operation = models.ForeignKey(Operation, models.CASCADE, related_name="changes")
+    action = models.CharField(max_length=16, choices=ACTIONS)
+    at = models.DateTimeField(auto_now_add=True, db_index=True)
+    by_user = models.ForeignKey(
+        "oauth.User", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    by_member = models.ForeignKey(
+        "oauth.TelegramMember", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    by_name = models.CharField(max_length=255, blank=True, default="")
+    via = models.CharField(max_length=8, blank=True, default="")  # site / bot
+    changes = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["-at", "-id"]
+        verbose_name = "Amal o'zgarishi"
+        verbose_name_plural = "Amallar o'zgarishlari"
+
+
 class MonthReport(models.Model):
     """«Oylik hisob»: a member confirms the month's entries are complete."""
 

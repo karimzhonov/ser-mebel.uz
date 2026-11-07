@@ -379,7 +379,7 @@ class OperationViewSet(viewsets.ModelViewSet):
             raise PermissionDenied(
                 "Faqat o'zingiz kiritgan, oxirgi 2 kundagi yozuvni o'chira olasiz."
             )
-        deleted = S.delete_operation(op)
+        deleted = S.delete_operation(op, by_user=request.user)
         E.operation_deleted(deleted, f"{request.user.name or request.user.phone} (sayt)")
         return Response(status=204)
 
@@ -389,8 +389,32 @@ class OperationViewSet(viewsets.ModelViewSet):
         op = Operation.objects.filter(pk=pk, is_deleted=True).first()
         if not op:
             raise NotFound()
-        S.restore_operation(op)
+        S.restore_operation(op, by_user=request.user)
         return Response(OperationSerializer(Operation.objects.get(pk=op.pk)).data)
+
+    @action(detail=True, methods=["get"])
+    def history(self, request, pk=None):
+        """Who edited / deleted / restored this row, and what changed."""
+        op = Operation.objects.filter(pk=pk).first()
+        if not op:
+            raise NotFound()
+        only = scoped_member(request)
+        if only and op.member_id != only.pk:
+            raise NotFound()
+        return Response(
+            [
+                {
+                    "id": c.id,
+                    "action": c.action,
+                    "action_label": c.get_action_display(),
+                    "at": c.at,
+                    "by": c.by_name,
+                    "via": c.via,
+                    "changes": c.changes,
+                }
+                for c in op.changes.all()
+            ]
+        )
 
     @action(detail=True, methods=["get"])
     def receipt(self, request, pk=None):
@@ -614,7 +638,11 @@ class WalletsView(APIView):
                 }
             )
         staff_total = sum(r["balance"] for r in rows if r["member"]["role"] == TelegramRole.STAFF)
-        return Response({"results": rows, "staff_total": f(staff_total)})
+        # owner's rule: the boss's wallet is the company cash
+        cash_total = sum(r["balance"] for r in rows if r["member"]["role"] == TelegramRole.ADMIN)
+        return Response(
+            {"results": rows, "staff_total": f(staff_total), "cash_total": f(cash_total)}
+        )
 
 
 def _order_row(info, st) -> dict:
@@ -1012,7 +1040,7 @@ class HandoverView(APIView):
         if not op:
             raise NotFound()
         if request.data.get("action") == "drop":
-            S.handover_drop(op)
+            S.handover_drop(op, by_user=request.user)
         else:
             boss = acting_member(request)
             if not boss or not boss.is_admin:

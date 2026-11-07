@@ -11,7 +11,7 @@ import type { FinOrder, WalletRow } from "./types";
 export function FinanceWalletsPage() {
   const nav = useNavigate();
   const { state, set } = useUrlState({ date_from: monthStartISO(), date_to: iso(new Date()) });
-  const { data, isFetching } = useGet<{ results: WalletRow[]; staff_total: number }>("/finance/wallets/", state);
+  const { data, isFetching } = useGet<{ results: WalletRow[]; staff_total: number; cash_total: number }>("/finance/wallets/", state);
   return (
     <div>
       <PageHeader title="Hamyonlar" subtitle="Har bir xodim qo'lidagi pul (Telegram botdagi «👛 Hamyonlar»)" />
@@ -19,7 +19,9 @@ export function FinanceWalletsPage() {
         <DateRangeFilter from={state.date_from} to={state.date_to} onChange={(date_from, date_to) => set({ date_from, date_to })} />
       </div>
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
+        <StatTile label="💼 Rahbar kassasida" value={som(data?.cash_total ?? 0)} tone={(data?.cash_total ?? 0) < 0 ? "danger" : "info"} hint="korxonaning umumiy kassasi" />
         <StatTile label="💰 Xodimlar qo'lida jami" value={som(data?.staff_total ?? 0)} tone="primary" />
+        <StatTile label="🏦 Korxona puli jami" value={som((data?.cash_total ?? 0) + (data?.staff_total ?? 0))} tone="ok" hint="kassa + xodimlar qo'lidagi" />
       </div>
       <Card padded={false}>
         <DataTable
@@ -44,7 +46,9 @@ export function FinanceWalletsPage() {
               header: "Hamyonda",
               cell: (r) =>
                 r.member.role === "admin" ? (
-                  <span className="muted">kassa</span>
+                  <span className={`font-semibold tabular-nums ${r.balance < 0 ? "text-rose-600" : ""}`}>
+                    {som(r.balance)} <span className="muted text-xs font-normal">kassa</span>
+                  </span>
                 ) : (
                   <span className={`font-semibold tabular-nums ${r.balance < 0 ? "text-rose-600" : ""}`}>{som(r.balance)}</span>
                 ),

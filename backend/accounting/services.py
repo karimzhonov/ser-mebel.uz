@@ -446,7 +446,9 @@ def order_stats(ref: str) -> dict:
     )
     st = {"spent": ZERO, "collected": ZERO, "cats": {}, "rows": rows}
     for t in rows:
-        if t.kind == OpKind.EXPENSE:
+        # a transfer carries the order ref (handing a client's money to the boss) but
+        # moves cash between wallets — it is not money spent on the order
+        if t.kind == OpKind.EXPENSE and t.category.kind != CategoryKind.INTERNAL:
             st["spent"] += t.amount
             st["cats"][t.category.code] = st["cats"].get(t.category.code, ZERO) + t.amount
         elif t.category.code in (CAT_ADVANCE, CAT_REST):
@@ -459,12 +461,12 @@ def order_stats_bulk(refs) -> dict[str, dict]:
     out: dict[str, dict] = {}
     rows = (
         Operation.objects.filter(order_ref__in=list(refs), is_deleted=False)
-        .values("order_ref", "kind", "category__code")
+        .values("order_ref", "kind", "category__code", "category__kind")
         .annotate(total=Sum("amount"))
     )
     for r in rows:
         st = out.setdefault(r["order_ref"], {"spent": ZERO, "collected": ZERO, "cats": {}})
-        if r["kind"] == OpKind.EXPENSE:
+        if r["kind"] == OpKind.EXPENSE and r["category__kind"] != CategoryKind.INTERNAL:
             st["spent"] += r["total"]
             st["cats"][r["category__code"]] = st["cats"].get(r["category__code"], ZERO) + r["total"]
         elif r["category__code"] in (CAT_ADVANCE, CAT_REST):
@@ -700,6 +702,56 @@ EDITABLE_FIELDS = {
 }
 
 
+AUDIT_FIELDS = (
+    "kind",
+    "amount",
+    "currency",
+    "orig_amount",
+    "rate",
+    "category",
+    "member",
+    "order_ref",
+    "comment",
+    "worker",
+    "pay_type",
+    "date",
+)
+
+
+def _audit_snapshot(op: Operation) -> dict:
+    def text(name):
+        v = getattr(op, name)
+        if name == "category":
+            return v.name if v else ""
+        if name == "member":
+            return v.name if v else ""
+        if name == "kind":
+            return op.get_kind_display()
+        return "" if v is None else str(v)
+
+    return {name: text(name) for name in AUDIT_FIELDS}
+
+
+def log_change(op: Operation, action: str, *, by_user=None, by_member=None, changes=None):
+    """One audit line for «Amallar» (OperationChange). via = site when a site user acted."""
+    from .models import OperationChange
+
+    name = ""
+    if by_user is not None:
+        name = by_user.name or str(by_user.phone or "")
+    elif by_member is not None:
+        name = by_member.name
+    return OperationChange.objects.create(
+        operation=op,
+        action=action,
+        by_user=by_user,
+        by_member=by_member,
+        by_name=name[:255],
+        via="site" if by_user is not None else ("bot" if by_member is not None else ""),
+        changes=changes or {},
+    )
+
+
 def update_operation(
     op: Operation, data: dict, site_user: User | None = None, actor_admin: bool = False
 ) -> Operation:
@@ -712,6 +764,7 @@ def update_operation(
         raise ServiceError("Tahrirlab bo'lmaydigan maydon: " + ", ".join(sorted(unknown)))
     with transaction.atomic():
         op = Operation.objects.select_for_update().select_related("category").get(pk=op.pk)
+        before = _audit_snapshot(op)
         pair = _pair_of(op)
         if pair or op.category.kind == CategoryKind.INTERNAL:
             current = {"kind": op.kind, "category_code": op.category.code, "member": op.member_id}
@@ -779,6 +832,10 @@ def update_operation(
             op.date = data["date"]
         op.site_user = site_user or op.site_user
         op.save()
+        after = _audit_snapshot(op)
+        diff = {k: [before[k], after[k]] for k in AUDIT_FIELDS if before[k] != after[k]}
+        if diff:
+            log_change(op, "edit", by_user=site_user, changes=diff)
         if pair:
             pair.amount, pair.currency, pair.orig_amount, pair.rate, pair.date = (
                 op.amount,
@@ -804,7 +861,7 @@ def can_delete(member: TelegramMember | None, op: Operation | None) -> bool:
     return can_modify(member, op, bool(member and member.is_admin))
 
 
-def delete_operation(op: Operation) -> list[Operation]:
+def delete_operation(op: Operation, *, by_user=None, by_member=None) -> list[Operation]:
     """Soft delete; a transfer is deleted on both sides. Returns what was deleted."""
     with transaction.atomic():
         deleted = []
@@ -813,11 +870,12 @@ def delete_operation(op: Operation) -> list[Operation]:
                 t.is_deleted = True
                 t.deleted_at = now()
                 t.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
+                log_change(t, "delete", by_user=by_user, by_member=by_member)
                 deleted.append(t)
     return deleted
 
 
-def restore_operation(op: Operation) -> Operation:
+def restore_operation(op: Operation, *, by_user=None, by_member=None) -> Operation:
     if op.handover == "deleted":
         raise ServiceError(
             "Bu yozuvni rahbar «alohida kiritganman» deb o'chirgan — tiklansa pul ikki marta hisoblanadi."
@@ -828,6 +886,7 @@ def restore_operation(op: Operation) -> Operation:
                 t.is_deleted = False
                 t.deleted_at = None
                 t.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
+                log_change(t, "restore", by_user=by_user, by_member=by_member)
     return op
 
 
@@ -1532,12 +1591,19 @@ def handover_accept(op: Operation, boss: TelegramMember) -> tuple[Operation, Ope
     return pair
 
 
-def handover_drop(op: Operation) -> Operation:
+def handover_drop(op: Operation, *, by_user=None, by_member=None) -> Operation:
     """The boss booked this money separately — delete the collector's row."""
     with transaction.atomic():
         op = _lock_handover(op)
         op.is_deleted, op.deleted_at, op.handover = True, now(), "deleted"
         op.save(update_fields=["is_deleted", "deleted_at", "handover", "updated_at"])
+        log_change(
+            op,
+            "delete",
+            by_user=by_user,
+            by_member=by_member,
+            changes={"handover": ["", "rahbar alohida kiritgan"]},
+        )
     return op
 
 
@@ -1809,7 +1875,7 @@ def delete_operation_as(actor: TelegramMember, number: int) -> list[Operation]:
         raise ServiceForbidden(
             "Bu amalni o'chira olmaysiz (sizniki emas yoki 2 kundan eski — rahbarga murojaat qiling)."
         )
-    return delete_operation(op)
+    return delete_operation(op, by_member=actor)
 
 
 def request_money(member: TelegramMember, amount_text: str, reason: str = "") -> MoneyRequest:

@@ -390,3 +390,59 @@ def test_site_receipt_comes_through_the_bot(boss_api, members, monkeypatch):
 
 def test_bot_webhook_route_is_gone(boss_api):
     assert boss_api.post("/api/v1/finance/telegram/update/", {}, format="json").status_code == 404
+
+
+# ------------------------------------------------ the expert review fixes
+def test_handing_client_money_to_the_boss_is_not_order_spending(members, site_order):
+    boss, ali, _ = members
+    op = S.create_operation(
+        member=ali,
+        author=ali,
+        kind="income",
+        amount=5_000_000,
+        category_code="qoldiq",
+        order_ref="406",
+        comment="Pul oldim (mijozdan qoldiq)",
+        internal=True,
+    )
+    S.create_operation(
+        member=ali, author=ali, kind="expense", amount=300_000, category_code="material",
+        order_ref="406",
+    )
+    S.handover_accept(op, boss)  # a transfer carrying order 406
+    assert S.order_stats("406")["spent"] == 300_000
+    assert S.order_stats_bulk(["406"])["406"]["spent"] == 300_000
+
+
+def test_edit_delete_restore_are_audited(boss_api, members):
+    from accounting.models import OperationChange
+
+    ali = members[1]
+    op = S.create_operation(member=ali, author=ali, kind="expense", amount=1000,
+                            category_code="ovqat", comment="non")
+    url = f"/api/v1/finance/operations/{op.id}/"
+    r = boss_api.patch(url, {"amount": "2500", "comment": "tushlik"}, format="json")
+    assert r.status_code == 200, r.data
+    boss_api.patch(url, {"comment": "tushlik"}, format="json")  # nothing changed: no line
+    assert boss_api.delete(url).status_code == 204
+    assert boss_api.post(f"{url}restore/").status_code == 200
+
+    h = boss_api.get(f"{url}history/").data
+    assert [x["action"] for x in h] == ["restore", "delete", "edit"]
+    assert h[-1]["changes"] == {"amount": ["1000.00", "2500.00"], "comment": ["non", "tushlik"]}
+    assert h[-1]["via"] == "site" and h[-1]["by"]
+    # the bot's delete is audited with the Telegram member
+    S.delete_operation_as(members[0], op.number)
+    last = OperationChange.objects.filter(operation=op).first()
+    assert last.action == "delete" and last.by_member_id == members[0].id and last.via == "bot"
+
+
+def test_wallets_show_the_boss_cash(boss_api, members):
+    boss, ali, _ = members
+    S.create_operation(member=boss, author=boss, kind="income", amount=7_000_000,
+                       category_code="avans", actor_admin=True)
+    S.create_operation(member=ali, author=ali, kind="income", amount=1_000_000,
+                       category_code="avans")
+    r = boss_api.get("/api/v1/finance/wallets/")
+    assert r.status_code == 200, r.data
+    assert r.data["cash_total"] == 7_000_000 and r.data["staff_total"] == 1_000_000

@@ -556,7 +556,7 @@ class _HandoverAction(BotAPIView):
         client = info.client if info else ""
         sum_text = _money_text_of(op)
         if self.action == "drop":
-            S.handover_drop(op)
+            S.handover_drop(op, by_member=boss)
         else:
             S.handover_accept(op, boss)
         op.refresh_from_db()
