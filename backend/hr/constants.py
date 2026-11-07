@@ -22,6 +22,7 @@ DEFAULTS = {
     "GROUP_REMIND": "1",
     "GROUP_LIST_MISSING": "0",
     "MANAGER_LIVE_ALERTS": "0",
+    "BIRTHDAY_TIME": "09:00",
 }
 LABELS = {
     "WORK_START": "Ish boshlanishi",
@@ -44,8 +45,18 @@ LABELS = {
     "GROUP_REMIND": "Ertalabki guruh eslatmasi",
     "GROUP_LIST_MISSING": "Guruhda kelmaganlarni e'lon qilish",
     "MANAGER_LIVE_ALERTS": "Kech kelganda darhol xabar",
+    "BIRTHDAY_TIME": "Tug'ilgan kun tabrigi va eslatmasi vaqti",
 }
-TIME_KEYS = ["WORK_START", "WORK_END", "CHECKIN_FROM", "REPORT_TIME", "MONTH_REPORT_TIME"]
+TIME_KEYS = [
+    "WORK_START",
+    "WORK_END",
+    "CHECKIN_FROM",
+    "REPORT_TIME",
+    "MONTH_REPORT_TIME",
+    "BIRTHDAY_TIME",
+]
+# the Bosh menejer is told this many days before an employee's birthday
+BIRTHDAY_NOTICE_DAYS = 3
 BOOL_KEYS = ["UNIFORM_CHECK", "GROUP_REMIND", "GROUP_LIST_MISSING", "MANAGER_LIVE_ALERTS"]
 CHECKIN_MODES = ["video_note", "media", "keyword", "media_or_keyword", "any"]
 ACK_MODES = ["reaction", "reply", "none"]

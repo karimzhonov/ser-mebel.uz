@@ -329,6 +329,75 @@ function MergeEmployeeModal({ e, onClose, onDone }: { e: Employee; onClose: () =
 interface Holiday { id: number; day: string; name: string }
 interface Leave { id: number; number: number; employee: number; employee_name: string; date_from: string; date_to: string; reason: string }
 
+/** Days until the next birthday (0 = today); 29 Feb counts as 28 Feb in a common year. */
+function nextBirthday(born: string, todayIso: string): { days: number; turns: number } {
+  const [y, m, d] = born.split("-").map(Number);
+  const [ty, tm, td] = todayIso.split("-").map(Number);
+  const today = Date.UTC(ty, tm - 1, td);
+  const on = (year: number) => {
+    const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    return Date.UTC(year, m - 1, m === 2 && d === 29 && !leap ? 28 : d);
+  };
+  let year = ty;
+  if (on(year) < today) year += 1;
+  return { days: Math.round((on(year) - today) / 86400000), turns: year - y };
+}
+
+function BirthdaysCard({ emps, today }: { emps?: Employee[]; today: string }) {
+  const { can } = useAuth();
+  const [b, setB] = useState({ employee: "", birth_date: "" });
+  const save = useAction(
+    (v: { id: number; birth_date: string | null }) => api.patch(`/hr/employees/${v.id}/`, { birth_date: v.birth_date }),
+    { success: "Saqlandi", invalidate: ["hr"], onSuccess: () => setB({ employee: "", birth_date: "" }) },
+  );
+  const rows = (emps ?? [])
+    .filter((e) => e.birth_date)
+    .map((e) => ({ ...e, ...nextBirthday(e.birth_date!, today) }))
+    .sort((x, y) => x.days - y.days);
+  const edit = can("hr.change_employee");
+  return (
+    <Card title="🎂 Tug'ilgan kunlar" padded={false} className="lg:col-span-2">
+      <p className="muted border-b border-slate-100 p-4 text-xs dark:border-slate-800">
+        Tug'ilgan kuni bot xodimni HR bo'limi nomidan tabriklaydi, 3 kun oldin «Bosh menejer»ga eslatma boradi.
+      </p>
+      {edit && (
+        <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-[2fr_1fr_auto] dark:border-slate-800">
+          <Select
+            value={b.employee}
+            onChange={(e) => {
+              const emp = emps?.find((x) => String(x.id) === e.target.value);
+              setB({ employee: e.target.value, birth_date: emp?.birth_date ?? b.birth_date });
+            }}
+          >
+            <option value="">Xodim</option>
+            {emps?.map((e) => <option key={e.id} value={e.id}>#{e.number} {e.name}</option>)}
+          </Select>
+          <Input type="date" max={today} value={b.birth_date} onChange={(e) => setB({ ...b, birth_date: e.target.value })} />
+          <Button disabled={!b.employee || !b.birth_date} loading={save.isPending} onClick={() => save.mutate({ id: Number(b.employee), birth_date: b.birth_date })}>
+            Saqlash
+          </Button>
+        </div>
+      )}
+      <DataTable
+        rows={rows}
+        rowKey={(r) => r.id}
+        empty="Hali tug'ilgan kun kiritilmagan"
+        columns={[
+          { key: "n", header: "Xodim", cell: (r) => <span className="font-medium">#{r.number} {r.name}</span> },
+          { key: "d", header: "Tug'ilgan kun", cell: (r) => date(r.birth_date) },
+          {
+            key: "l",
+            header: "Qolgan",
+            cell: (r) => (r.days === 0 ? <Badge tone="ok">🎉 Bugun</Badge> : r.days <= 3 ? <Badge tone="warn">{r.days} kun</Badge> : `${r.days} kun`),
+          },
+          { key: "a", header: "Yosh", cell: (r) => (r.turns > 0 && r.turns < 100 ? `${r.turns} yosh bo'ladi` : "—") },
+          { key: "x", header: "", cell: (r) => edit && <IconButton label="O'chirish" onClick={() => save.mutate({ id: r.id, birth_date: null })}><Trash2 className="h-4 w-4" /></IconButton> },
+        ]}
+      />
+    </Card>
+  );
+}
+
 export function HrCalendarPage() {
   const { can } = useAuth();
   const { data: holidays } = useAll<Holiday>("hr/holidays", { upcoming: "1" });
@@ -343,7 +412,7 @@ export function HrCalendarPage() {
   const today = new Date().toISOString().slice(0, 10);
   return (
     <div>
-      <PageHeader title="Bayramlar va ta'tillar" subtitle="Bu kunlarda otchet so'ralmaydi va «kelmadi» yozilmaydi. Bayramdan 3 kun oldin bot o'zi so'raydi." />
+      <PageHeader title="Bayramlar va ta'tillar" subtitle="Bu kunlarda otchet so'ralmaydi va «kelmadi» yozilmaydi. Bayramdan 3 kun oldin bot o'zi so'raydi. Xodimlarning tug'ilgan kunlari ham shu yerda." />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title="🎉 Bayramlar (dam kunlari)" padded={false}>
           {can("hr.add_holiday") && (
@@ -387,6 +456,7 @@ export function HrCalendarPage() {
             ]}
           />
         </Card>
+        <BirthdaysCard emps={emps} today={today} />
       </div>
     </div>
   );

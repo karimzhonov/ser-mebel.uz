@@ -1,3 +1,5 @@
+from datetime import date
+
 from rest_framework import serializers
 
 from hr import services as S
@@ -37,10 +39,16 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "work_end",
             "hours",
             "created_on",
+            "birth_date",
             "member",
             "member_name",
         ]
         read_only_fields = ["number", "can_dm", "created_on", "member"]
+
+    def validate_birth_date(self, v):
+        if v and not (date(1900, 1, 1) <= v <= S.now().date()):
+            raise serializers.ValidationError("Tug'ilgan kun noto'g'ri.")
+        return v
 
     def validate_telegram_id(self, v):
         if self.instance and v != self.instance.telegram_id:

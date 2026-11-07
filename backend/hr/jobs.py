@@ -18,8 +18,8 @@ from core.bot_notify import BotUnavailable
 from . import events as E
 from . import report_data as RD
 from . import services as S
-from .constants import ETA_GRACE_MIN, MAX_ASKS, UZ_HOLIDAYS
-from .models import Holiday, HolidayDecision
+from .constants import BIRTHDAY_NOTICE_DAYS, ETA_GRACE_MIN, MAX_ASKS, UZ_HOLIDAYS
+from .models import Employee, Holiday, HolidayDecision
 
 log = logging.getLogger("hr.jobs")
 
@@ -51,6 +51,27 @@ def ask_holidays(day) -> list:
         E.holiday_ask(d, name)
         asked.append(d)
     return asked
+
+
+def birthdays(day) -> list[str]:
+    """Birthday today -> congratulate the employee; in BIRTHDAY_NOTICE_DAYS -> tell the
+    Bosh menejer. Active employees only, each once per day (fire_once)."""
+    done = []
+    soon = day + timedelta(days=BIRTHDAY_NOTICE_DAYS)
+    for e in Employee.objects.filter(is_active=True, birth_date__isnull=False).select_related(
+        "group"
+    ):
+        if S.birthday_in(e.birth_date, day.year) == day and S.fire_once(
+            day, f"bday_{e.telegram_id}"
+        ):
+            E.birthday(e, day, S.age_on(e.birth_date, day))
+            done.append(f"bday:{e.telegram_id}")
+        if S.birthday_in(e.birth_date, soon.year) == soon and S.fire_once(
+            day, f"bdsoon_{e.telegram_id}"
+        ):
+            E.birthday_soon(e, soon, BIRTHDAY_NOTICE_DAYS, S.age_on(e.birth_date, soon))
+            done.append(f"bdsoon:{e.telegram_id}")
+    return done
 
 
 class _Sender:
@@ -218,6 +239,10 @@ def run_schedule(now_d: datetime | None = None) -> list[str]:
     # 8) ask about upcoming holidays
     if nm >= 600:
         done += [f"holask:{d}" for d in ask_holidays(day)]
+
+    # 9) birthdays (holidays and days off too: a birthday is not a work day thing)
+    if nm >= (S.parse_hm(S.setting("BIRTHDAY_TIME")) or 540):
+        done += birthdays(day)
     return done
 
 

@@ -11,7 +11,7 @@ from bot.notify import registry
 from .conftest import buttons, fixture
 
 HR_EVENTS = [
-    "hr.ask_eta", "hr.bot_added_to_group", "hr.day_off_set", "hr.day_report", "hr.employee_left",
+    "hr.ask_eta", "hr.birthday", "hr.birthday_soon", "hr.bot_added_to_group", "hr.day_off_set", "hr.day_report", "hr.employee_left",
     "hr.eta_passed", "hr.holiday_applied", "hr.holiday_ask", "hr.hours_set", "hr.leave_added",
     "hr.live_alert", "hr.missing_list", "hr.month_report", "hr.morning", "hr.off_days_set",
     "hr.off_request", "hr.off_request_answered", "hr.out_reminder", "hr.points_added",
@@ -81,3 +81,18 @@ async def test_off_request_has_approve_buttons(tgbot, session):
 async def test_holiday_applied_tells_admins_and_groups(tgbot, session):
     await registry.dispatch(fixture("event.hr.holiday_applied"), tgbot)
     assert session.sent(555000111) and session.sent(-1001234567890)
+
+
+async def test_birthday_goes_to_the_group_when_the_dm_fails(tgbot, session):
+    session.fail[777001] = TelegramForbiddenError(
+        method=SendMessage(chat_id=777001, text="x"), message="Forbidden: bot was blocked by the user"
+    )
+    await registry.dispatch(fixture("event.hr.birthday"), tgbot)
+    m = session.sent(-1001234567890)[0]
+    assert "@dilmurod" in m.text and "HR bo'limi" in m.text
+
+
+async def test_birthday_soon_to_the_head_manager(tgbot, session):
+    await registry.dispatch(fixture("event.hr.birthday_soon"), tgbot)
+    m = session.sent(555000222)[0]
+    assert "Dilmurod Ergashev" in m.text and "3 kundan keyin" in m.text

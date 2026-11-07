@@ -251,3 +251,48 @@ def test_year_pick_on_the_last_day_of_the_year(bot, bot_events, group, clock, bo
     kinds = [e["kind"] for e in bot_events.of("hr.winner_pick")]
     assert kinds == ["m", "y"] or kinds == ["y"]
     assert bot_events.of("hr.winner_pick")[-1]["period"] == "2026"
+
+
+def test_birthday_congrats_on_the_day_and_head_manager_3_days_before(
+    bot, bot_events, group, clock, boss
+):
+    from django.contrib.auth.models import Group
+
+    from oauth.models import User
+
+    a, b = people(group)
+    a.birth_date = date(1996, 11, 2)
+    a.save()
+    b.birth_date = date(1990, 10, 29)
+    b.save()
+    head = User.objects.create_user(
+        phone="+998900000777", password="x1234567", is_staff=True, telegram_id=900
+    )
+    head.groups.add(Group.objects.get(name="Bosh menejer"))
+
+    run_schedule(datetime(2026, 10, 26, 8, 30))  # before BIRTHDAY_TIME (09:00)
+    assert not bot_events.of("hr.birthday_soon")
+
+    run_schedule(datetime(2026, 10, 26, 9, 0))
+    soon = bot_events.one("hr.birthday_soon")
+    assert soon["employee"]["telegram_id"] == 501 and soon["day"] == "2026-10-29"
+    assert soon["left_days"] == 3 and soon["age"] == 36
+    assert soon["to"] == [900] and soon["fallback"] is False
+    assert not bot_events.of("hr.birthday")
+    run_schedule(datetime(2026, 10, 26, 9, 1))
+    assert len(bot_events.of("hr.birthday_soon")) == 1  # once a day
+
+    run_schedule(datetime(2026, 10, 29, 9, 5))
+    ev = bot_events.one("hr.birthday")
+    assert ev["employee"]["telegram_id"] == 501 and ev["age"] == 36
+    # 30.10 is 3 days before Jasur's 02.11 — nobody holds the role now -> the admins
+    head.groups.clear()
+    run_schedule(datetime(2026, 10, 30, 9, 5))
+    ev = bot_events.of("hr.birthday_soon")[-1]
+    assert ev["employee"]["telegram_id"] == 500 and ev["to"] == [100] and ev["fallback"] is True
+
+
+def test_birthday_on_29_february_in_a_common_year():
+    assert S.birthday_in(date(2000, 2, 29), 2027) == date(2027, 2, 28)
+    assert S.birthday_in(date(2000, 2, 29), 2028) == date(2028, 2, 29)
+    assert S.age_on(date(1900, 1, 1), date(2026, 1, 1)) is None

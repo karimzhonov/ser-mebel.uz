@@ -293,6 +293,8 @@ Every event carries computed recipients (`to` / `admins` / `channel_id` / `group
 | hr.month_report | `admins, ym, report: PeriodReportData, site_url` | step 7 |
 | hr.winner_pick | `admins, kind: m\|y, period, rows (top 3 carry tg)` | step 7 |
 | hr.holiday_ask | `admins, day, name` | `ask_holidays` |
+| hr.birthday | `employee, day, age\|null` — the employee's birthday: the bot congratulates them privately on behalf of HR; if the DM fails, in their work group | `hr/jobs.birthdays` (step 9, from `BIRTHDAY_TIME`, once per day) |
+| hr.birthday_soon | `employee, day, left_days, age\|null, to, fallback` — the birthday is in `left_days` (3): «Bosh menejer» users with Telegram (`fallback`=true: the admins) | `hr/jobs.birthdays` |
 | hr.live_alert | `admins, kind: late\|late_comment\|eta\|excused, employee, data` | group-message, private-text, callback |
 | hr.off_request / off_request_answered | `admins\|employee, day, approve` | callback / admin |
 | hr.employee_left / bot_added_to_group | `admins, name\|title` | membership |
