@@ -175,11 +175,26 @@ function OrderFinanceBody({ o }: { o: FinOrder }) {
         <ul className="space-y-1 text-sm">
           {o.by_category.map((c) => (
             <li key={c.code} className="flex justify-between">
-              <CatLabel c={byCode[c.code]} />
+              {byCode[c.code] ? <CatLabel c={byCode[c.code]} /> : <span>{c.emoji} {c.name || c.code}</span>}
               <span className="tabular-nums">{som(c.amount)}</span>
             </li>
           ))}
         </ul>
+      )}
+      {o.warehouse && o.warehouse.length > 0 && (
+        <div>
+          <h4 className="mb-1 text-sm font-medium">📦 Ombordan berilgan</h4>
+          <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+            {o.warehouse.map((w) => (
+              <div key={`${w.number}-${w.product}`} className="flex justify-between gap-3 py-2">
+                <span>
+                  <span className="muted">#{w.number} · {date(w.date)}</span> · {w.product} {w.quantity} {w.unit_label}
+                </span>
+                <span className="whitespace-nowrap tabular-nums text-rose-600">{som(w.total)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
       <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
         {o.operations?.map((t) => (

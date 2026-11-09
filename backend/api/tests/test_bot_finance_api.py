@@ -56,6 +56,7 @@ def test_whoami_refreshes_username_and_strangers_get_null(bot_client, members):
         "finance_member": None,
         "hr": {"employee": None, "is_admin": False},
         "crm": {"linked": False, "can_add_lead": False, "can_set_location": False},
+        "warehouse": {"is_keeper": False},
     }
     assert bot_client.post("whoami/", actor=ALI, data={"user": {"id": 999}}).status_code == 403
 

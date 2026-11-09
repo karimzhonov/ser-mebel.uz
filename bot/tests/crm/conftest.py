@@ -191,8 +191,23 @@ def env(monkeypatch):
     from bot.hr import group_router, private_router
     from bot.metering import router as metering
     from bot.offer import router as offer
+    from bot.warehouse import ex_keeper_router as wh_ex
+    from bot.warehouse import fallback_router as wh_fallback
+    from bot.warehouse import router as wh
 
-    for r in (group_router, link.router, start.router, metering, offer, crm, private_router, fin):
+    for r in (
+        group_router,
+        link.router,
+        start.router,
+        metering,
+        offer,
+        wh,
+        wh_ex,
+        crm,
+        private_router,
+        wh_fallback,
+        fin,
+    ):
         r._parent_router = None
     be = Backend()
     monkeypatch.setattr(real, "request", be.request)

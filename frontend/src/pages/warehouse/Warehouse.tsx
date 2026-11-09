@@ -1,16 +1,28 @@
-import { useMemo, useState } from "react";
-import { ArrowDownToLine, ArrowUpFromLine, Download, Pencil, Plus, Undo2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDownToLine, ArrowUpFromLine, Download, ImageIcon, Pencil, Plus, Star, Trash2, Undo2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { api, fieldErrors } from "@/api/client";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { api, errorMessage, fieldErrors } from "@/api/client";
 import { useAction, useGet, useList } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
 import { Badge, Button, Card, DataTable, Empty, Field, IconButton, Input, Modal, PageHeader, Pagination, SearchInput, Segmented, Select, StatTile, Textarea } from "@/components/ui";
 import { date, dateTime } from "@/lib/format";
+import { downscale } from "@/lib/image";
 import { useUrlState } from "@/lib/useUrlState";
 import { downloadFile } from "@/pages/finance/shared";
 
 // ---------------------------------------------------------------- types
+const MAX_PHOTOS = 5;
+interface Photo {
+  id: number;
+  url: string;
+  thumb: string;
+  position: number;
+  width: number;
+  height: number;
+}
 interface Product {
   id: number;
   name: string;
@@ -26,6 +38,8 @@ interface Product {
   value_usd: number | null;
   low: boolean;
   is_active: boolean;
+  photos: Photo[];
+  cover: Photo | null;
 }
 interface Movement {
   id: number;
@@ -43,7 +57,7 @@ interface Movement {
   total: string;
   date: string;
   counterparty: string;
-  order_number: number | null;
+  allocations: { ref: string; client: string; quantity: string; total: string; order_id: number | null }[];
   comment: string;
   balance_after: string;
   created_by_detail: { id: number; name: string | null; phone: string } | null;
@@ -62,6 +76,67 @@ interface Summary {
   is_keeper: boolean;
 }
 
+interface OrderOption {
+  ref: string;
+  client: string;
+  bucket: string;
+  status_label: string;
+}
+
+/** «406×4 · SM-003×2» chips for a chiqim's clients */
+function AllocChips({ items }: { items: Movement["allocations"] }) {
+  if (!items?.length) return null;
+  return (
+    <span className="ml-1 inline-flex flex-wrap gap-1 align-middle">
+      {items.map((a) => (
+        <Badge key={a.ref} tone="info">{a.ref}×{nf.format(Number(a.quantity))}</Badge>
+      ))}
+    </span>
+  );
+}
+
+/** Pick a client / order ID (debounced search over the active orders). */
+function OrderPicker({ taken, onPick }: { taken: string[]; onPick: (o: OrderOption) => void }) {
+  const [text, setText] = useState("");
+  const [term, setTerm] = useState("");
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setTerm(text.trim()), 250);
+    return () => clearTimeout(t);
+  }, [text]);
+  const { data, isFetching } = useGet<OrderOption[]>("/warehouse/orders/", { search: term });
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  const options = (data ?? []).filter((o) => !taken.includes(o.ref));
+  return (
+    <div ref={box} className="relative flex-1">
+      <Input value={text} placeholder="ID yoki mijoz ismi" onFocus={() => setOpen(true)} onChange={(e) => (setText(e.target.value), setOpen(true))} />
+      {open && (
+        <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-pop dark:border-slate-700 dark:bg-slate-900">
+          {options.length === 0 && <div className="muted px-3 py-2 text-sm">{isFetching || text.trim() !== term ? "Yuklanmoqda…" : "Topilmadi"}</div>}
+          {options.map((o) => (
+            <button
+              key={o.ref}
+              type="button"
+              className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+              onClick={() => (onPick(o), setText(""), setOpen(false))}
+            >
+              <b>{o.ref}</b> · {o.client || "—"} <span className="muted">({o.status_label})</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const nf = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 });
 const som = (v: number | string | null | undefined) => `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 }).format(Number(v ?? 0))} so'm`;
 const usd = (v: number | string | null | undefined) => `$${new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(v ?? 0))}`;
@@ -73,6 +148,38 @@ const qty = (v: number | string, unit?: string) => `${nf.format(Number(v))}${uni
 function useKeeper() {
   const { user } = useAuth();
   return !!user?.is_warehouse_keeper;
+}
+
+/** 40x40 cover in the stock table; a click opens the picture (not the history). */
+function CoverThumb({ product, onOpen }: { product: Product; onOpen: (p: Product) => void }) {
+  if (!product.cover)
+    return (
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-400 dark:bg-slate-800">
+        <ImageIcon className="h-4 w-4" />
+      </div>
+    );
+  return (
+    <button type="button" className="block" onClick={(e) => (e.stopPropagation(), onOpen(product))}>
+      <img src={product.cover.thumb} alt={product.name} loading="lazy" className="h-10 w-10 rounded-lg object-cover" />
+    </button>
+  );
+}
+
+/** Big view of one picture (arrows through the product's pictures). */
+function Lightbox({ name, photos, start, onClose }: { name: string; photos: Photo[]; start: number; onClose: () => void }) {
+  const [i, setI] = useState(Math.min(start, Math.max(photos.length - 1, 0)));
+  const ph = photos[i];
+  return (
+    <Modal open onClose={onClose} title={name} size="lg" footer={photos.length > 1 ? (
+      <>
+        <Button variant="outline" disabled={i === 0} onClick={() => setI(i - 1)}>←</Button>
+        <span className="self-center text-sm tabular-nums">{i + 1} / {photos.length}</span>
+        <Button variant="outline" disabled={i >= photos.length - 1} onClick={() => setI(i + 1)}>→</Button>
+      </>
+    ) : undefined}>
+      {ph ? <img src={ph.url} alt={name} className="mx-auto max-h-[70vh] w-auto rounded-lg object-contain" /> : <Empty title="Rasm yo'q" />}
+    </Modal>
+  );
 }
 
 /** Shown instead of the Kirim/Chiqim buttons: only the omborchi books, so say why. */
@@ -106,6 +213,7 @@ export function WarehouseStockPage() {
   const { data: meta } = useGet<{ categories: string[]; units: { value: string; label: string }[] }>("/warehouse/products/categories/");
   const [product, setProduct] = useState<Product | "new" | null>(null);
   const [history, setHistory] = useState<Product | null>(null);
+  const [zoom, setZoom] = useState<Product | null>(null);
   const [move, setMove] = useState<{ kind: "in" | "out"; product?: Product } | null>(null);
   const [busy, setBusy] = useState(false);
   return (
@@ -157,6 +265,7 @@ export function WarehouseStockPage() {
           onRowClick={setHistory}
           rowClassName={(r) => (r.low ? "bg-rose-50/60 dark:bg-rose-500/5" : undefined)}
           columns={[
+            { key: "p", header: "", cell: (r) => <CoverThumb product={r} onOpen={setZoom} /> },
             { key: "n", header: "Mahsulot", cell: (r) => <span><span className="font-medium">{r.name}</span>{r.code && <span className="muted ml-1 text-xs">{r.code}</span>}</span> },
             { key: "c", header: "Turi", cell: (r) => r.category || "—", hideOnMobile: true },
             { key: "q", header: "Qoldiq", cell: (r) => <span className={`font-semibold tabular-nums ${r.low ? "text-rose-600" : ""}`}>{qty(r.quantity, r.unit_label)}{r.low && <Badge tone="danger" className="ml-2">kam</Badge>}</span> },
@@ -181,6 +290,97 @@ export function WarehouseStockPage() {
       {product && <ProductModal product={product === "new" ? null : product} meta={meta} onClose={() => setProduct(null)} />}
       {move && <MovementModal kind={move.kind} product={move.product} onClose={() => setMove(null)} />}
       {history && <HistoryModal product={history} onClose={() => setHistory(null)} />}
+      {zoom && <Lightbox name={zoom.name} photos={zoom.photos} start={0} onClose={() => setZoom(null)} />}
+    </div>
+  );
+}
+
+/** «Rasmlar (n/5)»: thumbnails, cover mark, upload / cover / delete for the omborchi. */
+function PhotosSection({ product }: { product: Product }) {
+  const isKeeper = useKeeper();
+  const [photos, setPhotos] = useState<Photo[]>(product.photos ?? []);
+  const [view, setView] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const done = (data: { photos: Photo[] }) => setPhotos(data.photos);
+  const cover = useAction((pid: number) => api.post<{ photos: Photo[] }>(`/warehouse/products/${product.id}/photos/${pid}/cover/`).then((r) => r.data), {
+    success: "Asosiy rasm o'zgardi",
+    invalidate: ["warehouse"],
+    onSuccess: done,
+  });
+  const remove = useAction((pid: number) => api.delete<{ photos: Photo[] }>(`/warehouse/products/${product.id}/photos/${pid}/`).then((r) => r.data), {
+    success: "Rasm o'chirildi",
+    invalidate: ["warehouse"],
+    onSuccess: done,
+  });
+  const qc = useQueryClient();
+  const upload = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setUploading(true);
+    let room = MAX_PHOTOS - photos.length;
+    try {
+      for (const file of Array.from(files)) {
+        if (room <= 0) {
+          toast.error(`Bitta mahsulotga ${MAX_PHOTOS} tadan ortiq rasm bo'lmaydi.`);
+          break;
+        }
+        try {
+          const blob = await downscale(file, 1600, 0.85);
+          const body = new FormData();
+          body.append("file", blob, "photo.jpg");
+          const { data } = await api.post<{ photos: Photo[] }>(`/warehouse/products/${product.id}/photos/`, body);
+          setPhotos(data.photos);
+          room -= 1;
+        } catch (e) {
+          toast.error(`${file.name}: ${errorMessage(e)}`);
+        }
+      }
+    } finally {
+      setUploading(false);
+      if (input.current) input.current.value = "";
+      qc.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).includes("warehouse") });
+    }
+  };
+  return (
+    <div>
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium">Rasmlar ({photos.length}/{MAX_PHOTOS})</span>
+        {isKeeper && photos.length < MAX_PHOTOS && (
+          <>
+            <input ref={input} type="file" multiple accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => upload(e.target.files)} />
+            <Button variant="outline" size="sm" icon={<Plus className="h-4 w-4" />} loading={uploading} onClick={() => input.current?.click()}>
+              Rasm qo'shish
+            </Button>
+          </>
+        )}
+      </div>
+      {photos.length === 0 ? (
+        <div className="muted rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm dark:border-slate-700">Rasm yo'q</div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2">
+          {photos.map((ph, idx) => (
+            <div key={ph.id} className="group relative overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+              <button type="button" className="block w-full" onClick={() => setView(idx)}>
+                <img src={ph.thumb} alt="" loading="lazy" className="aspect-square w-full object-cover" />
+              </button>
+              {idx === 0 && <Badge tone="primary" className="absolute left-1 top-1">Asosiy</Badge>}
+              {isKeeper && (
+                <div className="absolute right-1 top-1 flex gap-1">
+                  {idx !== 0 && (
+                    <IconButton label="Asosiy qilish" className="h-7 w-7 bg-white/90 dark:bg-slate-900/90" onClick={() => cover.mutate(ph.id)}>
+                      <Star className="h-4 w-4" />
+                    </IconButton>
+                  )}
+                  <IconButton label="O'chirish" className="h-7 w-7 bg-white/90 dark:bg-slate-900/90" onClick={() => confirm("Rasm o'chirilsinmi?") && remove.mutate(ph.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </IconButton>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {view !== null && <Lightbox name={product.name} photos={photos} start={view} onClose={() => setView(null)} />}
     </div>
   );
 }
@@ -223,6 +423,7 @@ function ProductModal({ product, meta, onClose }: { product: Product | null; met
             <Input inputMode="decimal" value={f.min_quantity} onChange={(e) => setF({ ...f, min_quantity: e.target.value.replace(/[^\d.]/g, "") })} />
           </Field>
         </div>
+        {product ? <PhotosSection product={product} /> : <p className="muted text-xs">Rasmni saqlagandan keyin qo'shasiz</p>}
         {product && (
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={f.is_active} onChange={(e) => setF({ ...f, is_active: e.target.checked })} /> Faol
@@ -253,26 +454,31 @@ function MovementModal({ kind: initialKind, product: initial, onClose }: { kind:
     unit_price: defaultPrice(initial, initialKind, "UZS"),
     date: iso(new Date()),
     counterparty: "",
-    order_number: "",
     comment: "",
   });
+  const [rows, setRows] = useState<{ ref: string; client: string; quantity: string }[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const p = list.find((x) => String(x.id) === f.product);
   const rate = Number(f.rate || sm?.usd_rate || 0) || 0; // "." → 0, not NaN
-  const totalIn = Number(f.quantity || 0) * Number(f.unit_price || 0); // in the chosen currency
+  const withRows = f.kind === "out" && rows.length > 0;
+  const rowsSum = rows.reduce((a, r) => a + (Number(r.quantity) || 0), 0);
+  const effQty = withRows ? rowsSum : Number(f.quantity || 0);
+  const stock = p ? Number(p.quantity) : null;
+  const over = withRows && stock !== null && Math.round(rowsSum * 1000) > Math.round(stock * 1000);
+  const unitSom = Number(f.unit_price || 0) * (f.currency === "USD" ? rate : 1);
+  const totalIn = effQty * Number(f.unit_price || 0); // in the chosen currency
   const totalSom = f.currency === "USD" ? totalIn * rate : totalIn;
   const save = useAction(
     () =>
       api.post("/warehouse/movements/", {
         kind: f.kind,
         product: Number(f.product),
-        quantity: f.quantity,
+        ...(withRows ? { allocations: rows.map((r) => ({ ref: r.ref, quantity: r.quantity })) } : { quantity: f.quantity }),
         date: f.date,
         counterparty: f.counterparty,
         comment: f.comment,
         currency: f.currency,
         ...(f.currency === "USD" ? { orig_price: f.unit_price, rate: f.rate ? f.rate : rate || undefined } : { unit_price: f.unit_price }),
-        order_number: f.order_number ? Number(f.order_number) : null,
       }),
     { success: f.kind === "in" ? "Kirim yozildi" : "Chiqim yozildi", invalidate: ["warehouse"], onSuccess: onClose },
   );
@@ -285,7 +491,7 @@ function MovementModal({ kind: initialKind, product: initial, onClose }: { kind:
       open
       onClose={onClose}
       title={f.kind === "in" ? "📥 Omborga kirim" : "📤 Ombordan chiqim"}
-      footer={<Button disabled={!f.product || !f.quantity || f.unit_price === ""} loading={save.isPending} onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>Saqlash</Button>}
+      footer={<Button disabled={!f.product || (withRows ? rows.some((r) => !Number(r.quantity)) || over : !f.quantity) || f.unit_price === ""} loading={save.isPending} onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}>Saqlash</Button>}
     >
       <div className="space-y-3">
         <Segmented value={f.kind} onChange={(kind) => setF({ ...f, kind })} options={[{ value: "in", label: "📥 Kirim" }, { value: "out", label: "📤 Chiqim" }]} />
@@ -298,7 +504,7 @@ function MovementModal({ kind: initialKind, product: initial, onClose }: { kind:
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label={`Miqdor${p ? ` (${p.unit_label})` : ""}`} error={errors.quantity}>
-            <Input inputMode="decimal" value={f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value.replace(/[^\d.]/g, "") })} />
+            <Input inputMode="decimal" readOnly={withRows} value={withRows ? String(Math.round(rowsSum * 1000) / 1000) : f.quantity} onChange={(e) => setF({ ...f, quantity: e.target.value.replace(/[^\d.]/g, "") })} />
           </Field>
           <Field label={`Narxi (1 birlik, ${f.currency === "USD" ? "$" : "so'm"})`} error={errors.unit_price || errors.orig_price}>
             <Input inputMode="decimal" value={f.unit_price} onChange={(e) => setF({ ...f, unit_price: e.target.value.replace(/[^\d.]/g, "") })} />
@@ -332,8 +538,25 @@ function MovementModal({ kind: initialKind, product: initial, onClose }: { kind:
           </Field>
         </div>
         {f.kind === "out" && (
-          <Field label="Buyurtma № (ixtiyoriy)" error={errors.order_number}>
-            <Input inputMode="numeric" value={f.order_number} onChange={(e) => setF({ ...f, order_number: e.target.value.replace(/\D/g, "") })} placeholder="406" />
+          <Field label="Mijozlar (ID)" hint="Ixtiyoriy: har bir ID uchun miqdor — furnitura xarajati sifatida hisoblanadi" error={errors.allocations}>
+            <div className="space-y-2">
+              {rows.map((r, i) => (
+                <div key={r.ref} className="flex items-start gap-2">
+                  <div className="flex-1 pt-2 text-sm"><b>{r.ref}</b> · {r.client || "—"}</div>
+                  <div className="w-28">
+                    <Input inputMode="decimal" placeholder="Miqdor" value={r.quantity} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, quantity: e.target.value.replace(/[^\d.]/g, "") } : x)))} />
+                    {unitSom > 0 && Number(r.quantity) > 0 && <div className="muted mt-0.5 text-xs">≈ {som(Number(r.quantity) * unitSom)}</div>}
+                  </div>
+                  <IconButton label="Olib tashlash" onClick={() => setRows(rows.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></IconButton>
+                </div>
+              ))}
+              {rows.length < 20 && <OrderPicker taken={rows.map((r) => r.ref)} onPick={(o) => setRows([...rows, { ref: o.ref, client: o.client, quantity: "" }])} />}
+              {withRows && (
+                <p className={`text-sm ${over ? "font-medium text-rose-600" : ""}`}>
+                  Jami: {qty(rowsSum, p?.unit_label)}{stock !== null && ` / omborda ${qty(stock, p?.unit_label)}`}
+                </p>
+              )}
+            </div>
           </Field>
         )}
         <Field label="Izoh" error={errors.comment || errors.detail}>
@@ -358,7 +581,7 @@ function HistoryModal({ product, onClose }: { product: Product; onClose: () => v
           { key: "k", header: "Turi", cell: (r) => <Badge tone={r.kind === "in" ? "ok" : "warn"}>{r.kind_label}</Badge> },
           { key: "q", header: "Miqdor", cell: (r) => `${r.kind === "in" ? "+" : "−"}${qty(r.quantity)}` },
           { key: "p", header: "Narx", cell: (r) => priceText(r) },
-          { key: "c", header: "Kimdan / kimga", cell: (r) => r.counterparty || "—" },
+          { key: "c", header: "Kimdan / kimga", cell: (r) => <span>{r.counterparty || "—"}<AllocChips items={r.allocations} /></span> },
           { key: "b", header: "Qoldiq", cell: (r) => qty(r.balance_after) },
         ]}
       />
@@ -421,7 +644,7 @@ export function WarehouseMovementsPage() {
                 </span>
               ),
             },
-            { key: "c", header: "Kimdan / kimga", cell: (r) => <span className="text-sm">{r.counterparty || "—"}{r.order_number && <span className="muted"> · №{r.order_number}</span>}</span>, hideOnMobile: true },
+            { key: "c", header: "Kimdan / kimga", cell: (r) => <span className="text-sm">{r.counterparty || "—"}<AllocChips items={r.allocations} /></span>, hideOnMobile: true },
             { key: "w", header: "Kiritdi", cell: (r) => <span className="muted text-xs">{r.created_by_detail?.name || r.created_by_detail?.phone} · {dateTime(r.created_at)}</span>, hideOnMobile: true },
             {
               key: "x",

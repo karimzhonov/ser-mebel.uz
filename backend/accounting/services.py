@@ -41,6 +41,7 @@ from .constants import (
     CAT_REST,
     CAT_SALARY,
     CAT_TRANSFER,
+    WAREHOUSE_CAT,
     CategoryKind,
     OpKind,
     PayType,
@@ -455,6 +456,14 @@ def order_stats(ref: str) -> dict:
             st["cats"][t.category.code] = st["cats"].get(t.category.code, ZERO) + t.amount
         elif t.category.code in (CAT_ADVANCE, CAT_REST):
             st["collected"] += t.amount
+    from warehouse.services import order_spending, order_spending_lines
+
+    wh = order_spending([ref]).get(str(ref), ZERO)
+    st["warehouse"] = wh
+    st["warehouse_rows"] = order_spending_lines(ref) if wh else []
+    if wh:
+        st["spent"] += wh
+        st["cats"][WAREHOUSE_CAT] = wh
     return st
 
 
@@ -473,6 +482,14 @@ def order_stats_bulk(refs) -> dict[str, dict]:
             st["cats"][r["category__code"]] = st["cats"].get(r["category__code"], ZERO) + r["total"]
         elif r["category__code"] in (CAT_ADVANCE, CAT_REST):
             st["collected"] += r["total"]
+    from warehouse.services import order_spending
+
+    for ref, wh in order_spending(list(refs)).items():
+        st = out.setdefault(ref, {"spent": ZERO, "collected": ZERO, "cats": {}})
+        st["spent"] += wh
+        st["cats"][WAREHOUSE_CAT] = wh
+    for st in out.values():
+        st.setdefault("warehouse", st["cats"].get(WAREHOUSE_CAT, ZERO))
     return out
 
 
@@ -786,7 +803,9 @@ def update_operation(
         if "category_code" in data and data["category_code"] != op.category.code:
             if CAT_FROM_BOSS in (data["category_code"], op.category.code):
                 # a «Rahbardan» row carries the boss's paired chiqim (boss_hand_out)
-                raise ServiceError("«Rahbardan» kategoriyasini o'zgartirib bo'lmaydi — o'chirib qaytadan yozing.")
+                raise ServiceError(
+                    "«Rahbardan» kategoriyasini o'zgartirib bo'lmaydi — o'chirib qaytadan yozing."
+                )
             cat = category(data["category_code"])
             if not cat:
                 raise ServiceError("Kategoriya topilmadi.")
@@ -1679,6 +1698,9 @@ def checks() -> list[dict]:
         .exclude(order_ref="")
         .values_list("order_ref", flat=True)
     )
+    from warehouse.services import allocation_refs
+
+    refs |= allocation_refs()
     infos = order_infos(refs)
     stats = order_stats_bulk(refs)
     for ref in sorted(refs, key=lambda r: (not r.isdigit(), int(r) if r.isdigit() else 0, r)):
@@ -2145,8 +2167,12 @@ def advance_accept(
             rate = usd_rate()
             if not rate:
                 raise ServiceError("Dollar kursi topilmadi — «Boshqa summa» bilan so'mda yozing.")
-            m = {"amount": q2(round(adv.amount * rate)), "cur": "USD", "orig": adv.amount,
-                 "rate": rate}
+            m = {
+                "amount": q2(round(adv.amount * rate)),
+                "cur": "USD",
+                "orig": adv.amount,
+                "rate": rate,
+            }
         else:
             m = {"amount": adv.amount, "cur": "UZS", "orig": None, "rate": None}
         ref = str(adv.order.order_number or "")

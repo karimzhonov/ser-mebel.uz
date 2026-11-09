@@ -1,0 +1,87 @@
+{
+  "product": {
+    "id": 31,
+    "name": "LDSP oq 16 mm",
+    "code": "LD-016",
+    "category": "LDSP",
+    "unit": "list",
+    "unit_label": "list",
+    "quantity": "42.000",
+    "min_quantity": "10.000",
+    "avg_cost": "185000.00",
+    "value": "7770000.00",
+    "low": false,
+    "is_active": true,
+    "photos_count": 2,
+    "cover": {
+      "id": 12,
+      "position": 0,
+      "is_cover": true,
+      "width": 1600,
+      "height": 1200,
+      "tg_file_id": "AgACAgIAAxkBAAIB"
+    },
+    "url": "https://ser-mebel.uz/warehouse?search=LD-016",
+    "photos": [
+      {
+        "id": 12,
+        "position": 0,
+        "is_cover": true,
+        "width": 1600,
+        "height": 1200,
+        "tg_file_id": "AgACAgIAAxkBAAIB"
+      },
+      {
+        "id": 13,
+        "position": 1,
+        "is_cover": false,
+        "width": 900,
+        "height": 1600,
+        "tg_file_id": ""
+      }
+    ]
+  },
+  "last_in": {
+    "unit_price": "151250.00",
+    "currency": "USD",
+    "orig_price": "12.10",
+    "counterparty": "Kronospan",
+    "date": "2026-11-07"
+  },
+  "recent": [
+    {
+      "id": 88,
+      "number": 412,
+      "kind": "out",
+      "kind_label": "Chiqim",
+      "quantity": "6.000",
+      "unit_label": "list",
+      "currency": "UZS",
+      "unit_price": "185000.00",
+      "orig_price": null,
+      "rate": null,
+      "total": "1110000.00",
+      "date": "2026-11-07",
+      "counterparty": "Usta Karim",
+      "comment": "",
+      "balance_after": "36.000",
+      "is_cancelled": false,
+      "by_name": "Omborchi Aziz",
+      "created_at": "2026-11-07T10:15:00",
+      "allocations": [
+        {
+          "ref": "406",
+          "client": "Ali Valiyev",
+          "quantity": "4.000",
+          "total": "740000.00"
+        },
+        {
+          "ref": "SM-003",
+          "client": "Qo'lda mijoz",
+          "quantity": "2.000",
+          "total": "370000.00"
+        }
+      ]
+    }
+  ]
+}

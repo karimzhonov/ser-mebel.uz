@@ -17,7 +17,7 @@ from rest_framework.views import APIView
 from accounting import services as S
 from api.authentication import BotSignatureAuthentication
 from api.permissions import IsBot
-from core.exceptions import ServiceConflict, ServiceForbidden
+from core.exceptions import ServiceConflict, ServiceForbidden, ServiceNotFound
 from hr import services as HR
 from oauth.models import TelegramMember
 
@@ -37,6 +37,8 @@ class BotAPIView(APIView):
         # stays a 400 (api/exceptions.py).
         if isinstance(exc, ServiceConflict):
             return Response({"detail": exc.message}, status=409)
+        if isinstance(exc, ServiceNotFound):
+            return Response({"detail": exc.message}, status=404)
         if isinstance(exc, ServiceForbidden):
             return Response({"detail": exc.message}, status=403)
         if isinstance(exc, (ValueError, TypeError, ArithmeticError)):

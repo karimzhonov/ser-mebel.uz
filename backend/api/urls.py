@@ -93,6 +93,11 @@ v1 = [
     path(
         "warehouse/summary/", warehouse.WarehouseSummaryView.as_view(), name="api-warehouse-summary"
     ),
+    path(
+        "warehouse/orders/",
+        warehouse.WarehouseOrderOptionsView.as_view(),
+        name="api-warehouse-orders",
+    ),
     path("warehouse/keeper/", warehouse.KeeperView.as_view(), name="api-warehouse-keeper"),
     path("warehouse/export/", warehouse.WarehouseExportView.as_view(), name="api-warehouse-export"),
     path("hr/day/", hr.HrDayView.as_view(), name="api-hr-day"),

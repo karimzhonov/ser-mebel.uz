@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "ref": "406",
+      "client": "Ali Valiyev",
+      "bucket": "jarayonda",
+      "status_label": "Jarayonda"
+    },
+    {
+      "ref": "SM-003",
+      "client": "Qo'lda mijoz",
+      "bucket": "jarayonda",
+      "status_label": "Jarayonda"
+    }
+  ],
+  "unknown": [
+    "999"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "product": 31,
+  "kind": "out",
+  "allocations": [
+    {
+      "ref": "406",
+      "quantity": "4"
+    },
+    {
+      "ref": "SM-003",
+      "quantity": "2"
+    }
+  ],
+  "counterparty": "Usta Karim",
+  "comment": ""
+}

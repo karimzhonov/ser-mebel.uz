@@ -31,6 +31,7 @@ from rest_framework.views import APIView
 from accounting import events as E
 from accounting import salary as SAL
 from accounting import services as S
+from accounting.constants import WAREHOUSE_CAT, WAREHOUSE_CAT_EMOJI, WAREHOUSE_CAT_NAME
 from accounting.excel import build_xlsx
 from accounting.models import (
     ClientFeedback,
@@ -564,10 +565,7 @@ class WorkerCardView(APIView):
                         "count",
                     )
                 },
-                **{
-                    k: f(c[k])
-                    for k in ("advance", "salary", "home", "other", "total", "all_time")
-                },
+                **{k: f(c[k]) for k in ("advance", "salary", "home", "other", "total", "all_time")},
                 "last_date": c["last_date"],
                 "by_giver": [
                     {"name": g["name"], "amount": f(g["sum"]), "count": g["count"]}
@@ -646,7 +644,19 @@ class WalletsView(APIView):
         )
 
 
-def _order_row(info, st) -> dict:
+def _cat_names(codes) -> dict:
+    """{code: (name, emoji)} for an order's spending categories (+ the warehouse pseudo one)."""
+    names = {
+        c.code: (c.name, c.emoji)
+        for c in FinanceCategory.objects.filter(code__in=[c for c in codes if c != WAREHOUSE_CAT])
+    }
+    names[WAREHOUSE_CAT] = (WAREHOUSE_CAT_NAME, WAREHOUSE_CAT_EMOJI)
+    return names
+
+
+def _order_row(info, st, names: dict | None = None) -> dict:
+    if names is None:
+        names = _cat_names(st["cats"])
     profit = info.price_uzs - st["spent"] if info.price_uzs else None
     return {
         "ref": info.ref,
@@ -662,6 +672,7 @@ def _order_row(info, st) -> dict:
         "rest": None if info.rest is None else f(info.rest),
         "price_uzs": f(info.price_uzs),
         "spent": f(st["spent"]),
+        "warehouse_spent": f(st.get("warehouse") or 0),
         "collected": f(st["collected"]),
         "profit": None if profit is None else f(profit),
         "spent_percent": (
@@ -670,7 +681,12 @@ def _order_row(info, st) -> dict:
         "end_date": info.end_date,
         "ready_date": info.ready_date,
         "by_category": [
-            {"code": k, "amount": f(v)}
+            {
+                "code": k,
+                "amount": f(v),
+                "name": names.get(k, (k, ""))[0],
+                "emoji": names.get(k, (k, ""))[1],
+            }
             for k, v in sorted(st["cats"].items(), key=lambda kv: -kv[1])
         ],
     }
@@ -695,6 +711,9 @@ class FinanceOrdersView(APIView):
                 .values_list("order_ref", flat=True)
                 .distinct()
             ) - set(infos)
+            from warehouse.services import allocation_refs
+
+            booked |= allocation_refs() - set(infos)
             for ref, info in S.order_infos(booked).items():
                 if info.bucket in buckets:
                     infos[ref] = info
@@ -702,8 +721,9 @@ class FinanceOrdersView(APIView):
         chosen = [i for i in infos.values() if not q or q in i.ref.lower() or q in i.client.lower()]
         stats = S.order_stats_bulk([i.ref for i in chosen])
         empty = {"spent": S.ZERO, "collected": S.ZERO, "cats": {}}
+        names = _cat_names({c for st in stats.values() for c in st["cats"]})
         for info in chosen:
-            refs.append(_order_row(info, stats.get(info.ref, empty)))
+            refs.append(_order_row(info, stats.get(info.ref, empty), names))
         refs.sort(
             key=lambda r: (
                 not r["ref"].isdigit(),
@@ -726,6 +746,10 @@ class FinanceOrderDetailView(APIView):
         st = S.order_stats(info.ref)
         row = _order_row(info, st)
         row["operations"] = OperationSerializer(st["rows"], many=True).data
+        row["warehouse"] = [
+            {**r, "quantity": f(r["quantity"]), "total": f(r["total"])}
+            for r in st["warehouse_rows"]
+        ]
         bn = OrderBonus.objects.filter(order_ref=info.ref).first()
         row["bonus"] = OrderBonusSerializer(bn).data if bn else None
         return Response(row)

@@ -7,6 +7,7 @@ from accounting import services as S
 from core.exceptions import ServiceError
 from hr import services as HR
 from oauth.services import link_telegram
+from warehouse.services import is_keeper
 
 from ...serializers import bot as D
 from .base import BotAPIView
@@ -58,6 +59,9 @@ class WhoAmIView(BotAPIView):
                             )
                         )
                     ),
+                },
+                "warehouse": {
+                    "is_keeper": bool(self.site_user and is_keeper(self.site_user)),
                 },
             }
         )

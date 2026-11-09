@@ -38,6 +38,11 @@ CAT_REST = "qoldiq"
 # «↩️ Qaytim / vozvrat»: money that came back for something already paid — it lowers
 # the expense, it is not income (summary)
 CAT_REFUND = "qaytim"
+# Pseudo category on an order's money card: furnitura given from the warehouse (ombor)
+# to the client's ID. Not a FinanceCategory row - it comes from warehouse chiqim lines.
+WAREHOUSE_CAT = "_ombor"
+WAREHOUSE_CAT_NAME = "Furnitura (ombor)"
+WAREHOUSE_CAT_EMOJI = "📦"
 
 # [code, emoji, name, keywords, color, flags]
 # flags: needs_order (checks warn when missing), no_order (never asked), admin_only,

@@ -12,9 +12,17 @@
     "price": "8000000.00"
   },
   "stats": {
-    "spent": "0.00",
+    "spent": "370000.00",
     "collected": "0.00",
-    "cats": [],
+    "warehouse": "370000.00",
+    "cats": [
+      {
+        "code": "_ombor",
+        "name": "Furnitura (ombor)",
+        "emoji": "📦",
+        "sum": "370000.00"
+      }
+    ],
     "last_ops": []
   },
   "total": "8000000.00",

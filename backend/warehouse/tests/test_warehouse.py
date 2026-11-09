@@ -46,7 +46,13 @@ def product(client, **kw):
 def move(client, pid, kind, qty, price, **kw):
     return client.post(
         f"{URL}/movements/",
-        {"product": pid, "kind": kind, "quantity": qty, "unit_price": price, **kw},
+        {
+            "product": pid,
+            "kind": kind,
+            **({"quantity": qty} if qty is not None else {}),
+            "unit_price": price,
+            **kw,
+        },
         format="json",
     )
 
@@ -133,9 +139,12 @@ def test_product_rules(keeper):
 def test_order_link_and_export(keeper, site_order):  # noqa: F811
     p = product(keeper)
     move(keeper, p["id"], "in", "5", "1000")
-    r = move(keeper, p["id"], "out", "2", "1000", order_number=406)
-    assert r.data["order_number"] == 406
-    assert move(keeper, p["id"], "out", "1", "1000", order_number=99999).status_code == 400
+    r = move(keeper, p["id"], "out", None, "1000", allocations=[{"ref": "406", "quantity": "2"}])
+    assert r.status_code == 201 and r.data["allocations"][0]["ref"] == "406"
+    bad = move(
+        keeper, p["id"], "out", None, "1000", allocations=[{"ref": "99999", "quantity": "1"}]
+    )
+    assert bad.status_code == 400
     x = keeper.get(f"{URL}/export/")
     assert x.status_code == 200 and x.content[:2] == b"PK"
 

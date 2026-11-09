@@ -43,5 +43,8 @@
     "linked": true,
     "can_add_lead": true,
     "can_set_location": true
+  },
+  "warehouse": {
+    "is_keeper": false
   }
 }
