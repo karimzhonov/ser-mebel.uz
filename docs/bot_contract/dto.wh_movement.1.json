@@ -1,0 +1,34 @@
+{
+  "id": 88,
+  "number": 412,
+  "kind": "out",
+  "kind_label": "Chiqim",
+  "quantity": "6.000",
+  "unit_label": "list",
+  "currency": "UZS",
+  "unit_price": "185000.00",
+  "orig_price": null,
+  "rate": null,
+  "total": "1110000.00",
+  "date": "2026-11-07",
+  "counterparty": "Usta Karim",
+  "comment": "",
+  "balance_after": "36.000",
+  "is_cancelled": false,
+  "by_name": "Omborchi Aziz",
+  "created_at": "2026-11-07T10:15:00",
+  "allocations": [
+    {
+      "ref": "406",
+      "client": "Ali Valiyev",
+      "quantity": "4.000",
+      "total": "740000.00"
+    },
+    {
+      "ref": "SM-003",
+      "client": "Qo'lda mijoz",
+      "quantity": "2.000",
+      "total": "370000.00"
+    }
+  ]
+}

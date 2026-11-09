@@ -45,8 +45,10 @@ def build_xlsx(start: date | None, end: date | None) -> bytes:
                 float(p.min_quantity),
             ]
         )
-    mv = Movement.objects.filter(is_cancelled=False).select_related(
-        "product", "created_by", "order"
+    mv = (
+        Movement.objects.filter(is_cancelled=False)
+        .select_related("product", "created_by")
+        .prefetch_related("allocations")
     )
     if start:
         mv = mv.filter(date__gte=start)
@@ -67,7 +69,7 @@ def build_xlsx(start: date | None, end: date | None) -> bytes:
             "Narx (so'm)",
             "Summa (so'm)",
             "Kimdan / kimga",
-            "Buyurtma",
+            "Mijozlar (ID)",
             "Izoh",
             "Kiritdi",
         ],
@@ -87,7 +89,11 @@ def build_xlsx(start: date | None, end: date | None) -> bytes:
                 float(m.unit_price),
                 float(m.total),
                 T(m.counterparty),
-                m.order.order_number if m.order else "",
+                T(
+                    "; ".join(
+                        f"{a.order_ref}×{a.quantity.normalize():f}" for a in m.allocations.all()
+                    )
+                ),
                 T(m.comment),
                 T(m.created_by.name or str(m.created_by.phone)) if m.created_by else "",
             ]

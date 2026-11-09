@@ -17,5 +17,10 @@ class ServiceConflict(ServiceError):
     The site API shows it as a 400 like any ServiceError; the bot API as a 409."""
 
 
+class ServiceNotFound(ServiceError):
+    """The record the request names is gone (e.g. deleted a moment ago). 400 on the
+    site, 404 in the bot API."""
+
+
 class ServiceForbidden(ServiceError):
     """The acting person's role does not allow this. 400 on the site, 403 in the bot API."""

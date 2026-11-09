@@ -102,10 +102,17 @@ def money_full(amount, cur: str, orig=None) -> str:
 
 
 # ------------------------------------------------------------------ operation cards
+WAREHOUSE_CAT = "_ombor"  # pseudo-category of the warehouse spending on an order
+
+
 def cat_label(cat, fallback_code: str | None = None) -> str:
     if isinstance(cat, dict):
+        if cat.get("code") == WAREHOUSE_CAT and not cat.get("name"):
+            return "📦 Furnitura (ombor)"
         return f"{cat.get('emoji', '')} {cat.get('name', '')}".strip()
     code = cat or fallback_code
+    if code == WAREHOUSE_CAT:
+        return "📦 Furnitura (ombor)"
     return f"📦 {code or '—'}"
 
 

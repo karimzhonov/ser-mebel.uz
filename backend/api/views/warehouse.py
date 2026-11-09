@@ -8,16 +8,17 @@ from decimal import Decimal
 from django.http import HttpResponse
 from rest_framework import mixins, serializers, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from oauth.models import User
 from warehouse import services as W
 from warehouse.excel import build_xlsx
-from warehouse.models import UNITS, Movement, Product, WarehouseConfig
+from warehouse.models import UNITS, Movement, Product, ProductPhoto, WarehouseConfig
 
-from ..permissions import ModelPermissions, is_staff
+from ..permissions import ModelPermissions, is_staff, require_perm
 from ..serializers.common import UserShortSerializer
 from ..utils import date_range, int_param
 
@@ -28,6 +29,8 @@ class ProductSerializer(serializers.ModelSerializer):
     avg_cost_usd = serializers.SerializerMethodField()
     value_usd = serializers.SerializerMethodField()
     low = serializers.SerializerMethodField()
+    photos = serializers.SerializerMethodField()
+    cover = serializers.SerializerMethodField()
 
     class Meta:
         model = Product
@@ -46,9 +49,29 @@ class ProductSerializer(serializers.ModelSerializer):
             "value_usd",
             "low",
             "is_active",
+            "photos",
+            "cover",
             "created_at",
         ]
         read_only_fields = ["quantity", "avg_cost", "created_at"]
+
+    @staticmethod
+    def _photo(ph):
+        return {
+            "id": ph.pk,
+            "url": ph.image.url,
+            "thumb": ph.thumb.url if ph.thumb else ph.image.url,
+            "position": ph.position,
+            "width": ph.width,
+            "height": ph.height,
+        }
+
+    def get_photos(self, obj):
+        return [self._photo(ph) for ph in obj.photos.all()]
+
+    def get_cover(self, obj):
+        photos = obj.photos.all()
+        return self._photo(photos[0]) if photos else None
 
     def get_value(self, obj):
         return round(float(obj.quantity * obj.avg_cost), 2)
@@ -75,10 +98,20 @@ class MovementSerializer(serializers.ModelSerializer):
     product_name = serializers.CharField(source="product.name", read_only=True)
     product_unit = serializers.CharField(source="product.get_unit_display", read_only=True)
     kind_label = serializers.CharField(source="get_kind_display", read_only=True)
-    order_number = serializers.IntegerField(
-        source="order.order_number", read_only=True, default=None
-    )
+    allocations = serializers.SerializerMethodField()
     created_by_detail = UserShortSerializer(source="created_by", read_only=True)
+
+    def get_allocations(self, obj):
+        return [
+            {
+                "ref": a.order_ref,
+                "client": a.client,
+                "quantity": a.quantity,
+                "total": a.total,
+                "order_id": a.order_id,
+            }
+            for a in obj.allocations.all()
+        ]
 
     class Meta:
         model = Movement
@@ -98,7 +131,7 @@ class MovementSerializer(serializers.ModelSerializer):
             "total",
             "date",
             "counterparty",
-            "order_number",
+            "allocations",
             "comment",
             "balance_after",
             "created_by_detail",
@@ -109,10 +142,16 @@ class MovementSerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+class AllocationInputSerializer(serializers.Serializer):
+    ref = serializers.CharField(max_length=32)
+    quantity = serializers.DecimalField(max_digits=14, decimal_places=3)
+
+
 class MovementInputSerializer(serializers.Serializer):
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.all())
     kind = serializers.ChoiceField(choices=["in", "out"])
-    quantity = serializers.DecimalField(max_digits=14, decimal_places=3)
+    quantity = serializers.DecimalField(max_digits=14, decimal_places=3, required=False)
+    allocations = AllocationInputSerializer(many=True, required=False, max_length=20)
     currency = serializers.ChoiceField(choices=["UZS", "USD"], default="UZS")
     unit_price = serializers.DecimalField(max_digits=16, decimal_places=2, required=False)
     orig_price = serializers.DecimalField(max_digits=16, decimal_places=2, required=False)
@@ -121,6 +160,8 @@ class MovementInputSerializer(serializers.Serializer):
     )
 
     def validate(self, attrs):
+        if attrs.get("quantity") is None and not attrs.get("allocations"):
+            raise serializers.ValidationError({"quantity": "Miqdorni kiriting."})
         if attrs.get("currency") == "USD" and attrs.get("orig_price") is None:
             raise serializers.ValidationError({"orig_price": "Dollar narxini kiriting."})
         if attrs.get("currency", "UZS") == "UZS" and attrs.get("unit_price") is None:
@@ -129,7 +170,6 @@ class MovementInputSerializer(serializers.Serializer):
 
     date = serializers.DateField(required=False)
     counterparty = serializers.CharField(required=False, allow_blank=True, max_length=255)
-    order_number = serializers.IntegerField(required=False, allow_null=True)
     comment = serializers.CharField(required=False, allow_blank=True)
 
 
@@ -141,7 +181,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
-        qs = Product.objects.all()
+        qs = Product.objects.prefetch_related("photos")
         p = self.request.query_params
         if p.get("active") in ("0", "1"):
             qs = qs.filter(is_active=p["active"] == "1")
@@ -170,6 +210,47 @@ class ProductViewSet(viewsets.ModelViewSet):
         W.delete_product(request.user, self.get_object())
         return Response(status=204)
 
+    def _photo_or_404(self, product, photo_id) -> ProductPhoto:
+        photo = product.photos.filter(pk=photo_id).first()
+        if photo is None:
+            raise NotFound("Rasm topilmadi.")
+        return photo
+
+    def _fresh(self, product):
+        # re-read with the photos so the answer shows the new order
+        return ProductSerializer(Product.objects.prefetch_related("photos").get(pk=product.pk)).data
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="photos",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def photos(self, request, pk=None):
+        require_perm(request.user, "warehouse.change_product")
+        product = self.get_object()
+        up = request.FILES.get("file")
+        if up is None:
+            raise ValidationError({"file": "Rasm faylini yuboring."})
+        if up.size > W.PHOTO_MAX_BYTES:
+            raise ValidationError({"file": "Rasm 10 MB dan katta bo'lmasin."})
+        W.add_product_photo(request.user, product, up.read())
+        return Response(self._fresh(product), status=201)
+
+    @action(detail=True, methods=["delete"], url_path=r"photos/(?P<photo_id>\d+)")
+    def photo(self, request, pk=None, photo_id=None):
+        require_perm(request.user, "warehouse.change_product")
+        product = self.get_object()
+        W.delete_product_photo(request.user, self._photo_or_404(product, photo_id))
+        return Response(self._fresh(product))
+
+    @action(detail=True, methods=["post"], url_path=r"photos/(?P<photo_id>\d+)/cover")
+    def photo_cover(self, request, pk=None, photo_id=None):
+        require_perm(request.user, "warehouse.change_product")
+        product = self.get_object()
+        W.set_product_cover(request.user, self._photo_or_404(product, photo_id))
+        return Response(self._fresh(product))
+
     @action(detail=False, methods=["get"])
     def categories(self, request):
         cats = (
@@ -189,11 +270,19 @@ class ProductViewSet(viewsets.ModelViewSet):
 class MovementViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
     permission_classes = [ModelPermissions]
     serializer_class = MovementSerializer
-    search_fields = ["product__name", "counterparty", "comment"]
+    search_fields = [
+        "product__name",
+        "counterparty",
+        "comment",
+        "allocations__order_ref",
+        "allocations__client",
+    ]
     ordering_fields = ["number", "date"]
 
     def get_queryset(self):
-        qs = Movement.objects.select_related("product", "order", "created_by")
+        qs = Movement.objects.select_related("product", "created_by").prefetch_related(
+            "allocations"
+        )
         p = self.request.query_params
         start, end = date_range(p)
         if start:
@@ -205,6 +294,10 @@ class MovementViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.G
         prod = int_param(p, "product")
         if prod:
             qs = qs.filter(product_id=prod)
+        if p.get("order"):
+            qs = qs.filter(
+                allocations__order_ref__iexact=p["order"].strip().lstrip("#№")
+            ).distinct()
         if self.action == "list" and p.get("cancelled") != "all":
             qs = qs.filter(is_cancelled=p.get("cancelled") == "1")
         return qs
@@ -217,14 +310,14 @@ class MovementViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.G
             request.user,
             product=d["product"],
             kind=d["kind"],
-            quantity=d["quantity"],
+            quantity=d.get("quantity"),
             unit_price=d.get("unit_price"),
             currency=d.get("currency", "UZS"),
             orig_price=d.get("orig_price"),
             rate=d.get("rate"),
             on_date=d.get("date"),
             counterparty=d.get("counterparty", ""),
-            order_number=d.get("order_number"),
+            allocations=[dict(a) for a in d.get("allocations") or []],
             comment=d.get("comment", ""),
         )
         return Response(MovementSerializer(m).data, status=201)
@@ -233,6 +326,16 @@ class MovementViewSet(mixins.ListModelMixin, mixins.CreateModelMixin, viewsets.G
     def cancel(self, request, pk=None):
         m = W.cancel_movement(request.user, self.get_object())
         return Response(MovementSerializer(m).data)
+
+
+class WarehouseOrderOptionsView(APIView):
+    """GET ?search= -> active orders / client IDs to give a chiqim to."""
+
+    permission_classes = [ModelPermissions]
+    queryset = Movement.objects.none()
+
+    def get(self, request):
+        return Response(W.order_choices(request.query_params.get("search", ""), 30))
 
 
 class WarehouseSummaryView(APIView):

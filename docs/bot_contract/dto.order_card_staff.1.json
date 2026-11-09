@@ -9,14 +9,21 @@
   "ready_days_left": null,
   "manual": null,
   "stats": {
-    "spent": "1250000.00",
+    "spent": "1620000.00",
     "collected": "0.00",
+    "warehouse": "370000.00",
     "cats": [
       {
         "code": "material",
         "name": "Material",
         "emoji": "🧱",
         "sum": "1250000.00"
+      },
+      {
+        "code": "_ombor",
+        "name": "Furnitura (ombor)",
+        "emoji": "📦",
+        "sum": "370000.00"
       }
     ],
     "last_ops": [

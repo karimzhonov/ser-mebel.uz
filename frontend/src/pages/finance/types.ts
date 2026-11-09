@@ -135,12 +135,14 @@ export interface FinOrder {
   rest: number | null;
   price_uzs: number;
   spent: number;
+  warehouse_spent?: number;
   collected: number;
   profit: number | null;
   spent_percent: number | null;
   end_date: string | null;
   ready_date: string | null;
-  by_category: { code: string; amount: number }[];
+  by_category: { code: string; amount: number; name?: string; emoji?: string }[];
+  warehouse?: { number: number; date: string; product: string; quantity: number; unit_label: string; total: number }[];
   operations?: Operation[];
   bonus?: Bonus | null;
 }

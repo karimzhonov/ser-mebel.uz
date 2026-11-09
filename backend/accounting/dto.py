@@ -11,7 +11,7 @@ from decimal import Decimal
 from constance import config
 
 from . import services as S
-from .constants import CAT_TRANSFER
+from .constants import CAT_TRANSFER, WAREHOUSE_CAT, WAREHOUSE_CAT_EMOJI, WAREHOUSE_CAT_NAME
 from .models import (
     ClientFeedback,
     FinanceCar,
@@ -119,6 +119,16 @@ def order_card_dto(info: S.OrderInfo, stats: dict, full: bool) -> dict:
     cats = []
     for code, v in sorted(stats["cats"].items(), key=lambda kv: -kv[1]):
         c = names.get(code)
+        if code == WAREHOUSE_CAT:
+            cats.append(
+                {
+                    "code": code,
+                    "name": WAREHOUSE_CAT_NAME,
+                    "emoji": WAREHOUSE_CAT_EMOJI,
+                    "sum": dec(v),
+                }
+            )
+            continue
         cats.append(
             {
                 "code": code,
@@ -152,6 +162,7 @@ def order_card_dto(info: S.OrderInfo, stats: dict, full: bool) -> dict:
         "stats": {
             "spent": dec(stats["spent"]),
             "collected": dec(stats["collected"]),
+            "warehouse": dec(stats.get("warehouse") or 0),
             "cats": cats,
             "last_ops": [operation_dto(t) for t in stats["rows"][-6:][::-1]],
         },

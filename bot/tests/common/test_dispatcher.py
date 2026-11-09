@@ -55,8 +55,23 @@ def env(monkeypatch):
     from bot.hr import group_router, private_router
     from bot.metering import router as metering
     from bot.offer import router as offer
+    from bot.warehouse import ex_keeper_router as wh_ex
+    from bot.warehouse import fallback_router as wh_fallback
+    from bot.warehouse import router as wh
 
-    for r in (group_router, link.router, start.router, metering, offer, crm, private_router, fin):
+    for r in (
+        group_router,
+        link.router,
+        start.router,
+        metering,
+        offer,
+        wh,
+        wh_ex,
+        crm,
+        private_router,
+        wh_fallback,
+        fin,
+    ):
         r._parent_router = None  # routers are module singletons: allow a fresh Dispatcher
     dp = botpkg.build_dispatcher()
     session = FakeSession()
@@ -156,7 +171,11 @@ async def test_stranger_start_gets_join_screen(env):
 
 async def test_blocked_start_is_silent(env):
     dp, bot, session, state, calls = env
-    state["who"]["finance_member"] = {**fx("dto.member.1"), "role": "blocked", "is_active_member": False}
+    state["who"]["finance_member"] = {
+        **fx("dto.member.1"),
+        "role": "blocked",
+        "is_active_member": False,
+    }
     await dp.feed_update(bot, msg_update("/start"))
     assert session.sent() == []
 

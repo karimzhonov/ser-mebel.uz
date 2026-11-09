@@ -4,6 +4,8 @@ Stock is the sum of movements (kirim − chiqim). Product.quantity and avg_cost 
 cache kept by warehouse/services.py under a row lock, so lists stay fast.
 """
 
+import uuid
+
 from django.conf import settings
 from django.db import models
 
@@ -116,6 +118,62 @@ class Movement(models.Model):
 
     def __str__(self):
         return f"#{self.number} {self.get_kind_display()} {self.product} {self.quantity}"
+
+
+class MovementAllocation(models.Model):
+    """A chiqim given to one client / order ID (Moliya ref: «406» or «SM-003»). The act
+    stays ONE Movement (quantity = sum of its lines); each line is counted as that
+    order's furnitura spending (total in so'm)."""
+
+    movement = models.ForeignKey(Movement, models.CASCADE, related_name="allocations")
+    order_ref = models.CharField(max_length=32, db_index=True)  # canonical OrderInfo.ref
+    order = models.ForeignKey(
+        "order.Order", models.SET_NULL, null=True, blank=True, related_name="+"
+    )  # site orders only
+    client = models.CharField(max_length=255, blank=True, default="")  # snapshot
+    quantity = models.DecimalField(max_digits=14, decimal_places=3)
+    total = models.DecimalField(max_digits=18, decimal_places=2)  # quantity x unit_price, so'm
+
+    class Meta:
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"#{self.movement_id} {self.order_ref} x{self.quantity}"
+
+
+def _photo_path(instance, filename: str) -> str:
+    return f"warehouse/products/{instance.product_id}/{uuid.uuid4().hex}.jpg"
+
+
+def _thumb_path(instance, filename: str) -> str:
+    return f"warehouse/products/{instance.product_id}/{uuid.uuid4().hex}_t.jpg"
+
+
+class ProductPhoto(models.Model):
+    """A product picture. Both files are re-encoded JPEGs made by services.py
+    (main <= 1600 px, thumb <= 400 px); position 0 is the cover."""
+
+    product = models.ForeignKey(Product, models.CASCADE, related_name="photos")
+    image = models.ImageField(upload_to=_photo_path, width_field="width", height_field="height")
+    thumb = models.ImageField(upload_to=_thumb_path, blank=True)
+    width = models.PositiveIntegerField(default=0)
+    height = models.PositiveIntegerField(default=0)
+    position = models.PositiveSmallIntegerField(default=0)
+    # Telegram file_id of the main picture: a cache so the bot need not re-upload it
+    tg_file_id = models.CharField(max_length=255, blank=True, default="")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.SET_NULL, null=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "id"]
+        indexes = [models.Index(fields=["product", "position"], name="wh_photo_prod_pos_idx")]
+        verbose_name = "Mahsulot rasmi"
+        verbose_name_plural = "Mahsulot rasmlari"
+
+    def __str__(self):
+        return f"{self.product_id} #{self.position}"
 
 
 class WarehouseConfig(models.Model):

@@ -2,7 +2,7 @@
 
 from django.urls import path
 
-from .views.bot import common, crm, finance, hr, metering, offer
+from .views.bot import common, crm, finance, hr, metering, offer, warehouse
 
 urlpatterns = [
     path("whoami/", common.WhoAmIView.as_view()),
@@ -107,4 +107,18 @@ urlpatterns = [
     # ---- Dizayn va narx (designer / pricer / manager)
     path("offers/<str:kind>/<int:pk>/due/", offer.OfferDueView.as_view()),
     path("offers/<str:kind>/<int:pk>/answer/", offer.OfferAnswerView.as_view()),
+    # ---- Ombor (warehouse keeper)
+    path("warehouse/meta/", warehouse.MetaView.as_view()),
+    path("warehouse/products/", warehouse.ProductsView.as_view()),
+    path("warehouse/products/<int:pk>/", warehouse.ProductView.as_view()),
+    path("warehouse/products/<int:pk>/photos/", warehouse.ProductPhotosView.as_view()),
+    path("warehouse/photos/<int:pk>/", warehouse.PhotoView.as_view()),
+    path("warehouse/photos/<int:pk>/cover/", warehouse.PhotoCoverView.as_view()),
+    path("warehouse/photos/<int:pk>/file/", warehouse.PhotoFileView.as_view()),
+    path("warehouse/photos/<int:pk>/tg-file/", warehouse.PhotoTgFileView.as_view()),
+    path("warehouse/movements/", warehouse.MovementsView.as_view()),
+    path("warehouse/movements/<int:number>/cancel/", warehouse.MovementCancelView.as_view()),
+    path("warehouse/orders/", warehouse.OrdersView.as_view()),
+    path("warehouse/orders/resolve/", warehouse.OrdersResolveView.as_view()),
+    path("warehouse/summary/", warehouse.SummaryView.as_view()),
 ]
