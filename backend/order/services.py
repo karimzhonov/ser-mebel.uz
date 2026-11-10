@@ -305,6 +305,11 @@ def create_order(*, count_days=None, author=None, **fields):
                 raise ServiceError("Dizayn mijoz tomonidan tasdiqlanmagan")
             if design_type is None or design_type.design_id != design.pk:
                 raise ServiceError("Shu o'lchov dizaynidan variant tanlang")
+        if not admin:
+            # owner's rule: the order is made only after the client agreed to the price
+            price = getattr(metering, "price", None)
+            if price is None or price.stage != OfferStage.approved:
+                raise ServiceError("Mijoz narxga rozi bo'lmagan — avval narx javobini yozing")
         fields.setdefault("client", metering.client)
 
     # location: this call's own, else the metering's (point, pasted link, address)

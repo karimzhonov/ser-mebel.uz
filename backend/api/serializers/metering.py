@@ -329,12 +329,19 @@ class DesignSerializer(OfferFieldsMixin, serializers.ModelSerializer):
         return {
             **_offer_actions(user, obj, "design"),
             "add_type": user.has_perm("design.add_designtype"),
-            # can_create_order(), minus its query: metering__order is select_related.
+            # can_create_order(), minus its query: metering__order / __price are
+            # select_related. Owner's rule: only once the client agreed to the price.
             "create_order": user.has_perm("order.add_order")
             and obj.stage == "approved"
+            and _price_approved(obj.metering)
             and obj.metering.client_result not in ("design_declined", "price_declined")
             and order_of(obj.metering) is None,
         }
+
+
+def _price_approved(metering) -> bool:
+    price = getattr(metering, "price", None) if metering is not None else None
+    return price is not None and price.stage == "approved"
 
 
 class DesignDetailSerializer(DesignSerializer):

@@ -577,6 +577,7 @@ class DesignViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
         qs = Design.objects.select_related(
             "metering__client",
             "metering__order",
+            "metering__price",
             "metering__manager",
             "metering__measurer",
             "user",
