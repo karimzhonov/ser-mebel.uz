@@ -40,13 +40,14 @@ def build_dispatcher() -> Dispatcher:
     from bot.finance import router as finance_router
     from bot.metering import router as metering_router
     from bot.offer import router as offer_router
+    from bot.rover import router as rover_router
     from bot.warehouse import ex_keeper_router as warehouse_ex
     from bot.warehouse import fallback_router as warehouse_fallback
     from bot.warehouse import router as warehouse_router
 
     # Order matters: HR groups, site link, /start, zamer buttons (own `mt:` callbacks and
     # `Meter*` states only), design / price buttons (own `of:` callbacks and `Offer*` states
-    # only), omborchi (own `wh:` callbacks, «📦 Ombor», `Wh*` states; keeper only), CRM (lead
+    # only), rover confirm button (own `rv:` callbacks only), omborchi (own `wh:` callbacks, «📦 Ombor», `Wh*` states; keeper only), CRM (lead
     # form, task buttons), HR private, the omborchi fallback (free-text search / stray photo;
     # AFTER HR so a keeper's HR answers are not stolen), then finance (the rest).
     d.include_router(hr.group_router)
@@ -54,6 +55,7 @@ def build_dispatcher() -> Dispatcher:
     d.include_router(start.router)
     d.include_router(metering_router)
     d.include_router(offer_router)
+    d.include_router(rover_router)
     d.include_router(warehouse_router)
     d.include_router(warehouse_ex)
     d.include_router(crm_router)

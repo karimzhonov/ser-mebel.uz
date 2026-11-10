@@ -191,6 +191,7 @@ def env(monkeypatch):
     from bot.hr import group_router, private_router
     from bot.metering import router as metering
     from bot.offer import router as offer
+    from bot.rover import router as rover
     from bot.warehouse import ex_keeper_router as wh_ex
     from bot.warehouse import fallback_router as wh_fallback
     from bot.warehouse import router as wh
@@ -201,6 +202,7 @@ def env(monkeypatch):
         start.router,
         metering,
         offer,
+        rover,
         wh,
         wh_ex,
         crm,

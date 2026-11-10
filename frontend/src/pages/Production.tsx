@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Plus } from "lucide-react";
 import { api } from "@/api/client";
@@ -9,6 +9,7 @@ import { AddressLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink, R
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
 import {
+  Badge,
   Button,
   Card,
   Check,
@@ -48,7 +49,7 @@ export default function ProductionPage() {
 function ProductionList({ kind }: { kind: Kind }) {
   const cfg = CONFIG[kind];
   const { can } = useAuth();
-  const { state, page, set } = useUrlState({ search: "", [cfg.doneField]: "false", date_from: "", date_to: "", user: "" } as Record<string, string>);
+  const { state, page, set } = useUrlState({ search: "", [cfg.doneField]: "false", date_from: "", date_to: "", user: "", state: "" } as Record<string, string>);
   const [searchParams, setSearchParams] = useSearchParams();
   const openId = searchParams.get("open");
   const { data, isFetching } = useList<ProductionItem>(cfg.resource, { ...state, page });
@@ -71,18 +72,26 @@ function ProductionList({ kind }: { kind: Kind }) {
           )
         }
       />
-      <div className="mb-4 grid grid-cols-3 gap-3">
+      <div className={`mb-4 grid gap-3 ${kind === "rover" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
         <StatTile label="Jami" value={stats?.total ?? "…"} tone="primary" />
         <StatTile label="Ishda" value={stats?.not_done ?? "…"} tone="warn" />
+        {kind === "rover" && <StatTile label="Tekshiruvda" value={stats?.checking ?? "…"} tone="warn" />}
         <StatTile label="Bajarildi" value={(kind === "assembly" ? stats?.installing_done : stats?.done) ?? "…"} tone="ok" />
       </div>
       <Card padded={false}>
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row dark:border-slate-800">
           <Segmented
-            value={state[cfg.doneField]}
-            onChange={(v) => set({ [cfg.doneField]: v })}
+            value={kind === "rover" && state.state ? state.state : state[cfg.doneField]}
+            onChange={(v) =>
+              kind === "rover"
+                ? v === "checking"
+                  ? set({ [cfg.doneField]: "", state: "checking" })
+                  : set({ [cfg.doneField]: v, state: "" })
+                : set({ [cfg.doneField]: v })
+            }
             options={[
               { value: "false", label: "Faol" },
+              ...(kind === "rover" ? [{ value: "checking", label: "Tekshiruvda" }] : []),
               { value: "true", label: "Bajarilgan" },
               { value: "", label: "Barchasi" },
             ]}
@@ -124,6 +133,8 @@ function ProductionList({ kind }: { kind: Kind }) {
               cell: (r) =>
                 kind === "assembly" ? (
                   <div className="flex gap-1"><Check ok={r.done} label="Yig'." /><Check ok={!!r.installing_done} label="O'rn." /></div>
+                ) : kind === "rover" && r.state === "checking" ? (
+                  <Badge tone="warn">Tekshiruvda</Badge>
                 ) : (
                   <Check ok={r.done} />
                 ),
@@ -133,7 +144,11 @@ function ProductionList({ kind }: { kind: Kind }) {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="font-semibold">№{r.order.order_number} · {r.order.client?.fio}</span>
-                <Check ok={kind === "assembly" ? !!r.installing_done : r.done} />
+                {kind === "rover" && r.state === "checking" ? (
+                  <Badge tone="warn">Tekshiruvda</Badge>
+                ) : (
+                  <Check ok={kind === "assembly" ? !!r.installing_done : r.done} />
+                )}
               </div>
               <div className="flex items-center justify-between text-sm">
                 <DeadlinePill deadline={r.order.deadline} />
@@ -176,11 +191,14 @@ function ProductionModal({
   onClose: () => void;
 }) {
   const cfg = CONFIG[kind];
+  const { can } = useAuth();
   const { data: item } = useGet<ProductionItem>(`/${cfg.resource}/${id}/`);
   const { data: painterTypes } = useAll<PainterType>("painter-types", {}, kind === "painter");
   const [squares, setSquares] = useState({ square: "", painter_square: "", rover_square: "" });
   const [confirm, setConfirm] = useState<null | string>(null);
   const [moveDue, setMoveDue] = useState(false);
+  const [amountOpen, setAmountOpen] = useState(false);
+  const [amount, setAmount] = useState<{ amount: number | string; currency: string }>({ amount: "", currency: "UZS" });
   useEffect(() => {
     if (item && kind === "detailing")
       setSquares({
@@ -200,6 +218,11 @@ function ProductionModal({
     invalidate: inv,
     onSuccess: () => setConfirm(null),
   });
+
+  const submit = useAction(
+    () => api.post(`/${cfg.resource}/${id}/done/`, { price: { amount: Number(amount.amount), currency: amount.currency } }),
+    { success: "Tekshiruvga yuborildi", invalidate: inv, onSuccess: () => setAmountOpen(false) },
+  );
 
   if (!item) return null;
   const o = item.order;
@@ -235,6 +258,17 @@ function ProductionModal({
               : []),
             ["Buyurtma", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Buyurtmani ochish →</Link>],
             ...(kind !== "detailing" ? ([["Maydon", num(item.square)], ["Narx", money(item.price)]] as [string, string][]) : []),
+            ...(kind === "rover"
+              ? ([
+                  ["Holat", item.state === "checking" ? <Badge tone="warn">Tekshiruvda</Badge> : item.state === "done" ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="idle">Ishda</Badge>],
+                  ...(item.submitted_at
+                    ? [["Bajardi", `${item.submitted_by_detail?.name || (item.submitted_by_detail ? phone(item.submitted_by_detail.phone) : "—")} · ${date(item.submitted_at)}`]]
+                    : []),
+                  ...(item.checked_at
+                    ? [["Tasdiqladi", `${item.checked_by_detail?.name || (item.checked_by_detail ? phone(item.checked_by_detail.phone) : "—")} · ${date(item.checked_at)}`]]
+                    : []),
+                ] as [string, ReactNode][])
+              : []),
           ]}
         />
 
@@ -295,8 +329,22 @@ function ProductionModal({
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
           {a.done && (
-            <Button variant="success" icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setConfirm("done")}>
+            <Button
+              variant="success"
+              icon={<CheckCircle2 className="h-4 w-4" />}
+              onClick={() => {
+                if (kind === "rover") {
+                  setAmount({ amount: "", currency: item.price?.currency ?? "UZS" });
+                  setAmountOpen(true);
+                } else setConfirm("done");
+              }}
+            >
               {kind === "assembly" ? "Yig'ish bajarildi" : kind === "detailing" ? "Detalirovka bajarildi" : "Bajarildi"}
+            </Button>
+          )}
+          {a.confirm && can("oauth.user_rover_checker") && (
+            <Button variant="success" onClick={() => setConfirm("confirm")}>
+              ✅ Tasdiqlash
             </Button>
           )}
           {a.installing_done && (
@@ -313,7 +361,9 @@ function ProductionModal({
         text={
           confirm === "installing-done"
             ? "Buyurtma «Tayyor» holatini oladi."
-            : kind === "detailing"
+            : confirm === "confirm"
+              ? "Rover ishi tasdiqlanadi, molyarga xabar boradi."
+              : kind === "detailing"
               ? "Buyurtma «Xomashyo buyurtmasi» bosqichiga o'tadi."
               : kind === "assembly"
                 ? "Buyurtma «O'rnatish» bosqichiga o'tadi."
@@ -323,6 +373,19 @@ function ProductionModal({
         loading={run.isPending}
         onConfirm={() => confirm && run.mutate(confirm)}
       />
+      <Modal open={amountOpen} onClose={() => setAmountOpen(false)} title="Bajarilgan ish summasi" size="sm">
+        <div className="space-y-4">
+          <Field label="Summa" hint="Summa tekshiruvchiga yuboriladi">
+            <MoneyInput value={amount} currencies={["UZS", "USD"]} onChange={setAmount} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setAmountOpen(false)}>Bekor qilish</Button>
+            <Button variant="success" loading={submit.isPending} disabled={!(Number(amount.amount) > 0)} onClick={() => submit.mutate()}>
+              Yuborish
+            </Button>
+          </div>
+        </div>
+      </Modal>
       {moveDue && <DetailingDueModal detailingId={item.id} dueAt={item.due_at} onClose={() => setMoveDue(false)} />}
     </Modal>
   );

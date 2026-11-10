@@ -6,7 +6,16 @@ from djmoney.models.fields import MoneyField
 from filer.models import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
+from django.conf import settings
 from oauth.models import User, ROVER_PERMISSION
+
+
+class RoverState(models.TextChoices):
+    """new -> (worker hands in) checking -> (checker confirms) done."""
+
+    NEW = "new", "Ishda"
+    CHECKING = "checking", "Tekshiruvda"
+    DONE = "done", "Bajarildi"
 
 
 class Rover(models.Model):
@@ -20,10 +29,31 @@ class Rover(models.Model):
     square = models.FloatField(verbose_name="Площадь")
     price = MoneyField(max_digits=12, blank=True, null=True, verbose_name="Нарх")
 
+    submitted_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Tekshiruvga yuborilgan"
+    )
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    checked_at = models.DateTimeField(null=True, blank=True, verbose_name="Tasdiqlangan")
+    checked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
     history = HistoricalRecords()
 
     def __str__(self):
         return str(self.order)
+
+    @property
+    def state(self) -> str:
+        if self.done:
+            return RoverState.DONE
+        return RoverState.CHECKING if self.submitted_at else RoverState.NEW
+
+    @property
+    def state_label(self) -> str:
+        return RoverState(self.state).label
 
     class Meta:
         verbose_name = "Ровер"

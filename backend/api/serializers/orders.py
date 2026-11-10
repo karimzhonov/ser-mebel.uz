@@ -151,7 +151,9 @@ class OrderDetailSerializer(OrderSerializer):
                 else None
             ),
             "rover": _production_row(
-                rover, price=money(rover.price) if rover and show_price else None
+                rover,
+                state=rover.state if rover else None,
+                price=money(rover.price) if rover and show_price else None,
             ),
             "painter": _production_row(
                 painter,
@@ -330,16 +332,42 @@ class DetailingDueSerializer(serializers.Serializer):
 class RoverSerializer(serializers.ModelSerializer):
     order = ProductionOrderSerializer(read_only=True)
     price = MoneyField(read_only=True)
+    state = serializers.CharField(read_only=True)
+    state_label = serializers.CharField(read_only=True)
+    submitted_by_detail = UserShortSerializer(source="submitted_by", read_only=True)
+    checked_by_detail = UserShortSerializer(source="checked_by", read_only=True)
     actions = serializers.SerializerMethodField()
 
     class Meta:
         model = Rover
-        fields = ["id", "order", "created_at", "done", "square", "price", "folder", "actions"]
+        fields = [
+            "id",
+            "order",
+            "created_at",
+            "done",
+            "state",
+            "state_label",
+            "submitted_at",
+            "submitted_by_detail",
+            "checked_at",
+            "checked_by_detail",
+            "square",
+            "price",
+            "folder",
+            "actions",
+        ]
         read_only_fields = fields
 
     def get_actions(self, obj):
         user = self.context["request"].user
-        return {"done": user.has_perm("rover.change_rover") and not obj.done}
+        return {
+            "done": user.has_perm("rover.change_rover") and obj.state == "new",
+            "confirm": user.has_perm("oauth.user_rover_checker") and obj.state == "checking",
+        }
+
+
+class RoverDoneSerializer(serializers.Serializer):
+    price = MoneyField()
 
 
 class PainterTypeSerializer(serializers.ModelSerializer):

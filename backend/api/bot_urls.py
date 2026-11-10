@@ -2,11 +2,12 @@
 
 from django.urls import path
 
-from .views.bot import common, crm, finance, hr, metering, offer, warehouse
+from .views.bot import common, crm, finance, hr, metering, offer, rover, warehouse
 
 urlpatterns = [
     path("whoami/", common.WhoAmIView.as_view()),
     path("link/", common.LinkView.as_view()),
+    path("rovers/<int:pk>/confirm/", rover.RoverConfirmView.as_view()),
     # ---- finance: reads
     path("finance/config/", finance.ConfigView.as_view()),
     path("finance/config/usd-rate/", finance.UsdRateView.as_view()),

@@ -194,6 +194,14 @@ SECTIONS: tuple[Section, ...] = (
         hint="Rover vazifalari va Telegram xabarlari",
     ),
     Section(
+        "flag_rover_checker",
+        "Buyurtmalar",
+        "Rover tekshiruvchi",
+        (),
+        edit=False,
+        hint="Rover ishini tasdiqlaydi (Telegram tugmasi ham). «Rover» bo'limida kamida «Ko'rish» ham kerak",
+    ),
+    Section(
         "flag_painter",
         "Buyurtmalar",
         "Molyar (ijrochi)",
@@ -283,6 +291,7 @@ _SINGLE = {
     "flag_call_center": "oauth.user_call_center",
     "flag_detailing": "oauth.user_detailing",
     "flag_rover": "oauth.user_rover",
+    "flag_rover_checker": "oauth.user_rover_checker",
     "flag_painter": "oauth.user_painter",
     "flag_assembly": "oauth.user_assembly",
     "metering_booker": "metering.add_metering",

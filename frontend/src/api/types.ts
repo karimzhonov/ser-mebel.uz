@@ -653,6 +653,8 @@ export interface ProductionRow {
   square: number;
   folder: number | null;
   price?: Money | null;
+  /** rover only: new | checking | done */
+  state?: "new" | "checking" | "done" | null;
 }
 
 export interface OrderDetail extends Order {
@@ -708,6 +710,13 @@ export interface ProductionItem {
   square: number;
   folder: number | null;
   price?: Money | null;
+  // rover
+  state?: "new" | "checking" | "done";
+  state_label?: string;
+  submitted_at?: string | null;
+  submitted_by_detail?: UserShort | null;
+  checked_at?: string | null;
+  checked_by_detail?: UserShort | null;
   // detailing
   working_done?: boolean;
   painter_square?: number;

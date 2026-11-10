@@ -84,6 +84,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             (DESIGN_PERMISSION, 'Design'),
             (DETAILING_PERMISSION, 'Detailing'),
             (ROVER_PERMISSION, 'Rover'),
+            (ROVER_CHECKER_PERMISSION, 'Rover tekshiruvchi'),
             (PAINTER_PERMISSION, 'Painter'),
             (ASSEMBLY_PERMISSION, 'Assembly'),
         ]

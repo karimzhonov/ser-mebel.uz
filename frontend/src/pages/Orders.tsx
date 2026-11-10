@@ -40,6 +40,7 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { LocationEditModal, LocationField } from "@/components/LocationField";
 import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
 import {
+  Badge,
   Button,
   Card,
   Check,
@@ -407,6 +408,9 @@ export function OrderDetailPage() {
             rows={p.rover && [
               ["Maydon", num(p.rover.square)],
               ...(p.rover.price ? ([["Narx", money(p.rover.price)]] as [string, string][]) : []),
+              ...(p.rover.state === "checking"
+                ? ([["Holat", <Badge tone="warn">Tekshiruvda</Badge>]] as [string, JSX.Element][])
+                : []),
               ["Bajarildi", <Check ok={p.rover.done} />],
             ]}
           />

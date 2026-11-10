@@ -1,0 +1,34 @@
+{
+  "id": "00000000-0000-0000-0000-000000007001",
+  "event": "rover.check",
+  "data": {
+    "rover": {
+      "id": 15,
+      "order": {
+        "id": 88,
+        "number": 1042
+      },
+      "client": {
+        "fio": "Ali Valiyev",
+        "phone": "+998901112244"
+      },
+      "square": 6.5,
+      "amount": "150000.00",
+      "currency": "UZS",
+      "state": "checking",
+      "state_label": "Tekshiruvda",
+      "submitted_at": "2026-11-05T14:20:00",
+      "submitted_by": {
+        "id": 9,
+        "name": "Rover ustasi"
+      },
+      "checked_at": null,
+      "checked_by": null,
+      "url": "https://ser-mebel.uz/production/rover?open=15"
+    },
+    "to": [
+      111222333,
+      444555666
+    ]
+  }
+}

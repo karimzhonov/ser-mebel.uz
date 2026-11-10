@@ -27,7 +27,7 @@ from order.models import Factory, Order
 from order.painter.models import Painter, PainterType
 from order.painter.services import assign_painter_type, mark_painter_done, ready_for_painter
 from order.rover.models import Rover
-from order.rover.services import mark_rover_done
+from order.rover.services import confirm_rover, submit_rover
 from order.services import (
     advance_order_status,
     create_order,
@@ -50,6 +50,7 @@ from ..serializers.orders import (
     OrderUpdateSerializer,
     PainterSerializer,
     PainterTypeSerializer,
+    RoverDoneSerializer,
     RoverSerializer,
 )
 from ..utils import apply_period, csv_values, int_param, timeseries, warning_filter
@@ -365,12 +366,44 @@ class RoverViewSet(_ProductionViewSet):
     http_method_names = ["get", "post", "head", "options"]
 
     def get_queryset(self):
-        return self.filter_common(Rover.objects.select_related("order__client"))
+        qs = Rover.objects.select_related("order__client", "submitted_by", "checked_by")
+        qs = self.filter_common(qs)
+        state = self.request.query_params.get("state")
+        if state == "new":
+            qs = qs.filter(done=False, submitted_at__isnull=True)
+        elif state == "checking":
+            qs = qs.filter(done=False, submitted_at__isnull=False)
+        elif state == "done":
+            qs = qs.filter(done=True)
+        return qs
+
+    @action(detail=False, methods=["get"])
+    def stats(self, request):
+        qs = self.filter_queryset(self.get_queryset())
+        return Response(
+            {
+                "total": qs.count(),
+                "done": qs.filter(done=True).count(),
+                "not_done": qs.filter(done=False, submitted_at__isnull=True).count(),
+                "checking": qs.filter(done=False, submitted_at__isnull=False).count(),
+            }
+        )
 
     @action(detail=True, methods=["post"])
     def done(self, request, pk=None):
+        """The worker's «Bajarildi»: {price: {amount, currency}} - the actual amount;
+        the job then waits for a checker."""
         require_perm(request.user, "rover.change_rover")
-        return self._respond(mark_rover_done(self.get_object()))
+        body = RoverDoneSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            submit_rover(self.get_object(), by=request.user, price=body.validated_data["price"])
+        )
+
+    @action(detail=True, methods=["post"])
+    def confirm(self, request, pk=None):
+        require_perm(request.user, "oauth.user_rover_checker")
+        return self._respond(confirm_rover(self.get_object(), by=request.user))
 
 
 class PainterTypeViewSet(viewsets.ModelViewSet):

@@ -23,6 +23,20 @@ def rover_and_painter(order_factory):
     return rover, painter, PainterType
 
 
+def _finish_rover(admin_api, rover):
+    """The worker hands the job in with the amount, a checker confirms it."""
+    r = admin_api.post(
+        f"/api/v1/rovers/{rover.pk}/done/",
+        {"price": {"amount": "150000", "currency": "UZS"}},
+        format="json",
+    )
+    assert r.status_code == 200, r.data
+    assert r.data["state"] == "checking"
+    r = admin_api.post(f"/api/v1/rovers/{rover.pk}/confirm/")
+    assert r.status_code == 200, r.data
+    assert r.data["state"] == "done"
+
+
 def test_painter_waits_for_rover(admin_api, rover_and_painter):
     rover, painter, _ = rover_and_painter
     assert admin_api.get("/api/v1/painters/").data["count"] == 0
@@ -31,7 +45,7 @@ def test_painter_waits_for_rover(admin_api, rover_and_painter):
     stages = {s["key"]: s["count"] for s in overview["production"]["stages"]}
     assert stages["rover"] == 1 and stages["painter"] == 0
 
-    admin_api.post(f"/api/v1/rovers/{rover.pk}/done/")
+    _finish_rover(admin_api, rover)
     assert admin_api.get("/api/v1/painters/").data["count"] == 1
 
 
@@ -87,14 +101,26 @@ def test_unfiled_file_deletable_by_admin(admin_api, tmp_path, settings):
     assert admin_api.delete(f"/api/v1/files/{f.pk}/").status_code == 204
 
 
-def test_rover_done_notifies_painting_ready(admin_api, rover_and_painter, monkeypatch):
+def test_rover_done_notifies_painting_ready(
+    admin_api, rover_and_painter, monkeypatch, django_capture_on_commit_callbacks
+):
+    from order.rover import tasks
+
     calls = []
     monkeypatch.setattr(
         "oauth.models.User.send_messages", classmethod(lambda cls, *a, **k: calls.append((a, k)))
     )
+    monkeypatch.setattr(
+        tasks.notify_painting_ready_task,
+        "delay",
+        lambda rid: tasks.notify_painting_ready_task.apply(args=(rid,)),
+    )
     rover, painter, _ = rover_and_painter
-    admin_api.post(f"/api/v1/rovers/{rover.pk}/done/")
-    assert calls and calls[0][0][0] == "assembly.manager"
+    with django_capture_on_commit_callbacks(execute=True):
+        _finish_rover(admin_api, rover)
+    assert len(calls) == 1 and calls[0][0][0] == "assembly.manager"
+    assert tasks.notify_painting_ready_task(rover.pk) is False  # second run is a no-op
+    assert len(calls) == 1
 
 
 # --- assembly list starts after detailing ------------------------------------------
