@@ -626,7 +626,12 @@ def cancel_metering(metering, *, by, reason):
         _bump(metering, locked, ["status", "cancel_reason", "cancelled_at", "rev"])
         if locked.invoice_id is not None:
             returned = return_lead_from_metering(
-                locked.invoice, by=by, reason=reason, metering_id=locked.pk
+                locked.invoice,
+                by=by,
+                reason=reason,
+                metering_id=locked.pk,
+                booked_by=locked.created_by,
+                measurer=locked.measurer,
             )
         events.metering_changed(locked, how="cancelled", by=by, to_users=[locked.measurer])
     return metering, returned

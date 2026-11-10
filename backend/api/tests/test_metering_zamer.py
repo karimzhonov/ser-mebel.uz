@@ -226,6 +226,44 @@ def test_cancel_falls_back_when_the_owner_is_inactive(operator, ali, make_staff)
     assert returned
     task = InvoiceTask.objects.get(invoice=m.invoice)
     assert task.assigned_to_id != operator.pk
+    # never the measurer who cancelled it: the call-back is the call-centre's job
+    assert task.assigned_to_id != ali.pk
+
+
+def test_cancel_task_goes_to_the_operator_who_booked_the_zamer(operator, ali, make_staff):
+    owner = make_staff(*OPERATOR_PERMS, name="Owner")
+    m = book(operator, ali)
+    type(m.invoice).objects.filter(pk=m.invoice_id).update(assigned_to=owner, created_by=owner)
+    type(owner).objects.filter(pk=owner.pk).update(is_active=False)
+    m, _ = M.cancel_metering(m, by=ali, reason="uzr bor")
+    assert InvoiceTask.objects.get(invoice=m.invoice).assigned_to_id == operator.pk
+
+
+def test_cancel_by_the_measurer_never_reminds_the_measurer(operator, ali, make_staff, bot_events):
+    """A measurer who may also take leads (change_invoice) is still not given the call."""
+    ali.user_permissions.add(
+        Permission.objects.get(content_type__app_label="call_center", codename="change_invoice")
+    )
+    head = make_staff(
+        *OPERATOR_PERMS, "call_center.manage_invoice", name="Rahbar", telegram_id=4009
+    )
+    m = book(operator, ali)
+    type(operator).objects.filter(pk=operator.pk).update(is_active=False)
+    m, returned = M.cancel_metering(m, by=ali, reason="uzr bor")
+    assert returned
+    assert InvoiceTask.objects.get(invoice=m.invoice).assigned_to_id == head.pk
+    bot_events.clear()
+    CC.due_task_reminders(NOW)
+    assert all(7001 not in e["to"] for e in bot_events.of("crm.task_due"))
+
+
+def test_cancel_with_no_operator_left_makes_no_task(operator, ali):
+    m = book(operator, ali)
+    type(operator).objects.filter(pk=operator.pk).update(is_active=False)
+    m, returned = M.cancel_metering(m, by=ali, reason="uzr bor")
+    m.invoice.refresh_from_db()
+    assert returned and m.invoice.solution == SolutionChoice.re_phone  # back on the board
+    assert not InvoiceTask.objects.filter(invoice=m.invoice).exists()
 
 
 def test_cancel_does_not_return_a_lead_that_moved_on(operator, ali):
