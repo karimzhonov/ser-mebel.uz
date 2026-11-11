@@ -56,8 +56,11 @@ async def test_task_card_and_store():
     await dispatch(envelope("rover.task", rover=new_task(), to=[111]), bot)
     args, kw = bot.send_message.call_args.args, bot.send_message.call_args.kwargs
     text = args[1]
-    assert "Yangi Rover ishi" in text and "Karim Aliyev" in text and "+998901234567" in text
-    assert "Chilonzor 7 &amp; 12" in text and '<a href="https://yandex.com/maps' in text
+    assert "Yangi Rover ishi" in text and "Mijoz ID: 406" in text
+    assert '<a href="https://ser-mebel.uz/files/57">Dizayn papkasi</a>' in text
+    # the worker card carries no client name, phone, address or map (owner)
+    for hidden in ("Karim Aliyev", "+998901234567", "Chilonzor", "yandex.com", "xarita"):
+        assert hidden not in text
     assert "3.5 m²" in text and "Muddat: 15.11.2026" in text
     assert "Summa" not in text
     assert buttons(kw["reply_markup"]) == [
@@ -401,3 +404,9 @@ async def test_late_check_does_not_overwrite_done_card():
     bot.edit_message_text.reset_mock()
     await dispatch(envelope("rover.check", 4, rover=task(rev=2), to=[222], workers=[111]), bot)
     assert bot.edit_message_text.call_count == 0
+
+
+async def test_task_card_without_design_folder():
+    bot = fake_bot(702)
+    await dispatch(envelope("rover.task", rover=new_task(design_folder_url=None), to=[111]), bot)
+    assert "Dizayn papkasi: yo'q" in bot.send_message.call_args.args[1]

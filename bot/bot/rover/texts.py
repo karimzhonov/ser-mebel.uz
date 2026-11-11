@@ -100,8 +100,22 @@ def _info(t: dict) -> list[str]:
     return lines
 
 
+def _worker_info(t: dict) -> list[str]:
+    """The rover worker sees only what the job needs (owner): client ID (= order number),
+    the design folder, the area; no client name, phone or map."""
+    order = t.get("order") or {}
+    lines = [f"🆔 Mijoz ID: {esc(order.get('number'))}"]
+    folder = t.get("design_folder_url")
+    if folder:
+        lines.append(f'📁 <a href="{html.escape(str(folder), quote=True)}">Dizayn papkasi</a>')
+    else:
+        lines.append("📁 Dizayn papkasi: yo'q")
+    lines.append(f"📐 Maydon: {esc(t.get('square'))} m²")
+    return lines
+
+
 def task_card(t: dict) -> str:
-    lines = [TASK_HEADER, ""] + _info(t) + [due_text(t)]
+    lines = [TASK_HEADER, ""] + _worker_info(t) + [due_text(t)]
     state = t.get("state")
     if state in ("checking", "done"):
         cur = t.get("currency") or "UZS"

@@ -13,6 +13,27 @@ def rover_url(rover_id) -> str:
     return f"{base}/production/rover?open={rover_id}"
 
 
+def design_folder_url(order) -> str | None:
+    """Panel link to the order's «Дизайн» folder (made under the metering folder), else the
+    order folder; None when there is neither."""
+    from django.conf import settings
+    from filer.models import Folder
+
+    folder_id = None
+    metering = getattr(order, "metering", None)
+    if metering is not None and metering.folder_id:
+        folder_id = (
+            Folder.objects.filter(parent_id=metering.folder_id, name="Дизайн")
+            .values_list("pk", flat=True)
+            .first()
+        )
+    folder_id = folder_id or order.folder_id
+    if not folder_id:
+        return None
+    base = (getattr(settings, "ADMIN_BASE_URL", "") or "https://ser-mebel.uz").rstrip("/")
+    return f"{base}/files/{folder_id}"
+
+
 def rover_task(r) -> dict:
     order = r.order
     client = order.client
@@ -43,4 +64,5 @@ def rover_task(r) -> dict:
         "note": r.note,
         "rev": r.rev,
         "url": rover_url(r.pk),
+        "design_folder_url": design_folder_url(order),
     }

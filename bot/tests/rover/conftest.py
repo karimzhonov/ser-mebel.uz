@@ -28,6 +28,7 @@ TASK = {
     "checked_at": None,
     "checked_by": None,
     "url": URL,
+    "design_folder_url": "https://ser-mebel.uz/files/57",
     "address": "Chilonzor 7 & 12",
     "map_url": "https://yandex.com/maps/?pt=69.24,41.29",
     "due_date": "2026-11-15",

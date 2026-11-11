@@ -481,3 +481,30 @@ def test_new_fixtures_match_real_payloads(
         assert set(load_fixture(name)["rover"]) == set(fx)
     assert set(load_fixture("misc.rover_submit_request.json")) == {"amount", "note"}
     assert load_fixture("misc.rover_due_request.json") == {"days": 5}
+
+
+# --- worker card: design folder link ---------------------------------------------
+
+
+def test_design_folder_url_points_to_the_design_folder(settings):
+    from types import SimpleNamespace
+
+    from filer.models import Folder
+
+    from order.rover.dto import design_folder_url
+
+    settings.ADMIN_BASE_URL = "https://test.ser-mebel.uz"
+    root = Folder.objects.create(name="Замеры")
+    design = Folder.objects.create(name="Дизайн", parent=root)
+    order_folder = Folder.objects.create(name="Заказ")
+    order = SimpleNamespace(metering=SimpleNamespace(folder_id=root.pk), folder_id=order_folder.pk)
+    assert design_folder_url(order) == f"https://test.ser-mebel.uz/files/{design.pk}"
+    # no «Дизайн» folder → the order folder; nothing → None
+    order.metering = SimpleNamespace(folder_id=None)
+    assert design_folder_url(order) == f"https://test.ser-mebel.uz/files/{order_folder.pk}"
+    order.folder_id = None
+    assert design_folder_url(order) is None
+
+
+def test_rover_task_has_design_folder_key(rover):
+    assert "design_folder_url" in rover_task(rover)
