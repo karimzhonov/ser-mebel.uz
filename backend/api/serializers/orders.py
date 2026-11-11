@@ -448,6 +448,7 @@ class PainterTypeSerializer(serializers.ModelSerializer):
 
 class PainterSerializer(serializers.ModelSerializer):
     order = ProductionOrderSerializer(read_only=True)
+    design_folder = serializers.SerializerMethodField()
     price = MoneyField(read_only=True)
     type_detail = serializers.SerializerMethodField()
     painter_detail = serializers.SerializerMethodField()
@@ -482,6 +483,7 @@ class PainterSerializer(serializers.ModelSerializer):
             "due_set_by_detail",
             "overdue",
             "folder",
+            "design_folder",
             "actions",
         ]
         read_only_fields = [
@@ -498,8 +500,19 @@ class PainterSerializer(serializers.ModelSerializer):
             "folder",
         ]
 
+    def get_design_folder(self, obj):
+        restricted = not sees_full_order(self.context["request"].user)
+        if hasattr(obj, "design_folder_pk"):  # annotated by PainterViewSet (no query per row)
+            return obj.design_folder_pk or (None if restricted else obj.order.folder_id)
+        return design_folder_id(obj.order, fallback=not restricted)
+
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        if not sees_full_order(self.context["request"].user):
+            # a painter sees the design folder only (never the stage / order folders)
+            data["folder"] = None
+            if data["order"]:
+                data["order"]["folder"] = None
         restricted = bool(
             instance.type
             and instance.type.outsource

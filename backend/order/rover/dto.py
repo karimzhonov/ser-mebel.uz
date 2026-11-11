@@ -18,15 +18,24 @@ def design_folder_id(order, fallback: bool = True) -> int | None:
     order folder when there is none; None when there is nothing."""
     from filer.models import Folder
 
-    folder_id = None
+    # After the order is created the metering folder's children move under the order
+    # folder, so look there first, then under the metering folder.
+    parents = [order.folder_id]
     metering = getattr(order, "metering", None)
-    if metering is not None and metering.folder_id:
+    if metering is not None:
+        parents.append(metering.folder_id)
+    folder_id = None
+    for parent_id in parents:
+        if not parent_id:
+            continue
         folder_id = (
-            Folder.objects.filter(parent_id=metering.folder_id, name="Дизайн")
+            Folder.objects.filter(parent_id=parent_id, name="Дизайн")
             .order_by("pk")
             .values_list("pk", flat=True)
             .first()
         )
+        if folder_id:
+            break
     return folder_id or (order.folder_id if fallback else None)
 
 

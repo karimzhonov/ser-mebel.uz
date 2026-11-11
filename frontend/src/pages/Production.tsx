@@ -314,7 +314,9 @@ function ProductionModal({
         <div className="flex flex-wrap gap-2">
           <OrderStatusBadge status={o.status} label={o.status_label} />
           {kind !== "rover" && o.deadline && <DeadlinePill deadline={o.deadline} />}
-          {kind === "rover" && <FolderButton folderId={item.design_folder} label="Dizayn papkasi" />}
+          {(kind === "rover" || (kind === "painter" && !item.folder)) && (
+            <FolderButton folderId={item.design_folder} label="Dizayn papkasi" />
+          )}
           <FolderButton folderId={item.folder} label="Bosqich fayllari" />
           <FolderButton folderId={o.folder} label="Buyurtma fayllari" />
         </div>

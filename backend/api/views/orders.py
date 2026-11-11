@@ -315,6 +315,22 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
 
 
+def _design_folder_subquery():
+    """The order's «Дизайн» folder: under the order folder (after the order is made), else
+    under the metering folder."""
+    from django.db.models.functions import Coalesce
+    from filer.models import Folder
+
+    def under(field):
+        return Subquery(
+            Folder.objects.filter(parent_id=OuterRef(field), name="Дизайн")
+            .order_by("pk")
+            .values("pk")[:1]
+        )
+
+    return Coalesce(under("order__folder_id"), under("order__metering__folder_id"))
+
+
 class _NoPhoneSearchFilter(SearchFilter):
     """Restricted viewers (see `order.visibility`) must not find a job by the client's phone."""
 
@@ -405,16 +421,10 @@ class RoverViewSet(_ProductionViewSet):
         return Response(RoverSerializer(obj, context=self.get_serializer_context()).data)
 
     def get_queryset(self):
-        from filer.models import Folder
-
-        design = (
-            Folder.objects.filter(parent_id=OuterRef("order__metering__folder_id"), name="Дизайн")
-            .order_by("pk")
-            .values("pk")[:1]
-        )
+        design = _design_folder_subquery()
         qs = Rover.objects.select_related(
             "order__client", "order__metering", "submitted_by", "checked_by", "due_set_by"
-        ).annotate(design_folder_pk=Subquery(design))
+        ).annotate(design_folder_pk=design)
         qs = self.filter_common(qs)
         if _bool_param(self.request.query_params.get("overdue")):
             qs = qs.filter(done=False, submitted_at__isnull=True, due_date__lt=accounting_today())
@@ -493,8 +503,11 @@ class PainterViewSet(_ProductionViewSet):
 
     def get_queryset(self):
         # Only orders whose rover is finished (or that have none): painting comes after milling.
+        design = _design_folder_subquery()
         qs = ready_for_painter(
-            Painter.objects.select_related("order__client", "type__user", "done_by", "due_set_by")
+            Painter.objects.select_related(
+                "order__client", "order__metering", "type__user", "done_by", "due_set_by"
+            ).annotate(design_folder_pk=design)
         )
         # Managers and production heads see every job; a painter only their own (by type).
         user = self.request.user

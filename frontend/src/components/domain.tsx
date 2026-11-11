@@ -403,6 +403,12 @@ export function FolderBrowser({
 
   if (isLoading || !data) return <div className="py-10 text-center"><Spinner /></div>;
 
+  // Rover / Molyar workers get a read-only, trimmed view (breadcrumbs start at «Дизайн»)
+  const readOnly = !!data.read_only || data.can_write === false;
+  const canAddFolder = !readOnly && can("filer.add_folder");
+  const canAddFile = !readOnly && can("filer.add_file");
+  const canDeleteFile = !readOnly && can("filer.delete_file");
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -423,12 +429,12 @@ export function FolderBrowser({
           ))}
         </nav>
         <div className="flex gap-2">
-          {can("filer.add_folder") && (
+          {canAddFolder && (
             <Button size="sm" variant="outline" icon={<FolderPlus className="h-4 w-4" />} onClick={() => setNewFolder("")}>
               Papka
             </Button>
           )}
-          {can("filer.add_file") && (
+          {canAddFile && (
             <>
               <input ref={inputRef} type="file" multiple hidden onChange={(e) => upload(e.target.files)} />
               <Button size="sm" icon={<Upload className="h-4 w-4" />} loading={uploading} onClick={() => inputRef.current?.click()}>
@@ -452,7 +458,7 @@ export function FolderBrowser({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          if (can("filer.add_file")) upload(e.dataTransfer.files);
+          if (canAddFile) upload(e.dataTransfer.files);
         }}
       >
         {data.folders.map((f) => (
@@ -513,7 +519,7 @@ export function FolderBrowser({
                   <Download className="h-3.5 w-3.5" />
                 </IconButton>
               )}
-              {can("filer.delete_file") && (
+              {canDeleteFile && (
                 <IconButton
                   label="O'chirish"
                   className="h-7 w-7 opacity-0 group-hover:opacity-100"
@@ -536,10 +542,10 @@ export function FolderBrowser({
         ))}
       </div>
       {!data.folders.length && !data.files.length && (
-        <Empty title="Papka bo'sh" text={can("filer.add_file") ? "Fayllarni shu yerga tashlang yoki «Yuklash» tugmasini bosing." : undefined} />
+        <Empty title="Papka bo'sh" text={canAddFile ? "Fayllarni shu yerga tashlang yoki «Yuklash» tugmasini bosing." : undefined} />
       )}
 
-      <FolderChat folderId={data.id} />
+      {!readOnly && <FolderChat folderId={data.id} />}
 
       {pdf && (
         <Suspense fallback={<div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/90"><Spinner className="h-8 w-8 text-white" /></div>}>

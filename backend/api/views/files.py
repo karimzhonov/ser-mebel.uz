@@ -12,11 +12,13 @@ from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from filer.models import File, Folder, Image
 from rest_framework import serializers, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from discussion.models import DiscussionMessage
+from order.visibility import design_folder_access
 
 from ..permissions import require_perm
 from ..serializers.common import UserShortSerializer
@@ -282,13 +284,27 @@ def _file_row(file):
     }
 
 
-def _breadcrumbs(folder):
+def _breadcrumbs(folder, stop_at=None):
     chain = []
     node = folder
     while node is not None and len(chain) < 20:
         chain.append({"id": node.pk, "name": node.name})
+        if stop_at is not None and node.pk == stop_at.pk:
+            break
         node = node.parent
     return list(reversed(chain))
+
+
+def _read_scope(user, folder):
+    """None = normal access (filer.view_folder); otherwise the design folder that is the
+    top of what this user may read (Rover/Molyar workers, see order.visibility). Raises 403
+    when neither applies."""
+    if user.has_perm("filer.view_folder"):
+        return None
+    root = design_folder_access(user, folder)
+    if root is None:
+        raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+    return root
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -336,16 +352,19 @@ class FolderView(APIView):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get(self, request, folder_id):
-        require_perm(request.user, "filer.view_folder")
         folder = get_object_or_404(Folder, pk=folder_id)
+        root = _read_scope(request.user, folder)
         children = folder.children.annotate(n_files=Count("all_files")).order_by("name")
         files = File.objects.filter(folder=folder).select_related("owner").order_by("-uploaded_at")
         return Response(
             {
                 "id": folder.pk,
                 "name": folder.name,
-                "parent": folder.parent_id,
-                "breadcrumbs": _breadcrumbs(folder),
+                # a scoped (design-folder-only) viewer never gets anything above «Дизайн»
+                "parent": None if root is not None and folder.pk == root.pk else folder.parent_id,
+                "breadcrumbs": _breadcrumbs(folder, root),
+                "read_only": root is not None,
+                "can_write": root is None,
                 "folders": [
                     {"id": child.pk, "name": child.name, "file_count": child.n_files}
                     for child in children
@@ -360,7 +379,7 @@ class FolderView(APIView):
         folder = get_object_or_404(Folder, pk=folder_id)
         uploads = request.FILES.getlist("file")
         if not uploads:
-            require_perm(request.user, "filer.add_folder")
+            require_perm(request.user, "filer.view_folder", "filer.add_folder")
             name = (request.data.get("name") or "").strip()
             if not name:
                 return Response({"detail": "Papka nomini kiriting."}, status=400)
@@ -369,7 +388,7 @@ class FolderView(APIView):
             )
             return Response({"id": child.pk, "name": child.name}, status=status.HTTP_201_CREATED)
 
-        require_perm(request.user, "filer.add_file")
+        require_perm(request.user, "filer.view_folder", "filer.add_file")
         created = save_uploads(folder, uploads, owner=request.user)
         return Response([_file_row(obj) for obj in created], status=status.HTTP_201_CREATED)
 
@@ -379,8 +398,10 @@ class FileView(APIView):
         """The file itself as a download, under a name with the right extension. The
         SPA uses this instead of the bare /media/ link: a missing file is a clear 404
         here, not the server's redirect to /admin/ saved as the "file"."""
-        require_perm(request.user, "filer.view_folder")
         f = get_object_or_404(File, pk=file_id)
+        if not request.user.has_perm("filer.view_folder"):
+            if f.folder is None or design_folder_access(request.user, f.folder) is None:
+                raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
         name = f.original_filename or f.label or "fayl"
         filename = _download_name(f, name) or name
         try:
@@ -393,7 +414,7 @@ class FileView(APIView):
         return FileResponse(fh, as_attachment=True, filename=filename)
 
     def delete(self, request, file_id):
-        require_perm(request.user, "filer.delete_file")
+        require_perm(request.user, "filer.view_folder", "filer.delete_file")
         get_object_or_404(File, pk=file_id).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -402,7 +423,7 @@ class FolderMessagesView(APIView):
     """The DiscussionInline shown on the admin folder page."""
 
     def get(self, request, folder_id):
-        require_perm(request.user, "filer.view_folder")
+        require_perm(request.user, "filer.view_folder")  # no folder chat for scoped workers
         folder = get_object_or_404(Folder, pk=folder_id)
         messages = DiscussionMessage.objects.filter(
             content_type=ContentType.objects.get_for_model(Folder), object_id=folder.pk

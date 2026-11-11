@@ -797,6 +797,9 @@ export interface Folder {
   name: string;
   parent: number | null;
   breadcrumbs: { id: number; name: string }[];
+  /** true for the design-folder-only view of Rover / Molyar workers (no writes, nothing above «Дизайн») */
+  read_only?: boolean;
+  can_write?: boolean;
   folders: { id: number; name: string; file_count: number }[];
   files: FolderFile[];
 }
