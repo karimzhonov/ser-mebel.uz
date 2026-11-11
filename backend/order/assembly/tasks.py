@@ -13,7 +13,7 @@ def assembly_task_sms(assembly_id, user_id):
     from .models import Assembly
 
     a = Assembly.objects.select_related("order", "user").filter(pk=assembly_id).first()
-    if a is None or a.installing_done or a.user is None:
+    if a is None or a.installing_done or a.finished_at is not None or a.user is None:
         return 0
     user = a.user
     if user.pk != user_id or user.telegram_id:

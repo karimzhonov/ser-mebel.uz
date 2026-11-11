@@ -6,7 +6,7 @@ import bot.assembly  # noqa: F401  (registers assembly.*)
 from bot.common.rds import get_redis
 from bot.notify.registry import dispatch, events
 
-from .conftest import URL, buttons, cbs, done_task, envelope, fake_bot, task
+from .conftest import URL, buttons, cbs, checking_task, done_task, envelope, fake_bot, task
 
 A = {"id": 5, "name": "Yig'uvchi usta"}
 B = {"id": 6, "name": "Yig'uvchi ikki"}
@@ -14,7 +14,7 @@ ASSEMBLERS = [A, B, {"id": 9, "name": "U" * 60}]
 
 
 def test_events_registered():
-    for e in ("ready", "task", "unassigned", "due_ask", "due_set", "remind", "done"):
+    for e in ("ready", "task", "unassigned", "due_ask", "due_set", "remind", "done", "confirmed"):
         assert f"assembly.{e}" in events()
 
 
@@ -259,7 +259,7 @@ async def test_done_message_and_edits_of_stored_cards():
         envelope(
             "assembly.done",
             3,
-            assembly=done_task(rev=4, note="Ish <b>"),
+            assembly=checking_task(rev=4, note="Ish <b>"),
             by_name="Yig'uvchi usta",
             to=[222, 7],
             heads=[222],
@@ -269,7 +269,9 @@ async def test_done_message_and_edits_of_stored_cards():
     )
     sent = bot.send_message.call_args_list
     assert [c.args[0] for c in sent] == [222, 7]
-    assert "O'rnatildi" in sent[0].args[1] and "№406" in sent[0].args[1]
+    assert cbs(sent[0].kwargs["reply_markup"]) == ["as:ok:21"]  # head: «✅ Tayyor»
+    assert cbs(sent[1].kwargs["reply_markup"]) == []  # manager: link only
+    assert "O'rnatib bo'lishdi" in sent[0].args[1] and "№406" in sent[0].args[1]
     assert "3.5 m²" in sent[0].args[1] and "Ish &lt;b&gt;" in sent[0].args[1]
     assert sent[0].args[1].count("Yig'uvchi usta") == 1  # the assembler closed it: name once
     edits = bot.edit_message_text.call_args_list
@@ -277,7 +279,8 @@ async def test_done_message_and_edits_of_stored_cards():
     for e in edits:
         assert cbs(e.kwargs["reply_markup"]) == []
     mine = [e for e in edits if e.kwargs["chat_id"] == 111][0]
-    assert "✅ O'rnatildi — Yig'uvchi usta" in mine.args[0]
+    assert "✅ O'rnatildi — Yig'uvchi usta" in mine.args[0] and "⏳ Tekshiruvda" in mine.args[0]
+    assert len(await get_redis().lrange("asm:msg:c21", 0, -1)) == 1  # only the head's
 
 
 async def test_done_stale_rev_does_not_edit():
@@ -285,7 +288,9 @@ async def test_done_stale_rev_does_not_edit():
     await dispatch(envelope("assembly.task", assembly=task(rev=5), to=[111]), bot)
     bot.edit_message_text.reset_mock()
     await dispatch(
-        envelope("assembly.done", 2, assembly=done_task(rev=4), to=[], heads=[], assemblers=[111]),
+        envelope(
+            "assembly.done", 2, assembly=checking_task(rev=4), to=[], heads=[], assemblers=[111]
+        ),
         bot,
     )
     bot.edit_message_text.assert_not_called()
@@ -304,7 +309,7 @@ async def test_done_by_manager_names_who_closed_it_and_closes_pick_cards():
         envelope(
             "assembly.done",
             2,
-            assembly=done_task(rev=2, assembler=None),
+            assembly=checking_task(rev=2, assembler=None),
             by_name="Menejer",
             to=[222],
             heads=[],
@@ -317,3 +322,80 @@ async def test_done_by_manager_names_who_closed_it_and_closes_pick_cards():
     assert [e.kwargs["chat_id"] for e in edits] == [7]
     assert cbs(edits[0].kwargs["reply_markup"]) == []
     assert await get_redis().lrange("asm:msg:r21", 0, -1) == []
+
+
+async def _installed(bot, heads=(222,)):
+    await dispatch(envelope("assembly.task", assembly=task(rev=1), to=[111]), bot)
+    await dispatch(envelope("assembly.due_ask", 2, assembly=task(rev=1), to=list(heads)), bot)
+    await dispatch(
+        envelope(
+            "assembly.done",
+            3,
+            assembly=checking_task(rev=4),
+            by_name="Yig'uvchi usta",
+            to=[*heads, 7],
+            heads=list(heads),
+            assemblers=[111],
+        ),
+        bot,
+    )
+    bot.send_message.reset_mock()
+    bot.edit_message_text.reset_mock()
+
+
+def _confirmed(rev=5, **kw):
+    return envelope(
+        "assembly.confirmed",
+        4,
+        assembly=done_task(rev=rev, confirmed_by={"id": 14, "name": "Rahbar"}),
+        by_name="Rahbar",
+        to=[222, 223, 7],
+        heads=[222, 223],
+        assemblers=[111],
+        **kw,
+    )
+
+
+async def test_confirmed_closes_all_confirm_buttons_and_tells_managers():
+    bot = fake_bot(930)
+    await _installed(bot, heads=(222, 223))
+    await dispatch(_confirmed(), bot)
+    edits = bot.edit_message_text.call_args_list
+    c = [e for e in edits if "Tayyor</b>" in e.args[0] or "✅ <b>Tayyor" in e.args[0]]
+    assert sorted(e.kwargs["chat_id"] for e in c) == [222, 223]
+    assert "Rahbar tasdiqladi" in c[0].args[0] and "№406" in c[0].args[0]
+    for e in edits:
+        assert cbs(e.kwargs["reply_markup"]) == []
+    mine = [e for e in edits if e.kwargs["chat_id"] == 111][0]
+    assert "✅ Tayyor — Rahbar tasdiqladi" in mine.args[0] and "⏳" not in mine.args[0]
+    sent = bot.send_message.call_args_list
+    assert [(s.args[0], "tayyor" in s.args[1]) for s in sent] == [(7, True)]
+    assert await get_redis().lrange("asm:msg:c21", 0, -1) == []
+
+
+async def test_late_done_after_confirmed_sends_no_confirm_button():
+    bot = fake_bot(940)
+    await dispatch(_confirmed(rev=5), bot)
+    bot.send_message.reset_mock()
+    await dispatch(
+        envelope(
+            "assembly.done",
+            5,
+            assembly=checking_task(rev=4),
+            to=[222, 7],
+            heads=[222],
+            assemblers=[],
+        ),
+        bot,
+    )
+    sent = bot.send_message.call_args_list
+    assert [s.args[0] for s in sent] == [7]  # the head gets nothing (no stale button)
+    assert await get_redis().lrange("asm:msg:c21", 0, -1) == []
+
+
+async def test_confirmed_stale_rev_does_not_touch_assembler_card():
+    bot = fake_bot(950)
+    await dispatch(envelope("assembly.task", assembly=task(rev=9), to=[111]), bot)
+    bot.edit_message_text.reset_mock()
+    await dispatch(_confirmed(rev=5), bot)
+    assert 111 not in [e.kwargs["chat_id"] for e in bot.edit_message_text.call_args_list]

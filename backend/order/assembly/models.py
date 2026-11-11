@@ -15,7 +15,8 @@ from .constants import ASSEMBLY_MANAGER_PERMISSION
 class AssemblyState(models.TextChoices):
     NEW = "new", "Ishda"
     ASSEMBLED = "assembled", "Yig'ildi"
-    DONE = "done", "O'rnatildi"
+    CHECKING = "checking", "Tekshiruvda"
+    DONE = "done", "Tayyor"
 
 
 class Assembly(models.Model):
@@ -50,6 +51,12 @@ class Assembly(models.Model):
         settings.AUTH_USER_MODEL, models.SET_NULL, null=True, blank=True, related_name="+"
     )
 
+    # the head's «Tayyor» after the assembler's «O'rnatildi» (installing_done = confirmed)
+    confirmed_at = models.DateTimeField(null=True, blank=True, verbose_name="Tasdiqlangan")
+    confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
     history = HistoricalRecords()
 
     class Meta:
@@ -64,6 +71,8 @@ class Assembly(models.Model):
     def state(self) -> str:
         if self.installing_done:
             return AssemblyState.DONE
+        if self.finished_at is not None:
+            return AssemblyState.CHECKING
         return AssemblyState.ASSEMBLED if self.done else AssemblyState.NEW
 
     @property
@@ -74,7 +83,10 @@ class Assembly(models.Model):
     def overdue(self) -> bool:
         from accounting.text import today
 
-        return not self.installing_done and self.due_date is not None and today() > self.due_date
+        # handed in by the assembler (checking) is no longer late
+        if self.installing_done or self.finished_at is not None:
+            return False
+        return self.due_date is not None and today() > self.due_date
 
     @property
     def days_late(self) -> int:

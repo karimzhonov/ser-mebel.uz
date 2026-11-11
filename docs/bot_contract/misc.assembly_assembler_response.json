@@ -21,6 +21,8 @@
     "started_at": "2026-11-05T14:20:00",
     "finished_at": null,
     "finished_by": null,
+    "confirmed_at": null,
+    "confirmed_by": null,
     "due_date": null,
     "due_auto": false,
     "due_set_by": null,

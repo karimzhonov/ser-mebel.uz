@@ -434,12 +434,14 @@ class OverviewView(APIView):
             stage(
                 "installing",
                 "O'rnatish",
-                assemblies.filter(done=True, installing_done=False),
+                assemblies.filter(done=True, installing_done=False, finished_at__isnull=True),
                 "/production/assembly",
             )
             if manager:
                 rows = (
-                    ready_for_assembly(Assembly.objects.filter(installing_done=False))
+                    ready_for_assembly(
+                        Assembly.objects.filter(installing_done=False, finished_at__isnull=True)
+                    )
                     .order_by()
                     .values("user")
                     .annotate(count=Count("pk"), square=Sum("square"))

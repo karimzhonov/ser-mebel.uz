@@ -8,7 +8,7 @@ from bot.assembly.api import DOWN_TEXT
 from bot.backend.client import BackendDown, Conflict, Forbidden, NotFound, ServiceRefusal
 from bot.crm.texts import NEW_BTN
 
-from .conftest import URL, buttons, cbs, done_task, task
+from .conftest import URL, buttons, cbs, checking_task, done_task, task
 
 DONE = "assemblies/21/finish/"
 DUE = "assemblies/21/due/"
@@ -41,7 +41,7 @@ def alert(env):
 
 
 async def test_full_path_posts_note_and_edits_card(env):
-    env.backend.routes[("POST", DONE)] = {"assembly": done_task()}
+    env.backend.routes[("POST", DONE)] = {"assembly": checking_task()}
     await start(env)
     assert await env.state() == "AssemblyFinish:note"
     assert "nima ish qilindi" in env.session.last().text
@@ -55,6 +55,7 @@ async def test_full_path_posts_note_and_edits_card(env):
     e = env.session.of(EditMessageText)
     card = [x for x in e if "Yangi Yig'ish/O'rnatish ishi" in x.text][-1]
     assert card.message_id == 9 and "✅ O'rnatildi — Yig'uvchi usta" in card.text
+    assert "⏳ Tekshiruvda" in card.text
     assert buttons(card.reply_markup) == [("🌐 Saytda ochish", None, URL)]
     assert any(x.text == "✅ O'rnatildi" for x in e)
     assert await env.state() is None
@@ -260,3 +261,67 @@ async def test_team_pick_409_different_assembler_started(env):
     assert "Jamoa allaqachon tanlangan" in alert(env)
     kb = env.session.of(EditMessageReplyMarkup)[-1].reply_markup
     assert cbs(kb) == []
+
+
+CONFIRM = "assemblies/21/confirm/"
+HEAD_TXT = "🔧 O'rnatib bo'lishdi — №406"
+
+
+def ok_kb():
+    return {
+        "inline_keyboard": [
+            [{"text": "✅ Tayyor", "callback_data": "as:ok:21"}],
+            [{"text": "🌐 Saytda ochish", "url": URL}],
+        ]
+    }
+
+
+def last_kb(env):
+    return cbs(env.session.of(EditMessageReplyMarkup)[-1].reply_markup)
+
+
+async def test_confirm_asks_then_back(env):
+    await env.cb("as:ok:21", text=HEAD_TXT, markup=ok_kb())
+    assert last_kb(env) == ["as:oky:21", "as:bk:21"]
+    assert "Готов bo'ladi" in env.session.answers()[-1].text
+    await env.cb("as:bk:21", text=HEAD_TXT, markup=ok_kb())
+    assert last_kb(env) == ["as:ok:21"]
+    assert env.backend.to(CONFIRM) == []
+
+
+async def test_confirm_posts_and_edits_card(env):
+    env.backend.routes[("POST", CONFIRM)] = {
+        "assembly": done_task(confirmed_by={"id": 14, "name": "Rahbar"})
+    }
+    await env.cb("as:oky:21", text=HEAD_TXT, markup=ok_kb())
+    assert env.backend.to(CONFIRM)[0][2] == {}
+    card = env.session.of(EditMessageText)[-1]
+    assert "Rahbar tasdiqladi" in card.text
+    assert buttons(card.reply_markup) == [("🌐 Saytda ochish", None, URL)]
+    assert env.session.answers()[-1].text == "✅ Tayyor"
+
+
+async def test_confirm_409_strips_buttons(env):
+    env.backend.routes[("POST", CONFIRM)] = Conflict("Allaqachon tayyor", status=409)
+    await env.cb("as:oky:21", text=HEAD_TXT, markup=ok_kb())
+    assert last_kb(env) == []
+    assert alert(env) == "Allaqachon tayyor"
+
+
+async def test_confirm_400_403_404_restore_button(env):
+    for exc in (
+        ServiceRefusal("Yig'uvchi hali bosmagan", status=400),
+        Forbidden("Ruxsat yo'q", status=403),
+        NotFound("yo'q", status=404),
+    ):
+        env.backend.routes[("POST", CONFIRM)] = exc
+        await env.cb("as:oky:21", text=HEAD_TXT, markup=ok_kb())
+        assert last_kb(env) == ["as:ok:21"]
+        assert alert(env)
+
+
+async def test_confirm_backend_down_restores_button(env):
+    env.backend.routes[("POST", CONFIRM)] = BackendDown("down")
+    await env.cb("as:oky:21", text=HEAD_TXT, markup=ok_kb())
+    assert last_kb(env) == ["as:ok:21"]
+    assert alert(env) == DOWN_TEXT

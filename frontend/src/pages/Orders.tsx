@@ -298,6 +298,11 @@ export function OrderDetailPage() {
                 Yig'ishga
               </Button>
             )}
+            {a.next_status_hint && (
+              <Button variant="secondary" disabled title={a.next_status_hint} icon={<ArrowRight className="h-4 w-4" />}>
+                «Готов» — на странице «Yig'ish»
+              </Button>
+            )}
             {a.next_status && !a.detailing && !a.go_to_assembly && (
               <Button icon={<ArrowRight className="h-4 w-4" />} onClick={() => setConfirm("next-status")}>
                 {a.next_status_label}

@@ -115,7 +115,8 @@ def assembly_remind(a, *, what, heads, today=None):
 
 @_safe
 def assembly_done(a, *, by):
-    """The installation is finished (panel or bot): heads and managers hear of it."""
+    """The assembler pressed «O'rnatildi» (panel or bot): the heads are asked to confirm
+    («Tayyor»), managers hear of it."""
     heads = _head_tgs()
     to = list(heads)
     for t in _manager_tgs():
@@ -126,6 +127,29 @@ def assembly_done(a, *, by):
         return
     emit(
         "assembly.done",
+        {
+            "assembly": _dto(a),
+            "by_name": user_ref(by)["name"] if by is not None else None,
+            "to": to,
+            "heads": heads,
+            "assemblers": assemblers,
+        },
+    )
+
+
+@_safe
+def assembly_confirmed(a, *, by):
+    """The head confirmed: the job and the order are done."""
+    heads = _head_tgs()
+    to = list(heads)
+    for t in _manager_tgs():
+        if t not in to:
+            to.append(t)
+    assemblers = _assembler_tgs(a)
+    if not to and not assemblers:
+        return
+    emit(
+        "assembly.confirmed",
         {
             "assembly": _dto(a),
             "by_name": user_ref(by)["name"] if by is not None else None,

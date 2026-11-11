@@ -75,18 +75,18 @@ function ProductionList({ kind }: { kind: Kind }) {
           )
         }
       />
-      <div className={`mb-4 grid gap-3 ${kind === "rover" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
+      <div className={`mb-4 grid gap-3 ${kind === "rover" ? "grid-cols-2 sm:grid-cols-4" : kind === "assembly" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
         <StatTile label="Jami" value={stats?.total ?? "…"} tone="primary" />
         <StatTile label="Ishda" value={stats?.not_done ?? "…"} tone="warn" />
-        {kind === "rover" && <StatTile label="Tekshiruvda" value={stats?.checking ?? "…"} tone="warn" />}
+        {(kind === "rover" || kind === "assembly") && <StatTile label="Tekshiruvda" value={stats?.checking ?? "…"} tone="warn" />}
         <StatTile label="Bajarildi" value={(kind === "assembly" ? stats?.installing_done : stats?.done) ?? "…"} tone="ok" />
       </div>
       <Card padded={false}>
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row dark:border-slate-800">
           <Segmented
-            value={kind === "rover" && state.state ? state.state : state[cfg.doneField]}
+            value={(kind === "rover" || kind === "assembly") && state.state ? state.state : state[cfg.doneField]}
             onChange={(v) =>
-              kind === "rover"
+              kind === "rover" || kind === "assembly"
                 ? v === "checking"
                   ? set({ [cfg.doneField]: "", state: "checking" })
                   : set({ [cfg.doneField]: v, state: "" })
@@ -94,7 +94,7 @@ function ProductionList({ kind }: { kind: Kind }) {
             }
             options={[
               { value: "false", label: "Faol" },
-              ...(kind === "rover" ? [{ value: "checking", label: "Tekshiruvda" }] : []),
+              ...(kind === "rover" || kind === "assembly" ? [{ value: "checking", label: "Tekshiruvda" }] : []),
               { value: "true", label: "Bajarilgan" },
               { value: "", label: "Barchasi" },
             ]}
@@ -157,7 +157,9 @@ function ProductionList({ kind }: { kind: Kind }) {
               key: "done",
               header: "Bajarildi",
               cell: (r) =>
-                kind === "assembly" ? (
+                kind === "assembly" && r.state === "checking" ? (
+                  <Badge tone="warn">Tekshiruvda</Badge>
+                ) : kind === "assembly" ? (
                   <div className="flex gap-1"><Check ok={r.done} label="Yig'." /><Check ok={!!r.installing_done} label="O'rn." /></div>
                 ) : kind === "rover" && r.state === "checking" ? (
                   <Badge tone="warn">Tekshiruvda</Badge>
@@ -170,7 +172,7 @@ function ProductionList({ kind }: { kind: Kind }) {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="font-semibold">№{r.order.order_number} · {r.order.client?.fio}</span>
-                {kind === "rover" && r.state === "checking" ? (
+                {(kind === "rover" || kind === "assembly") && r.state === "checking" ? (
                   <Badge tone="warn">Tekshiruvda</Badge>
                 ) : (
                   <Check ok={kind === "assembly" ? !!r.installing_done : r.done} />
@@ -298,7 +300,7 @@ function ProductionModal({
 
   const installDone = useAction(
     () => api.post(`/assemblies/${id}/installing-done/`, { note: note.trim() }),
-    { success: "Buyurtma «Tayyor» holatini oldi", invalidate: inv, onSuccess: () => setInstallOpen(false) },
+    { success: "Tekshiruvga yuborildi — rahbar tasdiqlaydi", invalidate: inv, onSuccess: () => setInstallOpen(false) },
   );
 
   if (!item) return null;
@@ -369,11 +371,14 @@ function ProductionModal({
                   ],
                   [
                     "Holat",
-                    item.state === "done" ? <Badge tone="ok">{item.state_label}</Badge> : item.state === "assembled" ? <Badge tone="warn">{item.state_label}</Badge> : <Badge tone="idle">{item.state_label ?? "Ishda"}</Badge>,
+                    item.state === "done" ? <Badge tone="ok">{item.state_label}</Badge> : item.state === "checking" || item.state === "assembled" ? <Badge tone="warn">{item.state_label}</Badge> : <Badge tone="idle">{item.state_label ?? "Ishda"}</Badge>,
                   ],
                   ...(item.note ? [["Izoh", <span className="whitespace-pre-wrap">{item.note}</span>]] : []),
                   ...(item.finished_at
                     ? [["O'rnatdi", `${item.finished_by_detail?.name || (item.finished_by_detail ? phone(item.finished_by_detail.phone) : "—")} · ${date(item.finished_at)}`]]
+                    : []),
+                  ...(item.confirmed_at
+                    ? [["Tasdiqladi", `${item.confirmed_by_detail?.name || (item.confirmed_by_detail ? phone(item.confirmed_by_detail.phone) : "—")} · ${date(item.confirmed_at)}`]]
                     : []),
                 ] as [string, ReactNode][])
               : []),
@@ -510,9 +515,9 @@ function ProductionModal({
               🕒 Muddat
             </Button>
           )}
-          {a.confirm && can("oauth.user_rover_checker") && (
+          {a.confirm && (kind === "assembly" ? can("oauth.user_production_head") : can("oauth.user_rover_checker")) && (
             <Button variant="success" onClick={() => setConfirm("confirm")}>
-              ✅ Tasdiqlash
+              {kind === "assembly" ? "✅ Tayyor" : "✅ Tasdiqlash"}
             </Button>
           )}
           {a.installing_done && (
@@ -535,7 +540,9 @@ function ProductionModal({
         onClose={() => setConfirm(null)}
         title="Bajarilganini tasdiqlang"
         text={
-          confirm === "confirm"
+          confirm === "confirm" && kind === "assembly"
+            ? "Buyurtma «Готов» bo'ladi: kafolat xati va mijoz fikri boshlanadi."
+            : confirm === "confirm"
               ? "Rover ishi tasdiqlanadi, molyarga xabar boradi."
               : kind === "detailing"
               ? "Buyurtma «Xomashyo buyurtmasi» bosqichiga o'tadi."
@@ -588,7 +595,7 @@ function ProductionModal({
       </Modal>
       <Modal open={installOpen} onClose={() => setInstallOpen(false)} title="O'rnatish bajarildi" size="sm">
         <div className="space-y-4">
-          <Field label="Izoh (nima ish qilindi)" hint="Buyurtma «Tayyor» holatini oladi" error={submitErrors.note}>
+          <Field label="Izoh (nima ish qilindi)" hint="Rahbar tasdiqlagach buyurtma «Tayyor» bo'ladi" error={submitErrors.note}>
             <Textarea required value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
           </Field>
           <div className="flex justify-end gap-2">

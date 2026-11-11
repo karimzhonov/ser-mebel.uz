@@ -5,8 +5,9 @@ Flow: detailing creates the row -> the order goes to «Сборка» (`Order.ch
 the job is *activated* (`started_at`, task card to the assembler, deadline question to the
 heads) -> the head sets the deadline (auto after a day) -> «Yig'ildi» on the site
 (`mark_assembly_done`, the order goes to «Установка») -> the assembler's «O'rnatildi» with
-an izoh (`mark_installing_done` on the site / `finish_assembly` in the bot) closes the job
-and the order («Tayyor»)."""
+an izoh (`mark_installing_done` on the site / `finish_assembly` in the bot) sends the job to the
+production head's check; the head's «Tayyor» (`confirm_assembly`) closes it and the order
+becomes «Готов»."""
 
 import logging
 from datetime import timedelta
@@ -84,7 +85,7 @@ def _lock(pk):
 
     return (
         Assembly.objects.select_for_update(of=("self",))
-        .select_related("order__client", "user", "finished_by", "due_set_by")
+        .select_related("order__client", "user", "finished_by", "confirmed_by", "due_set_by")
         .get(pk=pk)
     )
 
@@ -127,12 +128,16 @@ def assign_assembler(assembly, user, *, by=None, keep_started=False):
     with transaction.atomic():
         locked = _lock(assembly.pk)
         _ensure_past_detailing(locked)
+        if locked.finished_at is not None:
+            raise ServiceConflict("O'rnatildi — yig'uvchini o'zgartirib bo'lmaydi")
         same = locked.user_id == new_pk
     if same:
         # re-picking the current assembler still starts a legacy row that never started
         return activate_assembly(assembly, by=by)
     with transaction.atomic():
         locked = _lock(assembly.pk)
+        if locked.finished_at is not None:
+            raise ServiceConflict("O'rnatildi — yig'uvchini o'zgartirib bo'lmaydi")
         if locked.user_id == new_pk:
             # a concurrent call set this assembler meanwhile: only make sure it started
             return activate_assembly(locked, by=by)
@@ -211,7 +216,7 @@ def _lock_free(pk):
     from .models import Assembly
 
     return Assembly.objects.select_related(
-        "order__client", "user", "finished_by", "due_set_by"
+        "order__client", "user", "finished_by", "confirmed_by", "due_set_by"
     ).get(pk=pk)
 
 
@@ -240,6 +245,8 @@ def mark_assembly_done(assembly, *, by=None):
 
 
 def _finish(assembly, *, by, note, require_assembled):
+    """The assembler's «O'rnatildi»: the job goes to the head's check. The order does NOT
+    become «Tayyor» here - that is `confirm_assembly`."""
     note = note.strip() if isinstance(note, str) else ""
     with transaction.atomic():
         locked = _lock(assembly.pk)
@@ -251,17 +258,46 @@ def _finish(assembly, *, by, note, require_assembled):
         if len(note) > NOTE_MAX:
             raise ServiceError(f"Izoh juda uzun (eng ko'pi {NOTE_MAX} belgi)", field="note")
         if locked.installing_done:
-            raise ServiceConflict("O'rnatish allaqachon bajarilgan")
+            raise ServiceConflict("Allaqachon tayyor")
+        if locked.finished_at is not None:
+            raise ServiceConflict("O'rnatildi, rahbar tasdiqlashi kutilmoqda")
         if require_assembled:
             if not locked.done:
                 raise ServiceError("Avval yig'ishni bajaring")
         elif locked.order.status not in (*IN_ASSEMBLY, OrderStatus.DONE):
             raise ServiceError("Buyurtma hali yig'ishga yuborilmagan")
         locked.done = True
-        locked.installing_done = True
         locked.note = note
         locked.finished_at = timezone.now()
         locked.finished_by = by
+        locked.rev += 1
+        _save(locked, by=by)
+        order = locked.order
+        if order.status == OrderStatus.ASSEMBLY:
+            order.status = OrderStatus.INSTALLING
+            order._history_user = by
+            order.save(update_fields=["status"])
+        locked = _lock(locked.pk)
+        events.assembly_done(locked, by=by)
+    return locked
+
+
+def confirm_assembly(assembly, *, by):
+    """The production head's «Tayyor» after the assembler's «O'rnatildi»: the job is closed
+    and the order becomes «Готов» (the accounting order_ready chain fires on commit, as
+    the old `mark_installing_done` did)."""
+    if not by.has_perm(f"oauth.{PRODUCTION_HEAD_PERMISSION}"):
+        raise ServiceForbidden("Tasdiqlashni faqat Ishlab chiqarish rahbari qiladi")
+    with transaction.atomic():
+        locked = _lock(assembly.pk)
+        if locked.installing_done:
+            raise ServiceConflict("Allaqachon tayyor")
+        if locked.finished_at is None:
+            raise ServiceError("Yig'uvchi hali «O'rnatildi» bosmagan")
+        locked.installing_done = True
+        locked.done = True
+        locked.confirmed_at = timezone.now()
+        locked.confirmed_by = by
         locked.rev += 1
         _save(locked, by=by)
         order = locked.order
@@ -270,18 +306,18 @@ def _finish(assembly, *, by, note, require_assembled):
             order._history_user = by
             order.save(update_fields=["status"])
         locked = _lock(locked.pk)
-        events.assembly_done(locked, by=by)
+        events.assembly_confirmed(locked, by=by)
     return locked
 
 
 def mark_installing_done(assembly, *, by, note):
-    """«O'rnatildi» on the site (after «Yig'ildi»): izoh, the job and the order are done."""
+    """«O'rnatildi» on the site (after «Yig'ildi»): izoh, the job goes to the head's check."""
     return _finish(assembly, by=by, note=note, require_assembled=True)
 
 
 def finish_assembly(assembly, *, by, note):
-    """The assembler's «O'rnatildi» in the bot: one step (assembled + installed + order
-    «Tayyor»)."""
+    """The assembler's «O'rnatildi» in the bot: one step (assembled + installed, waits for
+    the head's «Tayyor»)."""
     return _finish(assembly, by=by, note=note, require_assembled=False)
 
 
@@ -302,7 +338,7 @@ def set_assembly_due(assembly, *, by, due_date=None, days=None):
         raise ServiceError("Muddat bir yildan uzoq bo'lishi mumkin emas", field="due")
     with transaction.atomic():
         locked = _lock(assembly.pk)
-        if locked.installing_done:
+        if locked.installing_done or locked.finished_at is not None:
             raise ServiceConflict("Yig'ish ishi bajarilgan — muddatni o'zgartirib bo'lmaydi")
         if locked.due_date == due_date and not locked.due_auto:
             return locked
@@ -325,6 +361,7 @@ def auto_set_assembly_dues(at) -> int:
 
     base = Assembly.objects.filter(
         installing_done=False,
+        finished_at__isnull=True,
         due_date__isnull=True,
         started_at__lte=at - timedelta(days=1),
         started_at__gte=at - timedelta(days=3),
@@ -334,7 +371,12 @@ def auto_set_assembly_dues(at) -> int:
     for pk in list(base.order_by("pk").values_list("pk", flat=True)[:200]):
         with transaction.atomic():
             a = _lock(pk)
-            if a.due_date is not None or a.installing_done or a.started_at is None:
+            if (
+                a.due_date is not None
+                or a.installing_done
+                or a.finished_at is not None
+                or a.started_at is None
+            ):
                 continue
             a.due_date = a.started_at.date() + timedelta(days=days)
             a.due_auto = True
@@ -361,7 +403,10 @@ def due_assembly_reminders(at) -> dict:
     d = at.date()
     base = (
         Assembly.objects.filter(
-            installing_done=False, due_date__isnull=False, order__status__in=IN_ASSEMBLY
+            installing_done=False,
+            finished_at__isnull=True,
+            due_date__isnull=False,
+            order__status__in=IN_ASSEMBLY,
         )
         .select_related("order__client", "user", "due_set_by", "finished_by")
         .order_by("due_date", "pk")

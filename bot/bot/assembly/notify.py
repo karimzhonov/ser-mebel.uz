@@ -9,7 +9,9 @@
   `r{id}` cards into «✅ Jamoa: …».
 - `assembly.due_set`: edits the assembler / head cards, short message to the assembler.
 - `assembly.remind`: soon / overdue messages, not stored.
-- `assembly.done`: «O'rnatildi» message; edits the stored head / assembler cards.
+- `assembly.done`: installed, waiting for the head: heads get «✅ Tayyor» (stored `c{id}`),
+  managers a plain message; assembler / head cards -> «Tekshiruvda».
+- `assembly.confirmed`: closes the `c{id}` cards, assembler / head cards -> done, managers told.
 Edits of stored cards go through `accept_rev` with `assembly.rev`, so a late event never
 overwrites a newer card, and only the chats listed in the event are touched.
 """
@@ -191,17 +193,54 @@ async def remind(n: Notifier, d: dict) -> None:
 
 @on("assembly.done")
 async def done(n: Notifier, d: dict) -> None:
+    """Installed by the assembler: the heads get «✅ Tayyor», the managers a plain message."""
     t = d["assembly"]
     pid = int(t["id"])
     url = t.get("url") or ""
     text = T.done_msg(t, d.get("by_name"))
-    kb = K.link_kb(url)
-    for tg in _tgs(d.get("to")):
-        await n.send(tg, text, kb)
-    # finished before anyone picked a team (e.g. on the site): close the pick cards too
-    await messages.accept_rev(messages.rkey(pid), t.get("rev"))
-    await _edit_all(n, await messages.take_all(messages.rkey(pid)), text, kb)
+    link = K.link_kb(url)
     heads, assemblers = _tgs(d.get("heads")), _tgs(d.get("assemblers"))
+    ckey = messages.ckey(pid)
+    # a `assembly.done` delivered after `assembly.confirmed` must not bring a fresh button
+    fresh = await messages.accept_rev(ckey, t.get("rev"))
+    for tg in _tgs(d.get("to")):
+        if tg in heads:
+            if not fresh:
+                continue
+            msg = await n.send(tg, text, K.confirm_card_kb(pid, url))
+            mid = getattr(msg, "message_id", None)
+            if mid is not None:
+                await messages.remember(ckey, tg, mid, "confirm")
+        else:
+            await n.send(tg, text, link)
+    # installed before anyone picked a team (e.g. on the site): close the pick cards too
+    await messages.accept_rev(messages.rkey(pid), t.get("rev"))
+    await _edit_all(n, await messages.take_all(messages.rkey(pid)), text, link)
+    if heads and await messages.accept_rev(messages.hkey(pid), t.get("rev")):
+        await _edit_all(
+            n,
+            await messages.entries_for(messages.hkey(pid), heads),
+            T.head_card(t),
+            K.due_kb(pid, K.PRESETS, url, "checking"),
+        )
+    await _edit_task_cards(n, t, assemblers, T.task_card(t), K.task_kb(pid, "checking", url))
+
+
+@on("assembly.confirmed")
+async def confirmed(n: Notifier, d: dict) -> None:
+    """The head confirmed: close every «✅ Tayyor» button, finish the cards, tell the managers."""
+    t = d["assembly"]
+    pid = int(t["id"])
+    url = t.get("url") or ""
+    link = K.link_kb(url)
+    heads, assemblers = _tgs(d.get("heads")), _tgs(d.get("assemblers"))
+    # record the rev so a late `assembly.done` doesn't send a fresh confirm button
+    await messages.accept_rev(messages.ckey(pid), t.get("rev"))
+    ctext = T.confirmed_msg(t, d.get("by_name"))
+    await _edit_all(n, await messages.take_all(messages.ckey(pid)), ctext, link)
+    for tg in _tgs(d.get("to")):
+        if tg not in heads:
+            await n.send(tg, T.order_ready_msg(t), link)
     if heads and await messages.accept_rev(messages.hkey(pid), t.get("rev")):
         await _edit_all(
             n,

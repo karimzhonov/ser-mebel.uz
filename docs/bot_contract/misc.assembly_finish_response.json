@@ -16,14 +16,16 @@
       "id": 23,
       "name": "Yig'uvchi ustasi"
     },
-    "state": "done",
-    "state_label": "O'rnatildi",
+    "state": "checking",
+    "state_label": "Tekshiruvda",
     "started_at": "2026-11-05T14:20:00",
     "finished_at": "2026-11-09T16:05:00",
     "finished_by": {
       "id": 23,
       "name": "Yig'uvchi ustasi"
     },
+    "confirmed_at": null,
+    "confirmed_by": null,
     "due_date": "2026-11-10",
     "due_auto": false,
     "due_set_by": {

@@ -25,6 +25,7 @@ urlpatterns = [
     path("painters/<int:pk>/due/", painter.PainterDueView.as_view()),
     path("painters/<int:pk>/type/", painter.PainterTypeView.as_view()),
     path("assemblies/<int:pk>/finish/", assembly.AssemblyFinishView.as_view()),
+    path("assemblies/<int:pk>/confirm/", assembly.AssemblyConfirmView.as_view()),
     path("assemblies/<int:pk>/due/", assembly.AssemblyDueView.as_view()),
     path("assemblies/<int:pk>/assembler/", assembly.AssemblyAssemblerView.as_view()),
     # ---- finance: reads

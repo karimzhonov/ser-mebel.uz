@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
@@ -15,6 +15,7 @@ from order.assembly.models import Assembly
 from order.assembly.services import (
     active_assemblers,
     assign_assembler,
+    confirm_assembly,
     mark_assembly_done,
     mark_installing_done,
     ready_for_assembly,
@@ -543,7 +544,9 @@ class AssemblyViewSet(_ProductionViewSet):
     def get_queryset(self):
         # Only orders past detailing ("Заказ на сырье" and later) are assembly work.
         qs = ready_for_assembly(
-            Assembly.objects.select_related("order__client", "user", "finished_by", "due_set_by")
+            Assembly.objects.select_related(
+                "order__client", "user", "finished_by", "confirmed_by", "due_set_by"
+            )
         )
         # Managers and production heads see every job; an assembler only their own.
         user = self.request.user
@@ -557,7 +560,13 @@ class AssemblyViewSet(_ProductionViewSet):
             qs = qs.filter(user_id=user_id)
         qs = self.filter_common(qs)
         if _bool_param(self.request.query_params.get("overdue")):
-            qs = qs.filter(installing_done=False, due_date__lt=accounting_today())
+            qs = qs.filter(
+                installing_done=False,
+                finished_at__isnull=True,
+                due_date__lt=accounting_today(),
+            )
+        if self.request.query_params.get("state") == "checking":
+            qs = qs.filter(finished_at__isnull=False, installing_done=False)
         return qs
 
     def _assign(self, request, user_id):
@@ -598,7 +607,7 @@ class AssemblyViewSet(_ProductionViewSet):
         serializer_class=AssemblyFinishSerializer,
     )
     def installing_done(self, request, pk=None):
-        """«O'rnatildi»: {note} - what was done; the job and the order are finished."""
+        """«O'rnatildi»: {note} - what was done; the job waits for the head's «Tayyor»."""
         body = AssemblyFinishSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         return self._respond(
@@ -606,6 +615,12 @@ class AssemblyViewSet(_ProductionViewSet):
                 self.get_object(), by=request.user, note=body.validated_data["note"]
             )
         )
+
+    @action(detail=True, methods=["post"])
+    def confirm(self, request, pk=None):
+        """The production head's «Tayyor»: the job is closed and the order becomes Готов."""
+        require_perm(request.user, "oauth.user_production_head")
+        return self._respond(confirm_assembly(self.get_object(), by=request.user))
 
     @action(detail=True, methods=["post"], serializer_class=AssemblyDueSerializer)
     def due(self, request, pk=None):
@@ -637,7 +652,9 @@ class AssemblyViewSet(_ProductionViewSet):
             {
                 "total": qs.count(),
                 "done": qs.filter(done=True).count(),
+                "checking": qs.filter(finished_at__isnull=False, installing_done=False).count(),
                 "installing_done": qs.filter(installing_done=True).count(),
-                "not_done": qs.filter(Q(done=False) | Q(installing_done=False)).count(),
+                # «Ishda» excludes jobs waiting for the head's «Tayyor» (own tile above)
+                "not_done": qs.filter(installing_done=False, finished_at__isnull=True).count(),
             }
         )

@@ -47,10 +47,23 @@ def task(**kw) -> dict:
 def done_task(**kw) -> dict:
     base = {
         "state": "done",
-        "state_label": "O'rnatildi",
+        "state_label": "Tayyor",
         "finished_at": "2026-11-12T10:00:00",
         "finished_by": {"id": 5, "name": "Yig'uvchi usta"},
         "note": "4 ta eshik",
+    }
+    return task(**{**base, **kw})
+
+
+def checking_task(**kw) -> dict:
+    base = {
+        "state": "checking",
+        "state_label": "Tekshiruvda",
+        "finished_at": "2026-11-12T10:00:00",
+        "finished_by": {"id": 5, "name": "Yig'uvchi usta"},
+        "note": "4 ta eshik",
+        "confirmed_at": None,
+        "confirmed_by": None,
     }
     return task(**{**base, **kw})
 

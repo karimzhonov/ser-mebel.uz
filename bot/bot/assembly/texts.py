@@ -18,6 +18,9 @@ BAD_NOTE = "❗ Izoh juda qisqa (kamida 3 belgi)."
 LONG_NOTE = f"❗ Izoh juda uzun (ko'pi bilan {NOTE_MAX} belgi)."
 USE_BUTTONS = "Quyidagi tugmalardan birini bosing."
 DONE_OK = "✅ O'rnatildi"
+CHECKING_LINE = "⏳ Tekshiruvda — rahbar tasdiqlashi kutilmoqda"
+CONFIRM_ASK = "Tasdiqlaysizmi? Buyurtma Готов bo'ladi"
+CONFIRM_OK = "✅ Tayyor"
 DUE_SAVED = "✅ Muddat qo'yildi"
 REASSIGNED = "♻️ Bu ish boshqa yig'uvchiga o'tkazildi"
 NO_ASSEMBLERS = "Yig'uvchilar yo'q — saytda tanlang"
@@ -57,8 +60,13 @@ def _state_lines(t: dict) -> list[str]:
     lines = []
     if t.get("state") == "assembled":
         lines.append("Holat: Yig'ildi — o'rnatish qoldi")
+    if t.get("state") == "checking":
+        lines += _done_tail(t) + [CHECKING_LINE]
     if t.get("state") == "done":
         lines += _done_tail(t)
+        who = _name(t.get("confirmed_by"))
+        if who:
+            lines.append(f"✅ Tayyor — {esc(who)} tasdiqladi")
     return lines
 
 
@@ -107,7 +115,7 @@ def team_chosen(t: dict) -> str:
 
 def done_msg(t: dict, by_name: str | None = None) -> str:
     num = esc((t.get("order") or {}).get("number"))
-    lines = [f"🔧 <b>O'rnatildi</b> — №{num}"]
+    lines = [f"🔧 <b>O'rnatib bo'lishdi</b> — №{num}"]
     who = _name(t.get("assembler")) or _name(t.get("finished_by")) or by_name
     if who:
         lines.append(f"👷 Yig'uvchi: {esc(who)}")
@@ -137,3 +145,15 @@ def remind_text(t: dict, what: str, days_late: int, head: bool = False) -> str:
     if what == "overdue":
         return f"⚠️ Yig'ish muddati o'tdi ({esc(days_late)} kun) — №{num}"
     return f"⏰ Ertaga Yig'ish muddati tugaydi — №{num}"
+
+
+def confirmed_msg(t: dict, by_name: str | None = None) -> str:
+    """The head's «installed» message once somebody confirmed (link only)."""
+    num = esc((t.get("order") or {}).get("number"))
+    who = by_name or _name(t.get("confirmed_by"))
+    return f"✅ <b>Tayyor</b> — №{num}" + (f" ({esc(who)} tasdiqladi)" if who else "")
+
+
+def order_ready_msg(t: dict) -> str:
+    num = esc((t.get("order") or {}).get("number"))
+    return f"✅ Buyurtma №{num} tayyor"

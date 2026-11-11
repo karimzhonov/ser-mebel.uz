@@ -410,6 +410,21 @@ def send_order_to_detailing(order, *, due_at):
     return order
 
 
+INSTALLING_CONFIRM_MSG = (
+    "Buyurtma «Готов» bo'ladi faqat Ishlab chiqarish rahbari «Tayyor» bosganda (Yig'ish bo'limida)"
+)
+
+
+def installing_needs_head_confirm(order) -> bool:
+    """An order in «Установка» that has an assembly job becomes «Готов» only through the
+    production head's «Tayyor» (`confirm_assembly`), never by «Keyingi bosqich». Orders
+    without an assembly row keep the plain step."""
+    from .assembly.models import Assembly
+
+    # a legacy row already marked installed must not leave the order stuck
+    return Assembly.objects.filter(order=order, installing_done=False).exists()
+
+
 def advance_order_status(order):
     """Mirrors OrderActions.change_status: one step along progression_statuses()."""
     from core.i18n import order_status as order_status_uz
@@ -421,6 +436,8 @@ def advance_order_status(order):
         raise ServiceError(
             "Detalirovkaga «Detalirovkaga yuborish» tugmasi bilan, muddatini belgilab yuboring"
         )
+    if order.status == OrderStatus.INSTALLING and installing_needs_head_confirm(order):
+        raise ServiceError(INSTALLING_CONFIRM_MSG)
     if next_status is None:
         raise ServiceError(
             f"Holatni o'zgartirib bo'lmaydi: «{order_status_uz(order.status)}» — yakuniy holat."

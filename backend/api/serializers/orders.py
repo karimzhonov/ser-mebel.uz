@@ -11,6 +11,7 @@ from order.detailing.models import Detailing
 from order.models import Factory, Order
 from order.painter.models import Painter, PainterType
 from order.rover.models import Rover
+from order.services import INSTALLING_CONFIRM_MSG, installing_needs_head_confirm
 
 from .. import i18n as uz
 from ..fields import MoneyField
@@ -187,13 +188,19 @@ class OrderDetailSerializer(OrderSerializer):
 
     def get_actions(self, obj):
         user = self.context["request"].user
+        confirm_blocked = obj.status == OrderStatus.INSTALLING and installing_needs_head_confirm(
+            obj
+        )
         return {
             "edit": user.has_perm("order.change_order"),
             "detailing": user.has_perm("detailing.add_detailing")
             and obj.status == OrderStatus.CREATED,
             # «Yaratildi» → detailing only through «Detalirovkaga yuborish» (with a deadline)
             "next_status": user.has_perm(f"order.{ORDER_CHANGE_STATUS_PERMISSION}")
-            and OrderStatus.next_status(obj.status) not in (None, OrderStatus.DETAILING),
+            and OrderStatus.next_status(obj.status) not in (None, OrderStatus.DETAILING)
+            and not confirm_blocked,
+            # «Установка» with an assembly: «Готов» only via the head's «Tayyor» (Yig'ish page)
+            "next_status_hint": INSTALLING_CONFIRM_MSG if confirm_blocked else None,
             "next_status_label": (
                 uz.order_status(OrderStatus.next_status(obj.status))
                 if OrderStatus.next_status(obj.status)
@@ -490,6 +497,7 @@ class AssemblySerializer(serializers.ModelSerializer):
     state_label = serializers.CharField(read_only=True)
     finished_by_detail = UserShortSerializer(source="finished_by", read_only=True)
     due_set_by_detail = UserShortSerializer(source="due_set_by", read_only=True)
+    confirmed_by_detail = UserShortSerializer(source="confirmed_by", read_only=True)
     overdue = serializers.BooleanField(read_only=True)
     actions = serializers.SerializerMethodField()
 
@@ -511,6 +519,8 @@ class AssemblySerializer(serializers.ModelSerializer):
             "started_at",
             "finished_at",
             "finished_by_detail",
+            "confirmed_at",
+            "confirmed_by_detail",
             "due_date",
             "due_auto",
             "due_set_at",
@@ -529,6 +539,7 @@ class AssemblySerializer(serializers.ModelSerializer):
             "note",
             "started_at",
             "finished_at",
+            "confirmed_at",
             "due_date",
             "due_auto",
             "due_set_at",
@@ -540,10 +551,13 @@ class AssemblySerializer(serializers.ModelSerializer):
         mine = user.has_perm("assembly.change_assembly") or obj.user_id == user.pk
         head = user.has_perm("oauth.user_production_head")
         return {
-            "edit": bool(head and not obj.installing_done),
+            "edit": bool(head and obj.finished_at is None and not obj.installing_done),
             "done": bool(mine and not obj.done),
-            "installing_done": bool(mine and obj.done and not obj.installing_done),
-            "due": bool(head and not obj.installing_done),
+            "installing_done": bool(
+                mine and obj.done and obj.finished_at is None and not obj.installing_done
+            ),
+            "confirm": bool(head and obj.state == "checking"),
+            "due": bool(head and obj.finished_at is None and not obj.installing_done),
         }
 
 

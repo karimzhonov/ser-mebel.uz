@@ -12,6 +12,7 @@ from order.assembly.models import Assembly
 from order.assembly.services import (
     active_assemblers,
     assign_assembler,
+    confirm_assembly,
     finish_assembly,
     set_assembly_due,
 )
@@ -21,7 +22,9 @@ from .base import BotAPIView
 
 def _get(pk) -> Assembly:
     assembly = (
-        Assembly.objects.select_related("order__client", "user", "finished_by", "due_set_by")
+        Assembly.objects.select_related(
+            "order__client", "user", "finished_by", "confirmed_by", "due_set_by"
+        )
         .filter(pk=pk)
         .first()
     )
@@ -76,7 +79,7 @@ class AssemblyAssemblerView(BotAPIView):
             assembler = active_assemblers().filter(pk=user_id).first()
         if assembler is None:
             raise NotFound("Yig'ish yoki yig'uvchi topilmadi")
-        if assembly.installing_done:
+        if assembly.installing_done or assembly.finished_at is not None:
             raise ServiceConflict("Yig'ish ishi bajarilgan")
         if assembly.user_id and assembly.started_at and assembly.user_id != assembler.pk:
             raise ServiceConflict(
@@ -84,4 +87,15 @@ class AssemblyAssemblerView(BotAPIView):
             )
         # the service re-checks «already started» under the row lock (two heads at once)
         assembly = assign_assembler(assembly, assembler, by=user, keep_started=True)
+        return Response({"assembly": assembly_task(assembly)})
+
+
+class AssemblyConfirmView(BotAPIView):
+    """POST {} -> {assembly}; 400 the assembler has not pressed «O'rnatildi» yet; 403 not
+    linked / not a production head; 404; 409 already done. The head's «Tayyor»: the order
+    becomes Готов."""
+
+    def post(self, request, pk):
+        user = self.require_site_perm("oauth.user_production_head")
+        assembly = confirm_assembly(_get(pk), by=user)
         return Response({"assembly": assembly_task(assembly)})

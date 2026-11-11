@@ -1,7 +1,8 @@
 """Remember the assembly cards sent (`CardStore("asm")`, `asm:msg:{key}` + `asm:ver:{key}`).
 Keys: `t{id}u{user_id}` assembler task cards, one key per assignee (task and unassigned events
 share a rev, so separate keys let both apply and reject a late «unassigned» after A -> B -> A),
-`h{id}` head «set the deadline» cards, `r{id}` head «pick the team» cards (assembly ready)."""
+`h{id}` head «set the deadline» cards, `r{id}` head «pick the team» cards (assembly ready), `c{id}` head «✅ Tayyor» confirm cards
+(assembly done = installed, waiting for the head)."""
 
 from __future__ import annotations
 
@@ -16,6 +17,10 @@ def tkey(assembly_id, user_id) -> str:
 
 def hkey(assembly_id) -> str:
     return f"h{int(assembly_id)}"
+
+
+def ckey(assembly_id) -> str:
+    return f"c{int(assembly_id)}"
 
 
 def rkey(assembly_id) -> str:

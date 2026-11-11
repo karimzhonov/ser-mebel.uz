@@ -683,6 +683,7 @@ export interface OrderDetail extends Order {
     detailing: boolean;
     next_status: boolean;
     next_status_label: string | null;
+    next_status_hint?: string | null;
     go_to_assembly: boolean;
     finance: boolean;
     edit_price: boolean;
@@ -739,6 +740,8 @@ export interface ProductionItem {
   // assembly
   finished_at?: string | null;
   finished_by_detail?: UserShort | null;
+  confirmed_at?: string | null;
+  confirmed_by_detail?: UserShort | null;
   installing_done?: boolean;
   user?: number | null;
   user_detail?: UserShort | null;

@@ -16,12 +16,17 @@
     "name": "Yig'uvchi ustasi"
   },
   "state": "done",
-  "state_label": "O'rnatildi",
+  "state_label": "Tayyor",
   "started_at": "2026-11-05T14:20:00",
   "finished_at": "2026-11-09T16:05:00",
   "finished_by": {
     "id": 23,
     "name": "Yig'uvchi ustasi"
+  },
+  "confirmed_at": "2026-11-09T17:30:00",
+  "confirmed_by": {
+    "id": 14,
+    "name": "Ishlab chiqarish rahbari"
   },
   "due_date": "2026-11-10",
   "due_auto": false,
@@ -32,6 +37,6 @@
   "overdue": false,
   "days_late": 0,
   "note": "Oshxona yig'ildi va o'rnatildi, 4 eshik",
-  "rev": 3,
+  "rev": 4,
   "url": "https://ser-mebel.uz/production/assembly?open=41"
 }

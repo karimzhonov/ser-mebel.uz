@@ -7,7 +7,7 @@ from bot.notify.registry import dispatch
 
 from .conftest import fake_bot, fixture
 
-EVENTS = ["ready", "task", "unassigned", "due_ask", "due_set", "remind", "done"]
+EVENTS = ["ready", "task", "unassigned", "due_ask", "due_set", "remind", "done", "confirmed"]
 
 
 @pytest.mark.parametrize("event", EVENTS)

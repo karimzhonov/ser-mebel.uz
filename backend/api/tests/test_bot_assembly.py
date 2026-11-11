@@ -93,10 +93,35 @@ def test_bot_finish(job, asm, head, manager, make_staff, bot_client, bot_events)
     ok = bot_client.post(path, actor=1001, data=load_fixture("misc.assembly_finish_request.json"))
     assert ok.status_code == 200, ok.content
     got = ok.json()["assembly"]
-    assert got["state"] == "done" and got["note"] == NOTE and got["finished_by"]["id"] == asm.pk
-    assert Order.objects.get(pk=job.order_id).status == OrderStatus.DONE
+    assert got["state"] == "checking" and got["note"] == NOTE
+    assert got["finished_by"]["id"] == asm.pk and got["confirmed_at"] is None
+    assert Order.objects.get(pk=job.order_id).status == OrderStatus.INSTALLING
     assert len(bot_events.of("assembly.done")) == 1
     assert bot_client.post(path, actor=1001, data={"note": NOTE}).status_code == 409
+
+
+def test_bot_confirm(job, asm, head, manager, bot_client, bot_events, monkeypatch):
+    ready = []
+    monkeypatch.setattr("accounting.tasks.order_ready.delay", lambda ref: ready.append(ref))
+    path = f"assemblies/{job.pk}/confirm/"
+    assert bot_client.post("assemblies/999999/confirm/", actor=2001, data={}).status_code == 404
+    assert bot_client.post(path, actor=777, data={}).status_code == 403  # not linked
+    assert bot_client.post(path, actor=1001, data={}).status_code == 403  # assembler
+    assert bot_client.post(path, actor=3001, data={}).status_code == 403  # manager
+    assert bot_client.post(path, actor=2001, data={}).status_code == 400  # not installed yet
+    AS.finish_assembly(job, by=asm, note=NOTE)
+    bot_events.clear()
+    assert bot_client.post(path, actor=1001, data={}).status_code == 403
+    assert ready == []
+    ok = bot_client.post(path, actor=2001, data={})
+    assert ok.status_code == 200, ok.content
+    got = ok.json()["assembly"]
+    assert got["state"] == "done" and got["confirmed_by"]["name"] == "Rahbar"
+    assert got["confirmed_at"] and got["finished_by"]["id"] == asm.pk
+    assert Order.objects.get(pk=job.order_id).status == OrderStatus.DONE
+    assert len(ready) == 1 and len(bot_events.of("assembly.confirmed")) == 1
+    assert bot_client.post(path, actor=2001, data={}).status_code == 409
+    assert len(ready) == 1
 
 
 def test_bot_finish_manager_ok_and_order_not_in_assembly(order_factory, asm, manager, bot_client):
@@ -259,11 +284,18 @@ def test_assembly_fixtures_match_real_payloads(
     assert set(bot_events.one("assembly.done")) == set(
         load_fixture("event.assembly.done.json")["data"]
     )
+    assert load_fixture("event.assembly.done.json")["data"]["assembly"]["state"] == "checking"
+    AS.confirm_assembly(a, by=head)
+    assert set(bot_events.one("assembly.confirmed")) == set(
+        load_fixture("event.assembly.confirmed.json")["data"]
+    )
+    assert load_fixture("event.assembly.confirmed.json")["data"]["assembly"]["state"] == "done"
     assert set(load_fixture("misc.assembly_finish_request.json")) == {"note"}
     assert load_fixture("misc.assembly_due_request.json") == {"days": 10}
     assert set(load_fixture("misc.assembly_assembler_request.json")) == {"user_id"}
     for name in (
         "misc.assembly_finish_response.json",
+        "misc.assembly_confirm_response.json",
         "misc.assembly_due_response.json",
         "misc.assembly_assembler_response.json",
     ):

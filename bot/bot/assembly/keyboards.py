@@ -2,7 +2,8 @@
 assembler: as:fn:{id} («✅ O'rnatildi», while the job is not finished; asks the izoh),
 as:sy:{id} («✅ Yuborish»), as:se:{id} («✏️ Qaytadan»), as:q («❌ Bekor qilish»).
 production head: as:dd:{days}:{id} («+5 kun» / «+10 kun» / «+14 kun»),
-as:us:{user_id}:{id} (pick the assembler / team)."""
+as:us:{user_id}:{id} (pick the assembler / team),
+as:ok:{id} («✅ Tayyor», asks to confirm), as:oky:{id} (confirmed), as:bk:{id} (back)."""
 
 from __future__ import annotations
 
@@ -26,6 +27,21 @@ def task_kb(aid: int, state: str, url: str = ""):
     return ik(rows) or None
 
 
+def confirm_card_kb(aid: int, url: str = ""):
+    """Head's «installed» message: «✅ Tayyor» (asks to confirm) + site link."""
+    return ik([[b("✅ Tayyor", f"as:ok:{aid}")], _site(url)])
+
+
+def confirm_kb(aid: int, url: str = ""):
+    return ik(
+        [
+            [b("✅ Ha, tayyor", f"as:oky:{aid}")],
+            [b("↩️ Orqaga", f"as:bk:{aid}")],
+            _site(url),
+        ]
+    )
+
+
 def link_kb(url: str = ""):
     return ik([_site(url)]) or None
 
@@ -33,7 +49,7 @@ def link_kb(url: str = ""):
 def due_kb(aid: int, presets=PRESETS, url: str = "", state: str = "new"):
     """Head card: deadline presets (not for a done job) + site link."""
     rows = []
-    if state != "done":
+    if state not in ("done", "checking"):
         rows.append([b(f"+{d} kun", f"as:dd:{int(d)}:{aid}") for d in presets or PRESETS])
     rows.append(_site(url))
     return ik(rows) or None

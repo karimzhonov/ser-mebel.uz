@@ -32,6 +32,8 @@ def assembly_task(a) -> dict:
         "started_at": dt(a.started_at),
         "finished_at": dt(a.finished_at),
         "finished_by": user_ref(a.finished_by),
+        "confirmed_at": dt(a.confirmed_at),
+        "confirmed_by": user_ref(a.confirmed_by),
         "due_date": a.due_date.isoformat() if a.due_date else None,
         "due_auto": a.due_auto,
         "due_set_by": user_ref(a.due_set_by),

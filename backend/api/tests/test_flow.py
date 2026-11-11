@@ -211,6 +211,8 @@ def test_full_pipeline(admin_api, catalog):
     admin_api.post(f"/api/v1/assemblies/{assembly_id}/done/")
     assert Order.objects.get(pk=order_id).status == OrderStatus.INSTALLING
     admin_api.post(f"/api/v1/assemblies/{assembly_id}/installing-done/", note)
+    assert Order.objects.get(pk=order_id).status == OrderStatus.INSTALLING  # head confirms
+    admin_api.post(f"/api/v1/assemblies/{assembly_id}/confirm/")
     assert Order.objects.get(pk=order_id).status == OrderStatus.DONE
 
     history = admin_api.get(f"/api/v1/orders/{order_id}/history/")

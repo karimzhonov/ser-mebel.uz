@@ -231,8 +231,28 @@ def test_sms_skipped_when_reassigned_finished_or_telegram(
     AS.assign_assembler(live, asm2, by=head)  # away from no_tg
     assert tasks.assembly_task_sms(live.pk, no_tg.pk) == 0
     AS.finish_assembly(live, by=asm2, note=NOTE)
-    assert tasks.assembly_task_sms(live.pk, asm2.pk) == 0
+    assert tasks.assembly_task_sms(live.pk, asm2.pk) == 0  # finished_at set (checking): no task SMS
     assert not [m for m in sms if "Yig'ish/O'rnatish" in m["text"]]
+
+
+def test_reassign_in_checking_is_refused(live, asm, asm2, head, order_ready, bot_events, sms):
+    AS.assign_assembler(live, asm, by=head)
+    live = AS.finish_assembly(live, by=asm, note=NOTE)
+    assert live.finished_at is not None and not live.installing_done
+    n_task = len(bot_events.of("assembly.task"))
+    n_un = len(bot_events.of("assembly.unassigned"))
+    sms.clear()
+    with pytest.raises(ServiceConflict):
+        AS.assign_assembler(live, asm2, by=head)
+    with pytest.raises(ServiceConflict):
+        AS.assign_assembler(live, None, by=head)
+    with pytest.raises(ServiceConflict):
+        AS.assign_assembler(live, asm, by=head)
+    live.refresh_from_db()
+    assert live.user_id == asm.pk
+    assert len(bot_events.of("assembly.task")) == n_task
+    assert len(bot_events.of("assembly.unassigned")) == n_un
+    assert sms == []
 
 
 # --- 4. pre-assignment / legacy rows ------------------------------------------------
@@ -293,9 +313,11 @@ def test_clear_assembler_only_unassigned(live, asm, head, bot_events):
 def test_user_change_on_finished_job_no_events(live, asm, asm2, head, order_ready, bot_events):
     AS.assign_assembler(live, asm, by=head)
     AS.finish_assembly(live, by=asm, note=NOTE)
+    AS.confirm_assembly(live, by=head)
     bot_events.clear()
-    a = AS.assign_assembler(live, asm2, by=head)
-    assert a.user == asm2 and bot_events == []
+    with pytest.raises(ServiceConflict):
+        AS.assign_assembler(live, asm2, by=head)
+    assert fresh(live).user_id == asm.pk and bot_events == []
 
 
 def test_non_assembler_refused(live, make_staff, head):
@@ -389,14 +411,33 @@ def test_installing_done_panel(live, asm, asm2, head, manager, api, bot_events, 
     bot_events.clear()
     r = c.post(url + "installing-done/", {"note": NOTE}, format="json")
     assert r.status_code == 200, r.data
-    assert r.data["state"] == "done" and r.data["note"] == NOTE
+    assert r.data["state"] == "checking" and r.data["note"] == NOTE
     assert r.data["finished_by_detail"]["id"] == asm.pk and r.data["finished_at"]
-    assert Order.objects.get(pk=live.order_id).status == OrderStatus.DONE
-    assert order_ready == [str(live.order.order_number)]
+    assert r.data["confirmed_at"] is None and r.data["actions"]["installing_done"] is False
+    # NOT «Готов» yet: the head has not confirmed
+    assert Order.objects.get(pk=live.order_id).status == OrderStatus.INSTALLING
+    assert order_ready == []
     ev = bot_events.one("assembly.done")
     assert ev["by_name"] == "Yig'uvchi A" and ev["heads"] == [2001]
     assert ev["to"] == [2001, 3001] and ev["assemblers"] == [1001]
+    assert ev["assembly"]["state"] == "checking"
+    # the assembler cannot confirm; the head can (site)
+    assert c.post(url + "confirm/").status_code == 403
+    h = api(*HEAD_PERMS)
+    h.force_authenticate(head)
+    assert h.get(url).data["actions"]["confirm"] is True
+    bot_events.clear()
+    r = h.post(url + "confirm/")
+    assert r.status_code == 200, r.data
+    assert r.data["state"] == "done" and r.data["confirmed_by_detail"]["id"] == head.pk
+    assert r.data["confirmed_at"] and r.data["actions"]["confirm"] is False
+    assert Order.objects.get(pk=live.order_id).status == OrderStatus.DONE
+    assert order_ready == [str(live.order.order_number)]
+    ev = bot_events.one("assembly.confirmed")
+    assert ev["by_name"] == head.name and ev["heads"] == [2001]
+    assert ev["to"] == [2001, 3001] and ev["assemblers"] == [1001]
     assert ev["assembly"]["state"] == "done"
+    assert h.post(url + "confirm/").status_code == 400  # already done (site: all 400)
 
 
 def test_done_by_other_user_forbidden(live, asm, asm2, head):
@@ -413,6 +454,62 @@ def test_manager_can_finish_any_job(live, asm, head, manager, order_ready):
     assert AS.mark_installing_done(live, by=manager, note=NOTE).finished_by == manager
 
 
+def test_done_side_effects_only_at_confirm(live, asm, head, manager, order_ready, bot_events):
+    """The DONE chain (order status + accounting order_ready) fires at the head's confirm,
+    not at the assembler's finish."""
+    AS.assign_assembler(live, asm, by=head)
+    a = AS.finish_assembly(live, by=asm, note=NOTE)
+    assert a.state == "checking" and not a.installing_done and a.done
+    assert Order.objects.get(pk=a.order_id).status == OrderStatus.INSTALLING
+    assert order_ready == []
+    with pytest.raises(ServiceForbidden):  # a manager is not a head
+        AS.confirm_assembly(a, by=manager)
+    with pytest.raises(ServiceForbidden):  # nor the assembler
+        AS.confirm_assembly(a, by=asm)
+    assert order_ready == []
+    with pytest.raises(ServiceConflict):  # a second «O'rnatildi» while checking
+        AS.finish_assembly(a, by=asm, note=NOTE)
+    a = AS.confirm_assembly(a, by=head)
+    assert a.state == "done" and a.installing_done and a.confirmed_by == head
+    assert a.confirmed_at and a.rev == fresh(a).rev
+    assert Order.objects.get(pk=a.order_id).status == OrderStatus.DONE
+    assert order_ready == [str(a.order.order_number)]
+    with pytest.raises(ServiceConflict):
+        AS.confirm_assembly(a, by=head)
+    assert len(order_ready) == 1
+
+
+def test_confirm_before_finish_is_refused(live, asm, head, order_ready):
+    AS.assign_assembler(live, asm, by=head)
+    with pytest.raises(ServiceError):
+        AS.confirm_assembly(live, by=head)
+    assert order_ready == [] and not fresh(live).installing_done
+
+
+def test_confirm_when_order_already_done_closes_row_only(
+    order_factory, asm, head, order_ready, sms
+):
+    a = Assembly.objects.create(order=_order(order_factory, OrderStatus.DONE), square=3, user=asm)
+    a = AS.finish_assembly(a, by=asm, note=NOTE)
+    assert a.state == "checking"
+    AS.confirm_assembly(a, by=head)
+    assert fresh(a).installing_done and order_ready == []
+
+
+def test_checking_stops_reminders_and_overdue(live, asm, head, fixed_clock, bot_events):
+    AS.assign_assembler(live, asm, by=head)
+    AS.set_assembly_due(live, by=head, days=1)
+    AS.finish_assembly(live, by=asm, note=NOTE)
+    bot_events.clear()
+    assert AS.due_assembly_reminders(at(TODAY + timedelta(days=3), 12)) == {
+        "auto": 0,
+        "soon": 0,
+        "overdue": 0,
+    }
+    assert bot_events.of("assembly.remind") == []
+    assert fresh(live).overdue is False
+
+
 # --- 8. finish_assembly (bot one-shot) ----------------------------------------------
 
 
@@ -420,10 +517,10 @@ def test_manager_can_finish_any_job(live, asm, head, manager, order_ready):
 def test_finish_from_assembly_or_installing(order_factory, asm, status, order_ready, sms):
     a = Assembly.objects.create(order=_order(order_factory, status), square=3, user=asm)
     a = AS.finish_assembly(a, by=asm, note=NOTE)
-    assert a.done and a.installing_done and a.note == NOTE and a.finished_by == asm
-    assert a.state == "done" and a.rev == 1
-    assert Order.objects.get(pk=a.order_id).status == OrderStatus.DONE
-    assert len(order_ready) == 1
+    assert a.done and not a.installing_done and a.note == NOTE and a.finished_by == asm
+    assert a.state == "checking" and a.rev == 1
+    assert Order.objects.get(pk=a.order_id).status == OrderStatus.INSTALLING
+    assert order_ready == []
 
 
 def test_finish_rules(order_factory, asm, asm2, order_ready, sms):
@@ -447,7 +544,7 @@ def test_finish_rules(order_factory, asm, asm2, order_ready, sms):
 def test_finish_when_order_already_done_does_not_resave_order(order_factory, asm, order_ready, sms):
     a = Assembly.objects.create(order=_order(order_factory, OrderStatus.DONE), square=3, user=asm)
     AS.finish_assembly(a, by=asm, note=NOTE)
-    assert fresh(a).installing_done and order_ready == []
+    assert fresh(a).state == "checking" and order_ready == []
 
 
 def test_finish_is_atomic(order_factory, asm, monkeypatch, order_ready, sms):
@@ -672,7 +769,7 @@ def test_actions_are_bools(live, asm, head, api):
         if perms is ASM_PERMS:
             c.force_authenticate(asm)
         a = c.get(f"/api/v1/assemblies/{live.pk}/").data["actions"]
-        assert set(a) == {"edit", "done", "installing_done", "due"}
+        assert set(a) == {"edit", "done", "installing_done", "confirm", "due"}
         assert all(type(v) is bool for v in a.values()), (perms, a)
 
 

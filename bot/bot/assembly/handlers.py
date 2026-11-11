@@ -3,7 +3,8 @@
 Assembler: «✅ O'rnatildi» (`as:fn`) opens the FSM `AssemblyFinish:note -> confirm` (30 min
 TTL), «✅ Yuborish» posts `assemblies/{id}/finish/ {note}`.
 Production head: `as:dd:{days}:{id}` posts `assemblies/{id}/due/ {days}`;
-`as:us:{user_id}:{id}` posts `assemblies/{id}/assembler/ {user_id}` (the team pick).
+`as:us:{user_id}:{id}` posts `assemblies/{id}/assembler/ {user_id}` (the team pick);
+`as:ok:{id}` -> `as:oky:{id}` / `as:bk:{id}` (head «✅ Tayyor») posts `assemblies/{id}/confirm/`.
 The backend decides (403 not linked / not the assembler, 409 already done, 400 field, 404); we
 show it as an alert / re-ask."""
 
@@ -38,6 +39,7 @@ SY_RE = re.compile(r"^as:sy:(\d+)$")
 SE_RE = re.compile(r"^as:se:(\d+)$")
 DD_RE = re.compile(r"^as:dd:(\d+):(\d+)$")
 US_RE = re.compile(r"^as:us:(\d+):(\d+)$")
+OK_RE = re.compile(r"^as:(ok|oky|bk):(\d+)$")
 
 
 def _url(cb: CallbackQuery) -> str:
@@ -131,6 +133,50 @@ def build() -> Router:
             except TelegramAPIError:
                 log.info("edit card failed", exc_info=True)
         await cb.answer(T.DUE_SAVED)
+
+    # ---- head: «✅ Tayyor» -> ask -> confirm
+    @r.callback_query(F.data.regexp(OK_RE))
+    async def confirm(cb: CallbackQuery):
+        action, aid = OK_RE.match(cb.data).groups()
+        aid_i = int(aid)
+        url = _url(cb)
+        if action == "ok":
+            await _set_kb(cb, K.confirm_kb(aid_i, url))
+            await cb.answer(T.CONFIRM_ASK)
+            return
+        if action == "bk":
+            await _set_kb(cb, K.confirm_card_kb(aid_i, url))
+            await cb.answer()
+            return
+        try:
+            res = await api.call(
+                "POST", f"assemblies/{aid_i}/confirm/", actor=cb.from_user.id, json={}
+            )
+        except api.Conflict as e:
+            await _set_kb(cb, K.link_kb(url))  # already confirmed: nothing to press
+            await _alert(cb, e)
+            return
+        except api.BackendError as e:  # 400 / 403 / 404
+            await _set_kb(cb, K.confirm_card_kb(aid_i, url))
+            await _alert(cb, e)
+            return
+        except Exception:  # noqa: BLE001
+            log.exception("assembly confirm %s failed", aid_i)
+            await _set_kb(cb, K.confirm_card_kb(aid_i, url))
+            await cb.answer(api.DOWN_TEXT, show_alert=True)
+            return
+        task = (res or {}).get("assembly") or {}
+        link = K.link_kb(task.get("url") or url)
+        m = cb.message
+        if isinstance(m, Message):
+            try:
+                await m.edit_text(T.confirmed_msg(task), reply_markup=link)
+            except TelegramBadRequest as e:
+                if "not modified" not in str(e).lower():
+                    log.info("edit card failed: %s", e)
+            except TelegramAPIError:
+                log.info("edit card failed", exc_info=True)
+        await cb.answer(T.CONFIRM_OK)
 
     # ---- head: pick the team (assembler)
     @r.callback_query(F.data.regexp(US_RE))
@@ -289,11 +335,11 @@ def build() -> Router:
         await state.clear()
         task = dict((res or {}).get("assembly") or {})
         task.setdefault("id", aid)
-        task.setdefault("state", "done")
+        task.setdefault("state", "checking")
         if url and not task.get("url"):
             task["url"] = url
         await _edit_card(
-            cb.bot, d, T.task_card(task), K.task_kb(aid, "done", task.get("url") or "")
+            cb.bot, d, T.task_card(task), K.task_kb(aid, task["state"], task.get("url") or "")
         )
         m = cb.message
         if isinstance(m, Message):
