@@ -233,3 +233,96 @@ def test_molyar_needs_finished_rover(order_factory, make_staff):
     assert c.get(f"/api/v1/folders/{design.pk}/").status_code == 403
     Rover.objects.filter(pk=r.pk).update(done=True)
     assert c.get(f"/api/v1/folders/{design.pk}/").status_code == 200
+
+
+FILER_WRITE = ("view_folder", "add_folder", "add_file", "delete_file")
+
+
+def with_filer_and_flag(c, flag):
+    perms = [("filer", n) for n in FILER_WRITE] + [("oauth", flag)]
+    for app, codename in perms:
+        c.user.user_permissions.add(
+            Permission.objects.get(codename=codename, content_type__app_label=app)
+        )
+    c.force_authenticate(type(c.user).objects.get(pk=c.user.pk))
+    return c
+
+
+def check_scoped_with_filer(c, order_folder, other_order_folder, other_design, design, sub, f):
+    assert c.get(f"/api/v1/folders/{order_folder.pk}/").status_code == 403
+    assert c.get(f"/api/v1/folders/{other_order_folder.pk}/").status_code == 403
+    assert c.get(f"/api/v1/folders/{other_design.pk}/").status_code == 403
+    got = c.get(f"/api/v1/folders/{design.pk}/")
+    assert got.status_code == 200
+    assert got.data["read_only"] and not got.data["can_write"] and got.data["parent"] is None
+    assert [b["name"] for b in got.data["breadcrumbs"]] == ["Дизайн"]
+    assert c.get(f"/api/v1/folders/{sub.pk}/").status_code == 200
+    assert c.get(f"/api/v1/files/{f.pk}/").status_code == 200
+    up = SimpleUploadedFile("y.pdf", b"%PDF-1")
+    assert c.post(f"/api/v1/folders/{design.pk}/", {"file": up}).status_code == 403
+    assert c.post(f"/api/v1/folders/{design.pk}/", {"name": "n"}, format="json").status_code == 403
+    assert c.delete(f"/api/v1/files/{f.pk}/").status_code == 403
+    assert File.objects.filter(pk=f.pk).exists()
+    assert c.get(f"/api/v1/folders/{design.pk}/messages/").status_code == 403
+    msg = c.post(f"/api/v1/folders/{design.pk}/messages/", {"message": "hi"}, format="json")
+    assert msg.status_code == 403
+
+
+def two_trees(order_factory):
+    o, o2 = order_factory(), order_factory()
+    order_folder, _, design, sub, _ = tree(o)
+    other_folder, _, other_design, _, _ = tree(o2)
+    f = File.objects.create(
+        folder=sub, original_filename="x.pdf", file=SimpleUploadedFile("x.pdf", b"%PDF")
+    )
+    return o, order_folder, design, sub, other_folder, other_design, f
+
+
+def test_molyar_role_with_filer_perms_stays_scoped(order_factory, make_staff, media):
+    c = group_client("Molyar", make_staff)
+    t = PainterType.objects.create(name="A", price=Money(1, "UZS"), user=c.user)
+    o, order_folder, design, sub, other_folder, other_design, f = two_trees(order_factory)
+    Painter.objects.create(order=o, square=1, type=t)
+    with_filer_and_flag(c, "user_painter")
+    check_scoped_with_filer(c, order_folder, other_folder, other_design, design, sub, f)
+
+
+def test_rover_role_with_filer_perms_stays_scoped(order_factory, make_staff, media):
+    c = group_client("Rover", make_staff)
+    o, order_folder, design, sub, other_folder, other_design, f = two_trees(order_factory)
+    Rover.objects.create(order=o, square=1, price=Money(1, "UZS"))
+    with_filer_and_flag(c, "user_rover")
+    # no Rover row on the other order -> its design folder is closed too
+    check_scoped_with_filer(c, order_folder, other_folder, other_design, design, sub, f)
+
+
+def test_role_flag_with_full_access_unchanged(order_factory, make_staff, media):
+    o, order_folder, design, sub, other_folder, other_design, f = two_trees(order_factory)
+    for kwargs, extra in (
+        ({"superuser": True}, None),
+        ({}, "oauth.user_production_head"),
+        ({}, "assembly.manager"),
+    ):
+        perms = ["filer.view_folder", "filer.add_folder", "oauth.user_painter"]
+        if extra:
+            perms.append(extra)
+        try:
+            u = make_staff(*perms, **kwargs)
+        except Permission.DoesNotExist:
+            continue
+        c = APIClient()
+        c.force_authenticate(u)
+        got = c.get(f"/api/v1/folders/{order_folder.pk}/")
+        assert got.status_code == 200 and got.data["can_write"] and not got.data["read_only"]
+        assert c.get(f"/api/v1/folders/{other_design.pk}/").status_code == 200
+        assert (
+            c.post(f"/api/v1/folders/{design.pk}/", {"name": "n"}, format="json").status_code == 201
+        )
+
+
+def test_filer_user_without_role_flag_unchanged(order_factory, api):
+    o, order_folder, design, sub, other_folder, other_design, f = two_trees(order_factory)
+    c = api("filer.view_folder", "filer.add_folder", "filer.delete_file")
+    assert c.get(f"/api/v1/folders/{order_folder.pk}/").data["can_write"]
+    assert c.post(f"/api/v1/folders/{design.pk}/", {"name": "n"}, format="json").status_code == 201
+    assert c.delete(f"/api/v1/files/{f.pk}/").status_code == 204

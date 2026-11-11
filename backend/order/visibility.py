@@ -6,6 +6,7 @@ superusers see it in full. Enforced in the API serializers (`api/serializers/ord
 
 from __future__ import annotations
 
+from oauth.constants import PAINTER_PERMISSION, ROVER_PERMISSION
 from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
 
 # keys of the nested `order` block that a restricted viewer must not get
@@ -27,6 +28,19 @@ def sees_full_order(user) -> bool:
         user.is_superuser
         or user.has_perm("oauth.user_production_head")
         or user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
+    )
+
+
+def folder_scoped(user) -> bool:
+    """Rover/Molyar workers (role flag `user_rover` / `user_painter`) who are not full
+    viewers: they read only the «Дизайн» folder, whatever filer.* permissions they hold
+    through other groups or personal grants, and never write."""
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_superuser or sees_full_order(user):
+        return False
+    return bool(
+        user.has_perm(f"oauth.{ROVER_PERMISSION}") or user.has_perm(f"oauth.{PAINTER_PERMISSION}")
     )
 
 

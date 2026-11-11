@@ -18,7 +18,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from discussion.models import DiscussionMessage
-from order.visibility import design_folder_access
+from order.visibility import design_folder_access, folder_scoped
 
 from ..permissions import require_perm
 from ..serializers.common import UserShortSerializer
@@ -298,13 +298,24 @@ def _breadcrumbs(folder, stop_at=None):
 def _read_scope(user, folder):
     """None = normal access (filer.view_folder); otherwise the design folder that is the
     top of what this user may read (Rover/Molyar workers, see order.visibility). Raises 403
-    when neither applies."""
+    when neither applies. Role-scoped workers are always limited to the design folder."""
+    if folder_scoped(user):
+        root = design_folder_access(user, folder)
+        if root is None:
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+        return root
     if user.has_perm("filer.view_folder"):
         return None
     root = design_folder_access(user, folder)
     if root is None:
         raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
     return root
+
+
+def _forbid_scoped(user):
+    """Design-folder-only workers never write or use the folder chat."""
+    if folder_scoped(user):
+        raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -376,6 +387,7 @@ class FolderView(APIView):
     def post(self, request, folder_id):
         """multipart `file` (one or many) → uploaded into this folder;
         JSON {"name": "..."} → a new sub-folder."""
+        _forbid_scoped(request.user)
         folder = get_object_or_404(Folder, pk=folder_id)
         uploads = request.FILES.getlist("file")
         if not uploads:
@@ -399,7 +411,7 @@ class FileView(APIView):
         SPA uses this instead of the bare /media/ link: a missing file is a clear 404
         here, not the server's redirect to /admin/ saved as the "file"."""
         f = get_object_or_404(File, pk=file_id)
-        if not request.user.has_perm("filer.view_folder"):
+        if folder_scoped(request.user) or not request.user.has_perm("filer.view_folder"):
             if f.folder is None or design_folder_access(request.user, f.folder) is None:
                 raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
         name = f.original_filename or f.label or "fayl"
@@ -414,6 +426,7 @@ class FileView(APIView):
         return FileResponse(fh, as_attachment=True, filename=filename)
 
     def delete(self, request, file_id):
+        _forbid_scoped(request.user)
         require_perm(request.user, "filer.view_folder", "filer.delete_file")
         get_object_or_404(File, pk=file_id).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -423,6 +436,7 @@ class FolderMessagesView(APIView):
     """The DiscussionInline shown on the admin folder page."""
 
     def get(self, request, folder_id):
+        _forbid_scoped(request.user)
         require_perm(request.user, "filer.view_folder")  # no folder chat for scoped workers
         folder = get_object_or_404(Folder, pk=folder_id)
         messages = DiscussionMessage.objects.filter(
@@ -431,6 +445,7 @@ class FolderMessagesView(APIView):
         return Response(MessageSerializer(messages, many=True).data)
 
     def post(self, request, folder_id):
+        _forbid_scoped(request.user)
         require_perm(request.user, "filer.view_folder", "discussion.add_discussionmessage")
         folder = get_object_or_404(Folder, pk=folder_id)
         serializer = MessageSerializer(data=request.data)
