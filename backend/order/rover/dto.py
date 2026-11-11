@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from call_center.dto import dt, user_ref
+from core.geo import obj_map_url
 
 
 def rover_url(rover_id) -> str:
@@ -32,5 +33,14 @@ def rover_task(r) -> dict:
         "submitted_by": user_ref(r.submitted_by),
         "checked_at": dt(r.checked_at),
         "checked_by": user_ref(r.checked_by),
+        "address": order.address or "",
+        "map_url": obj_map_url(order),
+        "due_date": r.due_date.isoformat() if r.due_date else None,
+        "due_auto": r.due_auto,
+        "due_set_by": user_ref(r.due_set_by),
+        "overdue": r.overdue,
+        "days_late": r.days_late,
+        "note": r.note,
+        "rev": r.rev,
         "url": rover_url(r.pk),
     }

@@ -1,0 +1,47 @@
+{
+  "id": "00000000-0000-0000-0000-000000007006",
+  "event": "rover.remind",
+  "data": {
+    "rover": {
+      "id": 15,
+      "order": {
+        "id": 88,
+        "number": 1042
+      },
+      "client": {
+        "fio": "Ali Valiyev",
+        "phone": "+998901112244"
+      },
+      "square": 6.5,
+      "amount": "40000.00",
+      "currency": "UZS",
+      "state": "new",
+      "state_label": "Ishda",
+      "submitted_at": null,
+      "submitted_by": null,
+      "checked_at": null,
+      "checked_by": null,
+      "url": "https://ser-mebel.uz/production/rover?open=15",
+      "address": "Chilonzor 7-kvartal, 12-uy",
+      "map_url": "https://yandex.com/maps/?pt=69.2401,41.2995&z=17&l=map",
+      "due_date": "2026-11-03",
+      "due_auto": false,
+      "due_set_by": {
+        "id": 14,
+        "name": "Ishlab chiqarish rahbari"
+      },
+      "overdue": true,
+      "days_late": 2,
+      "note": "",
+      "rev": 2
+    },
+    "what": "overdue",
+    "days_late": 2,
+    "to": [
+      777888999
+    ],
+    "heads": [
+      555666777
+    ]
+  }
+}

@@ -5,6 +5,7 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from accounting.text import today as accounting_today
 from client.models import Client
 from core.exceptions import ServiceError
 from core.geo import UNSET
@@ -27,7 +28,7 @@ from order.models import Factory, Order
 from order.painter.models import Painter, PainterType
 from order.painter.services import assign_painter_type, mark_painter_done, ready_for_painter
 from order.rover.models import Rover
-from order.rover.services import confirm_rover, submit_rover
+from order.rover.services import confirm_rover, set_rover_due, submit_rover
 from order.services import (
     advance_order_status,
     create_order,
@@ -51,6 +52,7 @@ from ..serializers.orders import (
     PainterSerializer,
     PainterTypeSerializer,
     RoverDoneSerializer,
+    RoverDueSerializer,
     RoverSerializer,
 )
 from ..utils import apply_period, csv_values, int_param, timeseries, warning_filter
@@ -364,10 +366,20 @@ class DetailingViewSet(_ProductionViewSet):
 class RoverViewSet(_ProductionViewSet):
     serializer_class = RoverSerializer
     http_method_names = ["get", "post", "head", "options"]
+    ordering_fields = ["created_at", "due_date"]
+
+    def _respond(self, obj):
+        # always the full card, whatever serializer the action documents for its input
+        obj = self.get_queryset().get(pk=obj.pk)
+        return Response(RoverSerializer(obj, context=self.get_serializer_context()).data)
 
     def get_queryset(self):
-        qs = Rover.objects.select_related("order__client", "submitted_by", "checked_by")
+        qs = Rover.objects.select_related(
+            "order__client", "submitted_by", "checked_by", "due_set_by"
+        )
         qs = self.filter_common(qs)
+        if _bool_param(self.request.query_params.get("overdue")):
+            qs = qs.filter(done=False, submitted_at__isnull=True, due_date__lt=accounting_today())
         state = self.request.query_params.get("state")
         if state == "new":
             qs = qs.filter(done=False, submitted_at__isnull=True)
@@ -391,13 +403,30 @@ class RoverViewSet(_ProductionViewSet):
 
     @action(detail=True, methods=["post"])
     def done(self, request, pk=None):
-        """The worker's «Bajarildi»: {price: {amount, currency}} - the actual amount;
+        """The worker's «Bajarildi»: {price: {amount, currency}, note} - the actual amount and what was done;
         the job then waits for a checker."""
         require_perm(request.user, "rover.change_rover")
         body = RoverDoneSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         return self._respond(
-            submit_rover(self.get_object(), by=request.user, price=body.validated_data["price"])
+            submit_rover(
+                self.get_object(),
+                by=request.user,
+                price=body.validated_data["price"],
+                note=body.validated_data["note"],
+            )
+        )
+
+    @action(detail=True, methods=["post"], serializer_class=RoverDueSerializer)
+    def due(self, request, pk=None):
+        """The production head's deadline: {due_date: "YYYY-MM-DD"}."""
+        require_perm(request.user, "oauth.user_production_head")
+        body = RoverDueSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            set_rover_due(
+                self.get_object(), by=request.user, due_date=body.validated_data["due_date"]
+            )
         )
 
     @action(detail=True, methods=["post"])

@@ -85,6 +85,7 @@ class User(AbstractBaseUser, PermissionsMixin):
             (DETAILING_PERMISSION, 'Detailing'),
             (ROVER_PERMISSION, 'Rover'),
             (ROVER_CHECKER_PERMISSION, 'Rover tekshiruvchi'),
+            (PRODUCTION_HEAD_PERMISSION, 'Ishlab chiqarish rahbari'),
             (PAINTER_PERMISSION, 'Painter'),
             (ASSEMBLY_PERMISSION, 'Assembly'),
         ]

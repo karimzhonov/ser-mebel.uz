@@ -7,7 +7,6 @@ from filer.models import Folder
 from filer.fields.folder import FilerFolderField
 from simple_history.models import HistoricalRecords
 from django.conf import settings
-from oauth.models import User, ROVER_PERMISSION
 
 
 class RoverState(models.TextChoices):
@@ -40,6 +39,15 @@ class Rover(models.Model):
         settings.AUTH_USER_MODEL, models.SET_NULL, null=True, blank=True, related_name="+"
     )
 
+    due_date = models.DateField(null=True, blank=True, db_index=True, verbose_name="Muddat")
+    due_auto = models.BooleanField(default=False, verbose_name="Muddat avtomatik qo'yilgan")
+    due_set_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    due_set_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True, default="", verbose_name="Izoh")
+    rev = models.PositiveIntegerField(default=0)
+
     history = HistoricalRecords()
 
     def __str__(self):
@@ -55,6 +63,22 @@ class Rover(models.Model):
     def state_label(self) -> str:
         return RoverState(self.state).label
 
+    @property
+    def overdue(self) -> bool:
+        from accounting.text import today
+
+        return (
+            self.state == RoverState.NEW and self.due_date is not None and today() > self.due_date
+        )
+
+    @property
+    def days_late(self) -> int:
+        if not self.overdue:
+            return 0
+        from accounting.text import today
+
+        return (today() - self.due_date).days
+
     class Meta:
         verbose_name = "Ровер"
         verbose_name_plural = "Роверы"
@@ -64,12 +88,9 @@ class Rover(models.Model):
 def create_rover_folders(sender: Type[Rover], instance: Rover, created, **kwargs):
     if not created:
         return
-    User.send_messages(
-        ROVER_PERMISSION,
-        "admin:rover_rover_change",
-        {"object_id": instance.pk},
-        sms_template="{xodim_ism}, Оповещение о заказе\n{url}",
-    )
+    from . import services
+
+    services.announce_new_rover(instance)
 
     if instance.order.folder is None:
         return

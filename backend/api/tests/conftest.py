@@ -27,6 +27,12 @@ def _no_offer_sms_queue(monkeypatch):
     monkeypatch.setattr("metering.tasks.offer_sms.delay", lambda *a, **k: None)
 
 
+@pytest.fixture(autouse=True)
+def _no_rover_sms_queue(monkeypatch):
+    """No broker in tests: the new-rover SMS is only queued (call the task directly)."""
+    monkeypatch.setattr("order.rover.tasks.rover_task_sms.delay", lambda *a, **k: None)
+
+
 @pytest.fixture
 def make_staff(db):
     from oauth.models import User

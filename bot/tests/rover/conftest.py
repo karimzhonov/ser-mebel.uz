@@ -28,6 +28,15 @@ TASK = {
     "checked_at": None,
     "checked_by": None,
     "url": URL,
+    "address": "Chilonzor 7 & 12",
+    "map_url": "https://yandex.com/maps/?pt=69.24,41.29",
+    "due_date": "2026-11-15",
+    "due_auto": False,
+    "due_set_by": {"id": 14, "name": "Rahbar"},
+    "overdue": False,
+    "days_late": 0,
+    "note": "",
+    "rev": 3,
 }
 
 
@@ -35,6 +44,16 @@ def task(**kw) -> dict:
     d = copy.deepcopy(TASK)
     d.update(kw)
     return d
+
+
+def new_task(**kw) -> dict:
+    return task(
+        state="new",
+        state_label="Ishda",
+        submitted_at=None,
+        submitted_by=None,
+        **kw,
+    )
 
 
 def done_task(**kw) -> dict:

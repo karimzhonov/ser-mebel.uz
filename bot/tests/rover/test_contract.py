@@ -8,7 +8,7 @@ from bot.notify.registry import dispatch
 from .conftest import fake_bot, fixture
 
 
-@pytest.mark.parametrize("event", ["check", "checked"])
+@pytest.mark.parametrize("event", ["check", "checked", "task", "due_ask", "due_set", "remind"])
 async def test_event_fixtures_render(event):
     fx = fixture(f"event.rover.{event}")
     if fx is None:

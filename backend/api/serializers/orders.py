@@ -336,6 +336,8 @@ class RoverSerializer(serializers.ModelSerializer):
     state_label = serializers.CharField(read_only=True)
     submitted_by_detail = UserShortSerializer(source="submitted_by", read_only=True)
     checked_by_detail = UserShortSerializer(source="checked_by", read_only=True)
+    due_set_by_detail = UserShortSerializer(source="due_set_by", read_only=True)
+    overdue = serializers.BooleanField(read_only=True)
     actions = serializers.SerializerMethodField()
 
     class Meta:
@@ -353,6 +355,12 @@ class RoverSerializer(serializers.ModelSerializer):
             "checked_by_detail",
             "square",
             "price",
+            "note",
+            "due_date",
+            "due_auto",
+            "due_set_at",
+            "due_set_by_detail",
+            "overdue",
             "folder",
             "actions",
         ]
@@ -363,11 +371,17 @@ class RoverSerializer(serializers.ModelSerializer):
         return {
             "done": user.has_perm("rover.change_rover") and obj.state == "new",
             "confirm": user.has_perm("oauth.user_rover_checker") and obj.state == "checking",
+            "due": user.has_perm("oauth.user_production_head") and obj.state != "done",
         }
 
 
 class RoverDoneSerializer(serializers.Serializer):
     price = MoneyField()
+    note = serializers.CharField(allow_blank=True, trim_whitespace=False)
+
+
+class RoverDueSerializer(serializers.Serializer):
+    due_date = serializers.DateField()
 
 
 class PainterTypeSerializer(serializers.ModelSerializer):

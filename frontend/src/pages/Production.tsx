@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Plus } from "lucide-react";
-import { api } from "@/api/client";
+import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useGet, useList, useMeta } from "@/api/hooks";
 import type { PainterType, ProductionItem, UserShort } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink, ROW_TONE } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
+import { RoverDueLabel, RoverDueModal } from "@/components/RoverDue";
 import {
   Badge,
   Button,
@@ -27,6 +28,7 @@ import {
   Segmented,
   Select,
   StatTile,
+  Textarea,
 } from "@/components/ui";
 import { date, money, num, phone } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
@@ -121,6 +123,9 @@ function ProductionList({ kind }: { kind: Kind }) {
             ...(kind === "detailing"
               ? [{ key: "due_at", header: "Detalirovka muddati", cell: (r: ProductionItem) => <DetailingDue dueAt={r.due_at} done={r.done} /> }]
               : []),
+            ...(kind === "rover"
+              ? [{ key: "due_date", header: "Rover muddati", cell: (r: ProductionItem) => <RoverDueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} /> }]
+              : []),
             ...(kind === "assembly"
               ? [{ key: "user", header: "Yig'uvchi", cell: (r: ProductionItem) => r.user_detail?.name || (r.user_detail ? phone(r.user_detail.phone) : <span className="muted">—</span>) }]
               : []),
@@ -158,6 +163,12 @@ function ProductionList({ kind }: { kind: Kind }) {
                 <div className="text-sm">
                   <span className="muted">Detalirovka: </span>
                   <DetailingDue dueAt={r.due_at} done={r.done} />
+                </div>
+              )}
+              {kind === "rover" && (
+                <div className="text-sm">
+                  <span className="muted">Rover muddati: </span>
+                  <RoverDueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} />
                 </div>
               )}
             </div>
@@ -198,6 +209,9 @@ function ProductionModal({
   const [confirm, setConfirm] = useState<null | string>(null);
   const [moveDue, setMoveDue] = useState(false);
   const [amountOpen, setAmountOpen] = useState(false);
+  const [roverDue, setRoverDue] = useState(false);
+  const [note, setNote] = useState("");
+  const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
   const [amount, setAmount] = useState<{ amount: number | string; currency: string }>({ amount: "", currency: "UZS" });
   useEffect(() => {
     if (item && kind === "detailing")
@@ -220,7 +234,11 @@ function ProductionModal({
   });
 
   const submit = useAction(
-    () => api.post(`/${cfg.resource}/${id}/done/`, { price: { amount: Number(amount.amount), currency: amount.currency } }),
+    () =>
+      api.post(`/${cfg.resource}/${id}/done/`, {
+        price: { amount: Number(amount.amount), currency: amount.currency },
+        note: note.trim(),
+      }),
     { success: "Tekshiruvga yuborildi", invalidate: inv, onSuccess: () => setAmountOpen(false) },
   );
 
@@ -260,7 +278,19 @@ function ProductionModal({
             ...(kind !== "detailing" ? ([["Maydon", num(item.square)], ["Narx", money(item.price)]] as [string, string][]) : []),
             ...(kind === "rover"
               ? ([
+                  [
+                    "Rover muddati",
+                    <span className="flex flex-wrap items-center gap-2">
+                      <RoverDueLabel dueDate={item.due_date} auto={item.due_auto} overdue={item.overdue} />
+                      {a.due && can("oauth.user_production_head") && (
+                        <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setRoverDue(true)}>
+                          o'zgartirish
+                        </button>
+                      )}
+                    </span>,
+                  ],
                   ["Holat", item.state === "checking" ? <Badge tone="warn">Tekshiruvda</Badge> : item.state === "done" ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="idle">Ishda</Badge>],
+                  ...(item.note ? [["Izoh", <span className="whitespace-pre-wrap">{item.note}</span>]] : []),
                   ...(item.submitted_at
                     ? [["Bajardi", `${item.submitted_by_detail?.name || (item.submitted_by_detail ? phone(item.submitted_by_detail.phone) : "—")} · ${date(item.submitted_at)}`]]
                     : []),
@@ -335,11 +365,18 @@ function ProductionModal({
               onClick={() => {
                 if (kind === "rover") {
                   setAmount({ amount: "", currency: item.price?.currency ?? "UZS" });
+                  setNote("");
+                  setSubmitErrors({});
                   setAmountOpen(true);
                 } else setConfirm("done");
               }}
             >
               {kind === "assembly" ? "Yig'ish bajarildi" : kind === "detailing" ? "Detalirovka bajarildi" : "Bajarildi"}
+            </Button>
+          )}
+          {kind === "rover" && a.due && can("oauth.user_production_head") && (
+            <Button variant="outline" onClick={() => setRoverDue(true)}>
+              🕒 Muddat
             </Button>
           )}
           {a.confirm && can("oauth.user_rover_checker") && (
@@ -375,17 +412,26 @@ function ProductionModal({
       />
       <Modal open={amountOpen} onClose={() => setAmountOpen(false)} title="Bajarilgan ish summasi" size="sm">
         <div className="space-y-4">
-          <Field label="Summa" hint="Summa tekshiruvchiga yuboriladi">
+          <Field label="Summa" hint="Summa tekshiruvchiga yuboriladi" error={submitErrors.price}>
             <MoneyInput value={amount} currencies={["UZS", "USD"]} onChange={setAmount} />
+          </Field>
+          <Field label="Izoh (nima ish qilindi, nechta eshik)" error={submitErrors.note}>
+            <Textarea required value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
           </Field>
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setAmountOpen(false)}>Bekor qilish</Button>
-            <Button variant="success" loading={submit.isPending} disabled={!(Number(amount.amount) > 0)} onClick={() => submit.mutate()}>
+            <Button
+              variant="success"
+              loading={submit.isPending}
+              disabled={!(Number(amount.amount) > 0) || note.trim().length < 3}
+              onClick={() => submit.mutateAsync().catch((e) => setSubmitErrors(fieldErrors(e)))}
+            >
               Yuborish
             </Button>
           </div>
         </div>
       </Modal>
+      {roverDue && <RoverDueModal roverId={item.id} dueDate={item.due_date} onClose={() => setRoverDue(false)} />}
       {moveDue && <DetailingDueModal detailingId={item.id} dueAt={item.due_at} onClose={() => setMoveDue(false)} />}
     </Modal>
   );

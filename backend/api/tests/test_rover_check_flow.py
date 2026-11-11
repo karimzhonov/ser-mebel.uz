@@ -24,8 +24,11 @@ def money(n="150000"):
     return Money(n, "UZS")
 
 
+NOTE = "Fasad frezerlandi, 8 ta eshik"
+
+
 def body(n="150000"):
-    return {"price": {"amount": n, "currency": "UZS"}}
+    return {"price": {"amount": n, "currency": "UZS"}, "note": NOTE}
 
 
 @pytest.fixture
@@ -78,7 +81,7 @@ def names(sent):
 
 
 def test_submit_sets_fields(rover, worker):
-    r = RS.submit_rover(rover, by=worker, price=money())
+    r = RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     r = Rover.objects.get(pk=r.pk)
     assert r.price == money()
     assert r.submitted_at is not None and r.submitted_by == worker
@@ -89,30 +92,30 @@ def test_submit_sets_fields(rover, worker):
 @pytest.mark.parametrize("bad", ["0", "-5"])
 def test_submit_rejects_non_positive_price(rover, worker, bad):
     with pytest.raises(ServiceError) as e:
-        RS.submit_rover(rover, by=worker, price=money(bad))
+        RS.submit_rover(rover, by=worker, price=money(bad), note=NOTE)
     assert e.value.field == "price"
     assert Rover.objects.get(pk=rover.pk).state == "new"
 
 
 def test_submit_rejects_missing_price(rover, worker):
     with pytest.raises(ServiceError) as e:
-        RS.submit_rover(rover, by=worker, price=None)
+        RS.submit_rover(rover, by=worker, price=None, note=NOTE)
     assert e.value.field == "price"
 
 
 def test_submit_twice_and_after_done_conflict(rover, worker, checker):
-    RS.submit_rover(rover, by=worker, price=money())
+    RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     with pytest.raises(ServiceConflict):
-        RS.submit_rover(rover, by=worker, price=money("1"))
+        RS.submit_rover(rover, by=worker, price=money("1"), note=NOTE)
     assert Rover.objects.get(pk=rover.pk).price == money()
     RS.confirm_rover(rover, by=checker)
     with pytest.raises(ServiceConflict):
-        RS.submit_rover(rover, by=worker, price=money("1"))
+        RS.submit_rover(rover, by=worker, price=money("1"), note=NOTE)
 
 
 def test_submit_without_change_perm_forbidden(rover, checker):
     with pytest.raises(ServiceForbidden):
-        RS.submit_rover(rover, by=checker, price=money())
+        RS.submit_rover(rover, by=checker, price=money(), note=NOTE)
     assert Rover.objects.get(pk=rover.pk).state == "new"
 
 
@@ -120,8 +123,8 @@ def test_submit_api_validation_and_403(rover, api):
     c = api(*WORKER)
     for payload in (
         {},
-        {"price": {"amount": "0", "currency": "UZS"}},
-        {"price": {"amount": "-3", "currency": "UZS"}},
+        {"price": {"amount": "0", "currency": "UZS"}, "note": NOTE},
+        {"price": {"amount": "-3", "currency": "UZS"}, "note": NOTE},
     ):
         r = c.post(f"/api/v1/rovers/{rover.pk}/done/", payload, format="json")
         assert r.status_code == 400, (payload, r.data)
@@ -144,7 +147,7 @@ def test_check_event_after_commit_only_active_telegram_checkers(
     make_staff(superuser=True, name="Super", telegram_id=333)  # no explicit permission row
     make_staff("rover.view_rover", name="Oddiy", telegram_id=444)  # not a checker
     with django_capture_on_commit_callbacks(execute=False) as cbs:
-        RS.submit_rover(rover, by=worker, price=money())
+        RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     assert sent == []  # nothing before the commit
     for cb in cbs:
         cb()
@@ -155,7 +158,7 @@ def test_check_event_after_commit_only_active_telegram_checkers(
 
 def test_no_checkers_no_event(rover, worker, sent, django_capture_on_commit_callbacks):
     with django_capture_on_commit_callbacks(execute=True):
-        r = RS.submit_rover(rover, by=worker, price=money())
+        r = RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     assert sent == [] and r.state == "checking"
 
 
@@ -166,7 +169,7 @@ def test_confirm_marks_done_notifies_once(
     rover, worker, checker, sent, painting_calls, django_capture_on_commit_callbacks
 ):
     with django_capture_on_commit_callbacks(execute=True):
-        RS.submit_rover(rover, by=worker, price=money())
+        RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     sent.clear()
     with django_capture_on_commit_callbacks(execute=False) as cbs:
         RS.confirm_rover(rover, by=checker)
@@ -183,7 +186,7 @@ def test_second_confirm_conflict_no_side_effects(
     rover, worker, checker, sent, painting_calls, django_capture_on_commit_callbacks
 ):
     with django_capture_on_commit_callbacks(execute=True):
-        RS.submit_rover(rover, by=worker, price=money())
+        RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
         RS.confirm_rover(rover, by=checker)
     sent.clear()
     painting_calls.clear()
@@ -200,14 +203,14 @@ def test_confirm_new_rover_is_error(rover, checker, painting_calls):
 
 
 def test_confirm_requires_checker(rover, worker, painting_calls):
-    RS.submit_rover(rover, by=worker, price=money())
+    RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     with pytest.raises(ServiceForbidden):
         RS.confirm_rover(rover, by=worker)
     assert not Rover.objects.get(pk=rover.pk).done
 
 
 def test_confirm_api(rover, worker, api):
-    RS.submit_rover(rover, by=worker, price=money())
+    RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     assert api(*WORKER).post(f"/api/v1/rovers/{rover.pk}/confirm/").status_code == 403
     c = api(*CHECKER)
     assert c.post(f"/api/v1/rovers/{rover.pk}/confirm/").status_code == 200
@@ -239,7 +242,7 @@ def test_detailing_square_recomputes_price_only_while_new(
     r = patch(5)
     assert r.square == 5 and r.price == RS.auto_rover_price(5)
 
-    RS.submit_rover(r, by=worker, price=money("77777"))
+    RS.submit_rover(r, by=worker, price=money("77777"), note=NOTE)
     r = patch(7)
     assert r.square == 7 and r.price == money("77777") and r.state == "checking"
 
@@ -258,7 +261,7 @@ def test_painter_list_hidden_while_checking(order_factory, worker, checker, admi
     rover = Rover.objects.create(order=order, square=3)
     Painter.objects.create(order=order, square=5)
     assert admin_api.get("/api/v1/painters/").data["count"] == 0
-    RS.submit_rover(rover, by=worker, price=money())
+    RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     assert admin_api.get("/api/v1/painters/").data["count"] == 0
     RS.confirm_rover(rover, by=checker)
     assert admin_api.get("/api/v1/painters/").data["count"] == 1
@@ -271,16 +274,16 @@ def test_serializer_actions_per_role_and_state(rover, worker, checker, api):
     def acts(client):
         return client.get(url).data["actions"]
 
-    assert acts(w) == {"done": True, "confirm": False}
-    assert acts(c) == {"done": False, "confirm": False}
-    assert acts(both) == {"done": True, "confirm": False}
-    RS.submit_rover(rover, by=worker, price=money())
-    assert acts(w) == {"done": False, "confirm": False}
-    assert acts(c) == {"done": False, "confirm": True}
-    assert acts(both) == {"done": False, "confirm": True}
+    assert acts(w) == {"done": True, "confirm": False, "due": False}
+    assert acts(c) == {"done": False, "confirm": False, "due": False}
+    assert acts(both) == {"done": True, "confirm": False, "due": False}
+    RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
+    assert acts(w) == {"done": False, "confirm": False, "due": False}
+    assert acts(c) == {"done": False, "confirm": True, "due": False}
+    assert acts(both) == {"done": False, "confirm": True, "due": False}
     RS.confirm_rover(rover, by=checker)
     for client in (w, c, both):
-        assert acts(client) == {"done": False, "confirm": False}
+        assert acts(client) == {"done": False, "confirm": False, "due": False}
     data = c.get(url).data
     assert data["state"] == "done" and data["state_label"] and data["checked_by_detail"]["name"]
 
@@ -289,8 +292,8 @@ def test_state_filter_and_stats(order_factory, worker, checker, admin_api):
     new = Rover.objects.create(order=order_factory(), square=1)
     chk = Rover.objects.create(order=order_factory(), square=1)
     done = Rover.objects.create(order=order_factory(), square=1)
-    RS.submit_rover(chk, by=worker, price=money())
-    RS.submit_rover(done, by=worker, price=money())
+    RS.submit_rover(chk, by=worker, price=money(), note=NOTE)
+    RS.submit_rover(done, by=worker, price=money(), note=NOTE)
     RS.confirm_rover(done, by=checker)
 
     def ids(state):
@@ -308,7 +311,7 @@ def test_state_filter_and_stats(order_factory, worker, checker, admin_api):
 def test_order_detail_production_rover_state(rover, worker, admin_api):
     url = f"/api/v1/orders/{rover.order_id}/"
     assert admin_api.get(url).data["production"]["rover"]["state"] == "new"
-    RS.submit_rover(rover, by=worker, price=money())
+    RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     assert admin_api.get(url).data["production"]["rover"]["state"] == "checking"
 
 
@@ -322,7 +325,7 @@ def test_bot_confirm_statuses(rover, worker, checker, make_staff, bot_client, bo
     assert bot_client.post(path, actor=777).status_code == 403  # not linked
     assert bot_client.post(path, actor=555).status_code == 403  # linked, no permission
     assert bot_client.post(path, actor=111).status_code == 400  # not handed in yet
-    RS.submit_rover(rover, by=worker, price=money())
+    RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     ok = bot_client.post(path, actor=111)
     assert ok.status_code == 200 and ok.json()["rover"]["state"] == "done"
     assert bot_client.post(path, actor=111).status_code == 409
@@ -374,7 +377,7 @@ def test_existing_same_named_group_untouched():
 def test_painting_ready_task_runs_once(rover, worker, checker, painting_calls):
     from order.rover.tasks import notify_painting_ready_task as task
 
-    RS.submit_rover(rover, by=worker, price=money())
+    RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     RS.confirm_rover(rover, by=checker)  # no commit capture: on_commit is not run in tests
     assert task(rover.pk) is True
     assert task(rover.pk) is False  # redelivery is a no-op

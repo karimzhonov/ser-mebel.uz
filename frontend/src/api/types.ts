@@ -717,6 +717,12 @@ export interface ProductionItem {
   submitted_by_detail?: UserShort | null;
   checked_at?: string | null;
   checked_by_detail?: UserShort | null;
+  note?: string;
+  due_date?: string | null;
+  due_auto?: boolean;
+  due_set_at?: string | null;
+  due_set_by_detail?: UserShort | null;
+  overdue?: boolean;
   // detailing
   working_done?: boolean;
   painter_square?: number;

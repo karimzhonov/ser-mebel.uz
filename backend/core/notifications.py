@@ -13,3 +13,5 @@ SMS_ORDER_WORKING = (
 )
 SMS_ORDER_ASSEMBLY = "{xodim_ism}, buyurtma №{buyurtma_raqami} bo'yicha sborka (yig'ish) ishi sizga tayinlandi.\n{url}"
 SMS_ORDER_INSTALLING = "{xodim_ism}, buyurtma №{buyurtma_raqami}ni o'rnatish uchun {sana} kuni soat {vaqt}ga tayinlandingiz. Manzil: {manzil}, mijoz tel: {mijoz_tel}\n{url}"
+
+SMS_ROVER_TASK = "{xodim_ism}, yangi Rover ishi: buyurtma №{buyurtma_raqami}, {maydon} m².\n{url}"

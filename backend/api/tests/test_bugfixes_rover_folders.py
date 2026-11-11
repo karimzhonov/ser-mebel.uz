@@ -27,7 +27,7 @@ def _finish_rover(admin_api, rover):
     """The worker hands the job in with the amount, a checker confirms it."""
     r = admin_api.post(
         f"/api/v1/rovers/{rover.pk}/done/",
-        {"price": {"amount": "150000", "currency": "UZS"}},
+        {"price": {"amount": "150000", "currency": "UZS"}, "note": "Frezerlandi, 4 ta eshik"},
         format="json",
     )
     assert r.status_code == 200, r.data

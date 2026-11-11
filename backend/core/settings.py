@@ -236,6 +236,8 @@ CONSTANCE_CONFIG = {
     'PRODUCTION_WARNING_ORDER_DAYS': (14, 'Предупреждение о прасрочка заказа (производство)', int),
     'ASSEMBLY_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Сборка цена за квадрат', 'price_field'),
     'ROVER_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Ровер цена за квадрат', 'price_field'),
+    'ROVER_REMIND_HOUR': (9, 'Rover: eslatma soati (kunlik)', int),
+    'ROVER_AUTO_DUE_DAYS': (5, "Rover: muddat 1 kunda qo'yilmasa — yaratilgandan necha kun keyin (avtomatik)", int),
     # Moliya (finance bot) — the «Sozlamalar» sheet of the old Apps Script.
     'FIN_REMINDER_HOUR': (19, "Moliya: xodimlarga kunlik eslatma soati", int),
     'FIN_ADMIN_REPORT_HOUR': (21, "Moliya: rahbarga kunlik hisobot soati", int),
@@ -286,7 +288,9 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
         },
         "Ровер": {
             "fields": {
-                "ROVER_PRICE_PER_SQUARE"
+                "ROVER_PRICE_PER_SQUARE",
+                "ROVER_REMIND_HOUR",
+                "ROVER_AUTO_DUE_DAYS",
             }
         },
         "Сборка": {
