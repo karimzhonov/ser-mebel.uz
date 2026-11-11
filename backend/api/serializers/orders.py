@@ -1,17 +1,24 @@
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 
 from metering.design.models import DesignType
 from metering.models import Metering
 from oauth.models import User
-from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
 from order.assembly.models import Assembly
 from order.constants import ORDER_CHANGE_STATUS_PERMISSION, OrderStatus
 from order.detailing.models import Detailing
 from order.models import Factory, Order
 from order.painter.models import Painter, PainterType
+from order.rover.dto import design_folder_id
 from order.rover.models import Rover
-from order.services import INSTALLING_CONFIRM_MSG, installing_needs_head_confirm
+from order.services import (
+    ASSEMBLY_SEND_MSG,
+    INSTALLING_CONFIRM_MSG,
+    can_send_to_assembly,
+    installing_needs_head_confirm,
+)
+from order.visibility import sees_full_order, strip_order
 
 from .. import i18n as uz
 from ..fields import MoneyField
@@ -197,17 +204,27 @@ class OrderDetailSerializer(OrderSerializer):
             and obj.status == OrderStatus.CREATED,
             # «Yaratildi» → detailing only through «Detalirovkaga yuborish» (with a deadline)
             "next_status": user.has_perm(f"order.{ORDER_CHANGE_STATUS_PERMISSION}")
-            and OrderStatus.next_status(obj.status) not in (None, OrderStatus.DETAILING)
+            and OrderStatus.next_status(obj.status)
+            not in (
+                None,
+                OrderStatus.DETAILING,
+                OrderStatus.ASSEMBLY,  # only via «Yig'ishga yuborish»
+            )
             and not confirm_blocked,
             # «Установка» with an assembly: «Готов» only via the head's «Tayyor» (Yig'ish page)
             "next_status_hint": INSTALLING_CONFIRM_MSG if confirm_blocked else None,
+            # «Xomashyo buyurtmasi» → «Сборка» is the production head's step
+            "go_to_assembly_hint": (
+                ASSEMBLY_SEND_MSG
+                if obj.status == OrderStatus.WORKING and not can_send_to_assembly(user)
+                else None
+            ),
             "next_status_label": (
                 uz.order_status(OrderStatus.next_status(obj.status))
                 if OrderStatus.next_status(obj.status)
                 else None
             ),
-            "go_to_assembly": user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
-            and obj.status == OrderStatus.WORKING,
+            "go_to_assembly": can_send_to_assembly(user) and obj.status == OrderStatus.WORKING,
             "finance": user.has_perm("accounting.view_all_operations"),
             "edit_price": can_view_price(self.context.get("request")),
         }
@@ -338,6 +355,7 @@ class DetailingDueSerializer(serializers.Serializer):
 
 class RoverSerializer(serializers.ModelSerializer):
     order = ProductionOrderSerializer(read_only=True)
+    design_folder = serializers.SerializerMethodField()
     price = MoneyField(read_only=True)
     state = serializers.CharField(read_only=True)
     state_label = serializers.CharField(read_only=True)
@@ -369,9 +387,29 @@ class RoverSerializer(serializers.ModelSerializer):
             "due_set_by_detail",
             "overdue",
             "folder",
+            "design_folder",
             "actions",
         ]
         read_only_fields = fields
+
+    def get_design_folder(self, obj):
+        restricted = not sees_full_order(self.context["request"].user)
+        if hasattr(obj, "design_folder_pk"):  # annotated by RoverViewSet (no query per row)
+            return obj.design_folder_pk or (None if restricted else obj.order.folder_id)
+        return design_folder_id(obj.order, fallback=not restricted)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        restricted = not sees_full_order(self.context["request"].user)
+        data["restricted"] = restricted
+        data["can_open_order"] = not restricted
+        if restricted:
+            # the rover worker sees the design folder only
+            strip_order(data["order"])
+            data["folder"] = None
+            if data["order"]:
+                data["order"]["folder"] = None
+        return data
 
     def get_actions(self, obj):
         user = self.context["request"].user
@@ -397,7 +435,15 @@ class PainterTypeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PainterType
-        fields = ["id", "name", "price", "user", "user_detail"]
+        fields = ["id", "name", "price", "user", "user_detail", "outsource"]
+
+    def validate_outsource(self, value):
+        # only the production head (and superusers) flag a team as outsource
+        user = self.context["request"].user
+        current = self.instance.outsource if self.instance is not None else False
+        if value != current and not sees_full_order(user):
+            raise PermissionDenied("Autsors belgisini faqat Ishlab chiqarish rahbari o'zgartiradi")
+        return value
 
 
 class PainterSerializer(serializers.ModelSerializer):
@@ -451,6 +497,19 @@ class PainterSerializer(serializers.ModelSerializer):
             "due_set_at",
             "folder",
         ]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        restricted = bool(
+            instance.type
+            and instance.type.outsource
+            and not sees_full_order(self.context["request"].user)
+        )
+        data["restricted"] = restricted
+        data["can_open_order"] = not restricted
+        if restricted:
+            strip_order(data["order"])
+        return data
 
     def get_painter_detail(self, obj):
         user = obj.type.user if obj.type and obj.type.user_id else None

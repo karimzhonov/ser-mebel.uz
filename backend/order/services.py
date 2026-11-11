@@ -102,7 +102,8 @@ def order_board(*, user, show_price: bool, to_card=None) -> list[dict]:
     assembly = Q(status=OrderStatus.ASSEMBLY)
     installing = Q(status=OrderStatus.INSTALLING)
     painter_column = Q(status=OrderStatus.WORKING) & rover_clear & painter_pending
-    if not user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"):
+    # assembly managers and the production head (who now runs these stages) see all jobs
+    if not can_send_to_assembly(user):
         own_jobs = Q(assembly__user=user)
         assembly &= own_jobs
         installing &= own_jobs
@@ -425,16 +426,35 @@ def installing_needs_head_confirm(order) -> bool:
     return Assembly.objects.filter(order=order, installing_done=False).exists()
 
 
+ASSEMBLY_SEND_MSG = "Yig'ishga faqat Ishlab chiqarish rahbari yuboradi"
+
+
+def can_send_to_assembly(user) -> bool:
+    """Who sends an order to «Сборка»: the Ishlab chiqarish rahbari or an assembly manager
+    (custom groups / superusers)."""
+    from .assembly.constants import ASSEMBLY_MANAGER_PERMISSION
+
+    return bool(
+        user.has_perm("oauth.user_production_head")
+        or user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
+    )
+
+
 def advance_order_status(order):
     """Mirrors OrderActions.change_status: one step along progression_statuses()."""
-    from core.i18n import order_status as order_status_uz
     from core.exceptions import ServiceError
+    from core.i18n import order_status as order_status_uz
 
     next_status = OrderStatus.next_status(order.status)
     if next_status == OrderStatus.DETAILING:
         # owner's rule: detailing always gets a deadline — only via «Detalirovkaga yuborish»
         raise ServiceError(
             "Detalirovkaga «Detalirovkaga yuborish» tugmasi bilan, muddatini belgilab yuboring"
+        )
+    if next_status == OrderStatus.ASSEMBLY:
+        # only via «Yig'ishga yuborish» (head / assembly manager, assembly row must exist)
+        raise ServiceError(
+            "Yig'ishga «Yig'ishga yuborish» tugmasi bilan yuboring (Ishlab chiqarish rahbari)"
         )
     if order.status == OrderStatus.INSTALLING and installing_needs_head_confirm(order):
         raise ServiceError(INSTALLING_CONFIRM_MSG)

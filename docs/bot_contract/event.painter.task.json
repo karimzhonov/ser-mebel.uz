@@ -19,6 +19,7 @@
         "id": 4,
         "name": "Glyanets"
       },
+      "outsource": false,
       "painter": {
         "id": 21,
         "name": "Molyar ustasi"

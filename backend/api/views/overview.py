@@ -28,10 +28,10 @@ from order.assembly.services import ready_for_assembly
 from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
 from order.detailing.models import Detailing
 from order.models import Order
-from order.services import UNDERPAID_PCT, underpaid_orders
 from order.painter.models import Painter
 from order.painter.services import ready_for_painter
 from order.rover.models import Rover
+from order.services import UNDERPAID_PCT, underpaid_orders
 
 from ..serializers.common import UserShortSerializer, money_left
 from ..utils import (
@@ -391,7 +391,9 @@ class OverviewView(APIView):
     # --- production queues ------------------------------------------------------------
 
     def production(self, user):
-        manager = user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
+        manager = user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}") or user.has_perm(
+            "oauth.user_production_head"
+        )
         stages = []
 
         def stage(key, label, qs, link):

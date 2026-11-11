@@ -19,6 +19,7 @@
         "id": 5,
         "name": "Mat"
       },
+      "outsource": false,
       "painter": {
         "id": 22,
         "name": "Boshqa molyar"

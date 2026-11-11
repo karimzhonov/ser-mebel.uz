@@ -15,6 +15,7 @@ class PainterType(models.Model):
     user = models.ForeignKey(
         "oauth.User", verbose_name="Пользователь", on_delete=models.SET_NULL, null=True
     )
+    outsource = models.BooleanField(default=False, verbose_name="Autsors")
 
     def __str__(self):
         return self.name

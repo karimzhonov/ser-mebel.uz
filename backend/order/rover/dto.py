@@ -13,10 +13,9 @@ def rover_url(rover_id) -> str:
     return f"{base}/production/rover?open={rover_id}"
 
 
-def design_folder_url(order) -> str | None:
-    """Panel link to the order's «Дизайн» folder (made under the metering folder), else the
-    order folder; None when there is neither."""
-    from django.conf import settings
+def design_folder_id(order, fallback: bool = True) -> int | None:
+    """The order's «Дизайн» folder (made under the metering folder); with `fallback` the
+    order folder when there is none; None when there is nothing."""
     from filer.models import Folder
 
     folder_id = None
@@ -24,10 +23,18 @@ def design_folder_url(order) -> str | None:
     if metering is not None and metering.folder_id:
         folder_id = (
             Folder.objects.filter(parent_id=metering.folder_id, name="Дизайн")
+            .order_by("pk")
             .values_list("pk", flat=True)
             .first()
         )
-    folder_id = folder_id or order.folder_id
+    return folder_id or (order.folder_id if fallback else None)
+
+
+def design_folder_url(order) -> str | None:
+    """Panel link to the «Дизайн» folder only (the worker gets it), None when there is none."""
+    from django.conf import settings
+
+    folder_id = design_folder_id(order, fallback=False)
     if not folder_id:
         return None
     base = (getattr(settings, "ADMIN_BASE_URL", "") or "https://ser-mebel.uz").rstrip("/")

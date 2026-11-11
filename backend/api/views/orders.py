@@ -1,8 +1,10 @@
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, OuterRef, Subquery
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.response import Response
 
 from accounting.text import today as accounting_today
@@ -40,12 +42,14 @@ from order.rover.models import Rover
 from order.rover.services import confirm_rover, set_rover_due, submit_rover
 from order.services import (
     advance_order_status,
+    can_send_to_assembly,
     create_order,
     send_order_to_assembly,
     send_order_to_detailing,
     set_order_location,
     underpaid_orders,
 )
+from order.visibility import sees_full_order
 
 from ..permissions import ModelPermissions, require_perm
 from ..serializers.common import LocationSetSerializer, UserShortSerializer, can_view_price
@@ -269,7 +273,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="go-to-assembly")
     def go_to_assembly(self, request, pk=None):
-        require_perm(request.user, f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
+        if not can_send_to_assembly(request.user):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
         order = self.get_object()
         assembly = send_order_to_assembly(order)
         response = self._detail(order)
@@ -308,6 +313,16 @@ class OrderViewSet(viewsets.ModelViewSet):
                 ),
             }
         )
+
+
+class _NoPhoneSearchFilter(SearchFilter):
+    """Restricted viewers (see `order.visibility`) must not find a job by the client's phone."""
+
+    def get_search_fields(self, view, request):
+        fields = super().get_search_fields(view, request)
+        if sees_full_order(request.user):
+            return fields
+        return [f for f in fields if "phone" not in f]
 
 
 class _ProductionViewSet(
@@ -380,6 +395,7 @@ class DetailingViewSet(_ProductionViewSet):
 
 class RoverViewSet(_ProductionViewSet):
     serializer_class = RoverSerializer
+    filter_backends = [DjangoFilterBackend, _NoPhoneSearchFilter, OrderingFilter]
     http_method_names = ["get", "post", "head", "options"]
     ordering_fields = ["created_at", "due_date"]
 
@@ -389,9 +405,16 @@ class RoverViewSet(_ProductionViewSet):
         return Response(RoverSerializer(obj, context=self.get_serializer_context()).data)
 
     def get_queryset(self):
-        qs = Rover.objects.select_related(
-            "order__client", "submitted_by", "checked_by", "due_set_by"
+        from filer.models import Folder
+
+        design = (
+            Folder.objects.filter(parent_id=OuterRef("order__metering__folder_id"), name="Дизайн")
+            .order_by("pk")
+            .values("pk")[:1]
         )
+        qs = Rover.objects.select_related(
+            "order__client", "order__metering", "submitted_by", "checked_by", "due_set_by"
+        ).annotate(design_folder_pk=Subquery(design))
         qs = self.filter_common(qs)
         if _bool_param(self.request.query_params.get("overdue")):
             qs = qs.filter(done=False, submitted_at__isnull=True, due_date__lt=accounting_today())
@@ -460,6 +483,7 @@ class PainterTypeViewSet(viewsets.ModelViewSet):
 
 class PainterViewSet(_ProductionViewSet):
     serializer_class = PainterSerializer
+    filter_backends = [DjangoFilterBackend, _NoPhoneSearchFilter, OrderingFilter]
     ordering_fields = ["created_at", "due_date"]
 
     def _respond(self, obj):

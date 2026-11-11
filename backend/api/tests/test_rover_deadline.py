@@ -499,9 +499,9 @@ def test_design_folder_url_points_to_the_design_folder(settings):
     order_folder = Folder.objects.create(name="Заказ")
     order = SimpleNamespace(metering=SimpleNamespace(folder_id=root.pk), folder_id=order_folder.pk)
     assert design_folder_url(order) == f"https://test.ser-mebel.uz/files/{design.pk}"
-    # no «Дизайн» folder → the order folder; nothing → None
+    # no «Дизайн» folder → None (no fallback to the order folder)
     order.metering = SimpleNamespace(folder_id=None)
-    assert design_folder_url(order) == f"https://test.ser-mebel.uz/files/{order_folder.pk}"
+    assert design_folder_url(order) is None
     order.folder_id = None
     assert design_folder_url(order) is None
 

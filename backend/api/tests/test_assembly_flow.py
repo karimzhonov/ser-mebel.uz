@@ -134,9 +134,37 @@ def test_go_to_assembly_asks_heads_to_pick_team(
     assert bot_events.of("assembly.task") == []
 
 
-def test_next_status_working_to_assembly_also_triggers(assembly, head, bot_events, sms):
-    advance_order_status(Order.objects.get(pk=assembly.order_id))
-    assert Order.objects.get(pk=assembly.order_id).status == OrderStatus.ASSEMBLY
+def test_next_status_cannot_skip_to_assembly(assembly, head, bot_events, sms, api):
+    from core.exceptions import ServiceError
+
+    order = Order.objects.get(pk=assembly.order_id)
+    with pytest.raises(ServiceError):
+        advance_order_status(order)
+    perms = ("order.change_status_order", "order.view_order")
+    for who in (api(*perms), api(*perms, "order.change_order"), api(superuser=True)):
+        r = who.post(f"/api/v1/orders/{order.pk}/next-status/")
+        assert r.status_code == 400 and "Yig'ishga" in r.data["detail"]
+        acts = who.get(f"/api/v1/orders/{order.pk}/").data["actions"]
+        assert acts["next_status"] is False
+    assert Order.objects.get(pk=order.pk).status == OrderStatus.WORKING
+    assert bot_events.of("assembly.ready") == []
+
+
+def test_head_sends_to_assembly_others_forbidden(assembly, head, bot_events, sms, api):
+    order = Order.objects.get(pk=assembly.order_id)
+    url = f"/api/v1/orders/{order.pk}/go-to-assembly/"
+    for perms in (("order.view_order",), ("order.view_order", "order.change_order")):
+        c = api(*perms)
+        assert c.post(url).status_code == 403
+    c = api("order.view_order", "order.change_status_order")
+    acts = c.get(f"/api/v1/orders/{order.pk}/").data["actions"]
+    assert acts["go_to_assembly"] is False and acts["go_to_assembly_hint"]
+    assert Order.objects.get(pk=order.pk).status == OrderStatus.WORKING
+    h = api("order.view_order", "oauth.user_production_head")
+    assert h.get(f"/api/v1/orders/{order.pk}/").data["actions"]["go_to_assembly"] is True
+    r = h.post(url)
+    assert r.status_code == 200 and r.data["assembly_id"] == assembly.pk
+    assert Order.objects.get(pk=order.pk).status == OrderStatus.ASSEMBLY
     assert len(bot_events.of("assembly.ready")) == 1
 
 
@@ -807,3 +835,13 @@ def test_schedule_has_assembly_task():
 
 def test_reminders_task_runs(live):
     assert set(tasks.assembly_reminders()) == {"auto", "soon", "overdue"}
+
+
+def test_overview_production_head_sees_all_assembly_jobs(live, asm, api):
+    Assembly.objects.filter(pk=live.pk).update(user=asm)
+    head_api = api("oauth.user_production_head", "assembly.view_assembly")
+    prod = head_api.get("/api/v1/dashboard/overview/").data["production"]
+    stage = {s["key"]: s for s in prod["stages"]}["assembly"]
+    assert stage["count"] == 1 and prod["assemblers"] is not None
+    other = api("assembly.view_assembly").get("/api/v1/dashboard/overview/").data["production"]
+    assert {s["key"]: s for s in other["stages"]}["assembly"]["count"] == 0

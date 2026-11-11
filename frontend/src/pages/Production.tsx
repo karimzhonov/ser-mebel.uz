@@ -115,12 +115,12 @@ function ProductionList({ kind }: { kind: Kind }) {
           loading={isFetching}
           rowKey={(r) => r.id}
           onRowClick={(r) => setSearchParams((p) => (p.set("open", String(r.id)), p))}
-          rowClassName={(r) => (r.done ? undefined : kind === "rover" ? (r.overdue ? ROW_TONE.danger : undefined) : ROW_TONE[r.order.deadline.level])}
+          rowClassName={(r) => (r.done ? undefined : kind === "rover" ? (r.overdue ? ROW_TONE.danger : undefined) : r.order.deadline ? ROW_TONE[r.order.deadline.level] : undefined)}
           columns={[
             { key: "n", header: "Buyurtma", cell: (r) => <span className="font-semibold">№{r.order.order_number}</span> },
             { key: "client", header: "Mijoz", cell: (r) => r.order.client?.fio ?? "—" },
             { key: "status", header: "Buyurtma holati", cell: (r) => <OrderStatusBadge status={r.order.status} label={r.order.status_label} /> },
-            ...(kind === "rover" ? [] : [{ key: "deadline", header: "Muddat", cell: (r: ProductionItem) => <DeadlinePill deadline={r.order.deadline} /> }]),
+            ...(kind === "rover" ? [] : [{ key: "deadline", header: "Muddat", cell: (r: ProductionItem) => (r.order.deadline ? <DeadlinePill deadline={r.order.deadline} /> : <span className="muted">—</span>) }]),
             ...(kind === "detailing"
               ? [{ key: "due_at", header: "Detalirovka muddati", cell: (r: ProductionItem) => <DetailingDue dueAt={r.due_at} done={r.done} /> }]
               : []),
@@ -179,7 +179,7 @@ function ProductionList({ kind }: { kind: Kind }) {
                 )}
               </div>
               <div className="flex items-center justify-between text-sm">
-                {kind === "rover" ? <span /> : <DeadlinePill deadline={r.order.deadline} />}
+                {kind === "rover" || !r.order.deadline ? <span /> : <DeadlinePill deadline={r.order.deadline} />}
                 <span className="muted">{num(r.square)} m²</span>
               </div>
               {kind === "detailing" && (
@@ -306,22 +306,28 @@ function ProductionModal({
   if (!item) return null;
   const o = item.order;
   const a = item.actions;
+  const restricted = !!item.restricted;
 
   return (
     <Modal open onClose={onClose} title={`${cfg.title} · buyurtma №${o.order_number}`} size="lg">
       <div className="space-y-5">
         <div className="flex flex-wrap gap-2">
           <OrderStatusBadge status={o.status} label={o.status_label} />
-          {kind !== "rover" && <DeadlinePill deadline={o.deadline} />}
+          {kind !== "rover" && o.deadline && <DeadlinePill deadline={o.deadline} />}
+          {kind === "rover" && <FolderButton folderId={item.design_folder} label="Dizayn papkasi" />}
           <FolderButton folderId={item.folder} label="Bosqich fayllari" />
           <FolderButton folderId={o.folder} label="Buyurtma fayllari" />
         </div>
         <KV
           items={[
             ["Mijoz", o.client?.fio ?? "—"],
-            ["Telefon", <PhoneLink value={o.client?.phone} />],
-            ["Manzil", <AddressLink address={o.address} link={o.address_link} mapUrl={o.map_url} lat={o.lat} lon={o.lon} />],
-            ...(kind === "rover" ? [] : ([["Topshirish sanasi", date(o.end_date, "ko'rsatilmagan")]] as [string, ReactNode][])),
+            ...(restricted
+              ? []
+              : ([
+                  ["Telefon", <PhoneLink value={o.client?.phone} />],
+                  ["Manzil", <AddressLink address={o.address} link={o.address_link} mapUrl={o.map_url} lat={o.lat} lon={o.lon} />],
+                ] as [string, ReactNode][])),
+            ...(kind === "rover" || restricted ? [] : ([["Topshirish sanasi", date(o.end_date, "ko'rsatilmagan")]] as [string, ReactNode][])),
             ...(kind === "detailing"
               ? ([[
                   "Detalirovka muddati",
@@ -382,7 +388,9 @@ function ProductionModal({
                     : []),
                 ] as [string, ReactNode][])
               : []),
-            ["Buyurtma", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Buyurtmani ochish →</Link>],
+            ...(item.can_open_order === false
+              ? []
+              : ([["Buyurtma", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Buyurtmani ochish →</Link>]] as [string, ReactNode][])),
             ...(kind !== "detailing" ? ([["Maydon", num(item.square)], ["Narx", money(item.price)]] as [string, string][]) : []),
             ...(kind === "rover"
               ? ([
@@ -645,10 +653,10 @@ function PainterTypesModal({ onClose }: { onClose: () => void }) {
   const { data: types } = useAll<PainterType>("painter-types");
   const { user } = useAuth();
   const { data: users } = useList<UserShort>("users", { page_size: 200 }, !!user?.is_superuser);
-  const [form, setForm] = useState<{ id?: number; name: string; price: { amount: number | string; currency: string }; user: string } | null>(null);
+  const [form, setForm] = useState<{ id?: number; name: string; price: { amount: number | string; currency: string }; user: string; outsource: boolean } | null>(null);
   const save = useAction(
     () => {
-      const body = { name: form!.name, price: form!.price, user: form!.user ? Number(form!.user) : null };
+      const body = { name: form!.name, price: form!.price, user: form!.user ? Number(form!.user) : null, outsource: form!.outsource };
       return form!.id ? api.patch(`/painter-types/${form!.id}/`, body) : api.post("/painter-types/", body);
     },
     { success: "Saqlandi", invalidate: ["painter-types"], onSuccess: () => setForm(null) },
@@ -660,12 +668,12 @@ function PainterTypesModal({ onClose }: { onClose: () => void }) {
           <li key={t.id} className="flex items-center justify-between py-2.5 text-sm">
             <div>
               <div className="font-medium">{t.name}</div>
-              <div className="muted text-xs">{t.user_detail ? t.user_detail.name || phone(t.user_detail.phone) : "ijrochisiz"}</div>
+              <div className="muted text-xs">{t.user_detail ? t.user_detail.name || phone(t.user_detail.phone) : "ijrochisiz"}{t.outsource ? " · Autsors" : ""}</div>
             </div>
             <div className="flex items-center gap-2">
               <span className="tabular-nums">{money(t.price)}</span>
               {can("painter.change_paintertype") && (
-                <Button size="sm" variant="ghost" onClick={() => setForm({ id: t.id, name: t.name, price: t.price, user: t.user ? String(t.user) : "" })}>
+                <Button size="sm" variant="ghost" onClick={() => setForm({ id: t.id, name: t.name, price: t.price, user: t.user ? String(t.user) : "", outsource: !!t.outsource })}>
                   Tahrirlash
                 </Button>
               )}
@@ -674,7 +682,7 @@ function PainterTypesModal({ onClose }: { onClose: () => void }) {
         ))}
       </ul>
       {can("painter.add_paintertype") && !form && (
-        <Button className="mt-3" variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ name: "", price: { amount: "", currency: meta?.default_currency ?? "USD" }, user: "" })}>
+        <Button className="mt-3" variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ name: "", price: { amount: "", currency: meta?.default_currency ?? "USD" }, user: "", outsource: false })}>
           Tur qo'shish
         </Button>
       )}
@@ -688,6 +696,14 @@ function PainterTypesModal({ onClose }: { onClose: () => void }) {
               {users?.results.map((u) => <option key={u.id} value={u.id}>{u.name || phone(u.phone)}</option>)}
             </Select>
           </Field>
+          {can("oauth.user_production_head") ? (
+            <label className="flex items-center gap-2 text-sm sm:col-span-3">
+              <input type="checkbox" checked={form.outsource} onChange={(e) => setForm({ ...form, outsource: e.target.checked })} />
+              Autsors jamoa <span className="muted text-xs">(ishchi mijoz telefoni, manzili va sanalarini ko'rmaydi)</span>
+            </label>
+          ) : (
+            <div className="text-sm sm:col-span-3">{form.outsource ? "Autsors jamoa" : "Ichki jamoa"}</div>
+          )}
           <div className="flex justify-end gap-2 sm:col-span-3">
             <Button variant="ghost" onClick={() => setForm(null)}>Bekor qilish</Button>
             <Button loading={save.isPending} onClick={() => save.mutate()}>Saqlash</Button>

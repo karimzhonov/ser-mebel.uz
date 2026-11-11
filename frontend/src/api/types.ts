@@ -684,6 +684,7 @@ export interface OrderDetail extends Order {
     next_status: boolean;
     next_status_label: string | null;
     next_status_hint?: string | null;
+    go_to_assembly_hint?: string | null;
     go_to_assembly: boolean;
     finance: boolean;
     edit_price: boolean;
@@ -711,6 +712,10 @@ export interface ProductionItem {
   square: number;
   folder: number | null;
   price?: Money | null;
+  // rover / outsource painter: the worker sees a reduced order (no phone, address, dates, order link)
+  restricted?: boolean;
+  can_open_order?: boolean;
+  design_folder?: number | null;
   // rover
   state?: "new" | "checking" | "assembled" | "done";
   state_label?: string;
@@ -754,6 +759,7 @@ export interface PainterType {
   price: Money;
   user: number | null;
   user_detail: UserShort | null;
+  outsource?: boolean;
 }
 
 export interface StatusStats {

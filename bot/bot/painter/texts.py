@@ -27,15 +27,16 @@ def _name(u) -> str:
     return str((u or {}).get("name") or "") if isinstance(u, dict) else ""
 
 
-def _info(t: dict) -> list[str]:
+def _info(t: dict, hide_contact: bool = False) -> list[str]:
+    """hide_contact: no phone / address / map (worker card of an outsource team)."""
     order = t.get("order") or {}
     client = t.get("client") or {}
     lines = [f"Buyurtma №{esc(order.get('number'))}"]
     if client.get("fio"):
         lines.append(f"👤 {esc(client['fio'])}")
-    if client.get("phone"):
+    if client.get("phone") and not hide_contact:
         lines.append(f"📞 {esc(client['phone'])}")
-    if t.get("address"):
+    if t.get("address") and not hide_contact:
         addr = f"📍 {esc(t['address'])}"
         if t.get("map_url"):
             addr += f' (<a href="{html.escape(str(t["map_url"]), quote=True)}">xarita</a>)'
@@ -58,7 +59,7 @@ def _done_tail(t: dict) -> list[str]:
 
 def task_card(t: dict) -> str:
     """Painter's card: new -> due line; done -> note + who."""
-    lines = [TASK_HEADER, ""] + _info(t) + [due_line(t)]
+    lines = [TASK_HEADER, ""] + _info(t, hide_contact=bool(t.get("outsource"))) + [due_line(t)]
     if t.get("state") == "done":
         lines += _done_tail(t)
     return "\n".join(lines)

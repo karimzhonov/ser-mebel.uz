@@ -23,6 +23,7 @@ TASK = {
     "square": 3.5,
     "type": {"id": 3, "name": "Emal"},
     "painter": {"id": 5, "name": "Molyar usta"},
+    "outsource": False,
     "state": "new",
     "state_label": "Ishda",
     "started_at": "2026-11-10T09:00:00",

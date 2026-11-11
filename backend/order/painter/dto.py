@@ -28,6 +28,7 @@ def painter_task(p) -> dict:
         "map_url": obj_map_url(order),
         "square": p.square,
         "type": {"id": ptype.pk, "name": ptype.name} if ptype else None,
+        "outsource": bool(ptype and ptype.outsource),
         "painter": user_ref(ptype.user) if ptype and ptype.user_id else None,
         "state": p.state,
         "state_label": p.state_label,
