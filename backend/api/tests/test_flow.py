@@ -205,11 +205,12 @@ def test_full_pipeline(admin_api, catalog):
     assert resp.status_code == 200 and resp.data["status"] == OrderStatus.ASSEMBLY
     assembly_id = resp.data["assembly_id"]
 
-    resp = admin_api.post(f"/api/v1/assemblies/{assembly_id}/installing-done/")
+    note = {"note": "Oshxona yig'ildi va o'rnatildi"}
+    resp = admin_api.post(f"/api/v1/assemblies/{assembly_id}/installing-done/", note)
     assert resp.status_code == 400  # assembly first
     admin_api.post(f"/api/v1/assemblies/{assembly_id}/done/")
     assert Order.objects.get(pk=order_id).status == OrderStatus.INSTALLING
-    admin_api.post(f"/api/v1/assemblies/{assembly_id}/installing-done/")
+    admin_api.post(f"/api/v1/assemblies/{assembly_id}/installing-done/", note)
     assert Order.objects.get(pk=order_id).status == OrderStatus.DONE
 
     history = admin_api.get(f"/api/v1/orders/{order_id}/history/")

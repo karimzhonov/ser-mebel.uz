@@ -51,6 +51,7 @@ def notify_staff(
     sms_template=None,
     sms_context=None,
     telegram=True,
+    sms_only_without_telegram=False,
 ) -> None:
     codename = permission.split(".")[-1]
     url = reverse_lazy(path_name, kwargs=kwargs)
@@ -58,7 +59,7 @@ def notify_staff(
     for user in staff_with_permission(codename):
         if telegram:
             user.send_message(url, text=telegram_text)
-        if sms_template:
+        if sms_template and not (sms_only_without_telegram and user.telegram_id):
             phone = format_phone(user.phone)
             if phone:
                 text = sms_template.format(

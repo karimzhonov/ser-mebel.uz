@@ -1,0 +1,39 @@
+{
+  "assembly": {
+    "id": 41,
+    "order": {
+      "id": 88,
+      "number": 1042
+    },
+    "client": {
+      "fio": "Ali Valiyev",
+      "phone": "+998901112244"
+    },
+    "address": "Chilonzor 7-kvartal, 12-uy",
+    "map_url": "https://yandex.com/maps/?pt=69.2401,41.2995&z=17&l=map",
+    "square": 6.5,
+    "assembler": {
+      "id": 23,
+      "name": "Yig'uvchi ustasi"
+    },
+    "state": "done",
+    "state_label": "O'rnatildi",
+    "started_at": "2026-11-05T14:20:00",
+    "finished_at": "2026-11-09T16:05:00",
+    "finished_by": {
+      "id": 23,
+      "name": "Yig'uvchi ustasi"
+    },
+    "due_date": "2026-11-10",
+    "due_auto": false,
+    "due_set_by": {
+      "id": 14,
+      "name": "Ishlab chiqarish rahbari"
+    },
+    "overdue": false,
+    "days_late": 0,
+    "note": "Oshxona yig'ildi va o'rnatildi, 4 eshik",
+    "rev": 3,
+    "url": "https://ser-mebel.uz/production/assembly?open=41"
+  }
+}

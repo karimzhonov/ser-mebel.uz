@@ -207,7 +207,7 @@ SECTIONS: tuple[Section, ...] = (
         "Ishlab chiqarish rahbari",
         (),
         edit=False,
-        hint="Rover va Molyar muddatini qo'yadi/o'zgartiradi, kechikish xabarlarini oladi. «Rover» va «Molyar» bo'limlarida kamida «Ko'rish» ham kerak",
+        hint="Rover, Molyar va Yig'ish muddatini qo'yadi, yig'ish jamoasini tanlaydi, kechikish xabarlarini oladi. «Rover», «Molyar», «Yig'ish» bo'limlarida kamida «Ko'rish» ham kerak",
     ),
     Section(
         "flag_painter",
@@ -223,7 +223,7 @@ SECTIONS: tuple[Section, ...] = (
         "Sborkachi (ijrochi)",
         (),
         edit=False,
-        hint="Yig'ish vazifalari unga biriktiriladi va Telegram xabarlari",
+        hint="Yig'ish/O'rnatish vazifalari (rahbar tanlaydi) va Telegram kartasi",
     ),
     Section("factories", "Buyurtmalar", "Zavodlar", ("order.factory",)),
     Section(

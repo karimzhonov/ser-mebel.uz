@@ -35,6 +35,7 @@ def build_dispatcher() -> Dispatcher:
     d.callback_query.outer_middleware(actor)
 
     from bot import hr
+    from bot.assembly import router as assembly_router
     from bot.common import link, start
     from bot.crm import router as crm_router
     from bot.finance import router as finance_router
@@ -49,7 +50,8 @@ def build_dispatcher() -> Dispatcher:
     # Order matters: HR groups, site link, /start, zamer buttons (own `mt:` callbacks and
     # `Meter*` states only), design / price buttons (own `of:` callbacks and `Offer*` states
     # only), rover confirm button (own `rv:` callbacks only), painter buttons (own `pn:` callbacks and
-    # `PainterDone` states only), omborchi (own `wh:` callbacks, «📦 Ombor», `Wh*` states; keeper only), CRM (lead
+    # `PainterDone` states only), assembly buttons (own `as:` callbacks and
+    # `AssemblyFinish` states only), omborchi (own `wh:` callbacks, «📦 Ombor», `Wh*` states; keeper only), CRM (lead
     # form, task buttons), HR private, the omborchi fallback (free-text search / stray photo;
     # AFTER HR so a keeper's HR answers are not stolen), then finance (the rest).
     d.include_router(hr.group_router)
@@ -59,6 +61,7 @@ def build_dispatcher() -> Dispatcher:
     d.include_router(offer_router)
     d.include_router(rover_router)
     d.include_router(painter_router)
+    d.include_router(assembly_router)
     d.include_router(warehouse_router)
     d.include_router(warehouse_ex)
     d.include_router(crm_router)

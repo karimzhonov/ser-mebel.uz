@@ -711,7 +711,7 @@ export interface ProductionItem {
   folder: number | null;
   price?: Money | null;
   // rover
-  state?: "new" | "checking" | "done";
+  state?: "new" | "checking" | "assembled" | "done";
   state_label?: string;
   // painter
   started_at?: string | null;
@@ -737,6 +737,8 @@ export interface ProductionItem {
   type?: number | null;
   type_detail?: { id: number; name: string } | null;
   // assembly
+  finished_at?: string | null;
+  finished_by_detail?: UserShort | null;
   installing_done?: boolean;
   user?: number | null;
   user_detail?: UserShort | null;

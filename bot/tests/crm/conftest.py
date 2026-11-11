@@ -184,6 +184,7 @@ class Env:
 @pytest.fixture
 def env(monkeypatch):
     import bot as botpkg
+    from bot.assembly import router as assembly
     from bot.backend.client import backend as real
     from bot.common import link, start
     from bot.crm import router as crm
@@ -205,6 +206,7 @@ def env(monkeypatch):
         offer,
         rover,
         painter,
+        assembly,
         wh,
         wh_ex,
         crm,

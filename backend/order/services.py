@@ -30,12 +30,18 @@ def send_order_status_sms(order) -> None:
             sana=order.end_date or "",
             vaqt="",
         )
+    extra = {}
+    if order.status == OrderStatus.ASSEMBLY:
+        # the Telegram cards (assembly.ready / assembly.task) replace the bare message;
+        # the SMS stays only for staff who have no Telegram
+        extra = {"telegram": False, "sms_only_without_telegram": True}
     User.send_messages(
         OrderStatus.permission(order.status),
         "admin:order_order_change",
         {"object_id": order.pk},
         sms_template=template,
         sms_context=context,
+        **extra,
     )
 
 

@@ -486,6 +486,11 @@ class AssemblySerializer(serializers.ModelSerializer):
         queryset=User.objects.all(), required=False, allow_null=True
     )
     user_detail = UserShortSerializer(source="user", read_only=True)
+    state = serializers.CharField(read_only=True)
+    state_label = serializers.CharField(read_only=True)
+    finished_by_detail = UserShortSerializer(source="finished_by", read_only=True)
+    due_set_by_detail = UserShortSerializer(source="due_set_by", read_only=True)
+    overdue = serializers.BooleanField(read_only=True)
     actions = serializers.SerializerMethodField()
 
     class Meta:
@@ -496,10 +501,21 @@ class AssemblySerializer(serializers.ModelSerializer):
             "created_at",
             "done",
             "installing_done",
+            "state",
+            "state_label",
             "user",
             "user_detail",
             "square",
             "price",
+            "note",
+            "started_at",
+            "finished_at",
+            "finished_by_detail",
+            "due_date",
+            "due_auto",
+            "due_set_at",
+            "due_set_by_detail",
+            "overdue",
             "folder",
             "actions",
         ]
@@ -510,14 +526,37 @@ class AssemblySerializer(serializers.ModelSerializer):
             "installing_done",
             "square",
             "price",
+            "note",
+            "started_at",
+            "finished_at",
+            "due_date",
+            "due_auto",
+            "due_set_at",
             "folder",
         ]
 
     def get_actions(self, obj):
         user = self.context["request"].user
-        can_change = user.has_perm("assembly.change_assembly")
+        mine = user.has_perm("assembly.change_assembly") or obj.user_id == user.pk
+        head = user.has_perm("oauth.user_production_head")
         return {
-            "edit": user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"),
-            "done": can_change and not obj.done,
-            "installing_done": can_change and obj.done and not obj.installing_done,
+            "edit": bool(head and not obj.installing_done),
+            "done": bool(mine and not obj.done),
+            "installing_done": bool(mine and obj.done and not obj.installing_done),
+            "due": bool(head and not obj.installing_done),
         }
+
+
+class AssemblyAssignSerializer(serializers.Serializer):
+    user = serializers.IntegerField(allow_null=True)
+
+
+class AssemblyFinishSerializer(serializers.Serializer):
+    # a missing/blank note is refused by the service with {field: "note"}
+    note = serializers.CharField(
+        required=False, default="", allow_blank=True, trim_whitespace=False
+    )
+
+
+class AssemblyDueSerializer(serializers.Serializer):
+    due_date = serializers.DateField()

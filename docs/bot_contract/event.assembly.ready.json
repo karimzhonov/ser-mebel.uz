@@ -1,0 +1,47 @@
+{
+  "id": "00000000-0000-0000-0000-000000009003",
+  "event": "assembly.ready",
+  "data": {
+    "assembly": {
+      "id": 41,
+      "order": {
+        "id": 88,
+        "number": 1042
+      },
+      "client": {
+        "fio": "Ali Valiyev",
+        "phone": "+998901112244"
+      },
+      "address": "Chilonzor 7-kvartal, 12-uy",
+      "map_url": "https://yandex.com/maps/?pt=69.2401,41.2995&z=17&l=map",
+      "square": 6.5,
+      "assembler": null,
+      "state": "new",
+      "state_label": "Ishda",
+      "started_at": null,
+      "finished_at": null,
+      "finished_by": null,
+      "due_date": null,
+      "due_auto": false,
+      "due_set_by": null,
+      "overdue": false,
+      "days_late": 0,
+      "note": "",
+      "rev": 0,
+      "url": "https://ser-mebel.uz/production/assembly?open=41"
+    },
+    "assemblers": [
+      {
+        "id": 23,
+        "name": "Yig'uvchi ustasi"
+      },
+      {
+        "id": 24,
+        "name": "Boshqa yig'uvchi"
+      }
+    ],
+    "to": [
+      444555666
+    ]
+  }
+}

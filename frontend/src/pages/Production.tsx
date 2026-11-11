@@ -57,7 +57,7 @@ function ProductionList({ kind }: { kind: Kind }) {
   const openId = searchParams.get("open");
   const { data, isFetching } = useList<ProductionItem>(cfg.resource, { ...state, page });
   const { data: stats } = useGet<Record<string, number>>(`/${cfg.resource}/stats/`, { search: state.search, date_from: state.date_from, date_to: state.date_to });
-  const isManager = can("assembly.manager");
+  const isManager = can("assembly.manager") || can("oauth.user_production_head");
   const { data: assemblers } = useGet<UserShort[]>(kind === "assembly" && isManager ? "/assemblies/assemblers/" : null);
   const [types, setTypes] = useState(false);
 
@@ -128,7 +128,10 @@ function ProductionList({ kind }: { kind: Kind }) {
               ? [{ key: "due_date", header: "Rover muddati", cell: (r: ProductionItem) => <RoverDueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} /> }]
               : []),
             ...(kind === "assembly"
-              ? [{ key: "user", header: "Yig'uvchi", cell: (r: ProductionItem) => r.user_detail?.name || (r.user_detail ? phone(r.user_detail.phone) : <span className="muted">—</span>) }]
+              ? [
+                  { key: "user", header: "Yig'uvchi", cell: (r: ProductionItem) => r.user_detail?.name || (r.user_detail ? phone(r.user_detail.phone) : <span className="muted">—</span>) },
+                  { key: "due_date", header: "Yig'ish muddati", cell: (r: ProductionItem) => <DueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} /> },
+                ]
               : []),
             ...(kind === "painter"
               ? [
@@ -195,6 +198,12 @@ function ProductionList({ kind }: { kind: Kind }) {
                   <DueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} />
                 </div>
               )}
+              {kind === "assembly" && (
+                <div className="text-sm">
+                  <span className="muted">Yig'ish muddati: </span>
+                  <DueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} />
+                </div>
+              )}
             </div>
           )}
         />
@@ -240,6 +249,8 @@ function ProductionModal({
   const [roverDue, setRoverDue] = useState(false);
   const [painterDue, setPainterDue] = useState(false);
   const [painterDoneOpen, setPainterDoneOpen] = useState(false);
+  const [assemblyDue, setAssemblyDue] = useState(false);
+  const [installOpen, setInstallOpen] = useState(false);
   const [note, setNote] = useState("");
   const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
   const [amount, setAmount] = useState<{ amount: number | string; currency: string }>({ amount: "", currency: "UZS" });
@@ -261,6 +272,10 @@ function ProductionModal({
     success: "Saqlandi",
     invalidate: inv,
   });
+  const assemblyAssign = useAction((body: { user: number | null }) => api.post(`/assemblies/${id}/assign/`, body), {
+    success: "Saqlandi",
+    invalidate: inv,
+  });
   const run = useAction((path: string) => api.post(`/${cfg.resource}/${id}/${path}/`), {
     success: "Tayyor",
     invalidate: inv,
@@ -279,6 +294,11 @@ function ProductionModal({
   const painterDone = useAction(
     () => api.post(`/painters/${id}/done/`, { note: note.trim() }),
     { success: "Bajarildi", invalidate: inv, onSuccess: () => setPainterDoneOpen(false) },
+  );
+
+  const installDone = useAction(
+    () => api.post(`/assemblies/${id}/installing-done/`, { note: note.trim() }),
+    { success: "Buyurtma «Tayyor» holatini oldi", invalidate: inv, onSuccess: () => setInstallOpen(false) },
   );
 
   if (!item) return null;
@@ -331,6 +351,29 @@ function ProductionModal({
                   ...(item.note ? [["Izoh", <span className="whitespace-pre-wrap">{item.note}</span>]] : []),
                   ...(item.done_at
                     ? [["Bajardi", `${item.done_by_detail?.name || (item.done_by_detail ? phone(item.done_by_detail.phone) : "—")} · ${date(item.done_at)}`]]
+                    : []),
+                ] as [string, ReactNode][])
+              : []),
+            ...(kind === "assembly"
+              ? ([
+                  [
+                    "Yig'ish muddati",
+                    <span className="flex flex-wrap items-center gap-2">
+                      <DueLabel dueDate={item.due_date} auto={item.due_auto} overdue={item.overdue} />
+                      {a.due && can("oauth.user_production_head") && (
+                        <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setAssemblyDue(true)}>
+                          o'zgartirish
+                        </button>
+                      )}
+                    </span>,
+                  ],
+                  [
+                    "Holat",
+                    item.state === "done" ? <Badge tone="ok">{item.state_label}</Badge> : item.state === "assembled" ? <Badge tone="warn">{item.state_label}</Badge> : <Badge tone="idle">{item.state_label ?? "Ishda"}</Badge>,
+                  ],
+                  ...(item.note ? [["Izoh", <span className="whitespace-pre-wrap">{item.note}</span>]] : []),
+                  ...(item.finished_at
+                    ? [["O'rnatdi", `${item.finished_by_detail?.name || (item.finished_by_detail ? phone(item.finished_by_detail.phone) : "—")} · ${date(item.finished_at)}`]]
                     : []),
                 ] as [string, ReactNode][])
               : []),
@@ -414,13 +457,20 @@ function ProductionModal({
         )}
 
         {kind === "assembly" && (
-          <Field label="Yig'uvchi">
-            <Select disabled={!a.edit} value={item.user ?? ""} onChange={(e) => patch.mutate({ user: e.target.value ? Number(e.target.value) : null })}>
-              <option value="">— tayinlanmagan —</option>
-              {(assemblers ?? (item.user_detail ? [item.user_detail] : [])).map((u) => (
-                <option key={u.id} value={u.id}>{u.name || phone(u.phone)}</option>
-              ))}
-            </Select>
+          <Field
+            label="Jamoa (yig'uvchi)"
+            hint="«Сборка» holatiga o'tganda rahbar jamoani tanlaydi — tanlangan yig'uvchiga Telegram kartasi boradi"
+          >
+            {a.edit && can("oauth.user_production_head") ? (
+              <Select value={item.user ?? ""} onChange={(e) => assemblyAssign.mutate({ user: e.target.value ? Number(e.target.value) : null })}>
+                <option value="">— tayinlanmagan —</option>
+                {(assemblers ?? (item.user_detail ? [item.user_detail] : [])).map((u) => (
+                  <option key={u.id} value={u.id}>{u.name || phone(u.phone)}</option>
+                ))}
+              </Select>
+            ) : (
+              <div className="text-sm">{item.user_detail ? item.user_detail.name || phone(item.user_detail.phone) : "— tayinlanmagan —"}</div>
+            )}
           </Field>
         )}
 
@@ -455,13 +505,26 @@ function ProductionModal({
               🕒 Muddat
             </Button>
           )}
+          {kind === "assembly" && a.due && can("oauth.user_production_head") && (
+            <Button variant="outline" onClick={() => setAssemblyDue(true)}>
+              🕒 Muddat
+            </Button>
+          )}
           {a.confirm && can("oauth.user_rover_checker") && (
             <Button variant="success" onClick={() => setConfirm("confirm")}>
               ✅ Tasdiqlash
             </Button>
           )}
           {a.installing_done && (
-            <Button variant="success" icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setConfirm("installing-done")}>
+            <Button
+              variant="success"
+              icon={<CheckCircle2 className="h-4 w-4" />}
+              onClick={() => {
+                setNote("");
+                setSubmitErrors({});
+                setInstallOpen(true);
+              }}
+            >
               O'rnatish bajarildi
             </Button>
           )}
@@ -472,9 +535,7 @@ function ProductionModal({
         onClose={() => setConfirm(null)}
         title="Bajarilganini tasdiqlang"
         text={
-          confirm === "installing-done"
-            ? "Buyurtma «Tayyor» holatini oladi."
-            : confirm === "confirm"
+          confirm === "confirm"
               ? "Rover ishi tasdiqlanadi, molyarga xabar boradi."
               : kind === "detailing"
               ? "Buyurtma «Xomashyo buyurtmasi» bosqichiga o'tadi."
@@ -525,6 +586,35 @@ function ProductionModal({
           </div>
         </div>
       </Modal>
+      <Modal open={installOpen} onClose={() => setInstallOpen(false)} title="O'rnatish bajarildi" size="sm">
+        <div className="space-y-4">
+          <Field label="Izoh (nima ish qilindi)" hint="Buyurtma «Tayyor» holatini oladi" error={submitErrors.note}>
+            <Textarea required value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setInstallOpen(false)}>Bekor qilish</Button>
+            <Button
+              variant="success"
+              loading={installDone.isPending}
+              disabled={note.trim().length < 3}
+              onClick={() => installDone.mutateAsync().catch((e) => setSubmitErrors(fieldErrors(e)))}
+            >
+              O'rnatildi
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      {assemblyDue && (
+        <DueModal
+          resource="assemblies"
+          id={item.id}
+          dueDate={item.due_date}
+          title="Yig'ish muddati"
+          presets={[5, 10, 14]}
+          invalidate={["assemblies", "orders", "dashboard"]}
+          onClose={() => setAssemblyDue(false)}
+        />
+      )}
       {painterDue && (
         <DueModal
           resource="painters"

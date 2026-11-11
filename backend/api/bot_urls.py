@@ -2,7 +2,18 @@
 
 from django.urls import path
 
-from .views.bot import common, crm, finance, hr, metering, offer, painter, rover, warehouse
+from .views.bot import (
+    assembly,
+    common,
+    crm,
+    finance,
+    hr,
+    metering,
+    offer,
+    painter,
+    rover,
+    warehouse,
+)
 
 urlpatterns = [
     path("whoami/", common.WhoAmIView.as_view()),
@@ -13,6 +24,9 @@ urlpatterns = [
     path("painters/<int:pk>/done/", painter.PainterDoneView.as_view()),
     path("painters/<int:pk>/due/", painter.PainterDueView.as_view()),
     path("painters/<int:pk>/type/", painter.PainterTypeView.as_view()),
+    path("assemblies/<int:pk>/finish/", assembly.AssemblyFinishView.as_view()),
+    path("assemblies/<int:pk>/due/", assembly.AssemblyDueView.as_view()),
+    path("assemblies/<int:pk>/assembler/", assembly.AssemblyAssemblerView.as_view()),
     # ---- finance: reads
     path("finance/config/", finance.ConfigView.as_view()),
     path("finance/config/usd-rate/", finance.UsdRateView.as_view()),

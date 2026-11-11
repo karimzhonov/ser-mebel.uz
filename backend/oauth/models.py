@@ -66,7 +66,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         })
 
     @classmethod
-    def send_messages(cls, permission, path_name, kwargs, text='Оповещение о заказе', sms_template=None, sms_context=None):
+    def send_messages(cls, permission, path_name, kwargs, text='Оповещение о заказе', sms_template=None, sms_context=None, telegram=True, sms_only_without_telegram=False):
         from .services import notify_staff
         notify_staff(
             permission=permission,
@@ -75,6 +75,8 @@ class User(AbstractBaseUser, PermissionsMixin):
             telegram_text=text,
             sms_template=sms_template,
             sms_context=sms_context,
+            telegram=telegram,
+            sms_only_without_telegram=sms_only_without_telegram,
         )
 
     class Meta:

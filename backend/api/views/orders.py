@@ -9,13 +9,16 @@ from accounting.text import today as accounting_today
 from client.models import Client
 from core.exceptions import ServiceError
 from core.geo import UNSET
+from oauth.models import User
 from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
 from order.assembly.models import Assembly
 from order.assembly.services import (
-    assemblers,
+    active_assemblers,
+    assign_assembler,
     mark_assembly_done,
     mark_installing_done,
     ready_for_assembly,
+    set_assembly_due,
 )
 from order.constants import (
     ORDER_CHANGE_STATUS_PERMISSION,
@@ -46,6 +49,9 @@ from order.services import (
 from ..permissions import ModelPermissions, require_perm
 from ..serializers.common import LocationSetSerializer, UserShortSerializer, can_view_price
 from ..serializers.orders import (
+    AssemblyAssignSerializer,
+    AssemblyDueSerializer,
+    AssemblyFinishSerializer,
     AssemblySerializer,
     DetailingDueSerializer,
     DetailingSerializer,
@@ -527,46 +533,102 @@ class PainterViewSet(_ProductionViewSet):
 class AssemblyViewSet(_ProductionViewSet):
     serializer_class = AssemblySerializer
     done_fields = ("done", "installing_done")
+    ordering_fields = ["created_at", "due_date"]
+
+    def _respond(self, obj):
+        # always the full card, whatever serializer the action documents for its input
+        obj = self.get_queryset().get(pk=obj.pk)
+        return Response(AssemblySerializer(obj, context=self.get_serializer_context()).data)
 
     def get_queryset(self):
         # Only orders past detailing ("Заказ на сырье" and later) are assembly work.
-        qs = ready_for_assembly(Assembly.objects.select_related("order__client", "user"))
-        # AssemblyAdmin.get_queryset: an assembler sees only their own jobs.
-        if not self.request.user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"):
-            qs = qs.filter(user=self.request.user)
-        user = int_param(self.request.query_params, "user")
-        if user is not None:
-            qs = qs.filter(user_id=user)
-        return self.filter_common(qs)
+        qs = ready_for_assembly(
+            Assembly.objects.select_related("order__client", "user", "finished_by", "due_set_by")
+        )
+        # Managers and production heads see every job; an assembler only their own.
+        user = self.request.user
+        if not (
+            user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
+            or user.has_perm("oauth.user_production_head")
+        ):
+            qs = qs.filter(user=user)
+        user_id = int_param(self.request.query_params, "user")
+        if user_id is not None:
+            qs = qs.filter(user_id=user_id)
+        qs = self.filter_common(qs)
+        if _bool_param(self.request.query_params.get("overdue")):
+            qs = qs.filter(installing_done=False, due_date__lt=accounting_today())
+        return qs
+
+    def _assign(self, request, user_id):
+        require_perm(request.user, "oauth.user_production_head")
+        assembly = self.get_object()
+        assembler = None
+        if user_id not in (None, ""):
+            assembler = User.objects.filter(pk=user_id).first()
+            if assembler is None:
+                raise ServiceError("Noto'g'ri foydalanuvchi", field="user")
+        assign_assembler(assembly, assembler, by=request.user)
+        return self._respond(assembly)
 
     def update(self, request, *args, **kwargs):
-        # AssemblyAdmin.has_change_permission: managers only.
-        require_perm(request.user, f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
-        assembly = self.get_object()
+        # legacy PATCH {user}: also needs assembly.change_assembly (ModelPermissions), so a
+        # head with view-only rights uses POST assign/ (what the panel calls)
         user_id = request.data.get("user")
         if user_id not in (None, "") and not str(user_id).isdigit():
-            raise ServiceError("Noto'g'ri foydalanuvchi")
-        if user_id and not assemblers().filter(pk=user_id).exists():
-            raise ServiceError("Bu foydalanuvchi yig'uvchi emas")
-        assembly.user_id = user_id or None
-        assembly.save(update_fields=["user"])
-        return self._respond(assembly)
+            raise ServiceError("Noto'g'ri foydalanuvchi", field="user")
+        return self._assign(request, user_id)
+
+    @action(detail=True, methods=["post"], serializer_class=AssemblyAssignSerializer)
+    def assign(self, request, pk=None):
+        """The production head picks the assembler (the team): {user: id|null}."""
+        body = AssemblyAssignSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._assign(request, body.validated_data["user"])
 
     @action(detail=True, methods=["post"])
     def done(self, request, pk=None):
-        require_perm(request.user, "assembly.change_assembly")
-        return self._respond(mark_assembly_done(self.get_object()))
+        """«Yig'ildi»: the assembler or an assembly manager (the service checks who)."""
+        return self._respond(mark_assembly_done(self.get_object(), by=request.user))
 
-    @action(detail=True, methods=["post"], url_path="installing-done")
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="installing-done",
+        serializer_class=AssemblyFinishSerializer,
+    )
     def installing_done(self, request, pk=None):
-        require_perm(request.user, "assembly.change_assembly")
-        return self._respond(mark_installing_done(self.get_object()))
+        """«O'rnatildi»: {note} - what was done; the job and the order are finished."""
+        body = AssemblyFinishSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            mark_installing_done(
+                self.get_object(), by=request.user, note=body.validated_data["note"]
+            )
+        )
+
+    @action(detail=True, methods=["post"], serializer_class=AssemblyDueSerializer)
+    def due(self, request, pk=None):
+        """The production head's deadline: {due_date: "YYYY-MM-DD"}."""
+        require_perm(request.user, "oauth.user_production_head")
+        body = AssemblyDueSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            set_assembly_due(
+                self.get_object(), by=request.user, due_date=body.validated_data["due_date"]
+            )
+        )
 
     @action(detail=False, methods=["get"])
     def assemblers(self, request):
-        # Picking an assembler is a manager's job (AssemblyAdmin shows "user" to managers only).
-        require_perm(request.user, f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
-        return Response(UserShortSerializer(assemblers().order_by("name"), many=True).data)
+        # Picking an assembler is the production head's job (managers still see the list).
+        user = request.user
+        if not (
+            user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
+            or user.has_perm("oauth.user_production_head")
+        ):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+        return Response(UserShortSerializer(active_assemblers().order_by("name"), many=True).data)
 
     @action(detail=False, methods=["get"])
     def stats(self, request):

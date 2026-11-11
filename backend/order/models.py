@@ -122,6 +122,10 @@ class Order(models.Model):
         self.status = status
         self.save(update_fields=["status"])
         self.send_sms()
+        if status == OrderStatus.ASSEMBLY:
+            from .assembly.services import on_order_assembly
+
+            on_order_assembly(self)
 
     def send_sms(self):
         from .services import send_order_status_sms
