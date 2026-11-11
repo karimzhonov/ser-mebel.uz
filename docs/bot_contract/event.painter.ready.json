@@ -37,6 +37,24 @@
       "rev": 0,
       "url": "https://ser-mebel.uz/production/painter?open=31"
     },
+    "types": [
+      {
+        "id": 3,
+        "name": "Autsors",
+        "user": {
+          "id": 22,
+          "name": "Autsors ustasi"
+        }
+      },
+      {
+        "id": 4,
+        "name": "Glyanets",
+        "user": {
+          "id": 21,
+          "name": "Molyar ustasi"
+        }
+      }
+    ],
     "to": [
       444555666
     ]

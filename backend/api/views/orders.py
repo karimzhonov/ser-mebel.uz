@@ -54,6 +54,7 @@ from ..serializers.orders import (
     OrderDetailSerializer,
     OrderSerializer,
     OrderUpdateSerializer,
+    PainterAssignSerializer,
     PainterDoneSerializer,
     PainterDueSerializer,
     PainterSerializer,
@@ -476,17 +477,30 @@ class PainterViewSet(_ProductionViewSet):
             qs = qs.filter(done=False, due_date__lt=accounting_today())
         return qs
 
-    def update(self, request, *args, **kwargs):
-        require_perm(request.user, f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
+    def _assign(self, request, type_id):
+        require_perm(request.user, "oauth.user_production_head")
         painter = self.get_object()
+        painter_type = None
+        if type_id not in (None, ""):
+            painter_type = PainterType.objects.filter(pk=type_id).first()
+            if painter_type is None:
+                raise ServiceError("Bo'yash turi topilmadi")
+        assign_painter_type(painter, painter_type, by=request.user)
+        return self._respond(painter)
+
+    def update(self, request, *args, **kwargs):
+        # kept for compatibility: PATCH {type} == POST assign/
         type_id = request.data.get("type")
         if type_id not in (None, "") and not str(type_id).isdigit():
             raise ServiceError("Molyar turi topilmadi")
-        painter_type = PainterType.objects.filter(pk=type_id).first() if type_id else None
-        if type_id and painter_type is None:
-            raise ServiceError("Bo'yash turi topilmadi")
-        assign_painter_type(painter, painter_type, by=request.user)
-        return self._respond(painter)
+        return self._assign(request, type_id)
+
+    @action(detail=True, methods=["post"], serializer_class=PainterAssignSerializer)
+    def assign(self, request, pk=None):
+        """The production head picks the team (painter type): {type: id|null}."""
+        body = PainterAssignSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._assign(request, body.validated_data["type"])
 
     @action(detail=True, methods=["post"], serializer_class=PainterDoneSerializer)
     def done(self, request, pk=None):

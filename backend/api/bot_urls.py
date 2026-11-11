@@ -12,6 +12,7 @@ urlpatterns = [
     path("rovers/<int:pk>/due/", rover.RoverDueView.as_view()),
     path("painters/<int:pk>/done/", painter.PainterDoneView.as_view()),
     path("painters/<int:pk>/due/", painter.PainterDueView.as_view()),
+    path("painters/<int:pk>/type/", painter.PainterTypeView.as_view()),
     # ---- finance: reads
     path("finance/config/", finance.ConfigView.as_view()),
     path("finance/config/usd-rate/", finance.UsdRateView.as_view()),

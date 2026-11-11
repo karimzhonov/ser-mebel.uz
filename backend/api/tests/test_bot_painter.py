@@ -150,6 +150,89 @@ def test_painter_other_events_match_fixtures(
     rover = Rover.objects.create(order=order, square=2, done=True)
     Painter.objects.create(order=order, square=2)
     notify_painting_ready_task(rover.pk)
-    assert set(bot_events.one("painter.ready")) == set(
-        load_fixture("event.painter.ready.json")["data"]
+    ready = bot_events.one("painter.ready")
+    fx_ready = load_fixture("event.painter.ready.json")["data"]
+    assert set(ready) == set(fx_ready)
+    assert ready["to"] == [2001]  # the production head
+    assert set(ready["types"][0]) == set(fx_ready["types"][0])
+    assert set(ready["types"][0]["user"]) == set(fx_ready["types"][0]["user"])
+
+
+@pytest.fixture
+def team(make_staff):
+    u = make_staff("painter.view_painter", name="Autsors ustasi", telegram_id=1005)
+    return PainterType.objects.create(name="Autsors", price=Money(5, "UZS"), user=u)
+
+
+@pytest.fixture
+def fresh_painter(order_factory):
+    return Painter.objects.create(order=order_factory(), square=4)
+
+
+def test_bot_type_head_picks_team(fresh_painter, team, head, bot_client, bot_events):
+    r = bot_client.post(
+        f"painters/{fresh_painter.pk}/type/",
+        actor=2001,
+        data=load_fixture("misc.painter_type_request.json") | {"type_id": team.pk},
     )
+    assert r.status_code == 200, r.content
+    got = r.json()["painter"]
+    assert got["type"] == {"id": team.pk, "name": "Autsors"} and got["started_at"]
+    assert set(got) == set(load_fixture("misc.painter_type_response.json")["painter"])
+    assert bot_events.one("painter.task")["to"] == [1005]
+    assert len(bot_events.of("painter.due_ask")) == 1
+
+
+def test_bot_type_permissions_and_errors(
+    fresh_painter, team, head, manager, mol, bot_client, make_staff
+):
+    path = f"painters/{fresh_painter.pk}/type/"
+    body = {"type_id": team.pk}
+    assert bot_client.post(path, actor=777, data=body).status_code == 403  # not linked
+    assert bot_client.post(path, actor=3001, data=body).status_code == 403  # manager
+    assert bot_client.post(path, actor=1001, data=body).status_code == 403  # painter
+    assert bot_client.post("painters/999999/type/", actor=2001, data=body).status_code == 404
+    for bad in ({"type_id": 99999}, {}, {"type_id": "x"}, {"type_id": True}):
+        assert bot_client.post(path, actor=2001, data=bad).status_code == 404, bad
+    no_user = PainterType.objects.create(name="Bo'sh", price=Money(1, "UZS"), user=None)
+    assert bot_client.post(path, actor=2001, data={"type_id": no_user.pk}).status_code == 400
+    assert fresh_painter.__class__.objects.get(pk=fresh_painter.pk).type_id is None
+
+
+def test_bot_type_rover_unfinished_400_and_done_409(order_factory, team, head, painter, bot_client):
+    from order.rover.models import Rover
+
+    order = order_factory()
+    Rover.objects.create(order=order, square=3)
+    p = Painter.objects.create(order=order, square=5)
+    r = bot_client.post(f"painters/{p.pk}/type/", actor=2001, data={"type_id": team.pk})
+    assert r.status_code == 400
+    PS.mark_painter_done(painter, by=painter.type.user, note=NOTE)
+    r = bot_client.post(f"painters/{painter.pk}/type/", actor=2001, data={"type_id": team.pk})
+    assert r.status_code == 409
+
+
+def test_bot_type_other_team_after_start_409_same_team_200(
+    painter, team, head, bot_client, bot_events
+):
+    cur = painter.type
+    r = bot_client.post(f"painters/{painter.pk}/type/", actor=2001, data={"type_id": team.pk})
+    assert r.status_code == 409
+    assert "Glyanets" in r.json()["detail"] and "saytda" in r.json()["detail"]
+    assert Painter.objects.get(pk=painter.pk).type_id == cur.pk
+    n = len(bot_events.of("painter.task"))
+    r = bot_client.post(f"painters/{painter.pk}/type/", actor=2001, data={"type_id": cur.pk})
+    assert r.status_code == 200
+    assert len(bot_events.of("painter.task")) == n
+    assert Painter.objects.get(pk=painter.pk).rev == painter.rev
+
+
+def test_service_keep_started_refuses_other_team_under_lock(painter, team, head):
+    # the bot view's quick check runs before the lock; the service re-checks under it
+    from core.exceptions import ServiceConflict
+    from order.painter.services import assign_painter_type
+
+    cur = painter.type_id
+    with pytest.raises(ServiceConflict):
+        assign_painter_type(painter, team, by=head, keep_started=True)
+    assert Painter.objects.get(pk=painter.pk).type_id == cur

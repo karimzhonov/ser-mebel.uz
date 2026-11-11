@@ -56,14 +56,26 @@ def painter_unassigned(p, *, prev):
     emit("painter.unassigned", {"painter": _dto(p), "prev": user_ref(prev), "to": to})
 
 
+def _team_choices() -> list[dict]:
+    """The teams (painter types) that have a responsible user, by name."""
+    from .models import PainterType
+
+    return [
+        {"id": t.pk, "name": t.name, "user": user_ref(t.user)}
+        for t in PainterType.objects.filter(user__isnull=False)
+        .select_related("user")
+        .order_by("name", "pk")
+    ]
+
+
 @_safe
 def painter_ready(p):
-    """The rover is confirmed: the assembly managers hear that painting can start."""
-    to = _manager_tgs()
+    """The rover is confirmed: the production heads are asked which team gets the job."""
+    to = _head_tgs()
     if not to:
-        log.warning("painter %s ready but no assembly manager has Telegram", p.pk)
+        log.warning("painter %s ready but no production head has Telegram", p.pk)
         return
-    emit("painter.ready", {"painter": _dto(p), "to": to})
+    emit("painter.ready", {"painter": _dto(p), "types": _team_choices(), "to": to})
 
 
 @_safe

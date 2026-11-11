@@ -109,7 +109,7 @@ def test_rover_done_notifies_painting_ready(
     monkeypatch,
     django_capture_on_commit_callbacks,
 ):
-    """Rover confirmed -> the assembly managers get the painter.ready event (no bare
+    """Rover confirmed -> the production heads get the painter.ready event (no bare
     legacy Telegram message any more); a second run is a no-op."""
     from oauth.models import User
     from order.rover import tasks
@@ -124,7 +124,7 @@ def test_rover_done_notifies_painting_ready(
         "delay",
         lambda rid: tasks.notify_painting_ready_task.apply(args=(rid,)),
     )
-    make_staff("assembly.manager", name="Menejer", telegram_id=3001)
+    make_staff("oauth.user_production_head", name="Rahbar", telegram_id=3001)
     rover, painter, _ = rover_and_painter
     with django_capture_on_commit_callbacks(execute=True):
         _finish_rover(admin_api, rover)

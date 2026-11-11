@@ -228,7 +228,11 @@ function ProductionModal({
   const cfg = CONFIG[kind];
   const { can } = useAuth();
   const { data: item } = useGet<ProductionItem>(`/${cfg.resource}/${id}/`);
-  const { data: painterTypes } = useAll<PainterType>("painter-types", {}, kind === "painter");
+  const { data: painterTypes } = useAll<PainterType>(
+    "painter-types",
+    {},
+    kind === "painter" && can("oauth.user_production_head"),
+  );
   const [squares, setSquares] = useState({ square: "", painter_square: "", rover_square: "" });
   const [confirm, setConfirm] = useState<null | string>(null);
   const [moveDue, setMoveDue] = useState(false);
@@ -250,6 +254,10 @@ function ProductionModal({
 
   const inv = [cfg.resource, "orders", "dashboard", "assemblies", "rovers", "painters"];
   const patch = useAction((body: Record<string, unknown>) => api.patch(`/${cfg.resource}/${id}/`, body), {
+    success: "Saqlandi",
+    invalidate: inv,
+  });
+  const painterAssign = useAction((body: { type: number | null }) => api.post(`/painters/${id}/assign/`, body), {
     success: "Saqlandi",
     invalidate: inv,
   });
@@ -388,13 +396,20 @@ function ProductionModal({
         )}
 
         {kind === "painter" && (
-          <Field label="Bo'yash turi" hint="Tanlanganda molyarga Telegram kartasi boradi, narx maydon bo'yicha qayta hisoblanadi">
-            <Select disabled={!a.edit} value={item.type ?? ""} onChange={(e) => patch.mutate({ type: e.target.value ? Number(e.target.value) : null })}>
-              <option value="">— tayinlanmagan —</option>
-              {painterTypes?.map((t) => (
-                <option key={t.id} value={t.id}>{t.name} — {money(t.price)}/m²</option>
-              ))}
-            </Select>
+          <Field
+            label="Jamoa (molyar turi)"
+            hint="Rover tugagach rahbar jamoani tanlaydi — tanlangan jamoa mas'uliga Telegram kartasi boradi"
+          >
+            {a.edit && can("oauth.user_production_head") ? (
+              <Select value={item.type ?? ""} onChange={(e) => painterAssign.mutate({ type: e.target.value ? Number(e.target.value) : null })}>
+                <option value="">— tayinlanmagan —</option>
+                {painterTypes?.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name} — {money(t.price)}/m²</option>
+                ))}
+              </Select>
+            ) : (
+              <div className="text-sm">{item.type_detail?.name ?? "— tayinlanmagan —"}</div>
+            )}
           </Field>
         )}
 

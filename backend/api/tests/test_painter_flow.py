@@ -95,7 +95,7 @@ def start(painter, ptype, by=None):
 
 
 def test_assign_starts_job_task_and_due_ask(painter, ptype, head, manager, bot_events, no_legacy):
-    p = start(painter, ptype, by=manager)
+    p = start(painter, ptype, by=head)
     assert p.started_at is not None and p.rev == 1
     assert p.price == Money(50, "UZS")  # type.price x square
     task = bot_events.one("painter.task")
@@ -217,14 +217,16 @@ def _rover_painter(order_factory):
     return rover, Painter.objects.create(order=order, square=5)
 
 
-def test_rover_finished_notifies_managers_and_activates(
+def test_rover_finished_asks_heads_for_team_and_activates(
     order_factory, ptype, manager, head, bot_events, no_legacy
 ):
     rover, p = _rover_painter(order_factory)
     Painter.objects.filter(pk=p.pk).update(type=ptype)  # chosen earlier (legacy)
     Rover.objects.filter(pk=rover.pk).update(done=True)
     assert tasks_ready(rover) is True
-    assert bot_events.one("painter.ready")["to"] == [3001]
+    ready = bot_events.one("painter.ready")
+    assert ready["to"] == [2001]  # the production head, not the assembly manager
+    assert [t["name"] for t in ready["types"]] == ["Glyanets"]
     assert bot_events.one("painter.task")["to"] == [1001]
     assert len(bot_events.of("painter.due_ask")) == 1
     assert tasks_ready(rover) is False  # once
@@ -237,11 +239,24 @@ def tasks_ready(rover):
     return notify_painting_ready_task(rover.pk)
 
 
-def test_rover_finished_without_type_only_ready(order_factory, manager, bot_events):
+def test_rover_finished_without_type_only_ready(
+    order_factory, manager, head, ptype, mol2, bot_events
+):
+    PainterType.objects.create(name="Teamless", price=Money(1, "UZS"), user=None)
+    PainterType.objects.create(name="Aaa", price=Money(1, "UZS"), user=mol2)
     rover, p = _rover_painter(order_factory)
     Rover.objects.filter(pk=rover.pk).update(done=True)
     tasks_ready(rover)
-    assert bot_events.names() == ["painter.ready"]
+    assert "painter.task" not in bot_events.names()
+    ready = bot_events.one("painter.ready")
+    assert ready["to"] == [2001]
+    # only teams with a user, by name
+    assert [t["name"] for t in ready["types"]] == ["Aaa", "Glyanets"]
+    assert ready["types"][1] == {
+        "id": ptype.pk,
+        "name": "Glyanets",
+        "user": {"id": ptype.user.pk, "name": "Molyar"},
+    }
     assert fresh(p).started_at is None
 
 
@@ -493,17 +508,65 @@ def test_done_by_manager_and_actions_flags(painter, ptype, api, manager):
     start(painter, ptype)
     m = api(*MANAGER_PERMS)
     url = f"/api/v1/painters/{painter.pk}/"
-    assert m.get(url).data["actions"] == {"edit": True, "done": True, "due": False}
+    assert m.get(url).data["actions"] == {"edit": False, "done": True, "due": False}
     assert m.post(url + "done/", {"note": NOTE}, format="json").status_code == 200
     assert m.get(url).data["actions"]["done"] is False
 
 
 def test_assign_via_api_passes_user(painter, ptype, api, bot_events, head):
-    m = api(*MANAGER_PERMS)
-    r = m.patch(f"/api/v1/painters/{painter.pk}/", {"type": ptype.pk}, format="json")
+    h = api(*HEAD_PERMS, "painter.change_painter")
+    r = h.patch(f"/api/v1/painters/{painter.pk}/", {"type": ptype.pk}, format="json")
     assert r.status_code == 200 and r.data["painter_detail"]["name"] == "Molyar"
     assert r.data["started_at"] is not None
     assert len(bot_events.of("painter.task")) == 1
+
+
+def test_assign_action_head_only(painter, ptype, api, bot_events, head):
+    url = f"/api/v1/painters/{painter.pk}/assign/"
+    body = {"type": ptype.pk}
+    h = api(*HEAD_PERMS)
+    r = h.post(url, body, format="json")
+    assert r.status_code == 200 and r.data["type"] == ptype.pk
+    assert r.data["actions"]["edit"] is True and r.data["actions"]["done"] is False
+    # assembly manager (view only now) and the painter are refused
+    assert api(*MANAGER_PERMS).post(url, body, format="json").status_code in (400, 403)
+    assert api(*PAINTER_PERMS).post(url, body, format="json").status_code == 403
+    m = api(*MANAGER_PERMS)
+    assert m.patch(f"/api/v1/painters/{painter.pk}/", body, format="json").status_code in (400, 403)
+    # clearing and a missing type
+    assert h.post(url, {"type": None}, format="json").status_code == 200
+    assert h.post(url, {"type": 99999}, format="json").status_code == 400
+
+
+def test_service_assign_by_non_head_forbidden(painter, ptype, manager, mol):
+    for user in (manager, mol):
+        with pytest.raises(ServiceForbidden):
+            PS.assign_painter_type(painter, ptype, by=user)
+    assert fresh(painter).type_id is None
+
+
+def test_same_type_repick_starts_legacy_row(painter, ptype, head, bot_events, no_legacy):
+    Painter.objects.filter(pk=painter.pk).update(type=ptype)  # legacy: type without a start
+    assert fresh(painter).started_at is None
+    p = start(painter, ptype, by=head)
+    assert p.started_at is not None
+    assert len(bot_events.of("painter.task")) == 1 and len(bot_events.of("painter.due_ask")) == 1
+    start(painter, ptype, by=head)  # idempotent
+    assert len(bot_events.of("painter.task")) == 1
+
+
+def test_due_ask_skipped_when_due_already_set(painter, ptype, head, bot_events):
+    Painter.objects.filter(pk=painter.pk).update(due_date=date(2030, 1, 1))
+    start(painter, ptype, by=head)
+    assert len(bot_events.of("painter.task")) == 1
+    assert bot_events.of("painter.due_ask") == []
+
+
+def test_actions_edit_and_done_are_bools(painter, ptype, api, head):
+    start(painter, ptype)
+    for perms in (HEAD_PERMS, MANAGER_PERMS):
+        a = api(*perms).get(f"/api/v1/painters/{painter.pk}/").data["actions"]
+        assert all(type(v) is bool for v in a.values()), (perms, a)
 
 
 def test_panel_due_overdue_filter_and_ordering(painter, ptype, api, head):
@@ -563,3 +626,16 @@ def test_schedule_has_painter_task():
 
 def test_reminders_task_runs(painter):
     assert set(tasks.painter_reminders()) == {"auto", "soon", "overdue"}
+
+
+def test_migration_0010_additive_idempotent():
+    mod = importlib.import_module("order.painter.migrations.0010_production_head_paintertype")
+    g, _ = Group.objects.get_or_create(name="Ishlab chiqarish rahbari")
+    other = Group.objects.create(name="Boshqa")
+    before = _perms(other)
+    mod.add_view_paintertype(global_apps, None)
+    mod.add_view_paintertype(global_apps, None)
+    assert "painter.view_paintertype" in _perms(g)
+    assert _perms(other) == before
+    Group.objects.all().delete()
+    mod.add_view_paintertype(global_apps, None)  # no group: no-op

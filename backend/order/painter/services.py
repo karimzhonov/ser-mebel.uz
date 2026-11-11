@@ -107,17 +107,33 @@ def _save(painter, *, by=None) -> None:
     painter.save()
 
 
-def assign_painter_type(painter, painter_type, *, by=None):
-    """The manager picks (or clears) the painter type. The first assignment after the rover
-    is confirmed starts the job."""
+def assign_painter_type(painter, painter_type, *, by=None, keep_started=False):
+    """The production head picks (or clears) the painter type (the team). The first
+    assignment after the rover is confirmed starts the job. `by=None` is the frozen-admin
+    legacy path (no permission check)."""
+    if by is not None and not by.has_perm(f"oauth.{PRODUCTION_HEAD_PERMISSION}"):
+        raise ServiceForbidden("Jamoani faqat Ishlab chiqarish rahbari tanlaydi")
     new_pk = getattr(painter_type, "pk", None)
     _ensure_rover_finished(painter)
     if painter_type is not None and painter_type.user_id is None:
         raise ServiceError("Bu turga molyar biriktirilmagan — avval molyarni tanlang")
     with transaction.atomic():
         locked = _lock(painter.pk)
+        same = locked.type_id == new_pk
+    if same:
+        # re-picking the current team still starts a legacy row that never started
+        return activate_painter(painter, by=by)
+    with transaction.atomic():
+        locked = _lock(painter.pk)
         if locked.type_id == new_pk:
-            return locked
+            # a concurrent call set this team meanwhile: only make sure the job started
+            return activate_painter(locked, by=by)
+        if keep_started and locked.type_id and locked.started_at:
+            # bot buttons may be stale or pressed by two heads at once: a started job
+            # changes team only on the site
+            raise ServiceConflict(
+                f"Jamoa allaqachon tanlangan: {locked.type.name} — o'zgartirish saytda"
+            )
         prev_user = _type_user(locked)
         locked.type = painter_type
         if painter_type is not None:
@@ -136,12 +152,12 @@ def assign_painter_type(painter, painter_type, *, by=None):
                 events.painter_unassigned(locked, prev=prev_user)
             if new_user is not None and changed:
                 _announce_task(locked)
-            if first:
+            if first and locked.due_date is None:
                 events.painter_due_ask(locked)
     return locked
 
 
-def activate_painter(painter):
+def activate_painter(painter, *, by=None):
     """Start the job: the type (with a painter) is set, the rover is finished, nothing was
     started yet. Idempotent."""
     with transaction.atomic():
@@ -155,10 +171,11 @@ def activate_painter(painter):
             return locked
         locked.started_at = timezone.now()
         locked.rev += 1
-        _save(locked)
+        _save(locked, by=by)
         locked = _lock(locked.pk)
         _announce_task(locked)
-        events.painter_due_ask(locked)
+        if locked.due_date is None:
+            events.painter_due_ask(locked)
     return locked
 
 

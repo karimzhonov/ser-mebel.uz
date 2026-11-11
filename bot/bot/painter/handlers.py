@@ -2,7 +2,8 @@
 
 Painter: «✅ Bajardim» (`pn:dn`) opens the FSM `PainterDone:note -> confirm` (30 min TTL),
 «✅ Yuborish» posts `painters/{id}/done/ {note}`.
-Production head: `pn:dd:{days}:{id}` posts `painters/{id}/due/ {days}`.
+Production head: `pn:dd:{days}:{id}` posts `painters/{id}/due/ {days}`;
+`pn:ty:{type_id}:{id}` posts `painters/{id}/type/ {type_id}` (the team after the rover).
 The backend decides (403 not linked / not the painter, 409 already done, 400 field, 404); we
 show it as an alert / re-ask."""
 
@@ -24,7 +25,7 @@ from bot.crm.handlers.lead import CMD_CANCEL
 from bot.crm.texts import NEW_BTN
 from bot.hr.texts import FINANCE_MENU_BUTTONS
 
-from . import api
+from . import api, messages
 from . import keyboards as K
 from . import texts as T
 from .states import PainterDone
@@ -36,6 +37,7 @@ DN_RE = re.compile(r"^pn:dn:(\d+)$")
 SY_RE = re.compile(r"^pn:sy:(\d+)$")
 SE_RE = re.compile(r"^pn:se:(\d+)$")
 DD_RE = re.compile(r"^pn:dd:(\d+):(\d+)$")
+TY_RE = re.compile(r"^pn:ty:(\d+):(\d+)$")
 
 
 def _url(cb: CallbackQuery) -> str:
@@ -129,6 +131,51 @@ def build() -> Router:
             except TelegramAPIError:
                 log.info("edit card failed", exc_info=True)
         await cb.answer(T.DUE_SAVED)
+
+    # ---- head: pick the team after the rover
+    @r.callback_query(F.data.regexp(TY_RE))
+    async def pick_team(cb: CallbackQuery):
+        type_id, pid = TY_RE.match(cb.data).groups()
+        pid_i = int(pid)
+        url = _url(cb)
+        try:
+            res = await api.call(
+                "POST",
+                f"painters/{pid_i}/type/",
+                actor=cb.from_user.id,
+                json={"type_id": int(type_id)},
+            )
+        except api.Conflict as e:
+            await _set_kb(cb, K.link_kb(url))  # the job is done: nothing to pick
+            await _alert(cb, e)
+            return
+        except api.BackendError as e:
+            await _alert(cb, e)
+            return
+        except Exception:  # noqa: BLE001
+            log.exception("painter team %s failed", pid_i)
+            await cb.answer(api.DOWN_TEXT, show_alert=True)
+            return
+        task = dict((res or {}).get("painter") or {})
+        task.setdefault("id", pid_i)
+        link = K.link_kb(task.get("url") or url)
+        text = T.team_chosen(task)
+        m = cb.message
+        here = None
+        if isinstance(m, Message):
+            here = (m.chat.id, m.message_id)
+            try:
+                await m.edit_text(text, reply_markup=link)
+            except TelegramBadRequest as e:
+                if "not modified" not in str(e).lower():
+                    log.info("edit card failed: %s", e)
+            except TelegramAPIError:
+                log.info("edit card failed", exc_info=True)
+        for e in await messages.take_all(messages.rkey(pid_i)):
+            if here and (e.get("chat_id"), e.get("message_id")) == here:
+                continue
+            await _edit_card(cb.bot, e, text, link)
+        await cb.answer(T.TEAM_OK)
 
     # ---- painter: «Bajardim» -> note -> confirm
     @r.callback_query(F.data.regexp(DN_RE))

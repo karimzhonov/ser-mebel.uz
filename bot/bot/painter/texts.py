@@ -10,6 +10,7 @@ from bot.common.fmt import esc
 TASK_HEADER = "🎨 <b>Yangi Molyar ishi</b>"
 HEAD_HEADER = "🗓 <b>Molyar uchun muddat qo'ying</b>"
 DONE_HEADER = "🎨 <b>Molyar tayyor</b>"
+TEAM_OK = "✅ Tanlandi"
 BUSY = "Avval boshqa amalni tugating"
 CANCELLED = "Bekor qilindi."
 STALE = "Bu tugma eskirgan."
@@ -83,10 +84,21 @@ def summary(note: str) -> str:
 
 
 def ready_msg(t: dict) -> str:
+    """Head card: the rover is done, pick the team."""
     num = esc((t.get("order") or {}).get("number"))
+    lines = [f"🎨 <b>Rover tayyor — №{num}: jamoani tanlang</b>", ""] + _info(t)
+    return "\n".join(lines)
+
+
+def team_chosen(t: dict) -> str:
+    """The pressed / stored card once the team is picked."""
+    num = esc((t.get("order") or {}).get("number"))
+    ptype = (t.get("type") or {}).get("name")
     who = _name(t.get("painter"))
-    tail = f"molyar: {esc(who)}" if who else "molyar turini tanlang"
-    return f"🎨 Rover tayyor — №{num}: molyar ishi boshlanishi mumkin ({tail})"
+    line = f"✅ Jamoa: {esc(ptype)}" if ptype else "✅ Jamoa tanlandi"
+    if who:
+        line += f" ({esc(who)})"
+    return f"🎨 Molyar — №{num}\n{line}"
 
 
 def done_msg(t: dict, by_name: str | None = None) -> str:

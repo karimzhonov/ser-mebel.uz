@@ -84,17 +84,51 @@ async def test_unassigned_without_stored_card_is_noop():
     bot.send_message.assert_not_called()
 
 
-async def test_ready_message_to_managers():
-    bot = fake_bot()
-    await dispatch(envelope("painter.ready", painter=task(), to=[7, 8]), bot)
+TYPES = [
+    {"id": 3, "name": "Autsors", "user": {"id": 5, "name": "Molyar usta"}},
+    {"id": 4, "name": "O'zimiz", "user": None},
+    {"id": 6, "name": "Juda uzun jamoa nomi", "user": {"id": 9, "name": "Juda uzun ism familiya"}},
+]
+
+
+async def test_ready_team_card_to_heads():
+    bot = fake_bot(705)
+    await dispatch(envelope("painter.ready", painter=task(), types=TYPES, to=[7, 8]), bot)
     calls = bot.send_message.call_args_list
     assert [c.args[0] for c in calls] == [7, 8]
-    assert calls[0].args[1].startswith("🎨 Rover tayyor — №406")
-    assert "Molyar usta" in calls[0].args[1]
-    assert ("🌐 Saytda ochish", None, URL) in buttons(calls[0].kwargs["reply_markup"])
+    text = calls[0].args[1]
+    assert "Rover tayyor — №406: jamoani tanlang" in text and "Karim Aliyev" in text
+    assert "3.5 m²" in text
+    assert buttons(calls[0].kwargs["reply_markup"]) == [
+        ("Autsors · Molyar usta", "pn:ty:3:21", None),
+        ("O'zimiz", "pn:ty:4:21", None),
+        ("Juda uzun jamoa nomi", "pn:ty:6:21", None),
+        ("🌐 Saytda ochish", None, URL),
+    ]
+    raw = await get_redis().lrange("pnt:msg:r21", 0, -1)
+    assert [json.loads(x)["chat_id"] for x in raw] == [7, 8]
+
+
+async def test_ready_stale_rev_is_ignored():
+    bot = fake_bot()
+    await dispatch(envelope("painter.ready", painter=task(rev=5), types=TYPES, to=[7]), bot)
     bot.send_message.reset_mock()
-    await dispatch(envelope("painter.ready", 2, painter=task(painter=None, type=None), to=[7]), bot)
-    assert "molyar turini tanlang" in bot.send_message.call_args.args[1]
+    await dispatch(envelope("painter.ready", 2, painter=task(rev=4), types=TYPES, to=[7]), bot)
+    bot.send_message.assert_not_called()
+
+
+async def test_due_ask_turns_team_cards_into_chosen():
+    bot = fake_bot(710)
+    await dispatch(envelope("painter.ready", painter=task(rev=2), types=TYPES, to=[7, 8]), bot)
+    bot.edit_message_text.reset_mock()
+    await dispatch(
+        envelope("painter.due_ask", 2, painter=task(rev=3, due_date=None), to=[222]), bot
+    )
+    edits = bot.edit_message_text.call_args_list
+    assert sorted(e.kwargs["chat_id"] for e in edits) == [7, 8]
+    assert "✅ Jamoa: Emal (Molyar usta)" in edits[0].args[0]
+    assert buttons(edits[0].kwargs["reply_markup"]) == [("🌐 Saytda ochish", None, URL)]
+    assert await get_redis().lrange("pnt:msg:r21", 0, -1) == []
 
 
 async def test_due_ask_head_card():
@@ -219,3 +253,38 @@ async def test_done_stale_rev_does_not_edit():
         envelope("painter.done", 2, painter=done_task(rev=4), to=[], heads=[], painters=[111]), bot
     )
     bot.edit_message_text.assert_not_called()
+
+
+async def test_task_event_closes_stored_team_cards():
+    bot = fake_bot(720)
+    await dispatch(envelope("painter.ready", painter=task(rev=2), types=TYPES, to=[7, 8]), bot)
+    bot.edit_message_text.reset_mock()
+    await dispatch(envelope("painter.task", 2, painter=task(rev=3), to=[111]), bot)
+    edits = bot.edit_message_text.call_args_list
+    assert sorted(e.kwargs["chat_id"] for e in edits) == [7, 8]
+    assert "✅ Jamoa: Emal (Molyar usta)" in edits[0].args[0]
+    assert buttons(edits[0].kwargs["reply_markup"]) == [("🌐 Saytda ochish", None, URL)]
+    assert await get_redis().lrange("pnt:msg:r21", 0, -1) == []
+
+
+async def test_due_ask_closes_team_cards_even_when_head_rev_rejected():
+    bot = fake_bot(730)
+    await dispatch(envelope("painter.ready", painter=task(rev=2), types=TYPES, to=[7]), bot)
+    await dispatch(envelope("painter.due_ask", 2, painter=task(rev=5), to=[222]), bot)
+    bot.edit_message_text.reset_mock()
+    # a second ready card appears, then a due_ask with a stale h rev arrives
+    await dispatch(envelope("painter.ready", 3, painter=task(rev=6), types=TYPES, to=[7]), bot)
+    bot.edit_message_text.reset_mock()
+    await dispatch(envelope("painter.due_ask", 4, painter=task(rev=4), to=[222]), bot)
+    edits = bot.edit_message_text.call_args_list
+    assert [e.kwargs["chat_id"] for e in edits] == [7]
+    assert "✅ Jamoa" in edits[0].args[0]
+
+
+async def test_late_ready_after_task_sends_no_pick_card():
+    bot = fake_bot(740)
+    await dispatch(envelope("painter.task", 1, painter=task(rev=3), to=[111]), bot)
+    bot.send_message.reset_mock()
+    # Celery may deliver the rover-finished «pick the team» card after the pick
+    await dispatch(envelope("painter.ready", 2, painter=task(rev=2), types=TYPES, to=[7]), bot)
+    assert bot.send_message.call_count == 0

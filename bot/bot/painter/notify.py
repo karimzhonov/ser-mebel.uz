@@ -1,9 +1,11 @@
 """Painter events (backend -> bot).
 
-- `painter.task`: full task card to the assigned painter (store key `t{id}u{user_id}`).
+- `painter.task`: full task card to the assigned painter (store key `t{id}u{user_id}`); also
+  closes the heads' `r{id}` «pick the team» cards (fires on every team pick).
 - `painter.unassigned`: the old painter's card is edited into «boshqa molyarga o'tkazildi».
-- `painter.ready`: plain message to the assembly managers (the rover is confirmed).
-- `painter.due_ask`: «set the deadline» card to the production heads (`h{id}`).
+- `painter.ready`: «pick the team» card to the production heads (`r{id}`, one button per team).
+- `painter.due_ask`: «set the deadline» card to the production heads (`h{id}`); also turns
+  the stored `r{id}` cards into «✅ Jamoa: …» (the team may be picked on the site).
 - `painter.due_set`: edits the painter / head cards, short message to the painter.
 - `painter.remind`: soon / overdue messages, not stored.
 - `painter.done`: «Molyar tayyor» message; edits the stored head / painter cards.
@@ -64,6 +66,16 @@ async def _edit_task_cards(n: Notifier, t: dict, chats: list[int], text: str, kb
     await _edit_all(n, await messages.entries_for(key, chats), text, kb)
 
 
+async def _close_team_cards(n: Notifier, t: dict) -> None:
+    """Edit every stored `r{id}` «pick the team» card into «✅ Jamoa: …» (site link only)."""
+    if not t.get("type"):
+        return
+    # record the rev so a `painter.ready` delivered late doesn't send a fresh pick card
+    await messages.accept_rev(messages.rkey(int(t["id"])), t.get("rev"))
+    entries = await messages.take_all(messages.rkey(int(t["id"])))
+    await _edit_all(n, entries, T.team_chosen(t), K.link_kb(t.get("url") or ""))
+
+
 @on("painter.task")
 async def task(n: Notifier, d: dict) -> None:
     t = d["painter"]
@@ -72,6 +84,9 @@ async def task(n: Notifier, d: dict) -> None:
     key = messages.tkey(pid, uid) if uid is not None else None
     if key:
         await messages.accept_rev(key, t.get("rev"))
+    # a team is picked (first time or reassigned, site or bot): the heads' «pick the team»
+    # cards are done whatever the deadline state
+    await _close_team_cards(n, t)
     text = T.task_card(t)
     kb = K.task_kb(pid, t.get("state") or "new", t.get("url") or "")
     for tg in _tgs(d.get("to")):
@@ -98,16 +113,24 @@ async def unassigned(n: Notifier, d: dict) -> None:
 @on("painter.ready")
 async def ready(n: Notifier, d: dict) -> None:
     t = d["painter"]
+    pid = int(t["id"])
+    key = messages.rkey(pid)
+    if not await messages.accept_rev(key, t.get("rev")):
+        return
     text = T.ready_msg(t)
-    kb = K.link_kb(t.get("url") or "")
+    kb = K.team_kb(pid, d.get("types") or [], t.get("url") or "")
     for tg in _tgs(d.get("to")):
-        await n.send(tg, text, kb)
+        msg = await n.send(tg, text, kb)
+        mid = getattr(msg, "message_id", None)
+        if mid is not None:
+            await messages.remember(key, tg, mid, "team")
 
 
 @on("painter.due_ask")
 async def due_ask(n: Notifier, d: dict) -> None:
     t = d["painter"]
     pid = int(t["id"])
+    await _close_team_cards(n, t)
     key = messages.hkey(pid)
     await messages.accept_rev(key, t.get("rev"))
     text = T.head_card(t)

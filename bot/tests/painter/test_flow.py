@@ -12,6 +12,7 @@ from .conftest import URL, buttons, cbs, done_task, task
 
 DONE = "painters/21/done/"
 DUE = "painters/21/due/"
+TYPE = "painters/21/type/"
 NOTE = "Eshiklar bo'yaldi, 4 ta"
 TCARD = "🎨 Yangi Molyar ishi\n\nBuyurtma №406"
 
@@ -196,3 +197,53 @@ async def test_due_preset_403_alerts_only(env):
     await env.cb("pn:dd:14:21", text="x", markup=head_kb())
     assert alert(env) == "Ruxsat yo'q"
     assert not env.session.of(EditMessageReplyMarkup)
+
+
+def team_kb():
+    return {
+        "inline_keyboard": [
+            [{"text": "Emal", "callback_data": "pn:ty:3:21"}],
+            [{"text": "🌐 Saytda ochish", "url": URL}],
+        ]
+    }
+
+
+async def test_team_pick_posts_type_and_edits_all_cards(env):
+    from bot.painter import messages
+
+    await messages.remember("r21", 999, 55, "team")  # another head's card
+    env.backend.routes[("POST", TYPE)] = {"painter": task(rev=4)}
+    await env.cb("pn:ty:3:21", text="🎨 Rover tayyor", markup=team_kb())
+    assert env.backend.to(TYPE)[0][2] == {"type_id": 3}
+    edits = env.session.of(EditMessageText)
+    assert all("✅ Jamoa: Emal (Molyar usta)" in e.text for e in edits)
+    assert len(edits) == 2
+    assert all(cbs(e.reply_markup) == [] for e in edits)
+    assert env.session.answers()[-1].text == "✅ Tanlandi"
+
+
+async def test_team_pick_409_strips_buttons(env):
+    env.backend.routes[("POST", TYPE)] = Conflict("Molyar ishi bajarilgan", status=409)
+    await env.cb("pn:ty:3:21", text="x", markup=team_kb())
+    assert alert(env) == "Molyar ishi bajarilgan"
+    kb = env.session.of(EditMessageReplyMarkup)[-1].reply_markup
+    assert cbs(kb) == [] and ("🌐 Saytda ochish", None, URL) in buttons(kb)
+
+
+async def test_team_pick_403_400_404_alert_only(env):
+    for exc, msg in (
+        (Forbidden("Ruxsat yo'q", status=403), "Ruxsat yo'q"),
+        (ServiceRefusal("Rover tugamagan", status=400), "Rover tugamagan"),
+        (NotFound("Molyar yoki jamoa topilmadi", status=404), "Molyar yoki jamoa topilmadi"),
+    ):
+        env.backend.routes[("POST", TYPE)] = exc
+        await env.cb("pn:ty:3:21", text="x", markup=team_kb())
+        assert alert(env) == msg
+    assert not env.session.of(EditMessageReplyMarkup)
+    assert not env.session.of(EditMessageText)
+
+
+async def test_team_pick_backend_down(env):
+    env.backend.routes[("POST", TYPE)] = BackendDown("x")
+    await env.cb("pn:ty:3:21", text="x", markup=team_kb())
+    assert alert(env) == DOWN_TEXT

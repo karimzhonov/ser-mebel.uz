@@ -455,20 +455,24 @@ class PainterSerializer(serializers.ModelSerializer):
     def get_actions(self, obj):
         user = self.context["request"].user
         return {
-            "edit": user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"),
-            "done": (
+            "edit": bool(user.has_perm("oauth.user_production_head") and not obj.done),
+            "done": bool(
                 (
                     user.has_perm("painter.change_painter")
                     or (obj.type and obj.type.user_id == user.pk)
                 )
                 and not obj.done
             ),
-            "due": user.has_perm("oauth.user_production_head") and not obj.done,
+            "due": bool(user.has_perm("oauth.user_production_head") and not obj.done),
         }
 
 
 class PainterDoneSerializer(serializers.Serializer):
     note = serializers.CharField(allow_blank=True, trim_whitespace=False)
+
+
+class PainterAssignSerializer(serializers.Serializer):
+    type = serializers.IntegerField(allow_null=True)
 
 
 class PainterDueSerializer(serializers.Serializer):
