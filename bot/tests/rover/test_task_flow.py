@@ -61,7 +61,7 @@ async def test_task_card_and_store():
     # the worker card carries no client name, phone, address or map (owner)
     for hidden in ("Karim Aliyev", "+998901234567", "Chilonzor", "yandex.com", "xarita"):
         assert hidden not in text
-    assert "3.5 m²" in text and "Muddat: 15.11.2026" in text
+    assert "3.5 m²" in text and "Rover muddati: 15.11.2026" in text
     assert "Summa" not in text
     assert buttons(kw["reply_markup"]) == [
         ("✅ Bajardim", "rv:dn:12", None),
@@ -79,7 +79,7 @@ async def test_task_card_marks_and_no_due():
     text = bot.send_message.call_args.args[1]
     assert "(avto)" in text and "⚠️ 2 kun kechikdi" in text
     await dispatch(envelope("rover.task", 2, rover=new_task(due_date=None), to=[1]), bot)
-    assert "Muddat hali belgilanmagan" in bot.send_message.call_args.args[1]
+    assert "Rover muddati hali belgilanmagan" in bot.send_message.call_args.args[1]
 
 
 async def test_task_card_no_button_when_not_new():
@@ -96,7 +96,7 @@ async def test_due_ask_head_card():
         envelope("rover.due_ask", rover=new_task(due_date=None), presets=[3, 5, 7], to=[222]), bot
     )
     text = bot.send_message.call_args.args[1]
-    assert "Rover uchun muddat qo'ying" in text and "Muddat hali belgilanmagan" in text
+    assert "Rover uchun muddat qo'ying" in text and "Rover muddati hali belgilanmagan" in text
     kb = bot.send_message.call_args.kwargs["reply_markup"]
     assert cbs(kb) == ["rv:dd:3:12", "rv:dd:5:12", "rv:dd:7:12"]
     assert [b[0] for b in buttons(kb)][:3] == ["+3 kun", "+5 kun", "+7 kun"]

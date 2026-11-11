@@ -115,12 +115,12 @@ function ProductionList({ kind }: { kind: Kind }) {
           loading={isFetching}
           rowKey={(r) => r.id}
           onRowClick={(r) => setSearchParams((p) => (p.set("open", String(r.id)), p))}
-          rowClassName={(r) => (r.done ? undefined : ROW_TONE[r.order.deadline.level])}
+          rowClassName={(r) => (r.done ? undefined : kind === "rover" ? (r.overdue ? ROW_TONE.danger : undefined) : ROW_TONE[r.order.deadline.level])}
           columns={[
             { key: "n", header: "Buyurtma", cell: (r) => <span className="font-semibold">№{r.order.order_number}</span> },
             { key: "client", header: "Mijoz", cell: (r) => r.order.client?.fio ?? "—" },
             { key: "status", header: "Buyurtma holati", cell: (r) => <OrderStatusBadge status={r.order.status} label={r.order.status_label} /> },
-            { key: "deadline", header: "Muddat", cell: (r) => <DeadlinePill deadline={r.order.deadline} /> },
+            ...(kind === "rover" ? [] : [{ key: "deadline", header: "Muddat", cell: (r: ProductionItem) => <DeadlinePill deadline={r.order.deadline} /> }]),
             ...(kind === "detailing"
               ? [{ key: "due_at", header: "Detalirovka muddati", cell: (r: ProductionItem) => <DetailingDue dueAt={r.due_at} done={r.done} /> }]
               : []),
@@ -179,7 +179,7 @@ function ProductionList({ kind }: { kind: Kind }) {
                 )}
               </div>
               <div className="flex items-center justify-between text-sm">
-                <DeadlinePill deadline={r.order.deadline} />
+                {kind === "rover" ? <span /> : <DeadlinePill deadline={r.order.deadline} />}
                 <span className="muted">{num(r.square)} m²</span>
               </div>
               {kind === "detailing" && (
@@ -312,7 +312,7 @@ function ProductionModal({
       <div className="space-y-5">
         <div className="flex flex-wrap gap-2">
           <OrderStatusBadge status={o.status} label={o.status_label} />
-          <DeadlinePill deadline={o.deadline} />
+          {kind !== "rover" && <DeadlinePill deadline={o.deadline} />}
           <FolderButton folderId={item.folder} label="Bosqich fayllari" />
           <FolderButton folderId={o.folder} label="Buyurtma fayllari" />
         </div>
@@ -321,7 +321,7 @@ function ProductionModal({
             ["Mijoz", o.client?.fio ?? "—"],
             ["Telefon", <PhoneLink value={o.client?.phone} />],
             ["Manzil", <AddressLink address={o.address} link={o.address_link} mapUrl={o.map_url} lat={o.lat} lon={o.lon} />],
-            ["Topshirish sanasi", date(o.end_date, "ko'rsatilmagan")],
+            ...(kind === "rover" ? [] : ([["Topshirish sanasi", date(o.end_date, "ko'rsatilmagan")]] as [string, ReactNode][])),
             ...(kind === "detailing"
               ? ([[
                   "Detalirovka muddati",

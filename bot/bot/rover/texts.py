@@ -71,11 +71,11 @@ def _d(iso) -> str:
 
 
 def due_text(d: dict | str | None) -> str:
-    """Date and the marks of a RoverTask: «Muddat: 15.11.2026 (avto)», late -> ⚠️."""
+    """Date and the marks of a RoverTask: «Rover muddati: 15.11.2026 (avto)», late -> ⚠️."""
     t = d if isinstance(d, dict) else {}
     if not t.get("due_date"):
-        return "🗓 Muddat hali belgilanmagan"
-    line = f"🗓 Muddat: {esc(_d(t['due_date']))}"
+        return "🗓 Rover muddati hali belgilanmagan"
+    line = f"🗓 Rover muddati: {esc(_d(t['due_date']))}"
     if t.get("due_auto"):
         line += " (avto)"
     if t.get("overdue"):
