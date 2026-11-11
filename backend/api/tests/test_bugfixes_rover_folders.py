@@ -61,7 +61,7 @@ def test_painter_actions_blocked_until_rover_done(rover_and_painter):
     with pytest.raises(ServiceError):
         assign_painter_type(painter, ptype)
     with pytest.raises(ServiceError):
-        mark_painter_done(painter)
+        mark_painter_done(painter, by=ptype.user, note="Bo'yaldi, 3 ta eshik")
 
 
 def test_order_without_rover_goes_straight_to_painter(admin_api, order_factory):
@@ -102,25 +102,35 @@ def test_unfiled_file_deletable_by_admin(admin_api, tmp_path, settings):
 
 
 def test_rover_done_notifies_painting_ready(
-    admin_api, rover_and_painter, monkeypatch, django_capture_on_commit_callbacks
+    admin_api,
+    rover_and_painter,
+    make_staff,
+    bot_events,
+    monkeypatch,
+    django_capture_on_commit_callbacks,
 ):
+    """Rover confirmed -> the assembly managers get the painter.ready event (no bare
+    legacy Telegram message any more); a second run is a no-op."""
+    from oauth.models import User
     from order.rover import tasks
 
-    calls = []
-    monkeypatch.setattr(
-        "oauth.models.User.send_messages", classmethod(lambda cls, *a, **k: calls.append((a, k)))
-    )
+    def boom(*a, **k):
+        raise AssertionError("legacy bare notification")
+
+    monkeypatch.setattr(User, "send_messages", classmethod(boom))
+    monkeypatch.setattr(User, "send_message", boom)
     monkeypatch.setattr(
         tasks.notify_painting_ready_task,
         "delay",
         lambda rid: tasks.notify_painting_ready_task.apply(args=(rid,)),
     )
+    make_staff("assembly.manager", name="Menejer", telegram_id=3001)
     rover, painter, _ = rover_and_painter
     with django_capture_on_commit_callbacks(execute=True):
         _finish_rover(admin_api, rover)
-    assert len(calls) == 1 and calls[0][0][0] == "assembly.manager"
+    assert bot_events.one("painter.ready")["to"] == [3001]
     assert tasks.notify_painting_ready_task(rover.pk) is False  # second run is a no-op
-    assert len(calls) == 1
+    assert len(bot_events.of("painter.ready")) == 1
 
 
 # --- assembly list starts after detailing ------------------------------------------

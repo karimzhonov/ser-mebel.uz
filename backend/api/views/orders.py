@@ -26,7 +26,12 @@ from order.detailing.models import Detailing
 from order.detailing.services import mark_detailing_done, set_detailing_due
 from order.models import Factory, Order
 from order.painter.models import Painter, PainterType
-from order.painter.services import assign_painter_type, mark_painter_done, ready_for_painter
+from order.painter.services import (
+    assign_painter_type,
+    mark_painter_done,
+    ready_for_painter,
+    set_painter_due,
+)
 from order.rover.models import Rover
 from order.rover.services import confirm_rover, set_rover_due, submit_rover
 from order.services import (
@@ -49,6 +54,8 @@ from ..serializers.orders import (
     OrderDetailSerializer,
     OrderSerializer,
     OrderUpdateSerializer,
+    PainterDoneSerializer,
+    PainterDueSerializer,
     PainterSerializer,
     PainterTypeSerializer,
     RoverDoneSerializer,
@@ -445,14 +452,29 @@ class PainterTypeViewSet(viewsets.ModelViewSet):
 
 class PainterViewSet(_ProductionViewSet):
     serializer_class = PainterSerializer
+    ordering_fields = ["created_at", "due_date"]
+
+    def _respond(self, obj):
+        # always the full card, whatever serializer the action documents for its input
+        obj = self.get_queryset().get(pk=obj.pk)
+        return Response(PainterSerializer(obj, context=self.get_serializer_context()).data)
 
     def get_queryset(self):
         # Only orders whose rover is finished (or that have none): painting comes after milling.
-        qs = ready_for_painter(Painter.objects.select_related("order__client", "type"))
-        # A painter sees only work assigned through their type.
-        if not self.request.user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"):
-            qs = qs.filter(type__user=self.request.user)
-        return self.filter_common(qs)
+        qs = ready_for_painter(
+            Painter.objects.select_related("order__client", "type__user", "done_by", "due_set_by")
+        )
+        # Managers and production heads see every job; a painter only their own (by type).
+        user = self.request.user
+        if not (
+            user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
+            or user.has_perm("oauth.user_production_head")
+        ):
+            qs = qs.filter(type__user=user)
+        qs = self.filter_common(qs)
+        if _bool_param(self.request.query_params.get("overdue")):
+            qs = qs.filter(done=False, due_date__lt=accounting_today())
+        return qs
 
     def update(self, request, *args, **kwargs):
         require_perm(request.user, f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
@@ -463,13 +485,29 @@ class PainterViewSet(_ProductionViewSet):
         painter_type = PainterType.objects.filter(pk=type_id).first() if type_id else None
         if type_id and painter_type is None:
             raise ServiceError("Bo'yash turi topilmadi")
-        assign_painter_type(painter, painter_type)
+        assign_painter_type(painter, painter_type, by=request.user)
         return self._respond(painter)
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], serializer_class=PainterDoneSerializer)
     def done(self, request, pk=None):
-        require_perm(request.user, "painter.change_painter")
-        return self._respond(mark_painter_done(self.get_object()))
+        """The painter's «Bajarildi»: {note} - what was done; the service checks who may."""
+        body = PainterDoneSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            mark_painter_done(self.get_object(), by=request.user, note=body.validated_data["note"])
+        )
+
+    @action(detail=True, methods=["post"], serializer_class=PainterDueSerializer)
+    def due(self, request, pk=None):
+        """The production head's deadline: {due_date: "YYYY-MM-DD"}."""
+        require_perm(request.user, "oauth.user_production_head")
+        body = PainterDueSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            set_painter_due(
+                self.get_object(), by=request.user, due_date=body.validated_data["due_date"]
+            )
+        )
 
 
 class AssemblyViewSet(_ProductionViewSet):

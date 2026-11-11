@@ -397,6 +397,12 @@ class PainterSerializer(serializers.ModelSerializer):
     order = ProductionOrderSerializer(read_only=True)
     price = MoneyField(read_only=True)
     type_detail = serializers.SerializerMethodField()
+    painter_detail = serializers.SerializerMethodField()
+    state = serializers.CharField(read_only=True)
+    state_label = serializers.CharField(read_only=True)
+    done_by_detail = UserShortSerializer(source="done_by", read_only=True)
+    due_set_by_detail = UserShortSerializer(source="due_set_by", read_only=True)
+    overdue = serializers.BooleanField(read_only=True)
     actions = serializers.SerializerMethodField()
 
     class Meta:
@@ -406,14 +412,42 @@ class PainterSerializer(serializers.ModelSerializer):
             "order",
             "created_at",
             "done",
+            "state",
+            "state_label",
             "type",
             "type_detail",
+            "painter_detail",
             "square",
             "price",
+            "note",
+            "started_at",
+            "done_at",
+            "done_by_detail",
+            "due_date",
+            "due_auto",
+            "due_set_at",
+            "due_set_by_detail",
+            "overdue",
             "folder",
             "actions",
         ]
-        read_only_fields = ["order", "created_at", "done", "square", "price", "folder"]
+        read_only_fields = [
+            "order",
+            "created_at",
+            "done",
+            "square",
+            "price",
+            "note",
+            "started_at",
+            "due_date",
+            "due_auto",
+            "due_set_at",
+            "folder",
+        ]
+
+    def get_painter_detail(self, obj):
+        user = obj.type.user if obj.type and obj.type.user_id else None
+        return UserShortSerializer(user).data if user else None
 
     def get_type_detail(self, obj):
         return {"id": obj.type.pk, "name": obj.type.name} if obj.type else None
@@ -422,8 +456,23 @@ class PainterSerializer(serializers.ModelSerializer):
         user = self.context["request"].user
         return {
             "edit": user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"),
-            "done": user.has_perm("painter.change_painter") and not obj.done,
+            "done": (
+                (
+                    user.has_perm("painter.change_painter")
+                    or (obj.type and obj.type.user_id == user.pk)
+                )
+                and not obj.done
+            ),
+            "due": user.has_perm("oauth.user_production_head") and not obj.done,
         }
+
+
+class PainterDoneSerializer(serializers.Serializer):
+    note = serializers.CharField(allow_blank=True, trim_whitespace=False)
+
+
+class PainterDueSerializer(serializers.Serializer):
+    due_date = serializers.DateField()
 
 
 class AssemblySerializer(serializers.ModelSerializer):

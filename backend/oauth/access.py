@@ -207,7 +207,7 @@ SECTIONS: tuple[Section, ...] = (
         "Ishlab chiqarish rahbari",
         (),
         edit=False,
-        hint="Rover muddatini qo'yadi/o'zgartiradi, kechikish xabarlarini oladi. «Rover» bo'limida kamida «Ko'rish» ham kerak",
+        hint="Rover va Molyar muddatini qo'yadi/o'zgartiradi, kechikish xabarlarini oladi. «Rover» va «Molyar» bo'limlarida kamida «Ko'rish» ham kerak",
     ),
     Section(
         "flag_painter",

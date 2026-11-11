@@ -252,26 +252,7 @@ def due_rover_reminders(at) -> dict:
 
 
 def notify_painting_ready(order):
-    """Milling is finished, so the order now shows up in the Моляр list: tell the
-    people who assign painters (assembly managers) and the assigned painter, if any.
-    A failed notification must not undo the rover being done."""
-    from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
-    from order.painter.models import Painter
+    """Milling is finished: the painter side takes over (order.painter.services)."""
+    from order.painter.services import on_rover_finished
 
-    painter = Painter.objects.filter(order=order, done=False).select_related("type__user").first()
-    if painter is None:
-        return
-    text = f"Buyurtma №{order.order_number}: rover tayyor — molyar ishini boshlash mumkin"
-    try:
-        from oauth.models import User
-
-        User.send_messages(
-            f"assembly.{ASSEMBLY_MANAGER_PERMISSION}",
-            "admin:painter_painter_change",
-            {"object_id": painter.pk},
-            text=text,
-        )
-        if painter.type and painter.type.user:
-            painter.type.user.send_message(text=text)
-    except Exception:
-        logger.exception("Painter notification failed for order %s", order.pk)
+    on_rover_finished(order)

@@ -713,6 +713,11 @@ export interface ProductionItem {
   // rover
   state?: "new" | "checking" | "done";
   state_label?: string;
+  // painter
+  started_at?: string | null;
+  done_at?: string | null;
+  done_by_detail?: UserShort | null;
+  painter_detail?: UserShort | null;
   submitted_at?: string | null;
   submitted_by_detail?: UserShort | null;
   checked_at?: string | null;

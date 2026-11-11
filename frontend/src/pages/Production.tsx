@@ -8,6 +8,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink, ROW_TONE } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
+import { DueLabel, DueModal } from "@/components/DueDate";
 import { RoverDueLabel, RoverDueModal } from "@/components/RoverDue";
 import {
   Badge,
@@ -129,7 +130,24 @@ function ProductionList({ kind }: { kind: Kind }) {
             ...(kind === "assembly"
               ? [{ key: "user", header: "Yig'uvchi", cell: (r: ProductionItem) => r.user_detail?.name || (r.user_detail ? phone(r.user_detail.phone) : <span className="muted">—</span>) }]
               : []),
-            ...(kind === "painter" ? [{ key: "type", header: "Tur", cell: (r: ProductionItem) => r.type_detail?.name ?? <span className="muted">—</span> }] : []),
+            ...(kind === "painter"
+              ? [
+                  {
+                    key: "type",
+                    header: "Tur",
+                    cell: (r: ProductionItem) =>
+                      r.type_detail ? (
+                        <span>
+                          {r.type_detail.name}
+                          {r.painter_detail && <span className="muted"> · {r.painter_detail.name || phone(r.painter_detail.phone)}</span>}
+                        </span>
+                      ) : (
+                        <span className="muted">—</span>
+                      ),
+                  },
+                  { key: "due_date", header: "Molyar muddati", cell: (r: ProductionItem) => <DueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} /> },
+                ]
+              : []),
             { key: "square", header: "Maydon", cell: (r) => <span className="tabular-nums">{num(r.square)}</span> },
             ...(kind !== "detailing" ? [{ key: "price", header: "Narx", cell: (r: ProductionItem) => <span className="tabular-nums">{money(r.price)}</span> }] : []),
             {
@@ -171,6 +189,12 @@ function ProductionList({ kind }: { kind: Kind }) {
                   <RoverDueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} />
                 </div>
               )}
+              {kind === "painter" && (
+                <div className="text-sm">
+                  <span className="muted">Molyar muddati: </span>
+                  <DueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} />
+                </div>
+              )}
             </div>
           )}
         />
@@ -210,6 +234,8 @@ function ProductionModal({
   const [moveDue, setMoveDue] = useState(false);
   const [amountOpen, setAmountOpen] = useState(false);
   const [roverDue, setRoverDue] = useState(false);
+  const [painterDue, setPainterDue] = useState(false);
+  const [painterDoneOpen, setPainterDoneOpen] = useState(false);
   const [note, setNote] = useState("");
   const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
   const [amount, setAmount] = useState<{ amount: number | string; currency: string }>({ amount: "", currency: "UZS" });
@@ -240,6 +266,11 @@ function ProductionModal({
         note: note.trim(),
       }),
     { success: "Tekshiruvga yuborildi", invalidate: inv, onSuccess: () => setAmountOpen(false) },
+  );
+
+  const painterDone = useAction(
+    () => api.post(`/painters/${id}/done/`, { note: note.trim() }),
+    { success: "Bajarildi", invalidate: inv, onSuccess: () => setPainterDoneOpen(false) },
   );
 
   if (!item) return null;
@@ -273,6 +304,27 @@ function ProductionModal({
                     )}
                   </span>,
                 ]] as [string, JSX.Element][])
+              : []),
+            ...(kind === "painter"
+              ? ([
+                  ["Molyar", item.painter_detail ? item.painter_detail.name || phone(item.painter_detail.phone) : "—"],
+                  [
+                    "Molyar muddati",
+                    <span className="flex flex-wrap items-center gap-2">
+                      <DueLabel dueDate={item.due_date} auto={item.due_auto} overdue={item.overdue} />
+                      {a.due && can("oauth.user_production_head") && (
+                        <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setPainterDue(true)}>
+                          o'zgartirish
+                        </button>
+                      )}
+                    </span>,
+                  ],
+                  ["Holat", item.state === "done" ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="idle">Ishda</Badge>],
+                  ...(item.note ? [["Izoh", <span className="whitespace-pre-wrap">{item.note}</span>]] : []),
+                  ...(item.done_at
+                    ? [["Bajardi", `${item.done_by_detail?.name || (item.done_by_detail ? phone(item.done_by_detail.phone) : "—")} · ${date(item.done_at)}`]]
+                    : []),
+                ] as [string, ReactNode][])
               : []),
             ["Buyurtma", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Buyurtmani ochish →</Link>],
             ...(kind !== "detailing" ? ([["Maydon", num(item.square)], ["Narx", money(item.price)]] as [string, string][]) : []),
@@ -336,7 +388,7 @@ function ProductionModal({
         )}
 
         {kind === "painter" && (
-          <Field label="Bo'yash turi" hint="Tanlanganda molyarga xabar boradi, narx maydon bo'yicha qayta hisoblanadi">
+          <Field label="Bo'yash turi" hint="Tanlanganda molyarga Telegram kartasi boradi, narx maydon bo'yicha qayta hisoblanadi">
             <Select disabled={!a.edit} value={item.type ?? ""} onChange={(e) => patch.mutate({ type: e.target.value ? Number(e.target.value) : null })}>
               <option value="">— tayinlanmagan —</option>
               {painterTypes?.map((t) => (
@@ -368,6 +420,10 @@ function ProductionModal({
                   setNote("");
                   setSubmitErrors({});
                   setAmountOpen(true);
+                } else if (kind === "painter") {
+                  setNote("");
+                  setSubmitErrors({});
+                  setPainterDoneOpen(true);
                 } else setConfirm("done");
               }}
             >
@@ -376,6 +432,11 @@ function ProductionModal({
           )}
           {kind === "rover" && a.due && can("oauth.user_production_head") && (
             <Button variant="outline" onClick={() => setRoverDue(true)}>
+              🕒 Muddat
+            </Button>
+          )}
+          {kind === "painter" && a.due && can("oauth.user_production_head") && (
+            <Button variant="outline" onClick={() => setPainterDue(true)}>
               🕒 Muddat
             </Button>
           )}
@@ -431,6 +492,35 @@ function ProductionModal({
           </div>
         </div>
       </Modal>
+      <Modal open={painterDoneOpen} onClose={() => setPainterDoneOpen(false)} title="Molyar ishi bajarildi" size="sm">
+        <div className="space-y-4">
+          <Field label="Izoh (nima ish qilindi)" error={submitErrors.note}>
+            <Textarea required value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setPainterDoneOpen(false)}>Bekor qilish</Button>
+            <Button
+              variant="success"
+              loading={painterDone.isPending}
+              disabled={note.trim().length < 3}
+              onClick={() => painterDone.mutateAsync().catch((e) => setSubmitErrors(fieldErrors(e)))}
+            >
+              Bajarildi
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      {painterDue && (
+        <DueModal
+          resource="painters"
+          id={item.id}
+          dueDate={item.due_date}
+          title="Molyar muddati"
+          presets={[5, 10, 14]}
+          invalidate={["painters", "orders", "dashboard"]}
+          onClose={() => setPainterDue(false)}
+        />
+      )}
       {roverDue && <RoverDueModal roverId={item.id} dueDate={item.due_date} onClose={() => setRoverDue(false)} />}
       {moveDue && <DetailingDueModal detailingId={item.id} dueAt={item.due_at} onClose={() => setMoveDue(false)} />}
     </Modal>

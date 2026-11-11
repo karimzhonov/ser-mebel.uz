@@ -44,6 +44,7 @@ def periodic_tasks() -> dict[str, tuple[str, dict]]:
         "zamer: eslatmalar": ("metering.tasks.metering_reminders", {"minute": "*"}),
         "dizayn/narx: eslatmalar": ("metering.tasks.offer_reminders", {"minute": "*"}),
         "rover: muddat va eslatmalar": ("order.rover.tasks.rover_reminders", {"minute": "*"}),
+        "molyar: muddat va eslatmalar": ("order.painter.tasks.painter_reminders", {"minute": "*"}),
     }
 
 
@@ -75,5 +76,6 @@ def sync_periodic_tasks() -> None:
         "call_center.tasks.",
         "metering.tasks.",
         "order.rover.tasks.",
+        "order.painter.tasks.",
     ):
         PeriodicTask.objects.filter(task__startswith=prefix).exclude(name__in=wanted).delete()

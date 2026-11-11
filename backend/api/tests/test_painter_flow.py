@@ -1,0 +1,565 @@
+"""Molyar (painter): activation when a type is picked, the painter's task card and «Bajardim»
+with an izoh, the production head's deadline (auto after a day), reminders, site API
+scoping, the role migration."""
+
+import importlib
+from datetime import date, datetime, timedelta
+
+import pytest
+from django.apps import apps as global_apps
+from django.contrib.auth.models import Group
+from djmoney.money import Money
+
+from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden
+from order.painter import services as PS
+from order.painter import tasks
+from order.painter.models import Painter, PainterType
+from order.rover.models import Rover
+
+pytestmark = pytest.mark.django_db
+
+PAINTER_PERMS = ("painter.view_painter",)
+HEAD_PERMS = ("oauth.user_production_head", "painter.view_painter")
+MANAGER_PERMS = ("assembly.manager", "painter.view_painter", "painter.change_painter")
+NOTE = "Fasad bo'yaldi, 8 ta eshik"
+TODAY = date(2026, 11, 11)
+NOW = datetime(2026, 11, 11, 12, 0)
+
+
+@pytest.fixture
+def mol(make_staff):
+    return make_staff(*PAINTER_PERMS, name="Molyar", telegram_id=1001)
+
+
+@pytest.fixture
+def mol2(make_staff):
+    return make_staff(*PAINTER_PERMS, name="Molyar 2", telegram_id=1002)
+
+
+@pytest.fixture
+def head(make_staff):
+    return make_staff(*HEAD_PERMS, name="Rahbar", telegram_id=2001)
+
+
+@pytest.fixture
+def manager(make_staff):
+    return make_staff(*MANAGER_PERMS, name="Menejer", telegram_id=3001)
+
+
+@pytest.fixture
+def ptype(mol):
+    return PainterType.objects.create(name="Glyanets", price=Money(10, "UZS"), user=mol)
+
+
+@pytest.fixture
+def ptype2(mol2):
+    return PainterType.objects.create(name="Mat", price=Money(20, "UZS"), user=mol2)
+
+
+@pytest.fixture
+def painter(order_factory):
+    return Painter.objects.create(order=order_factory(), square=5)
+
+
+@pytest.fixture
+def fixed_clock(monkeypatch):
+    monkeypatch.setattr(PS, "today", lambda: TODAY)
+    monkeypatch.setattr(PS, "now", lambda: NOW)
+    monkeypatch.setattr("accounting.text.today", lambda: TODAY)
+
+
+@pytest.fixture
+def no_legacy(monkeypatch):
+    from oauth.models import User
+
+    def boom(*a, **k):
+        raise AssertionError("legacy bare notification")
+
+    monkeypatch.setattr(User, "send_messages", classmethod(boom))
+    monkeypatch.setattr(User, "send_message", boom)
+
+
+def fresh(p):
+    return Painter.objects.get(pk=p.pk)
+
+
+def at(day, hour):
+    return datetime(day.year, day.month, day.day, hour, 0)
+
+
+def start(painter, ptype, by=None):
+    return PS.assign_painter_type(painter, ptype, by=by)
+
+
+# --- 1/2. assignment starts the job -------------------------------------------------
+
+
+def test_assign_starts_job_task_and_due_ask(painter, ptype, head, manager, bot_events, no_legacy):
+    p = start(painter, ptype, by=manager)
+    assert p.started_at is not None and p.rev == 1
+    assert p.price == Money(50, "UZS")  # type.price x square
+    task = bot_events.one("painter.task")
+    assert task["to"] == [1001] and task["painter"]["id"] == p.pk
+    assert task["painter"]["painter"]["name"] == "Molyar"
+    ask = bot_events.one("painter.due_ask")
+    assert ask["to"] == [2001] and ask["presets"] == [5, 10, 14]
+    assert bot_events.of("painter.unassigned") == []
+
+
+def test_assignee_without_telegram_gets_sms_once(
+    painter, make_staff, monkeypatch, bot_events, head
+):
+    sms = []
+    monkeypatch.setattr("core.sms.send_bulk_sms", lambda batch: sms.extend(batch))
+    no_tg = make_staff(*PAINTER_PERMS, name="Telegramsiz")
+    t = PainterType.objects.create(name="X", price=Money(1, "UZS"), user=no_tg)
+    start(painter, t)
+    assert bot_events.of("painter.task") == []
+    assert len(bot_events.of("painter.due_ask")) == 1
+    assert tasks.painter_task_sms(painter.pk, no_tg.pk) == 1
+    assert f"№{painter.order.order_number}" in sms[0]["text"]
+    assert f"/production/painter?open={painter.pk}" in sms[0]["text"]
+    assert tasks.painter_task_sms(painter.pk, no_tg.pk) == 0  # redelivery
+    assert len(sms) == 1
+
+
+def test_sms_skipped_when_reassigned_done_or_telegram(
+    painter, ptype, ptype2, mol, mol2, make_staff, monkeypatch
+):
+    sms = []
+    monkeypatch.setattr("core.sms.send_bulk_sms", lambda batch: sms.extend(batch))
+    start(painter, ptype)
+    assert tasks.painter_task_sms(painter.pk, mol.pk) == 0  # has Telegram
+    no_tg = make_staff(*PAINTER_PERMS, name="NoTg")
+    t = PainterType.objects.create(name="Y", price=Money(1, "UZS"), user=no_tg)
+    start(painter, t)
+    start(painter, ptype2)  # reassigned away from no_tg
+    assert tasks.painter_task_sms(painter.pk, no_tg.pk) == 0
+    Painter.objects.filter(pk=painter.pk).update(done=True)
+    assert tasks.painter_task_sms(painter.pk, mol2.pk) == 0
+    assert sms == []
+
+
+# --- 3. reassignment ----------------------------------------------------------------
+
+
+def test_reassign_unassigns_old_and_tasks_new(painter, ptype, ptype2, head, bot_events):
+    p = start(painter, ptype)
+    due = PS.set_painter_due  # noqa: F841 (kept for readability)
+    started = p.started_at
+    bot_events.clear()
+    p = start(painter, ptype2)
+    un = bot_events.one("painter.unassigned")
+    assert un["to"] == [1001] and un["prev"]["name"] == "Molyar"
+    assert un["painter"]["painter"]["name"] == "Molyar 2"
+    assert bot_events.one("painter.task")["to"] == [1002]
+    assert bot_events.of("painter.due_ask") == []
+    assert p.started_at == started and p.rev == 2
+
+
+def test_same_user_type_switch_no_events(painter, ptype, mol, bot_events):
+    start(painter, ptype)
+    other = PainterType.objects.create(name="Boshqa", price=Money(30, "UZS"), user=mol)
+    bot_events.clear()
+    p = start(painter, other)
+    assert bot_events == [] and p.price == Money(150, "UZS")
+
+
+def test_clear_type_only_unassigned(painter, ptype, bot_events):
+    start(painter, ptype)
+    bot_events.clear()
+    p = start(painter, None)
+    assert bot_events.names() == ["painter.unassigned"]
+    assert p.type_id is None and p.started_at is not None
+
+
+def test_type_change_on_done_job_updates_price_no_events(painter, ptype, ptype2, mol, bot_events):
+    start(painter, ptype)
+    PS.mark_painter_done(painter, by=mol, note=NOTE)
+    bot_events.clear()
+    p = start(painter, ptype2)
+    assert p.price == Money(100, "UZS") and bot_events == []
+
+
+# --- 4. guards ----------------------------------------------------------------------
+
+
+def test_assign_while_rover_unfinished_refused(order_factory, ptype):
+    order = order_factory()
+    Rover.objects.create(order=order, square=3)
+    p = Painter.objects.create(order=order, square=5)
+    with pytest.raises(ServiceError):
+        start(p, ptype)
+    assert fresh(p).started_at is None
+
+
+def test_type_without_user_refused(painter):
+    t = PainterType.objects.create(name="Egasiz", price=Money(1, "UZS"))
+    with pytest.raises(ServiceError):
+        start(painter, t)
+
+
+def test_legacy_admin_save_activates(painter, ptype, bot_events, head, no_legacy):
+    painter.type = ptype
+    painter.save(update_fields=["type"])  # what the frozen admin does
+    p = fresh(painter)
+    assert p.price == Money(50, "UZS") and p.started_at is not None
+    assert bot_events.one("painter.task")["to"] == [1001]
+    assert len(bot_events.of("painter.due_ask")) == 1
+
+
+# --- 5. rover confirmed -------------------------------------------------------------
+
+
+def _rover_painter(order_factory):
+    order = order_factory()
+    rover = Rover.objects.create(order=order, square=3)
+    return rover, Painter.objects.create(order=order, square=5)
+
+
+def test_rover_finished_notifies_managers_and_activates(
+    order_factory, ptype, manager, head, bot_events, no_legacy
+):
+    rover, p = _rover_painter(order_factory)
+    Painter.objects.filter(pk=p.pk).update(type=ptype)  # chosen earlier (legacy)
+    Rover.objects.filter(pk=rover.pk).update(done=True)
+    assert tasks_ready(rover) is True
+    assert bot_events.one("painter.ready")["to"] == [3001]
+    assert bot_events.one("painter.task")["to"] == [1001]
+    assert len(bot_events.of("painter.due_ask")) == 1
+    assert tasks_ready(rover) is False  # once
+    assert fresh(p).started_at is not None
+
+
+def tasks_ready(rover):
+    from order.rover.tasks import notify_painting_ready_task
+
+    return notify_painting_ready_task(rover.pk)
+
+
+def test_rover_finished_without_type_only_ready(order_factory, manager, bot_events):
+    rover, p = _rover_painter(order_factory)
+    Rover.objects.filter(pk=rover.pk).update(done=True)
+    tasks_ready(rover)
+    assert bot_events.names() == ["painter.ready"]
+    assert fresh(p).started_at is None
+
+
+def test_rover_finished_no_painter_row_is_noop(order_factory, bot_events):
+    rover = Rover.objects.create(order=order_factory(), square=3, done=True)
+    assert tasks_ready(rover) is True
+    assert bot_events == []
+
+
+# --- 6. done ------------------------------------------------------------------------
+
+
+def test_done_by_assignee(painter, ptype, mol, head, manager, bot_events):
+    start(painter, ptype)
+    price = fresh(painter).price
+    bot_events.clear()
+    p = PS.mark_painter_done(painter, by=mol, note="  " + NOTE + " ")
+    assert p.done and p.note == NOTE and p.done_by == mol and p.done_at is not None
+    assert p.rev == 2 and p.price == price and p.state == "done"
+    ev = bot_events.one("painter.done")
+    assert ev["by_name"] == "Molyar" and ev["heads"] == [2001]
+    assert ev["to"] == [2001, 3001] and ev["painters"] == [1001]
+    assert ev["painter"]["state"] == "done" and ev["painter"]["note"] == NOTE
+
+
+def test_done_by_change_painter_holder(painter, ptype, manager):
+    start(painter, ptype)
+    assert PS.mark_painter_done(painter, by=manager, note=NOTE).done_by == manager
+
+
+def test_done_forbidden_for_others(painter, ptype, mol2):
+    start(painter, ptype)
+    with pytest.raises(ServiceForbidden):
+        PS.mark_painter_done(painter, by=mol2, note=NOTE)
+    assert fresh(painter).done is False
+
+
+@pytest.mark.parametrize("bad", ["", "  ab ", "x" * 2001, None, 5])
+def test_done_note_rules(painter, ptype, mol, bad):
+    start(painter, ptype)
+    with pytest.raises(ServiceError) as e:
+        PS.mark_painter_done(painter, by=mol, note=bad)
+    assert e.value.field == "note"
+
+
+def test_done_twice_conflict_and_rover_unfinished(painter, ptype, mol, order_factory):
+    start(painter, ptype)
+    PS.mark_painter_done(painter, by=mol, note=NOTE)
+    with pytest.raises(ServiceConflict):
+        PS.mark_painter_done(painter, by=mol, note=NOTE)
+    order = order_factory()
+    Rover.objects.create(order=order, square=3)
+    waiting = Painter.objects.create(order=order, square=5)
+    Painter.objects.filter(pk=waiting.pk).update(type=ptype)
+    with pytest.raises(ServiceError):
+        PS.mark_painter_done(fresh(waiting), by=mol, note=NOTE)
+
+
+# --- 8. set due ---------------------------------------------------------------------
+
+
+def test_set_due_set_then_moved(painter, ptype, head, mol, bot_events, fixed_clock):
+    start(painter, ptype)
+    bot_events.clear()
+    p = PS.set_painter_due(painter, by=head, days=5)
+    assert p.due_date == TODAY + timedelta(days=5) and not p.due_auto and p.due_set_by == head
+    ev = bot_events.one("painter.due_set")
+    assert ev["how"] == "set" and ev["by_name"] == "Rahbar"
+    assert ev["to"] == [1001] and ev["heads"] == [2001]
+    PS.set_painter_due(painter, by=head, days=10)
+    assert bot_events.of("painter.due_set")[-1]["how"] == "moved"
+    rev = fresh(painter).rev
+    PS.set_painter_due(painter, by=head, days=10)  # same date: no-op
+    assert fresh(painter).rev == rev and len(bot_events.of("painter.due_set")) == 2
+
+
+def test_set_due_rules(painter, ptype, head, mol, fixed_clock):
+    start(painter, ptype)
+    with pytest.raises(ServiceForbidden):
+        PS.set_painter_due(painter, by=mol, days=5)
+    for bad in (0, 31, "5", True):
+        with pytest.raises(ServiceError) as e:
+            PS.set_painter_due(painter, by=head, days=bad)
+        assert e.value.field == "due"
+    with pytest.raises(ServiceError):
+        PS.set_painter_due(painter, by=head, due_date=TODAY - timedelta(days=1))
+    with pytest.raises(ServiceError):
+        PS.set_painter_due(painter, by=head, due_date=TODAY + timedelta(days=400))
+    PS.mark_painter_done(painter, by=mol, note=NOTE)
+    with pytest.raises(ServiceConflict):
+        PS.set_painter_due(painter, by=head, days=5)
+
+
+# --- 9. auto deadline ---------------------------------------------------------------
+
+
+def started_ago(p, **delta):
+    Painter.objects.filter(pk=p.pk).update(started_at=NOW - timedelta(**delta))
+
+
+def test_auto_due_window(order_factory, ptype, head, bot_events, fixed_clock):
+    ps = [Painter.objects.create(order=order_factory(), square=1) for _ in range(4)]
+    for p in ps[:3]:
+        start(p, ptype)
+    started_ago(ps[0], hours=25)  # due for auto
+    started_ago(ps[1], hours=23)  # too fresh
+    started_ago(ps[2], days=4)  # too old
+    bot_events.clear()  # ps[3] never started: started_at NULL
+    assert PS.auto_set_painter_dues(NOW) == 1
+    r = fresh(ps[0])
+    assert r.due_auto and r.due_set_by is None and r.due_set_at == NOW
+    assert r.due_date == r.started_at.date() + timedelta(days=10)
+    assert all(fresh(p).due_date is None for p in ps[1:])
+    ev = bot_events.one("painter.due_set")
+    assert ev["how"] == "auto" and ev["by_name"] is None
+    assert PS.auto_set_painter_dues(NOW) == 0
+
+
+def test_auto_due_skips_done_and_dated(order_factory, ptype, head, mol, fixed_clock):
+    dated = Painter.objects.create(order=order_factory(), square=1)
+    done = Painter.objects.create(order=order_factory(), square=1)
+    start(dated, ptype)
+    start(done, ptype)
+    PS.set_painter_due(dated, by=head, days=3)
+    PS.mark_painter_done(done, by=mol, note=NOTE)
+    for p in (dated, done):
+        started_ago(p, hours=25)
+    before = fresh(dated).due_date
+    assert PS.auto_set_painter_dues(NOW) == 0
+    assert fresh(dated).due_date == before and fresh(done).due_date is None
+
+
+def test_auto_due_days_setting(painter, ptype, fixed_clock):
+    from constance.test import override_config
+
+    start(painter, ptype)
+    started_ago(painter, hours=30)
+    with override_config(PAINTER_AUTO_DUE_DAYS=2):
+        PS.auto_set_painter_dues(NOW)
+    p = fresh(painter)
+    assert p.due_date == p.started_at.date() + timedelta(days=2)
+
+
+# --- 10. reminders ------------------------------------------------------------------
+
+
+def test_reminders_before_hour_only_auto(painter, ptype, fixed_clock, bot_events):
+    start(painter, ptype)
+    early = at(TODAY, 8)
+    Painter.objects.filter(pk=painter.pk).update(started_at=early - timedelta(hours=25))
+    assert PS.due_painter_reminders(early) == {"auto": 1, "soon": 0, "overdue": 0}
+    assert bot_events.of("painter.remind") == []
+
+
+def test_soon_once_painter_only(painter, ptype, head, fixed_clock, bot_events):
+    start(painter, ptype)
+    PS.set_painter_due(painter, by=head, days=1)
+    bot_events.clear()
+    assert PS.due_painter_reminders(at(TODAY, 10))["soon"] == 1
+    ev = bot_events.one("painter.remind")
+    assert ev["what"] == "soon" and ev["to"] == [1001] and ev["heads"] == []
+    assert PS.due_painter_reminders(at(TODAY, 11))["soon"] == 0
+
+
+def test_soon_key_not_burned_without_telegram(painter, make_staff, head, fixed_clock, bot_events):
+    no_tg = make_staff(*PAINTER_PERMS, name="NoTg")
+    t = PainterType.objects.create(name="Z", price=Money(1, "UZS"), user=no_tg)
+    start(painter, t)
+    PS.set_painter_due(painter, by=head, days=1)
+    bot_events.clear()
+    assert PS.due_painter_reminders(at(TODAY, 10))["soon"] == 0
+    no_tg.telegram_id = 5555
+    no_tg.save()
+    assert PS.due_painter_reminders(at(TODAY, 11))["soon"] == 1
+
+
+def test_overdue_daily_painter_and_heads(painter, ptype, head, fixed_clock, bot_events):
+    start(painter, ptype)
+    Painter.objects.filter(pk=painter.pk).update(due_date=TODAY - timedelta(days=2))
+    assert PS.due_painter_reminders(at(TODAY, 10))["overdue"] == 1
+    ev = bot_events.of("painter.remind")[-1]
+    assert ev["what"] == "overdue" and ev["days_late"] == 2
+    assert ev["to"] == [1001] and ev["heads"] == [2001]
+    assert PS.due_painter_reminders(at(TODAY, 15))["overdue"] == 0
+    assert PS.due_painter_reminders(at(TODAY + timedelta(days=1), 10))["overdue"] == 1
+    assert bot_events.of("painter.remind")[-1]["days_late"] == 3
+
+
+def test_reminders_skip_done_and_waiting_for_rover(
+    order_factory, painter, ptype, mol, fixed_clock, bot_events
+):
+    start(painter, ptype)
+    PS.mark_painter_done(painter, by=mol, note=NOTE)
+    waiting_order = order_factory()
+    Rover.objects.create(order=waiting_order, square=3)
+    waiting = Painter.objects.create(order=waiting_order, square=2)
+    old = TODAY - timedelta(days=2)
+    Painter.objects.filter(pk__in=[painter.pk, waiting.pk]).update(due_date=old)
+    bot_events.clear()
+    assert PS.due_painter_reminders(at(TODAY, 10)) == {"auto": 0, "soon": 0, "overdue": 0}
+    assert bot_events.of("painter.remind") == []
+
+
+def test_property_overdue(painter, ptype, mol):
+    from accounting.text import today
+
+    assert painter.overdue is False and painter.days_late == 0
+    painter.due_date = today() - timedelta(days=3)
+    assert painter.overdue and painter.days_late == 3
+    painter.done = True
+    assert not painter.overdue and painter.days_late == 0
+
+
+# --- 11. site API -------------------------------------------------------------------
+
+
+def test_list_scoping_head_sees_all_painter_own(order_factory, ptype, ptype2, api, mol, mol2):
+    a = Painter.objects.create(order=order_factory(), square=1)
+    b = Painter.objects.create(order=order_factory(), square=1)
+    start(a, ptype)
+    start(b, ptype2)
+    head_api = api(*HEAD_PERMS)
+    assert head_api.get("/api/v1/painters/").data["count"] == 2
+    c = api(*PAINTER_PERMS)
+    c.force_authenticate(mol)
+    got = c.get("/api/v1/painters/").data["results"]
+    assert [x["id"] for x in got] == [a.pk]
+
+
+def test_done_open_to_assignee_without_change_perm(painter, ptype, api, mol, mol2, bot_events):
+    start(painter, ptype)
+    url = f"/api/v1/painters/{painter.pk}/done/"
+    c = api(*PAINTER_PERMS)
+    c.force_authenticate(mol)
+    data = c.get(f"/api/v1/painters/{painter.pk}/").data
+    assert data["actions"]["done"] is True and data["actions"]["due"] is False
+    r = c.post(url, {"note": "ab"}, format="json")
+    assert r.status_code == 400 and r.data.get("field") == "note"
+    r = c.post(url, {"note": NOTE}, format="json")
+    assert r.status_code == 200, r.data
+    assert r.data["state"] == "done" and r.data["note"] == NOTE
+    assert r.data["done_by_detail"]["id"] == mol.pk and r.data["painter_detail"]["id"] == mol.pk
+    other = api(*PAINTER_PERMS)
+    other.force_authenticate(mol2)
+    assert other.post(url, {"note": NOTE}, format="json").status_code == 404
+
+
+def test_done_by_manager_and_actions_flags(painter, ptype, api, manager):
+    start(painter, ptype)
+    m = api(*MANAGER_PERMS)
+    url = f"/api/v1/painters/{painter.pk}/"
+    assert m.get(url).data["actions"] == {"edit": True, "done": True, "due": False}
+    assert m.post(url + "done/", {"note": NOTE}, format="json").status_code == 200
+    assert m.get(url).data["actions"]["done"] is False
+
+
+def test_assign_via_api_passes_user(painter, ptype, api, bot_events, head):
+    m = api(*MANAGER_PERMS)
+    r = m.patch(f"/api/v1/painters/{painter.pk}/", {"type": ptype.pk}, format="json")
+    assert r.status_code == 200 and r.data["painter_detail"]["name"] == "Molyar"
+    assert r.data["started_at"] is not None
+    assert len(bot_events.of("painter.task")) == 1
+
+
+def test_panel_due_overdue_filter_and_ordering(painter, ptype, api, head):
+    start(painter, ptype)
+    h = api(*HEAD_PERMS)
+    url = f"/api/v1/painters/{painter.pk}/"
+    assert h.get(url).data["actions"]["due"] is True
+    assert api(*PAINTER_PERMS).post(url + "due/", {"due_date": "2999-01-01"}).status_code == 403
+    from accounting.text import today
+
+    past = (today() - timedelta(days=1)).isoformat()
+    r = h.post(url + "due/", {"due_date": past}, format="json")
+    assert r.status_code == 400 and r.data.get("field") == "due"
+    ok = (today() + timedelta(days=2)).isoformat()
+    r = h.post(url + "due/", {"due_date": ok}, format="json")
+    assert r.status_code == 200 and r.data["due_date"] == ok and r.data["state"] == "new"
+    Painter.objects.filter(pk=painter.pk).update(due_date=today() - timedelta(days=2))
+    got = h.get("/api/v1/painters/", {"overdue": "1"}).data["results"]
+    assert [x["id"] for x in got] == [painter.pk] and got[0]["overdue"] is True
+    assert h.get("/api/v1/painters/", {"ordering": "due_date"}).status_code == 200
+
+
+# --- 12. migration 0009 -------------------------------------------------------------
+
+
+def _perms(g):
+    return {
+        f"{p.content_type.app_label}.{p.codename}"
+        for p in g.permissions.select_related("content_type")
+    }
+
+
+def test_migration_0009_additive_idempotent_noop():
+    mod = importlib.import_module("order.painter.migrations.0009_production_head_view_painter")
+    Group.objects.filter(name="Ishlab chiqarish rahbari").delete()
+    mod.add_view_painter(global_apps, None)  # no group: nothing is created
+    assert not Group.objects.filter(name="Ishlab chiqarish rahbari").exists()
+    g = Group.objects.create(name="ishlab  Chiqarish rahbari")
+    other = Group.objects.create(name="Boshqa")
+    mod.add_view_painter(global_apps, None)
+    mod.add_view_painter(global_apps, None)
+    assert _perms(g) == {"painter.view_painter"} and other.permissions.count() == 0
+
+
+# --- 14. schedule + task ------------------------------------------------------------
+
+
+def test_schedule_has_painter_task():
+    from django_celery_beat.models import PeriodicTask
+
+    from accounting.schedule import sync_periodic_tasks
+
+    sync_periodic_tasks()
+    pt = PeriodicTask.objects.get(name="molyar: muddat va eslatmalar")
+    assert pt.task == "order.painter.tasks.painter_reminders" and pt.enabled
+
+
+def test_reminders_task_runs(painter):
+    assert set(tasks.painter_reminders()) == {"auto", "soon", "overdue"}

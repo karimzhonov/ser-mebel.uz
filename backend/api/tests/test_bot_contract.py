@@ -39,6 +39,7 @@ def test_every_emitted_event_has_a_fixture_and_vice_versa():
         "call_center/events.py",
         "metering/events.py",
         "order/rover/events.py",
+        "order/painter/events.py",
     ):
         emitted |= set(
             re.findall(
