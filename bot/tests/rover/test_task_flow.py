@@ -410,3 +410,11 @@ async def test_task_card_without_design_folder():
     bot = fake_bot(702)
     await dispatch(envelope("rover.task", rover=new_task(design_folder_url=None), to=[111]), bot)
     assert "Dizayn papkasi: yo'q" in bot.send_message.call_args.args[1]
+
+
+async def test_head_card_has_no_address_and_no_link_preview():
+    bot = fake_bot(703)
+    await dispatch(envelope("rover.due_ask", rover=new_task(), presets=[3, 5, 7], to=[222]), bot)
+    call = bot.send_message.call_args
+    assert "Chilonzor" not in call.args[1] and "xarita" not in call.args[1]
+    assert call.kwargs["link_preview_options"].is_disabled is True

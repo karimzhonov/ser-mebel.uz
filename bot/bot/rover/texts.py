@@ -91,11 +91,7 @@ def _info(t: dict) -> list[str]:
         lines.append(f"👤 {esc(client['fio'])}")
     if client.get("phone"):
         lines.append(f"📞 {esc(client['phone'])}")
-    if t.get("address"):
-        addr = f"📍 {esc(t['address'])}"
-        if t.get("map_url"):
-            addr += f' (<a href="{html.escape(str(t["map_url"]), quote=True)}">xarita</a>)'
-        lines.append(addr)
+    # no address / map on rover task messages (owner)
     lines.append(f"📐 Maydon: {esc(t.get('square'))} m²")
     return lines
 

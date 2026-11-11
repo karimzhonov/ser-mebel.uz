@@ -1,4 +1,4 @@
-"""Worker card of an outsource team hides phone / address / map; the rest is unchanged."""
+"""Worker card of an outsource team hides the phone; no task message shows an address."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def test_outsource_reassigned_card_hides_contact():
 def test_non_outsource_card_unchanged():
     card = texts.task_card(task(outsource=False))
     assert "📞 +998901234567" in card
-    assert "📍 Chilonzor 7 &amp; 12" in card and "xarita" in card
+    assert "📍" not in card and "xarita" not in card  # no address on any task message
 
 
 def test_missing_outsource_key_is_false():
@@ -33,5 +33,5 @@ def test_missing_outsource_key_is_false():
 
 def test_head_cards_keep_contact_even_if_outsource():
     t = task(outsource=True)
-    assert "📞" in texts.head_card(t) and "📍" in texts.head_card(t)
+    assert "📞" in texts.head_card(t) and "📍" not in texts.head_card(t)
     assert "📞" in texts.ready_msg(t)

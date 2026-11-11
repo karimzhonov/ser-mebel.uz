@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import html
-
 from bot.common.due import NOTE_MAX, day, due_line
 from bot.common.fmt import esc
 
@@ -28,7 +26,7 @@ def _name(u) -> str:
 
 
 def _info(t: dict, hide_contact: bool = False) -> list[str]:
-    """hide_contact: no phone / address / map (worker card of an outsource team)."""
+    """hide_contact: no phone (worker card of an outsource team)."""
     order = t.get("order") or {}
     client = t.get("client") or {}
     lines = [f"Buyurtma №{esc(order.get('number'))}"]
@@ -36,11 +34,7 @@ def _info(t: dict, hide_contact: bool = False) -> list[str]:
         lines.append(f"👤 {esc(client['fio'])}")
     if client.get("phone") and not hide_contact:
         lines.append(f"📞 {esc(client['phone'])}")
-    if t.get("address") and not hide_contact:
-        addr = f"📍 {esc(t['address'])}"
-        if t.get("map_url"):
-            addr += f' (<a href="{html.escape(str(t["map_url"]), quote=True)}">xarita</a>)'
-        lines.append(addr)
+    # no address / map on molyar task messages (owner)
     lines.append(f"📐 Maydon: {esc(t.get('square'))} m²")
     ptype = (t.get("type") or {}).get("name")
     if ptype:

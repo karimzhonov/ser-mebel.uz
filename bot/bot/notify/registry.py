@@ -25,12 +25,15 @@ from aiogram.exceptions import (
     TelegramForbiddenError,
     TelegramRetryAfter,
 )
-from aiogram.types import BufferedInputFile, Message
+from aiogram.types import BufferedInputFile, LinkPreviewOptions, Message
 
 from bot.common.fmt import clip
 from bot.common.rds import get_redis
 
 logger = logging.getLogger(__name__)
+
+# notification cards never unfurl a link into a big preview (e.g. a map)
+NO_PREVIEW = LinkPreviewOptions(is_disabled=True)
 
 Renderer = Callable[["Notifier", dict], Awaitable[None]]
 _REGISTRY: dict[str, Renderer] = {}
@@ -114,8 +117,13 @@ class Notifier:
                     raw = raw.decode() if isinstance(raw, bytes) else str(raw or "")
                     mid = int(raw) if raw.isdigit() else None
                     self.delivered.append(
-                        {"chat_id": chat_id, "ok": True, "message_id": mid,
-                         "error_code": None, "blocked": False}
+                        {
+                            "chat_id": chat_id,
+                            "ok": True,
+                            "message_id": mid,
+                            "error_code": None,
+                            "blocked": False,
+                        }
                     )
                     return SimpleNamespace(message_id=mid)  # already sent: a success
             except Exception:  # noqa: BLE001 - no Redis: send (maybe twice) rather than lose it
@@ -161,7 +169,10 @@ class Notifier:
     # ---- senders
     async def send(self, chat_id, text: str, kb=None) -> Message | None:
         return await self._try(
-            chat_id, lambda: self.bot.send_message(chat_id, clip(text, 4096), reply_markup=kb)
+            chat_id,
+            lambda: self.bot.send_message(
+                chat_id, clip(text, 4096), reply_markup=kb, link_preview_options=NO_PREVIEW
+            ),
         )
 
     async def many(self, chat_ids, text: str, kb=None) -> list[Message | None]:
@@ -173,7 +184,9 @@ class Notifier:
             photo = BufferedInputFile(bytes(photo), filename="image.png")
         return await self._try(
             chat_id,
-            lambda: self.bot.send_photo(chat_id, photo, caption=clip(caption, 1024), reply_markup=kb),
+            lambda: self.bot.send_photo(
+                chat_id, photo, caption=clip(caption, 1024), reply_markup=kb
+            ),
         )
 
     async def document(self, chat_id, content: bytes, filename: str, caption: str = ""):
@@ -186,7 +199,11 @@ class Notifier:
         """Edit a sent message; failures (deleted, not modified) are logged, not recorded."""
         try:
             await self.bot.edit_message_text(
-                clip(text, 4096), chat_id=chat_id, message_id=message_id, reply_markup=kb
+                clip(text, 4096),
+                chat_id=chat_id,
+                message_id=message_id,
+                reply_markup=kb,
+                link_preview_options=NO_PREVIEW,
             )
             return True
         except TelegramAPIError as e:

@@ -24,7 +24,7 @@ async def test_task_card_and_store_key_per_assignee():
     text = args[1]
     assert "Yangi Molyar ishi" in text and "Buyurtma №406" in text
     assert "Karim Aliyev" in text and "+998901234567" in text
-    assert "Chilonzor 7 &amp; 12" in text and '<a href="https://yandex.com/maps' in text
+    assert "Chilonzor" not in text and "yandex.com" not in text  # no address on task messages
     assert "3.5 m²" in text and "🎨 Tur: Emal" in text and "Muddat: 20.11.2026" in text
     assert "Summa" not in text
     assert buttons(kw["reply_markup"]) == [
