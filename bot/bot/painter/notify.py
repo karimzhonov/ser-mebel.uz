@@ -9,6 +9,19 @@
 - `painter.due_set`: edits the painter / head cards, short message to the painter.
 - `painter.remind`: soon / overdue messages, not stored.
 - `painter.done`: «Molyar tayyor» message; edits the stored head / painter cards.
+
+Split jobs (one job, several teams = parts; ids below are PART ids, rev = the part's rev):
+- `painter.part_task`: worker card (`p{part}u{uid}`, «✅ Bajardim» `pn:pd`); reason `resized`
+  edits the stored cards + short «Maydon o'zgardi» message (fresh card when none stored).
+- `painter.part_unassigned`: edits `p{part}u{prev}` into «boshqa molyarga o'tkazildi».
+- `painter.part_due_ask` (`q{part}`), `painter.part_due_set`, `painter.part_remind`.
+- `painter.part_done`: edits the `p` / `q` cards; message to `to` unless `job_done` (the
+  `painter.done` that follows carries it).
+- `painter.assigned`: edits the stored `r{id}` cards (job rev) into «✅ Jamoalar: …»; the
+  cards stay (and keep a split link) while an unassigned remainder exists.
+- `painter.remainder`: all parts done but m² left unassigned -> message to the heads.
+- DEPRECATED, not emitted any more but still rendered for queued envelopes (one release):
+  `painter.task|unassigned|due_ask|due_set|remind`.
 Edits of stored cards go through `accept_rev` with `painter.rev`, so a late event never
 overwrites a newer card, and only the chats listed in the event are touched.
 """
@@ -118,7 +131,7 @@ async def ready(n: Notifier, d: dict) -> None:
     if not await messages.accept_rev(key, t.get("rev")):
         return
     text = T.ready_msg(t)
-    kb = K.team_kb(pid, d.get("types") or [], t.get("url") or "")
+    kb = K.team_kb(pid, d.get("types") or [], t.get("url") or "", t.get("split_url") or "")
     for tg in _tgs(d.get("to")):
         msg = await n.send(tg, text, kb)
         mid = getattr(msg, "message_id", None)
@@ -204,4 +217,192 @@ async def done(n: Notifier, d: dict) -> None:
             T.head_card(t),
             K.due_kb(pid, K.PRESETS, url, "done"),
         )
-    await _edit_task_cards(n, t, painters, T.task_card(t), K.task_kb(pid, "done", url))
+    parts = [p for p in t.get("parts") or [] if isinstance(p, dict)]
+    if not parts:
+        await _edit_task_cards(n, t, painters, T.task_card(t), K.task_kb(pid, "done", url))
+        return
+    # legacy `t{id}u{uid}` cards (sent before the split) of every team's painter
+    for p in parts:
+        legacy = dict(t, painter=p.get("painter"), type=p.get("type"), outsource=p.get("outsource"))
+        await _edit_task_cards(
+            n, legacy, painters, T.task_card(legacy), K.task_kb(pid, "done", url)
+        )
+
+
+# ---------------------------------------------------------------- split jobs: parts
+
+
+def _part_url(p: dict) -> str:
+    return p.get("url") or ""
+
+
+@on("painter.part_task")
+async def part_task(n: Notifier, d: dict) -> None:
+    p = d["part"]
+    part_id = int(p["id"])
+    uid = _uid(p.get("painter"))
+    key = messages.pkey(part_id, uid) if uid is not None else None
+    chats = _tgs(d.get("to"))
+    text = T.part_task_card(p)
+    kb = K.part_task_kb(part_id, p.get("state") or "new", _part_url(p))
+    if d.get("reason") == "resized":
+        if key and not await messages.accept_rev(key, p.get("rev")):
+            return  # an older resize arrived late
+        stored = {
+            e.get("chat_id"): e for e in (await messages.entries_for(key, chats) if key else [])
+        }
+        await _edit_all(n, list(stored.values()), text, kb)
+        notice = T.resized_msg(p)
+        for tg in chats:
+            await n.send(tg, notice)
+            if tg not in stored:  # no card to edit: send a fresh one
+                msg = await n.send(tg, text, kb)
+                mid = getattr(msg, "message_id", None)
+                if mid is not None and key:
+                    await messages.remember(key, tg, mid, "task")
+        return
+    # a late older envelope is dropped only when a card already exists; if a newer event
+    # (e.g. a deadline) overtook the first card, the card is still sent
+    if (
+        key
+        and not await messages.accept_rev(key, p.get("rev"))
+        and await messages.entries_for(key, chats)
+    ):
+        return
+    for tg in chats:
+        msg = await n.send(tg, text, kb)
+        mid = getattr(msg, "message_id", None)
+        if mid is not None and key:
+            await messages.remember(key, tg, mid, "task")
+
+
+@on("painter.part_unassigned")
+async def part_unassigned(n: Notifier, d: dict) -> None:
+    p = d["part"]
+    prev = _uid(d.get("prev"))
+    chats = _tgs(d.get("to"))
+    if prev is None or not chats:
+        return
+    key = messages.pkey(p["id"], prev)
+    if not await messages.accept_rev(key, p.get("rev")):
+        return  # the part came back to this painter meanwhile
+    entries = await messages.take(key, chats)
+    await _edit_all(n, entries, T.part_reassigned_card(p), K.link_kb(_part_url(p)))
+
+
+@on("painter.part_due_ask")
+async def part_due_ask(n: Notifier, d: dict) -> None:
+    p = d["part"]
+    part_id = int(p["id"])
+    key = messages.qkey(part_id)
+    await messages.accept_rev(key, p.get("rev"))
+    text = T.part_head_card(p)
+    kb = K.part_due_kb(part_id, _presets(d), _part_url(p), p.get("state") or "new")
+    for tg in _tgs(d.get("to")):
+        msg = await n.send(tg, text, kb)
+        mid = getattr(msg, "message_id", None)
+        if mid is not None:
+            await messages.remember(key, tg, mid, "head")
+
+
+@on("painter.part_due_set")
+async def part_due_set(n: Notifier, d: dict) -> None:
+    p = d["part"]
+    part_id = int(p["id"])
+    url = _part_url(p)
+    state = p.get("state") or "new"
+    workers, heads = _tgs(d.get("to")), _tgs(d.get("heads"))
+    uid = _uid(p.get("painter"))
+    if workers and uid is not None:
+        key = messages.pkey(part_id, uid)
+        if await messages.accept_rev(key, p.get("rev")):
+            await _edit_all(
+                n,
+                await messages.entries_for(key, workers),
+                T.part_task_card(p),
+                K.part_task_kb(part_id, state, url),
+            )
+            msg = T.part_due_set_msg(p, d.get("how"), d.get("by_name"))
+            for tg in workers:
+                await n.send(tg, msg)
+    if heads and await messages.accept_rev(messages.qkey(part_id), p.get("rev")):
+        await _edit_all(
+            n,
+            await messages.entries_for(messages.qkey(part_id), heads),
+            T.part_head_card(p),
+            K.part_due_kb(part_id, K.PRESETS, url, state),
+        )
+
+
+@on("painter.part_remind")
+async def part_remind(n: Notifier, d: dict) -> None:
+    p = d["part"]
+    part_id = int(p["id"])
+    url = _part_url(p)
+    what = "overdue" if d.get("what") == "overdue" else "soon"
+    late = d.get("days_late") or p.get("days_late") or 0
+    text = T.part_remind_text(p, what, late)
+    for tg in _tgs(d.get("to")):
+        await n.send(tg, text, K.part_task_kb(part_id, "new", url))
+    if what == "overdue":
+        htext = T.part_remind_text(p, what, late, head=True)
+        for tg in _tgs(d.get("heads")):
+            await n.send(tg, htext, K.part_due_kb(part_id, K.PRESETS, url))
+
+
+@on("painter.part_done")
+async def part_done(n: Notifier, d: dict) -> None:
+    p = d["part"]
+    part_id = int(p["id"])
+    url = _part_url(p)
+    heads, workers = _tgs(d.get("heads")), _tgs(d.get("painters"))
+    uid = _uid(p.get("painter"))
+    if workers and uid is not None:
+        key = messages.pkey(part_id, uid)
+        if await messages.accept_rev(key, p.get("rev")):
+            await _edit_all(
+                n,
+                await messages.entries_for(key, workers),
+                T.part_task_card(p),
+                K.part_task_kb(part_id, "done", url),
+            )
+    if heads and await messages.accept_rev(messages.qkey(part_id), p.get("rev")):
+        await _edit_all(
+            n,
+            await messages.entries_for(messages.qkey(part_id), heads),
+            T.part_head_card(p),
+            K.part_due_kb(part_id, K.PRESETS, url, "done"),
+        )
+    if not d.get("job_done"):
+        text = T.part_done_msg(p, d.get("by_name"))
+        for tg in _tgs(d.get("to")):
+            await n.send(tg, text, K.link_kb(url))
+
+
+@on("painter.assigned")
+async def assigned(n: Notifier, d: dict) -> None:
+    t = d["painter"]
+    pid = int(t["id"])
+    key = messages.rkey(pid)
+    if not await messages.accept_rev(key, t.get("rev")):
+        return
+    text = T.team_chosen(t)
+    url = t.get("url") or ""
+    if T.remainder_of(t):
+        # m² still to give: keep the cards (later `assigned` events edit them again)
+        entries = await messages.entries_for(key, _tgs(d.get("to")))
+        kb = K.split_kb(t.get("split_url") or "", url)
+    else:
+        entries = await messages.take_all(key)
+        kb = K.link_kb(url)
+    await _edit_all(n, entries, text, kb)
+
+
+@on("painter.remainder")
+async def remainder(n: Notifier, d: dict) -> None:
+    t = d["painter"]
+    left = d.get("remainder")
+    text = T.remainder_msg(t, left)
+    kb = K.split_kb(t.get("split_url") or "", t.get("url") or "")
+    for tg in _tgs(d.get("to")):
+        await n.send(tg, text, kb)

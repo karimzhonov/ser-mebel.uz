@@ -3,12 +3,13 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Plus } from "lucide-react";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useGet, useList, useMeta } from "@/api/hooks";
-import type { PainterType, ProductionItem, UserShort } from "@/api/types";
+import type { PainterPart, PainterType, ProductionItem, UserShort } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink, ROW_TONE } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
 import { DueLabel, DueModal } from "@/components/DueDate";
+import { PainterParts } from "@/components/PainterParts";
 import { RoverDueLabel, RoverDueModal } from "@/components/RoverDue";
 import {
   Badge,
@@ -137,15 +138,23 @@ function ProductionList({ kind }: { kind: Kind }) {
               ? [
                   {
                     key: "type",
-                    header: "Tur",
+                    header: "Jamoalar",
                     cell: (r: ProductionItem) =>
-                      r.type_detail ? (
-                        <span>
-                          {r.type_detail.name}
-                          {r.painter_detail && <span className="muted"> · {r.painter_detail.name || phone(r.painter_detail.phone)}</span>}
+                      r.parts && r.parts.length ? (
+                        <span className="flex flex-wrap gap-1">
+                          {r.parts.map((p) => (
+                            <Badge key={p.id} tone={p.done ? "ok" : "idle"}>
+                              {p.done && "✅ "}
+                              {p.type_detail.name} · {num(p.square)} m²
+                            </Badge>
+                          ))}
+                          {r.parts_over && <Badge tone="warn">⚠️ m² oshib ketdi</Badge>}
+                          {!!r.remaining_square && r.remaining_square > 0 && (
+                            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">Qolgan: {num(r.remaining_square)} m²</span>
+                          )}
                         </span>
                       ) : (
-                        <span className="muted">—</span>
+                        <span className="muted">— tayinlanmagan —</span>
                       ),
                   },
                   { key: "due_date", header: "Molyar muddati", cell: (r: ProductionItem) => <DueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} /> },
@@ -217,7 +226,7 @@ function ProductionList({ kind }: { kind: Kind }) {
           kind={kind}
           id={Number(openId)}
           assemblers={assemblers}
-          onClose={() => setSearchParams((p) => (p.delete("open"), p))}
+          onClose={() => setSearchParams((p) => (p.delete("open"), p.delete("split"), p))}
         />
       )}
       {types && <PainterTypesModal onClose={() => setTypes(false)} />}
@@ -238,6 +247,7 @@ function ProductionModal({
 }) {
   const cfg = CONFIG[kind];
   const { can } = useAuth();
+  const [searchParams] = useSearchParams();
   const { data: item } = useGet<ProductionItem>(`/${cfg.resource}/${id}/`);
   const { data: painterTypes } = useAll<PainterType>(
     "painter-types",
@@ -249,8 +259,8 @@ function ProductionModal({
   const [moveDue, setMoveDue] = useState(false);
   const [amountOpen, setAmountOpen] = useState(false);
   const [roverDue, setRoverDue] = useState(false);
-  const [painterDue, setPainterDue] = useState(false);
-  const [painterDoneOpen, setPainterDoneOpen] = useState(false);
+  const [painterDue, setPainterDue] = useState<PainterPart | null>(null);
+  const [painterDoneOpen, setPainterDoneOpen] = useState<PainterPart | null>(null);
   const [assemblyDue, setAssemblyDue] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
   const [note, setNote] = useState("");
@@ -267,10 +277,6 @@ function ProductionModal({
 
   const inv = [cfg.resource, "orders", "dashboard", "assemblies", "rovers", "painters"];
   const patch = useAction((body: Record<string, unknown>) => api.patch(`/${cfg.resource}/${id}/`, body), {
-    success: "Saqlandi",
-    invalidate: inv,
-  });
-  const painterAssign = useAction((body: { type: number | null }) => api.post(`/painters/${id}/assign/`, body), {
     success: "Saqlandi",
     invalidate: inv,
   });
@@ -294,8 +300,8 @@ function ProductionModal({
   );
 
   const painterDone = useAction(
-    () => api.post(`/painters/${id}/done/`, { note: note.trim() }),
-    { success: "Bajarildi", invalidate: inv, onSuccess: () => setPainterDoneOpen(false) },
+    () => api.post(`/painters/${id}/done/`, { note: note.trim(), part: painterDoneOpen?.id }),
+    { success: "Bajarildi", invalidate: inv, onSuccess: () => setPainterDoneOpen(null) },
   );
 
   const installDone = useAction(
@@ -345,22 +351,9 @@ function ProductionModal({
               : []),
             ...(kind === "painter"
               ? ([
-                  ["Molyar", item.painter_detail ? item.painter_detail.name || phone(item.painter_detail.phone) : "—"],
-                  [
-                    "Molyar muddati",
-                    <span className="flex flex-wrap items-center gap-2">
-                      <DueLabel dueDate={item.due_date} auto={item.due_auto} overdue={item.overdue} />
-                      {a.due && can("oauth.user_production_head") && (
-                        <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setPainterDue(true)}>
-                          o'zgartirish
-                        </button>
-                      )}
-                    </span>,
-                  ],
                   ["Holat", item.state === "done" ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="idle">Ishda</Badge>],
-                  ...(item.note ? [["Izoh", <span className="whitespace-pre-wrap">{item.note}</span>]] : []),
-                  ...(item.done_at
-                    ? [["Bajardi", `${item.done_by_detail?.name || (item.done_by_detail ? phone(item.done_by_detail.phone) : "—")} · ${date(item.done_at)}`]]
+                  ...(item.done_at && item.state === "done" && can("oauth.user_production_head")
+                    ? [["Yakunlandi", `${item.done_by_detail?.name || (item.done_by_detail ? phone(item.done_by_detail.phone) : "—")} · ${date(item.done_at)}`]]
                     : []),
                 ] as [string, ReactNode][])
               : []),
@@ -454,21 +447,32 @@ function ProductionModal({
         )}
 
         {kind === "painter" && (
-          <Field
-            label="Jamoa (molyar turi)"
-            hint="Rover tugagach rahbar jamoani tanlaydi — tanlangan jamoa mas'uliga Telegram kartasi boradi"
-          >
-            {a.edit && can("oauth.user_production_head") ? (
-              <Select value={item.type ?? ""} onChange={(e) => painterAssign.mutate({ type: e.target.value ? Number(e.target.value) : null })}>
-                <option value="">— tayinlanmagan —</option>
-                {painterTypes?.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name} — {money(t.price)}/m²</option>
-                ))}
-              </Select>
-            ) : (
-              <div className="text-sm">{item.type_detail?.name ?? "— tayinlanmagan —"}</div>
+          <div className="space-y-3">
+            {!!item.remaining_square && item.remaining_square > 0 && (
+              <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                Qolgan: {num(item.remaining_square)} m² hali hech kimga berilmagan
+              </div>
             )}
-          </Field>
+            {item.parts_over && (
+              <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                ⚠️ Jamoalar maydoni ({num(item.assigned_square)} m²) ish maydonidan ({num(item.square)} m²) katta — qismlarni to'g'rilang
+              </div>
+            )}
+            {a.edit && can("oauth.user_production_head") && (
+              <PainterParts
+                painterId={item.id}
+                total={item.square}
+                parts={item.parts ?? []}
+                types={painterTypes ?? []}
+                startOpen={searchParams.get("split") === "1"}
+                invalidate={inv}
+              />
+            )}
+            {(item.parts ?? []).map((p) => (
+              <PartCard key={p.id} part={p} onDone={() => { setNote(""); setSubmitErrors({}); setPainterDoneOpen(p); }} onDue={() => setPainterDue(p)} canDue={can("oauth.user_production_head")} />
+            ))}
+            {!(item.parts ?? []).length && <div className="muted text-sm">— jamoa tayinlanmagan —</div>}
+          </div>
         )}
 
         {kind === "assembly" && (
@@ -490,7 +494,7 @@ function ProductionModal({
         )}
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
-          {a.done && (
+          {a.done && kind !== "painter" && (
             <Button
               variant="success"
               icon={<CheckCircle2 className="h-4 w-4" />}
@@ -500,10 +504,6 @@ function ProductionModal({
                   setNote("");
                   setSubmitErrors({});
                   setAmountOpen(true);
-                } else if (kind === "painter") {
-                  setNote("");
-                  setSubmitErrors({});
-                  setPainterDoneOpen(true);
                 } else setConfirm("done");
               }}
             >
@@ -512,11 +512,6 @@ function ProductionModal({
           )}
           {kind === "rover" && a.due && can("oauth.user_production_head") && (
             <Button variant="outline" onClick={() => setRoverDue(true)}>
-              🕒 Muddat
-            </Button>
-          )}
-          {kind === "painter" && a.due && can("oauth.user_production_head") && (
-            <Button variant="outline" onClick={() => setPainterDue(true)}>
               🕒 Muddat
             </Button>
           )}
@@ -585,13 +580,13 @@ function ProductionModal({
           </div>
         </div>
       </Modal>
-      <Modal open={painterDoneOpen} onClose={() => setPainterDoneOpen(false)} title="Molyar ishi bajarildi" size="sm">
+      <Modal open={!!painterDoneOpen} onClose={() => setPainterDoneOpen(null)} title={`Molyar ishi bajarildi${painterDoneOpen ? ` · ${painterDoneOpen.type_detail.name}` : ""}`} size="sm">
         <div className="space-y-4">
           <Field label="Izoh (nima ish qilindi)" error={submitErrors.note}>
             <Textarea required value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
           </Field>
           <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setPainterDoneOpen(false)}>Bekor qilish</Button>
+            <Button variant="ghost" onClick={() => setPainterDoneOpen(null)}>Bekor qilish</Button>
             <Button
               variant="success"
               loading={painterDone.isPending}
@@ -636,16 +631,58 @@ function ProductionModal({
         <DueModal
           resource="painters"
           id={item.id}
-          dueDate={item.due_date}
-          title="Molyar muddati"
+          dueDate={painterDue.due_date}
+          extra={{ part: painterDue.id }}
+          title={`Molyar muddati · ${painterDue.type_detail.name}`}
           presets={[5, 10, 14]}
           invalidate={["painters", "orders", "dashboard"]}
-          onClose={() => setPainterDue(false)}
+          onClose={() => setPainterDue(null)}
         />
       )}
       {roverDue && <RoverDueModal roverId={item.id} dueDate={item.due_date} onClose={() => setRoverDue(false)} />}
       {moveDue && <DetailingDueModal detailingId={item.id} dueAt={item.due_at} onClose={() => setMoveDue(false)} />}
     </Modal>
+  );
+}
+
+function PartCard({ part: p, onDone, onDue, canDue }: { part: PainterPart; onDone: () => void; onDue: () => void; canDue: boolean }) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-semibold">
+          {p.type_detail.name} · <span className="tabular-nums">{num(p.square)} m²</span>
+        </div>
+        {p.done ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="idle">Ishda</Badge>}
+      </div>
+      <KV
+        items={[
+          ["Molyar", p.painter_detail ? p.painter_detail.name || phone(p.painter_detail.phone) : "—"],
+          ...(p.price ? ([["Narx", money(p.price)]] as [string, string][]) : []),
+          [
+            "Muddat",
+            <span className="flex flex-wrap items-center gap-2">
+              <DueLabel dueDate={p.due_date} auto={p.due_auto} overdue={p.overdue} />
+              {p.actions.due && canDue && (
+                <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={onDue}>
+                  o'zgartirish
+                </button>
+              )}
+            </span>,
+          ],
+          ...(p.note ? ([["Izoh", <span className="whitespace-pre-wrap">{p.note}</span>]] as [string, ReactNode][]) : []),
+          ...(p.done_at
+            ? ([["Bajardi", `${p.done_by_detail?.name || (p.done_by_detail ? phone(p.done_by_detail.phone) : "—")} · ${date(p.done_at)}`]] as [string, string][])
+            : []),
+        ]}
+      />
+      {p.actions.done && (
+        <div className="mt-2 flex justify-end">
+          <Button variant="success" icon={<CheckCircle2 className="h-4 w-4" />} onClick={onDone}>
+            Bajarildi
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 

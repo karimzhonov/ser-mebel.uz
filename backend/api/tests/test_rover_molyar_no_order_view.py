@@ -8,7 +8,8 @@ from django.apps import apps
 from django.contrib.auth.models import Group, Permission
 from djmoney.money import Money
 
-from order.painter.models import Painter, PainterType
+from api.tests.painterkit import make_painter
+from order.painter.models import PainterType
 from order.rover.models import Rover
 
 pytestmark = pytest.mark.django_db
@@ -81,7 +82,7 @@ def test_molyar_group_painter_still_sees_own_jobs(order_factory, make_staff):
     c = _client("Molyar", make_staff)
     t = PainterType.objects.create(name="T", price=Money(1, "UZS"), user=c.user)
     o = order_factory()
-    p = Painter.objects.create(order=o, square=3, type=t)
+    p = make_painter(order=o, square=3, type=t)
     assert c.get(f"/api/v1/orders/{o.pk}/").status_code == 403
     got = c.get("/api/v1/painters/")
     assert got.status_code == 200 and [x["id"] for x in got.data["results"]] == [p.pk]

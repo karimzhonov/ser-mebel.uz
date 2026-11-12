@@ -706,6 +706,29 @@ export interface ProductionOrder extends Located {
   folder: number | null;
 }
 
+/** One team's share (m²) of a Molyar job */
+export interface PainterPart {
+  id: number;
+  type: number;
+  type_detail: { id: number; name: string; outsource: boolean };
+  painter_detail: UserShort | null;
+  square: number;
+  price: Money | null;
+  state: "new" | "done";
+  state_label: string;
+  started_at: string | null;
+  due_date: string | null;
+  due_auto: boolean;
+  due_set_at: string | null;
+  due_set_by_detail: UserShort | null;
+  overdue: boolean;
+  note: string;
+  done: boolean;
+  done_at: string | null;
+  done_by_detail: UserShort | null;
+  actions: { done: boolean; due: boolean };
+}
+
 export interface ProductionItem {
   id: number;
   order: ProductionOrder;
@@ -744,6 +767,13 @@ export interface ProductionItem {
   // painter
   type?: number | null;
   type_detail?: { id: number; name: string } | null;
+  parts?: PainterPart[];
+  assigned_square?: number;
+  /** m² not given to any team yet (heads only; null for workers) */
+  remaining_square?: number | null;
+  remainder?: number | null;
+  /** the parts add up to more than the job's square (detailing lowered it) */
+  parts_over?: boolean;
   // assembly
   finished_at?: string | null;
   finished_by_detail?: UserShort | null;

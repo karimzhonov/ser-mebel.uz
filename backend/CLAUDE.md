@@ -22,6 +22,7 @@ The backend sends nothing to Telegram and holds no bot logic. Contract: `../docs
 - `BOT_SERVER` (compose: `http://bot:80`) is where events and `User.send_message` go.
 
 - **Assembly flow (Yig'ish/O'rnatish)**: `Order.change_status(ASSEMBLY)` -> `order.assembly.services.on_order_assembly` (heads get `assembly.ready` and pick the assembler; the first pick starts the job: `assembly.task` + `assembly.due_ask`). The assembler finishes with an izoh (`finish_assembly` from the bot, `mark_installing_done` on the site after «Yig'ildi») - the job goes to `checking` (order stays «Установка»); the production head's «Tayyor» (`confirm_assembly`, bot or site `confirm/`) closes it and only then the order becomes «Готов» (accounting `order_ready` chain). Reminders/auto deadline: Celery beat `order.assembly.tasks.assembly_reminders`. Same shape as the painter flow (`order/painter/`).
+- **Molyar split**: a `Painter` job (one per order) is split between teams by m² into `PainterPart` rows (`order/painter/services.py`: `set_painter_parts`, `assign_whole_job`, `mark_part_done`, `set_part_due`; lock order Painter -> parts). `Painter.done` = every part done AND the parts cover the whole square (an unassigned remainder keeps it open; `painter.remainder` tells the heads). `Painter.type`/`due_*` are deprecated columns; all per-team logic reads the parts. Split is site-only (`POST painters/{id}/parts/`); the bot has one-tap whole-job buttons + a link.
 
 ## Where logic lives (and where it should go)
 

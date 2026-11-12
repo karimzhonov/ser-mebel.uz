@@ -16,7 +16,7 @@
       "id": 3,
       "name": "Autsors"
     },
-    "outsource": false,
+    "outsource": true,
     "painter": {
       "id": 22,
       "name": "Autsors ustasi"
@@ -33,6 +33,28 @@
     "days_late": 0,
     "note": "",
     "rev": 1,
-    "url": "https://ser-mebel.uz/production/painter?open=31"
+    "url": "https://ser-mebel.uz/production/painter?open=31",
+    "parts": [
+      {
+        "id": 51,
+        "type": {
+          "id": 3,
+          "name": "Autsors"
+        },
+        "painter": {
+          "id": 22,
+          "name": "Autsors ustasi"
+        },
+        "outsource": true,
+        "square": 6.5,
+        "state": "new",
+        "done_at": null,
+        "due_date": null,
+        "rev": 1
+      }
+    ],
+    "assigned_square": 6.5,
+    "remainder": 0.0,
+    "split_url": "https://ser-mebel.uz/production/painter?open=31&split=1"
   }
 }

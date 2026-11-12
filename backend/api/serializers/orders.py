@@ -1,3 +1,4 @@
+from djmoney.money import Money
 from phonenumber_field.serializerfields import PhoneNumberField
 from rest_framework import serializers
 from rest_framework.exceptions import PermissionDenied
@@ -9,7 +10,8 @@ from order.assembly.models import Assembly
 from order.constants import ORDER_CHANGE_STATUS_PERMISSION, OrderStatus
 from order.detailing.models import Detailing
 from order.models import Factory, Order
-from order.painter.models import Painter, PainterType
+from order.painter.models import Painter, PainterPart, PainterType
+from order.painter.services import can_override_part
 from order.rover.dto import design_folder_id
 from order.rover.models import Rover
 from order.services import (
@@ -100,6 +102,20 @@ class OrderSerializer(LocationFieldsMixin, serializers.ModelSerializer):
         return money_left(obj)
 
 
+def _painter_teams(painter):
+    """«Team 10 m², Team 5 m²» or None (the order page's one-line summary)."""
+    if painter is None:
+        return None
+    parts = list(painter.parts.all())
+    return ", ".join(f"{x.type.name} {x.square:g} m²" for x in parts) or None
+
+
+def _painter_parts(painter):
+    if painter is None:
+        return []
+    return [{"type": x.type.name, "square": x.square, "done": x.done} for x in painter.parts.all()]
+
+
 def _production_row(obj, **extra):
     if obj is None:
         return None
@@ -165,7 +181,8 @@ class OrderDetailSerializer(OrderSerializer):
             ),
             "painter": _production_row(
                 painter,
-                type=painter.type.name if painter and painter.type else None,
+                type=_painter_teams(painter),
+                parts=_painter_parts(painter),
                 waiting_rover=bool(rover and not rover.done),
                 price=money(painter.price) if painter and show_price else None,
             ),
@@ -446,9 +463,9 @@ class PainterTypeSerializer(serializers.ModelSerializer):
         return value
 
 
-class PainterSerializer(serializers.ModelSerializer):
-    order = ProductionOrderSerializer(read_only=True)
-    design_folder = serializers.SerializerMethodField()
+class PainterPartSerializer(serializers.ModelSerializer):
+    """One team's share of a Molyar job."""
+
     price = MoneyField(read_only=True)
     type_detail = serializers.SerializerMethodField()
     painter_detail = serializers.SerializerMethodField()
@@ -457,6 +474,72 @@ class PainterSerializer(serializers.ModelSerializer):
     done_by_detail = UserShortSerializer(source="done_by", read_only=True)
     due_set_by_detail = UserShortSerializer(source="due_set_by", read_only=True)
     overdue = serializers.BooleanField(read_only=True)
+    actions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PainterPart
+        fields = [
+            "id",
+            "type",
+            "type_detail",
+            "painter_detail",
+            "square",
+            "price",
+            "state",
+            "state_label",
+            "started_at",
+            "due_date",
+            "due_auto",
+            "due_set_at",
+            "due_set_by_detail",
+            "overdue",
+            "note",
+            "done",
+            "done_at",
+            "done_by_detail",
+            "actions",
+        ]
+        read_only_fields = fields
+
+    def get_type_detail(self, obj):
+        t = obj.type
+        return {"id": t.pk, "name": t.name, "outsource": t.outsource}
+
+    def get_painter_detail(self, obj):
+        return UserShortSerializer(obj.user).data if obj.user else None
+
+    def get_actions(self, obj):
+        user = self.context["request"].user
+        return {
+            "done": bool(not obj.done and (can_override_part(user) or obj.type.user_id == user.pk)),
+            "due": bool(not obj.done and user.has_perm("oauth.user_production_head")),
+        }
+
+
+class PainterSerializer(serializers.ModelSerializer):
+    """The Molyar job. Heads/managers see every part and the whole square; a worker only
+    their own parts (m², price, deadlines) - never other teams'."""
+
+    order = ProductionOrderSerializer(read_only=True)
+    design_folder = serializers.SerializerMethodField()
+    price = serializers.SerializerMethodField()
+    type = serializers.SerializerMethodField()
+    type_detail = serializers.SerializerMethodField()
+    painter_detail = serializers.SerializerMethodField()
+    state = serializers.CharField(read_only=True)
+    state_label = serializers.CharField(read_only=True)
+    done_by_detail = UserShortSerializer(source="done_by", read_only=True)
+    due_date = serializers.SerializerMethodField()
+    due_auto = serializers.SerializerMethodField()
+    due_set_at = serializers.SerializerMethodField()
+    due_set_by_detail = serializers.SerializerMethodField()
+    overdue = serializers.SerializerMethodField()
+    note = serializers.SerializerMethodField()
+    parts = serializers.SerializerMethodField()
+    assigned_square = serializers.SerializerMethodField()
+    remaining_square = serializers.SerializerMethodField()
+    remainder = serializers.SerializerMethodField()
+    parts_over = serializers.SerializerMethodField()
     actions = serializers.SerializerMethodField()
 
     class Meta:
@@ -472,6 +555,11 @@ class PainterSerializer(serializers.ModelSerializer):
             "type_detail",
             "painter_detail",
             "square",
+            "assigned_square",
+            "remaining_square",
+            "remainder",
+            "parts_over",
+            "parts",
             "price",
             "note",
             "started_at",
@@ -486,19 +574,111 @@ class PainterSerializer(serializers.ModelSerializer):
             "design_folder",
             "actions",
         ]
-        read_only_fields = [
-            "order",
-            "created_at",
-            "done",
-            "square",
-            "price",
-            "note",
-            "started_at",
-            "due_date",
-            "due_auto",
-            "due_set_at",
-            "folder",
-        ]
+        read_only_fields = fields
+
+    # --- which parts the viewer sees -----------------------------------------------
+    def _user(self):
+        return self.context["request"].user
+
+    def _full(self):
+        return sees_full_order(self._user())
+
+    def _all_parts(self, obj):
+        return list(obj.parts.all())
+
+    def _visible(self, obj):
+        parts = self._all_parts(obj)
+        if self._full():
+            return parts
+        uid = self._user().pk
+        return [x for x in parts if x.type.user_id == uid]
+
+    def _due_part(self, obj):
+        """The part whose deadline stands for the job: the earliest open one with a date
+        (else the latest finished one)."""
+        vis = self._visible(obj)
+        open_ = [x for x in vis if not x.done and x.due_date]
+        if open_:
+            return min(open_, key=lambda x: (x.due_date, x.pk))
+        dated = [x for x in vis if x.due_date]
+        return max(dated, key=lambda x: (x.due_date, x.pk)) if dated else None
+
+    def _single(self, obj):
+        vis = self._visible(obj)
+        return vis[0] if len(vis) == 1 else None
+
+    # --- fields --------------------------------------------------------------------
+    def get_price(self, obj):
+        if self._full():
+            return MoneyField().to_representation(obj.price) if obj.price is not None else None
+        prices = [x.price for x in self._visible(obj) if x.price is not None]
+        if not prices:
+            return None
+        total = sum((m.amount for m in prices), 0)
+        return MoneyField().to_representation(Money(total, prices[0].currency))
+
+    def get_type(self, obj):
+        x = self._single(obj)
+        return x.type_id if x else None
+
+    def get_type_detail(self, obj):
+        x = self._single(obj)
+        return {"id": x.type.pk, "name": x.type.name} if x else None
+
+    def get_painter_detail(self, obj):
+        x = self._single(obj)
+        return UserShortSerializer(x.user).data if x and x.user else None
+
+    def get_due_date(self, obj):
+        x = self._due_part(obj)
+        return x.due_date.isoformat() if x else None
+
+    def get_due_auto(self, obj):
+        x = self._due_part(obj)
+        return bool(x and x.due_auto)
+
+    def get_due_set_at(self, obj):
+        x = self._due_part(obj)
+        return (
+            serializers.DateTimeField().to_representation(x.due_set_at)
+            if x and x.due_set_at
+            else None
+        )
+
+    def get_due_set_by_detail(self, obj):
+        x = self._due_part(obj)
+        return UserShortSerializer(x.due_set_by).data if x and x.due_set_by else None
+
+    def get_overdue(self, obj):
+        return any(x.overdue for x in self._visible(obj))
+
+    def get_note(self, obj):
+        x = self._single(obj)
+        if x is not None:
+            return x.note
+        if self._full():
+            return obj.note
+        return "\n".join(f"{p.type.name}: {p.note}" for p in self._visible(obj) if p.note)
+
+    def get_parts(self, obj):
+        return PainterPartSerializer(self._visible(obj), many=True, context=self.context).data
+
+    def get_assigned_square(self, obj):
+        return round(sum(x.square for x in self._visible(obj)), 2)
+
+    def get_remaining_square(self, obj):
+        if not self._full():
+            return None
+        if obj.done:  # historical done jobs (no parts) have nothing left to give
+            return 0.0
+        return max(round(round(obj.square, 2) - self.get_assigned_square(obj), 2), 0.0)
+
+    get_remainder = get_remaining_square
+
+    def get_parts_over(self, obj):
+        if not self._full():
+            return False
+        return self.get_assigned_square(obj) > round(obj.square, 2)
 
     def get_design_folder(self, obj):
         restricted = not sees_full_order(self.context["request"].user)
@@ -508,15 +688,21 @@ class PainterSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        if not sees_full_order(self.context["request"].user):
+        if not self._full():
+            vis = self._visible(instance)
             # a painter sees the design folder only (never the stage / order folders)
             data["folder"] = None
             if data["order"]:
                 data["order"]["folder"] = None
-        restricted = bool(
-            instance.type
-            and instance.type.outsource
-            and not sees_full_order(self.context["request"].user)
+            # and only their own m² / progress, not the job's
+            data["square"] = data["assigned_square"]
+            done = bool(vis) and all(x.done for x in vis)
+            data["done"] = done
+            data["state"] = "done" if done else "new"
+            data["state_label"] = "Bajarildi" if done else "Ishda"
+        # the client's contact is shown through a non-outsource part of the viewer's own
+        restricted = not self._full() and not any(
+            not x.type.outsource for x in self._visible(instance)
         )
         data["restricted"] = restricted
         data["can_open_order"] = not restricted
@@ -524,38 +710,42 @@ class PainterSerializer(serializers.ModelSerializer):
             strip_order(data["order"])
         return data
 
-    def get_painter_detail(self, obj):
-        user = obj.type.user if obj.type and obj.type.user_id else None
-        return UserShortSerializer(user).data if user else None
-
-    def get_type_detail(self, obj):
-        return {"id": obj.type.pk, "name": obj.type.name} if obj.type else None
-
     def get_actions(self, obj):
-        user = self.context["request"].user
+        user = self._user()
+        head = user.has_perm("oauth.user_production_head")
+        vis_open = [x for x in self._visible(obj) if not x.done]
         return {
-            "edit": bool(user.has_perm("oauth.user_production_head") and not obj.done),
+            "edit": bool(head and not obj.done),
             "done": bool(
-                (
-                    user.has_perm("painter.change_painter")
-                    or (obj.type and obj.type.user_id == user.pk)
-                )
-                and not obj.done
+                vis_open
+                and (can_override_part(user) or any(x.type.user_id == user.pk for x in vis_open))
             ),
-            "due": bool(user.has_perm("oauth.user_production_head") and not obj.done),
+            "due": bool(head and any(not x.done for x in self._all_parts(obj))),
         }
 
 
 class PainterDoneSerializer(serializers.Serializer):
     note = serializers.CharField(allow_blank=True, trim_whitespace=False)
+    part = serializers.IntegerField(required=False)
 
 
 class PainterAssignSerializer(serializers.Serializer):
     type = serializers.IntegerField(allow_null=True)
 
 
+class PainterPartRowSerializer(serializers.Serializer):
+    id = serializers.IntegerField(allow_null=True, required=False)
+    type = serializers.IntegerField()
+    square = serializers.FloatField()
+
+
+class PainterPartsSerializer(serializers.Serializer):
+    parts = PainterPartRowSerializer(many=True, allow_empty=True, max_length=20)
+
+
 class PainterDueSerializer(serializers.Serializer):
     due_date = serializers.DateField()
+    part = serializers.IntegerField(required=False)
 
 
 class AssemblySerializer(serializers.ModelSerializer):

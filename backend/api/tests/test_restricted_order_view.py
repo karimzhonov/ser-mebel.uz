@@ -8,7 +8,8 @@ import pytest
 from django.apps import apps as global_apps
 from djmoney.money import Money
 
-from order.painter.models import Painter, PainterType
+from api.tests.painterkit import make_painter
+from order.painter.models import PainterType
 from order.rover.models import Rover
 
 pytestmark = pytest.mark.django_db
@@ -146,7 +147,7 @@ def _painter(order_factory, make_staff, outsource):
         name="Team", price=Money(10, "UZS"), user=mol, outsource=outsource
     )
     o = order_factory(end_date=date(2026, 12, 1), address="Chilonzor 7")
-    return mol, Painter.objects.create(order=o, square=5, type=t)
+    return mol, make_painter(order=o, square=5, type=t)
 
 
 def test_outsource_painter_is_reduced_for_its_painter(order_factory, make_staff, api):

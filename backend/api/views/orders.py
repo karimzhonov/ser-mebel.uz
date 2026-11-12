@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models import Count, OuterRef, Subquery
+from django.db.models import Count, Exists, Min, OuterRef, Prefetch, ProtectedError, Q, Subquery
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -31,12 +31,15 @@ from order.constants import (
 from order.detailing.models import Detailing
 from order.detailing.services import mark_detailing_done, set_detailing_due
 from order.models import Factory, Order
-from order.painter.models import Painter, PainterType
+from order.painter.models import Painter, PainterPart, PainterType
 from order.painter.services import (
-    assign_painter_type,
+    assign_whole_job,
     mark_painter_done,
+    mark_part_done,
     ready_for_painter,
     set_painter_due,
+    set_painter_parts,
+    set_part_due,
 )
 from order.rover.models import Rover
 from order.rover.services import confirm_rover, set_rover_due, submit_rover
@@ -68,6 +71,7 @@ from ..serializers.orders import (
     PainterAssignSerializer,
     PainterDoneSerializer,
     PainterDueSerializer,
+    PainterPartsSerializer,
     PainterSerializer,
     PainterTypeSerializer,
     RoverDoneSerializer,
@@ -172,21 +176,25 @@ class OrderViewSet(viewsets.ModelViewSet):
                 "design_type",
                 "detailing",
                 "rover",
-                "painter__type",
+                "painter",
                 "assembly__user",
-            )
+            ).prefetch_related("painter__parts__type")
         return qs
 
     def _detail(self, order, code=status.HTTP_200_OK):
-        order = Order.objects.select_related(
-            "client",
-            "factory",
-            "design_type",
-            "detailing",
-            "rover",
-            "painter__type",
-            "assembly__user",
-        ).get(pk=order.pk)
+        order = (
+            Order.objects.select_related(
+                "client",
+                "factory",
+                "design_type",
+                "detailing",
+                "rover",
+                "painter",
+                "assembly__user",
+            )
+            .prefetch_related("painter__parts__type")
+            .get(pk=order.pk)
+        )
         return Response(
             OrderDetailSerializer(order, context=self.get_serializer_context()).data, status=code
         )
@@ -490,10 +498,27 @@ class PainterTypeViewSet(viewsets.ModelViewSet):
     pagination_class = None
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
+    def perform_destroy(self, instance):
+        try:
+            instance.delete()
+        except ProtectedError:
+            raise ServiceError("Bu jamoada Molyar ishlari bor — o'chirib bo'lmaydi")
+
+
+class _PainterOrdering(OrderingFilter):
+    """`ordering=due_date` sorts by the earliest open part's deadline (`next_due`)."""
+
+    def get_ordering(self, request, queryset, view):
+        ordering = super().get_ordering(request, queryset, view)
+        if not ordering:
+            return ordering
+        return [t.replace("due_date", "next_due") for t in ordering]
+
 
 class PainterViewSet(_ProductionViewSet):
     serializer_class = PainterSerializer
-    filter_backends = [DjangoFilterBackend, _NoPhoneSearchFilter, OrderingFilter]
+    filter_backends = [DjangoFilterBackend, _NoPhoneSearchFilter, _PainterOrdering]
+    # `due_date` = the earliest open part's deadline (the job column is deprecated)
     ordering_fields = ["created_at", "due_date"]
 
     def _respond(self, obj):
@@ -501,35 +526,88 @@ class PainterViewSet(_ProductionViewSet):
         obj = self.get_queryset().get(pk=obj.pk)
         return Response(PainterSerializer(obj, context=self.get_serializer_context()).data)
 
+    def _is_worker(self):
+        user = self.request.user
+        return not (
+            user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
+            or user.has_perm("oauth.user_production_head")
+        )
+
     def get_queryset(self):
         # Only orders whose rover is finished (or that have none): painting comes after milling.
         design = _design_folder_subquery()
         qs = ready_for_painter(
-            Painter.objects.select_related(
-                "order__client", "order__metering", "type__user", "done_by", "due_set_by"
-            ).annotate(design_folder_pk=design)
+            Painter.objects.select_related("order__client", "order__metering", "done_by")
+            .prefetch_related(
+                Prefetch(
+                    "parts",
+                    queryset=PainterPart.objects.select_related(
+                        "type__user", "done_by", "due_set_by"
+                    ).order_by("pk"),
+                )
+            )
+            .annotate(
+                design_folder_pk=design,
+                next_due=Min("parts__due_date", filter=Q(parts__done=False)),
+            )
         )
-        # Managers and production heads see every job; a painter only their own (by type).
+        # Managers and production heads see every job; a painter only the jobs where one of
+        # their parts is (Exists: a job with two of their parts is still one row).
         user = self.request.user
-        if not (
-            user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
-            or user.has_perm("oauth.user_production_head")
-        ):
-            qs = qs.filter(type__user=user)
+        if self._is_worker():
+            qs = qs.filter(
+                Exists(PainterPart.objects.filter(painter=OuterRef("pk"), type__user=user))
+            )
         qs = self.filter_common(qs)
         if _bool_param(self.request.query_params.get("overdue")):
-            qs = qs.filter(done=False, due_date__lt=accounting_today())
+            own = Q(type__user=user) if self._is_worker() else Q()
+            qs = qs.filter(
+                Exists(
+                    PainterPart.objects.filter(
+                        own, painter=OuterRef("pk"), done=False, due_date__lt=accounting_today()
+                    )
+                )
+            )
         return qs
+
+    def filter_common(self, qs):
+        # a worker's done/not done is about their own parts, a head's about the job
+        done = _bool_param(self.request.query_params.get("done"))
+        if done is not None and self._is_worker():
+            open_own = Exists(
+                PainterPart.objects.filter(
+                    painter=OuterRef("pk"), type__user=self.request.user, done=False
+                )
+            )
+            qs = qs.filter(~open_own if done else open_own)
+            return apply_period(qs, "created_at", self.request.query_params)
+        return super().filter_common(qs)
+
+    @action(detail=False, methods=["get"])
+    def stats(self, request):
+        if not self._is_worker():
+            return super().stats(request)
+        qs = self.filter_queryset(self.get_queryset())
+        open_own = Exists(
+            PainterPart.objects.filter(painter=OuterRef("pk"), type__user=request.user, done=False)
+        )
+        return Response(
+            {
+                "total": qs.count(),
+                "done": qs.filter(~open_own).count(),
+                "not_done": qs.filter(open_own).count(),
+            }
+        )
 
     def _assign(self, request, type_id):
         require_perm(request.user, "oauth.user_production_head")
         painter = self.get_object()
         painter_type = None
         if type_id not in (None, ""):
-            painter_type = PainterType.objects.filter(pk=type_id).first()
+            painter_type = PainterType.objects.select_related("user").filter(pk=type_id).first()
             if painter_type is None:
                 raise ServiceError("Bo'yash turi topilmadi")
-        assign_painter_type(painter, painter_type, by=request.user)
+        assign_whole_job(painter, painter_type, by=request.user)
         return self._respond(painter)
 
     def update(self, request, *args, **kwargs):
@@ -541,31 +619,69 @@ class PainterViewSet(_ProductionViewSet):
 
     @action(detail=True, methods=["post"], serializer_class=PainterAssignSerializer)
     def assign(self, request, pk=None):
-        """The production head picks the team (painter type): {type: id|null}."""
+        """The production head gives the whole job to one team (painter type): {type: id|null}."""
         body = PainterAssignSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         return self._assign(request, body.validated_data["type"])
 
+    @action(detail=True, methods=["post"], serializer_class=PainterPartsSerializer)
+    def parts(self, request, pk=None):
+        """The production head splits the job between teams by m²:
+        {parts: [{id?, type, square}]} = the desired OPEN parts (done parts stay)."""
+        require_perm(request.user, "oauth.user_production_head")
+        body = PainterPartsSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        painter = self.get_object()
+        rows = body.validated_data["parts"]
+        types = {
+            t.pk: t
+            for t in PainterType.objects.select_related("user").filter(
+                pk__in=[r["type"] for r in rows]
+            )
+        }
+        clean = []
+        for r in rows:
+            if r["type"] not in types:
+                raise ServiceError("Bo'yash turi topilmadi", field="parts")
+            clean.append({"id": r.get("id"), "type": types[r["type"]], "square": r["square"]})
+        set_painter_parts(painter, clean, by=request.user)
+        return self._respond(painter)
+
+    def _part_of(self, painter, part_id):
+        part = painter.parts.select_related("type__user").filter(pk=part_id).first()
+        if part is None:
+            raise ServiceError("Qism topilmadi", field="part")
+        return part
+
     @action(detail=True, methods=["post"], serializer_class=PainterDoneSerializer)
     def done(self, request, pk=None):
-        """The painter's «Bajarildi»: {note} - what was done; the service checks who may."""
+        """The painter's «Bajarildi»: {note, part?} - what was done on the part; the service
+        checks who may."""
         body = PainterDoneSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        return self._respond(
-            mark_painter_done(self.get_object(), by=request.user, note=body.validated_data["note"])
-        )
+        painter = self.get_object()
+        note = body.validated_data["note"]
+        part_id = body.validated_data.get("part")
+        if part_id is not None:
+            mark_part_done(self._part_of(painter, part_id), by=request.user, note=note)
+        else:
+            mark_painter_done(painter, by=request.user, note=note)
+        return self._respond(painter)
 
     @action(detail=True, methods=["post"], serializer_class=PainterDueSerializer)
     def due(self, request, pk=None):
-        """The production head's deadline: {due_date: "YYYY-MM-DD"}."""
+        """The production head's deadline: {due_date: "YYYY-MM-DD", part?}."""
         require_perm(request.user, "oauth.user_production_head")
         body = PainterDueSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        return self._respond(
-            set_painter_due(
-                self.get_object(), by=request.user, due_date=body.validated_data["due_date"]
-            )
-        )
+        painter = self.get_object()
+        due_date = body.validated_data["due_date"]
+        part_id = body.validated_data.get("part")
+        if part_id is not None:
+            set_part_due(self._part_of(painter, part_id), by=request.user, due_date=due_date)
+        else:
+            set_painter_due(painter, by=request.user, due_date=due_date)
+        return self._respond(painter)
 
 
 class AssemblyViewSet(_ProductionViewSet):

@@ -68,7 +68,7 @@ def design_folder_access(user, folder):
     (the «Дизайн» folder under the metering folder, see `order.rover.dto.design_folder_id`)
     of an order they work on, and everything below it:
     - rover: `rover.view_rover` and the order has a Rover row (rovers are not split per worker);
-    - molyar: the order's Painter job belongs to the user's own team (`type.user`)."""
+    - molyar: any part (open or done) of the order's Painter job belongs to the user's team."""
     from filer.models import Folder
 
     from order.models import Order
@@ -98,7 +98,9 @@ def design_folder_access(user, folder):
         return None
     if is_rover and Rover.objects.filter(order__in=owner).exists():
         return node
-    jobs = ready_for_painter(Painter.objects.filter(order__in=owner, type__user=user))
+    jobs = ready_for_painter(
+        Painter.objects.filter(order__in=owner, parts__type__user=user).distinct()
+    )
     if jobs.exists():
         return node
     return None

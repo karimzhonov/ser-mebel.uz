@@ -12,6 +12,7 @@ from djmoney.money import Money
 from filer.models import File, Folder
 from rest_framework.test import APIClient
 
+from api.tests.painterkit import make_painter
 from metering.models import Metering
 from order.painter.models import Painter, PainterType
 from order.rover.models import Rover
@@ -97,8 +98,8 @@ def test_molyar_only_own_team(order_factory, make_staff):
     o1, o2 = order_factory(), order_factory()
     o1_folder, o1_meter, o1_design, _, o1_stage = tree(o1)
     _, _, o2_design, _, _ = tree(o2)
-    p = Painter.objects.create(order=o1, square=1, type=mine, folder=o1_stage)
-    Painter.objects.create(order=o2, square=1, type=theirs)
+    p = make_painter(order=o1, square=1, type=mine, folder=o1_stage)
+    make_painter(order=o2, square=1, type=theirs)
     assert c.get(f"/api/v1/folders/{o1_design.pk}/").status_code == 200
     assert c.get(f"/api/v1/folders/{o2_design.pk}/").status_code == 403
     for denied in (o1_folder, o1_meter, o1_stage):
@@ -109,11 +110,32 @@ def test_molyar_only_own_team(order_factory, make_staff):
     assert item["design_folder"] == o1_design.pk
 
 
+def test_molyar_of_any_part_opens_design_folder(order_factory, make_staff):
+    from order.painter.models import PainterPart
+
+    c = group_client("Molyar", make_staff)
+    stranger = group_client("Molyar", make_staff)
+    other = group_client("Molyar", make_staff)
+    mine = PainterType.objects.create(name="A", price=Money(1, "UZS"), user=c.user)
+    theirs = PainterType.objects.create(name="B", price=Money(1, "UZS"), user=other.user)
+    PainterType.objects.create(name="C", price=Money(1, "UZS"), user=stranger.user)
+    o = order_factory()
+    _, _, design, _, _ = tree(o)
+    p = Painter.objects.create(order=o, square=10)
+    mine_part = PainterPart.objects.create(painter=p, type=mine, square=4)
+    PainterPart.objects.create(painter=p, type=theirs, square=6)
+    assert c.get(f"/api/v1/folders/{design.pk}/").status_code == 200
+    assert other.get(f"/api/v1/folders/{design.pk}/").status_code == 200
+    assert stranger.get(f"/api/v1/folders/{design.pk}/").status_code == 403  # no part here
+    PainterPart.objects.filter(pk=mine_part.pk).update(done=True)  # own part done: still open
+    assert c.get(f"/api/v1/folders/{design.pk}/").status_code == 200
+
+
 def test_full_viewers_unchanged(order_factory, make_staff, api):
     o = order_factory()
     t = PainterType.objects.create(name="A", price=Money(1, "UZS"))
     order_folder, meter, design, _, stage = tree(o)
-    p = Painter.objects.create(order=o, square=1, type=t)
+    p = make_painter(order=o, square=1, type=t)
     Painter.objects.filter(pk=p.pk).update(folder=stage)
     head = api("oauth.user_production_head", "painter.view_painter")
     item = head.get("/api/v1/painters/").data["results"][0]
@@ -193,7 +215,7 @@ def test_painter_design_folder_under_order_folder(order_factory, make_staff):
     t = PainterType.objects.create(name="A", price=Money(1, "UZS"), user=c.user)
     o = order_factory()
     _, _, design, _ = post_order_tree(o)
-    Painter.objects.create(order=o, square=1, type=t)
+    make_painter(order=o, square=1, type=t)
     item = c.get("/api/v1/painters/").data["results"][0]
     assert item["design_folder"] == design.pk and item["folder"] is None
     assert c.get(f"/api/v1/folders/{design.pk}/").status_code == 200
@@ -229,7 +251,7 @@ def test_molyar_needs_finished_rover(order_factory, make_staff):
     o = order_factory()
     r = Rover.objects.create(order=o, square=1, price=Money(1, "UZS"))
     _, _, design, _, _ = tree(o)
-    Painter.objects.create(order=o, square=1, type=t)
+    make_painter(order=o, square=1, type=t)
     assert c.get(f"/api/v1/folders/{design.pk}/").status_code == 403
     Rover.objects.filter(pk=r.pk).update(done=True)
     assert c.get(f"/api/v1/folders/{design.pk}/").status_code == 200
@@ -282,7 +304,7 @@ def test_molyar_role_with_filer_perms_stays_scoped(order_factory, make_staff, me
     c = group_client("Molyar", make_staff)
     t = PainterType.objects.create(name="A", price=Money(1, "UZS"), user=c.user)
     o, order_folder, design, sub, other_folder, other_design, f = two_trees(order_factory)
-    Painter.objects.create(order=o, square=1, type=t)
+    make_painter(order=o, square=1, type=t)
     with_filer_and_flag(c, "user_painter")
     check_scoped_with_filer(c, order_folder, other_folder, other_design, design, sub, f)
 

@@ -86,7 +86,7 @@ def order_board(*, user, show_price: bool, to_card=None) -> list[dict]:
     than in Моляр. That is intended: the alternative is showing that viewer a row the
     matching changelist would refuse them.
     """
-    from django.db.models import F, Q
+    from django.db.models import Exists, F, OuterRef, Q
     from django.urls import reverse
 
     from core.kanban import IDLE, INFO, OK, WARN, Column, build_board
@@ -107,9 +107,12 @@ def order_board(*, user, show_price: bool, to_card=None) -> list[dict]:
         own_jobs = Q(assembly__user=user)
         assembly &= own_jobs
         installing &= own_jobs
-        # PainterAdmin.get_queryset scopes by the painter type's user, not by the
-        # painter row — a painter is assigned work through PainterType.
-        painter_column &= Q(painter__type__user=user)
+        # a painter is assigned work through the job's parts (one per team)
+        from .painter.models import PainterPart
+
+        painter_column &= Exists(
+            PainterPart.objects.filter(painter__order=OuterRef("pk"), type__user=user)
+        )
 
     changelist = reverse("admin:order_order_changelist")
 

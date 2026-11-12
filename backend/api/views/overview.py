@@ -28,8 +28,8 @@ from order.assembly.services import ready_for_assembly
 from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
 from order.detailing.models import Detailing
 from order.models import Order
-from order.painter.models import Painter
-from order.painter.services import ready_for_painter
+from order.painter.models import Painter, PainterPart
+from order.painter.services import ready_for_painter, ready_parts
 from order.rover.models import Rover
 from order.services import UNDERPAID_PCT, underpaid_orders
 
@@ -418,9 +418,10 @@ class OverviewView(APIView):
         if user.has_perm("rover.view_rover"):
             stage("rover", "Rover", Rover.objects.filter(done=False), "/production/rover")
         if user.has_perm("painter.view_painter"):
-            painters = ready_for_painter(Painter.objects.filter(done=False))
-            if not manager:
-                painters = painters.filter(type__user=user)
+            if manager:
+                painters = ready_for_painter(Painter.objects.filter(done=False))
+            else:  # a molyar counts their own open parts (and those m²)
+                painters = ready_parts(PainterPart.objects.filter(done=False, type__user=user))
             stage("painter", "Molyar", painters, "/production/painter")
         workload = None
         if user.has_perm("assembly.view_assembly"):

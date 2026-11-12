@@ -56,6 +56,7 @@ export function DueModal({
   title,
   presets,
   invalidate,
+  extra,
   onClose,
 }: {
   resource: string;
@@ -64,13 +65,15 @@ export function DueModal({
   title: string;
   presets: number[];
   invalidate: string[];
+  /** more fields for the POST body (e.g. the painter part id) */
+  extra?: Record<string, unknown>;
   onClose: () => void;
 }) {
   const [value, setValue] = useState(dueDate ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const today = dateInput(new Date());
   const past = !!value && value < today;
-  const save = useAction(() => api.post(`/${resource}/${id}/due/`, { due_date: value }), {
+  const save = useAction(() => api.post(`/${resource}/${id}/due/`, { due_date: value, ...extra }), {
     success: "Muddat belgilandi",
     invalidate,
     onSuccess: onClose,

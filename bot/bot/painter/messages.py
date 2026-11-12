@@ -1,7 +1,10 @@
 """Remember the painter cards sent (`CardStore("pnt")`, `pnt:msg:{key}` + `pnt:ver:{key}`).
 Keys: `t{id}u{user_id}` task cards, one key per assignee (task and unassigned events share a
 rev, so separate keys let both apply and reject a late «unassigned» after A -> B -> A),
-`h{id}` head «set the deadline» cards, `r{id}` head «pick the team» cards (rover ready)."""
+`h{id}` head «set the deadline» cards, `r{id}` head «pick the team» cards (rover ready).
+Split jobs (one job, several teams, each team = a *part*): `p{part}u{user_id}` part worker
+cards and `q{part}` part deadline cards, rev-guarded by the PART's rev; `r{id}` / `h{id}` /
+`t{id}u{uid}` stay guarded by the JOB's rev."""
 
 from __future__ import annotations
 
@@ -20,6 +23,14 @@ def hkey(painter_id) -> str:
 
 def rkey(painter_id) -> str:
     return f"r{int(painter_id)}"
+
+
+def pkey(part_id, user_id) -> str:
+    return f"p{int(part_id)}u{int(user_id)}"
+
+
+def qkey(part_id) -> str:
+    return f"q{int(part_id)}"
 
 
 async def remember(key, chat_id, message_id, kind: str = "task") -> None:

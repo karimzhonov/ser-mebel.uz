@@ -36,6 +36,28 @@
     "days_late": 0,
     "note": "",
     "rev": 2,
-    "url": "https://ser-mebel.uz/production/painter?open=31"
+    "url": "https://ser-mebel.uz/production/painter?open=31",
+    "parts": [
+      {
+        "id": 51,
+        "type": {
+          "id": 4,
+          "name": "Glyanets"
+        },
+        "painter": {
+          "id": 21,
+          "name": "Molyar ustasi"
+        },
+        "outsource": false,
+        "square": 6.5,
+        "state": "new",
+        "done_at": null,
+        "due_date": "2026-11-15",
+        "rev": 2
+      }
+    ],
+    "assigned_square": 6.5,
+    "remainder": 0.0,
+    "split_url": "https://ser-mebel.uz/production/painter?open=31&split=1"
   }
 }

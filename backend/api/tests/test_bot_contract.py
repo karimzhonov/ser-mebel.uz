@@ -48,8 +48,16 @@ def test_every_emitted_event_has_a_fixture_and_vice_versa():
                 (BACKEND / f).read_text(encoding="utf-8"),
             )
         )
+    # still rendered by the bot for envelopes queued before the painter split, never emitted
+    deprecated = {
+        "painter.task",
+        "painter.unassigned",
+        "painter.due_ask",
+        "painter.due_set",
+        "painter.remind",
+    }
     fixtures = {p.name[len("event.") : -len(".json")] for p in CONTRACT_DIR.glob("event.*.json")}
-    assert emitted == fixtures, emitted ^ fixtures
+    assert emitted | deprecated == fixtures, (emitted | deprecated) ^ fixtures
     for name in fixtures:
         env = load_fixture(f"event.{name}.json")
         assert env["event"] == name and env["id"] and isinstance(env["data"], dict)
