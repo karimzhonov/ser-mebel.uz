@@ -40,6 +40,7 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { LocationEditModal, LocationField } from "@/components/LocationField";
 import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
 import {
+  Badge,
   Button,
   Card,
   Check,
@@ -297,6 +298,16 @@ export function OrderDetailPage() {
                 Yig'ishga
               </Button>
             )}
+            {a.next_status_hint && (
+              <Button variant="secondary" disabled title={a.next_status_hint} icon={<ArrowRight className="h-4 w-4" />}>
+                «Готов» — на странице «Yig'ish»
+              </Button>
+            )}
+            {a.go_to_assembly_hint && (
+              <Button variant="secondary" disabled title={a.go_to_assembly_hint} icon={<Hammer className="h-4 w-4" />}>
+                Yig'ishga — Ishlab chiqarish rahbari
+              </Button>
+            )}
             {a.next_status && !a.detailing && !a.go_to_assembly && (
               <Button icon={<ArrowRight className="h-4 w-4" />} onClick={() => setConfirm("next-status")}>
                 {a.next_status_label}
@@ -407,6 +418,9 @@ export function OrderDetailPage() {
             rows={p.rover && [
               ["Maydon", num(p.rover.square)],
               ...(p.rover.price ? ([["Narx", money(p.rover.price)]] as [string, string][]) : []),
+              ...(p.rover.state === "checking"
+                ? ([["Holat", <Badge tone="warn">Tekshiruvda</Badge>]] as [string, JSX.Element][])
+                : []),
               ["Bajarildi", <Check ok={p.rover.done} />],
             ]}
           />

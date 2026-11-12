@@ -626,7 +626,12 @@ def cancel_metering(metering, *, by, reason):
         _bump(metering, locked, ["status", "cancel_reason", "cancelled_at", "rev"])
         if locked.invoice_id is not None:
             returned = return_lead_from_metering(
-                locked.invoice, by=by, reason=reason, metering_id=locked.pk
+                locked.invoice,
+                by=by,
+                reason=reason,
+                metering_id=locked.pk,
+                booked_by=locked.created_by,
+                measurer=locked.measurer,
             )
         events.metering_changed(locked, how="cancelled", by=by, to_users=[locked.measurer])
     return metering, returned
@@ -1461,11 +1466,13 @@ def due_offer_reminders(now) -> dict:
     return sent
 
 
-def offer_agenda(qs, *, now) -> dict:
+def offer_agenda(qs, *, now, split_ordered=False) -> dict:
     """The agenda of the «Dizayn» / «Narx hisoblash» page over `qs` (Design or Price rows).
     overdue = in work past the deadline; today = in work due today; work = all in work
     (nearest deadline first, undated last); review = waiting for the client's answer.
-    The archive is paged by the list."""
+    The archive is paged by the list. split_ordered (the «Dizayn» page): the archive is
+    shown in two parts - «ordered» = every row whose zamer already became an order (any
+    stage), «archive» = the archive-stage rows without an order."""
     from datetime import timedelta
 
     from django.db.models import F
@@ -1486,7 +1493,11 @@ def offer_agenda(qs, *, now) -> dict:
     for key, bucket in buckets.items():
         out["counts"][key] = bucket.count()
         out[key] = list(bucket[:AGENDA_LIMIT])
-    out["counts"]["archive"] = qs.filter(stage__in=OFFER_ARCHIVE).count()
+    archive = qs.filter(stage__in=OFFER_ARCHIVE)
+    if split_ordered:
+        out["counts"]["ordered"] = qs.filter(metering__order__isnull=False).count()
+        archive = archive.filter(metering__order__isnull=True)
+    out["counts"]["archive"] = archive.count()
     return out
 
 

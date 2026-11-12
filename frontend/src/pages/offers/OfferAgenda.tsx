@@ -5,7 +5,7 @@ import { api, fieldErrors } from "@/api/client";
 import { useAction, useGet, useList } from "@/api/hooks";
 import type { Design, OfferAgenda as Agenda, OfferKind, Price } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
-import { AddressLink, PhoneLink } from "@/components/domain";
+import { AddressLink, OrderStatusBadge, PhoneLink } from "@/components/domain";
 import { Button, Card, DataTable, Empty, Field, Input, Modal, PageHeader, PageLoader, Pagination, SearchInput, Segmented, Select } from "@/components/ui";
 import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
@@ -24,8 +24,8 @@ import {
 } from "./actions";
 
 type Row = Design | Price;
-type Tab = "overdue" | "today" | "work" | "review" | "archive";
-const TABS: Tab[] = ["overdue", "today", "work", "review", "archive"];
+type Tab = "overdue" | "today" | "work" | "review" | "archive" | "ordered";
+const TABS: Tab[] = ["overdue", "today", "work", "review", "archive", "ordered"];
 
 function clientOf(r: Row) {
   const m = r.metering;
@@ -51,12 +51,20 @@ export function OfferAgenda({ kind, actions }: { kind: OfferKind; actions?: Reac
   // a superuser (can() is always true for them) or «Bosh menejer» sees everyone's rows
   const manager = can("metering.manage_metering");
   const { state, page, set } = useUrlState({ tab: "work", user: "", search: "" });
-  const tab: Tab = (TABS as string[]).includes(state.tab) ? (state.tab as Tab) : "work";
+  // «Dizayn» only: the designs whose zamer became an order get their own archive tab
+  const splitOrdered = kind === "design";
+  const tab: Tab = (TABS as string[]).includes(state.tab) && (state.tab !== "ordered" || splitOrdered) ? (state.tab as Tab) : "work";
   const people = useAssignees(manager);
   const staff = (kind === "design" ? people.data?.designers : people.data?.pricers) ?? [];
   const filter = { user: manager ? state.user : "", search: state.search };
   const { data: agenda, isLoading } = useGet<Agenda<Row>>(`/${OFFER_PATH[kind]}/agenda/`, filter);
-  const archive = useList<Row>(OFFER_PATH[kind], { ...filter, stage: ARCHIVE_STAGES, page }, tab === "archive");
+  const archive = useList<Row>(
+    OFFER_PATH[kind],
+    tab === "ordered"
+      ? { ...filter, ordered: true, page }
+      : { ...filter, stage: ARCHIVE_STAGES, ordered: splitOrdered ? false : undefined, page },
+    tab === "archive" || tab === "ordered",
+  );
   const c = agenda?.counts;
   const open = (r: Row) => navigate(`/${OFFER_PATH[kind]}/${r.id}`);
   const overdueIds = new Set((agenda?.overdue ?? []).map((r) => r.id));
@@ -66,7 +74,38 @@ export function OfferAgenda({ kind, actions }: { kind: OfferKind; actions?: Reac
   );
 
   let body: ReactNode = null;
-  if (tab === "archive") {
+  if (tab === "ordered") {
+    body = (
+      <Card padded={false}>
+        <DataTable
+          rows={archive.data?.results}
+          loading={archive.isFetching}
+          rowKey={(r) => r.id}
+          onRowClick={open}
+          empty={<Empty title="Buyurtmaga o'tgan dizayn yo'q" />}
+          columns={[
+            { key: "client", header: "Mijoz", cell: (r) => <span className="font-medium">{clientOf(r).fio}</span> },
+            { key: "order", header: "Buyurtma", cell: (r: Row) => <OrderCell r={r} /> },
+            ...(manager ? [{ key: "user", header: ASSIGNEE_LABEL[kind], cell: (r: Row) => personName(assigneeOf(r)) }] : []),
+            { key: "done", header: "Tayyor bo'lgan", cell: (r) => <span className="muted">{date(r.done_at)}</span>, hideOnMobile: true },
+          ]}
+          mobileCard={(r) => (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">{clientOf(r).fio}</span>
+                <OrderCell r={r} />
+              </div>
+              <div className="muted text-sm">
+                {date(r.done_at ?? r.created_at)}
+                {manager && ` · ${personName(assigneeOf(r))}`}
+              </div>
+            </div>
+          )}
+        />
+        <Pagination page={page} count={archive.data?.count ?? 0} onPage={(p) => set({ page: p })} />
+      </Card>
+    );
+  } else if (tab === "archive") {
     body = (
       <Card padded={false}>
         <DataTable
@@ -143,6 +182,7 @@ export function OfferAgenda({ kind, actions }: { kind: OfferKind; actions?: Reac
             { value: "work", label: "Ishda", count: c?.work },
             { value: "review", label: "Mijozda — javob kutilmoqda", count: c?.review },
             { value: "archive", label: "Arxiv", count: c?.archive },
+            ...(splitOrdered ? [{ value: "ordered" as const, label: "Buyurtmaga o'tgan", count: c?.ordered }] : []),
           ]}
         />
         <div className="flex flex-1 flex-col gap-2 sm:flex-row lg:justify-end">
@@ -268,6 +308,24 @@ function OfferList({
         );
       })}
     </ul>
+  );
+}
+
+/** «Buyurtmaga o'tgan» row: the order number (opens the order) and its status. */
+function OrderCell({ r }: { r: Row }) {
+  const navigate = useNavigate();
+  if (!r.order) return null;
+  const o = r.order;
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      <button
+        className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+        onClick={(e) => (e.stopPropagation(), navigate(`/orders/${o.id}`))}
+      >
+        №{o.order_number}
+      </button>
+      <OrderStatusBadge status={o.status} label={o.status_label} />
+    </span>
   );
 }
 

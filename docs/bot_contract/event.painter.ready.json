@@ -1,0 +1,61 @@
+{
+  "id": "00000000-0000-0000-0000-000000008003",
+  "event": "painter.ready",
+  "data": {
+    "painter": {
+      "id": 31,
+      "order": {
+        "id": 88,
+        "number": 1042
+      },
+      "client": {
+        "fio": "Ali Valiyev",
+        "phone": "+998901112244"
+      },
+      "address": "Chilonzor 7-kvartal, 12-uy",
+      "map_url": "https://yandex.com/maps/?pt=69.2401,41.2995&z=17&l=map",
+      "square": 6.5,
+      "type": null,
+      "outsource": false,
+      "painter": null,
+      "state": "new",
+      "state_label": "Ishda",
+      "started_at": null,
+      "done_at": null,
+      "done_by": null,
+      "due_date": null,
+      "due_auto": false,
+      "due_set_by": null,
+      "overdue": false,
+      "days_late": 0,
+      "note": "",
+      "rev": 0,
+      "url": "https://ser-mebel.uz/production/painter?open=31",
+      "parts": [],
+      "assigned_square": 0.0,
+      "remainder": 6.5,
+      "split_url": "https://ser-mebel.uz/production/painter?open=31&split=1"
+    },
+    "types": [
+      {
+        "id": 3,
+        "name": "Autsors",
+        "user": {
+          "id": 22,
+          "name": "Autsors ustasi"
+        }
+      },
+      {
+        "id": 4,
+        "name": "Glyanets",
+        "user": {
+          "id": 21,
+          "name": "Molyar ustasi"
+        }
+      }
+    ],
+    "to": [
+      444555666
+    ]
+  }
+}

@@ -353,11 +353,30 @@ def _active_user(user):
     return user if eligible_assignees().filter(pk=user.pk).exists() else None
 
 
-def return_lead_from_metering(invoice, *, by, reason, metering_id) -> bool:
+def _call_back_assignee(invoice, *, by, booked_by=None, measurer=None):
+    """Who calls the client back after a cancelled zamer: the call-centre, never the
+    measurer (owner's rule: the measurer must not get that reminder). The lead's owner,
+    its creator, the operator who booked the zamer, the actor (when not the measurer),
+    else a call-centre head; None when nobody is left."""
+    from oauth.services import users_with_perm
+
+    skip = measurer.pk if measurer is not None else None
+    for user in (invoice.assigned_to, invoice.created_by, booked_by, by):
+        user = _active_user(user)
+        if user is not None and user.pk != skip:
+            return user
+    heads = users_with_perm("call_center", "manage_invoice").values("pk")
+    return eligible_assignees().filter(pk__in=heads).exclude(pk=skip).order_by("pk").first()
+
+
+def return_lead_from_metering(
+    invoice, *, by, reason, metering_id, booked_by=None, measurer=None
+) -> bool:
     """The zamer was cancelled: the lead goes back to its operator as a call task
     (answer "Қайта телефон қилиш", a task due now). A sold lead is left alone. The
     caller holds (or takes here) the lead lock before any metering/task row.
-    Returns whether the lead was returned."""
+    The task never goes to the measurer; with no call-centre user left the lead is only
+    put back on the board. Returns whether the lead was returned."""
     from .models import Invoice
 
     with transaction.atomic():
@@ -370,14 +389,16 @@ def return_lead_from_metering(invoice, *, by, reason, metering_id) -> bool:
             return False  # sold out, or the operator already moved the lead on
         # not set_invoice_solution: it refuses a lead already "served" (go_for_measured)
         _apply_solution(locked, SolutionChoice.re_phone, by)
-        create_task(
-            locked,
-            text=f"Zamer bekor bo'ldi: {reason}"[:500],
-            due_at=_now(),
-            by=by,
-            assigned_to=_active_user(locked.assigned_to) or _active_user(locked.created_by) or by,
-            check=False,
-        )
+        assignee = _call_back_assignee(locked, by=by, booked_by=booked_by, measurer=measurer)
+        if assignee is not None:
+            create_task(
+                locked,
+                text=f"Zamer bekor bo'ldi: {reason}"[:500],
+                due_at=_now(),
+                by=by,
+                assigned_to=assignee,
+                check=False,
+            )
         log_metering(
             locked, author=by, event="cancelled", text=reason, meta={"metering_id": metering_id}
         )

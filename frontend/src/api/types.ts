@@ -380,6 +380,8 @@ export interface OfferAgendaCounts {
   work: number;
   review: number;
   archive?: number;
+  /** «Dizayn» only: the designs whose zamer already became an order */
+  ordered?: number;
 }
 
 /** GET /designs/agenda/, /prices/agenda/ */
@@ -653,6 +655,8 @@ export interface ProductionRow {
   square: number;
   folder: number | null;
   price?: Money | null;
+  /** rover only: new | checking | done */
+  state?: "new" | "checking" | "done" | null;
 }
 
 export interface OrderDetail extends Order {
@@ -681,6 +685,8 @@ export interface OrderDetail extends Order {
     detailing: boolean;
     next_status: boolean;
     next_status_label: string | null;
+    next_status_hint?: string | null;
+    go_to_assembly_hint?: string | null;
     go_to_assembly: boolean;
     finance: boolean;
     edit_price: boolean;
@@ -700,6 +706,29 @@ export interface ProductionOrder extends Located {
   folder: number | null;
 }
 
+/** One team's share (m²) of a Molyar job */
+export interface PainterPart {
+  id: number;
+  type: number;
+  type_detail: { id: number; name: string; outsource: boolean };
+  painter_detail: UserShort | null;
+  square: number;
+  price: Money | null;
+  state: "new" | "done";
+  state_label: string;
+  started_at: string | null;
+  due_date: string | null;
+  due_auto: boolean;
+  due_set_at: string | null;
+  due_set_by_detail: UserShort | null;
+  overdue: boolean;
+  note: string;
+  done: boolean;
+  done_at: string | null;
+  done_by_detail: UserShort | null;
+  actions: { done: boolean; due: boolean };
+}
+
 export interface ProductionItem {
   id: number;
   order: ProductionOrder;
@@ -708,6 +737,28 @@ export interface ProductionItem {
   square: number;
   folder: number | null;
   price?: Money | null;
+  // rover / outsource painter: the worker sees a reduced order (no phone, address, dates, order link)
+  restricted?: boolean;
+  can_open_order?: boolean;
+  design_folder?: number | null;
+  // rover
+  state?: "new" | "checking" | "assembled" | "done";
+  state_label?: string;
+  // painter
+  started_at?: string | null;
+  done_at?: string | null;
+  done_by_detail?: UserShort | null;
+  painter_detail?: UserShort | null;
+  submitted_at?: string | null;
+  submitted_by_detail?: UserShort | null;
+  checked_at?: string | null;
+  checked_by_detail?: UserShort | null;
+  note?: string;
+  due_date?: string | null;
+  due_auto?: boolean;
+  due_set_at?: string | null;
+  due_set_by_detail?: UserShort | null;
+  overdue?: boolean;
   // detailing
   working_done?: boolean;
   painter_square?: number;
@@ -716,7 +767,18 @@ export interface ProductionItem {
   // painter
   type?: number | null;
   type_detail?: { id: number; name: string } | null;
+  parts?: PainterPart[];
+  assigned_square?: number;
+  /** m² not given to any team yet (heads only; null for workers) */
+  remaining_square?: number | null;
+  remainder?: number | null;
+  /** the parts add up to more than the job's square (detailing lowered it) */
+  parts_over?: boolean;
   // assembly
+  finished_at?: string | null;
+  finished_by_detail?: UserShort | null;
+  confirmed_at?: string | null;
+  confirmed_by_detail?: UserShort | null;
   installing_done?: boolean;
   user?: number | null;
   user_detail?: UserShort | null;
@@ -729,6 +791,7 @@ export interface PainterType {
   price: Money;
   user: number | null;
   user_detail: UserShort | null;
+  outsource?: boolean;
 }
 
 export interface StatusStats {
@@ -766,6 +829,9 @@ export interface Folder {
   name: string;
   parent: number | null;
   breadcrumbs: { id: number; name: string }[];
+  /** true for the design-folder-only view of Rover / Molyar workers (no writes, nothing above «Дизайн») */
+  read_only?: boolean;
+  can_write?: boolean;
   folders: { id: number; name: string; file_count: number }[];
   files: FolderFile[];
 }

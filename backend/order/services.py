@@ -30,12 +30,18 @@ def send_order_status_sms(order) -> None:
             sana=order.end_date or "",
             vaqt="",
         )
+    extra = {}
+    if order.status == OrderStatus.ASSEMBLY:
+        # the Telegram cards (assembly.ready / assembly.task) replace the bare message;
+        # the SMS stays only for staff who have no Telegram
+        extra = {"telegram": False, "sms_only_without_telegram": True}
     User.send_messages(
         OrderStatus.permission(order.status),
         "admin:order_order_change",
         {"object_id": order.pk},
         sms_template=template,
         sms_context=context,
+        **extra,
     )
 
 
@@ -80,7 +86,7 @@ def order_board(*, user, show_price: bool, to_card=None) -> list[dict]:
     than in Моляр. That is intended: the alternative is showing that viewer a row the
     matching changelist would refuse them.
     """
-    from django.db.models import F, Q
+    from django.db.models import Exists, F, OuterRef, Q
     from django.urls import reverse
 
     from core.kanban import IDLE, INFO, OK, WARN, Column, build_board
@@ -96,13 +102,17 @@ def order_board(*, user, show_price: bool, to_card=None) -> list[dict]:
     assembly = Q(status=OrderStatus.ASSEMBLY)
     installing = Q(status=OrderStatus.INSTALLING)
     painter_column = Q(status=OrderStatus.WORKING) & rover_clear & painter_pending
-    if not user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}"):
+    # assembly managers and the production head (who now runs these stages) see all jobs
+    if not can_send_to_assembly(user):
         own_jobs = Q(assembly__user=user)
         assembly &= own_jobs
         installing &= own_jobs
-        # PainterAdmin.get_queryset scopes by the painter type's user, not by the
-        # painter row — a painter is assigned work through PainterType.
-        painter_column &= Q(painter__type__user=user)
+        # a painter is assigned work through the job's parts (one per team)
+        from .painter.models import PainterPart
+
+        painter_column &= Exists(
+            PainterPart.objects.filter(painter__order=OuterRef("pk"), type__user=user)
+        )
 
     changelist = reverse("admin:order_order_changelist")
 
@@ -305,6 +315,11 @@ def create_order(*, count_days=None, author=None, **fields):
                 raise ServiceError("Dizayn mijoz tomonidan tasdiqlanmagan")
             if design_type is None or design_type.design_id != design.pk:
                 raise ServiceError("Shu o'lchov dizaynidan variant tanlang")
+        if not admin:
+            # owner's rule: the order is made only after the client agreed to the price
+            price = getattr(metering, "price", None)
+            if price is None or price.stage != OfferStage.approved:
+                raise ServiceError("Mijoz narxga rozi bo'lmagan — avval narx javobini yozing")
         fields.setdefault("client", metering.client)
 
     # location: this call's own, else the metering's (point, pasted link, address)
@@ -399,10 +414,39 @@ def send_order_to_detailing(order, *, due_at):
     return order
 
 
+INSTALLING_CONFIRM_MSG = (
+    "Buyurtma «Готов» bo'ladi faqat Ishlab chiqarish rahbari «Tayyor» bosganda (Yig'ish bo'limida)"
+)
+
+
+def installing_needs_head_confirm(order) -> bool:
+    """An order in «Установка» that has an assembly job becomes «Готов» only through the
+    production head's «Tayyor» (`confirm_assembly`), never by «Keyingi bosqich». Orders
+    without an assembly row keep the plain step."""
+    from .assembly.models import Assembly
+
+    # a legacy row already marked installed must not leave the order stuck
+    return Assembly.objects.filter(order=order, installing_done=False).exists()
+
+
+ASSEMBLY_SEND_MSG = "Yig'ishga faqat Ishlab chiqarish rahbari yuboradi"
+
+
+def can_send_to_assembly(user) -> bool:
+    """Who sends an order to «Сборка»: the Ishlab chiqarish rahbari or an assembly manager
+    (custom groups / superusers)."""
+    from .assembly.constants import ASSEMBLY_MANAGER_PERMISSION
+
+    return bool(
+        user.has_perm("oauth.user_production_head")
+        or user.has_perm(f"assembly.{ASSEMBLY_MANAGER_PERMISSION}")
+    )
+
+
 def advance_order_status(order):
     """Mirrors OrderActions.change_status: one step along progression_statuses()."""
-    from core.i18n import order_status as order_status_uz
     from core.exceptions import ServiceError
+    from core.i18n import order_status as order_status_uz
 
     next_status = OrderStatus.next_status(order.status)
     if next_status == OrderStatus.DETAILING:
@@ -410,6 +454,13 @@ def advance_order_status(order):
         raise ServiceError(
             "Detalirovkaga «Detalirovkaga yuborish» tugmasi bilan, muddatini belgilab yuboring"
         )
+    if next_status == OrderStatus.ASSEMBLY:
+        # only via «Yig'ishga yuborish» (head / assembly manager, assembly row must exist)
+        raise ServiceError(
+            "Yig'ishga «Yig'ishga yuborish» tugmasi bilan yuboring (Ishlab chiqarish rahbari)"
+        )
+    if order.status == OrderStatus.INSTALLING and installing_needs_head_confirm(order):
+        raise ServiceError(INSTALLING_CONFIRM_MSG)
     if next_status is None:
         raise ServiceError(
             f"Holatni o'zgartirib bo'lmaydi: «{order_status_uz(order.status)}» — yakuniy holat."

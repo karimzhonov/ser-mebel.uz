@@ -236,6 +236,12 @@ CONSTANCE_CONFIG = {
     'PRODUCTION_WARNING_ORDER_DAYS': (14, 'Предупреждение о прасрочка заказа (производство)', int),
     'ASSEMBLY_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Сборка цена за квадрат', 'price_field'),
     'ROVER_PRICE_PER_SQUARE': (Money(0, currency=dj_setting.DEFAULT_CURRENCY), 'Ровер цена за квадрат', 'price_field'),
+    'ROVER_REMIND_HOUR': (9, 'Rover: eslatma soati (kunlik)', int),
+    'ROVER_AUTO_DUE_DAYS': (5, "Rover: muddat 1 kunda qo'yilmasa — yaratilgandan necha kun keyin (avtomatik)", int),
+    'PAINTER_REMIND_HOUR': (9, 'Molyar: eslatma soati (kunlik)', int),
+    'PAINTER_AUTO_DUE_DAYS': (10, "Molyar: muddat 1 kunda qo'yilmasa — ish boshlanganidan necha kun keyin (avtomatik)", int),
+    'ASSEMBLY_REMIND_HOUR': (9, "Yig'ish: eslatma soati (kunlik)", int),
+    'ASSEMBLY_AUTO_DUE_DAYS': (10, "Yig'ish: muddat 1 kunda qo'yilmasa — ish boshlanganidan necha kun keyin (avtomatik)", int),
     # Moliya (finance bot) — the «Sozlamalar» sheet of the old Apps Script.
     'FIN_REMINDER_HOUR': (19, "Moliya: xodimlarga kunlik eslatma soati", int),
     'FIN_ADMIN_REPORT_HOUR': (21, "Moliya: rahbarga kunlik hisobot soati", int),
@@ -286,12 +292,22 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
         },
         "Ровер": {
             "fields": {
-                "ROVER_PRICE_PER_SQUARE"
+                "ROVER_PRICE_PER_SQUARE",
+                "ROVER_REMIND_HOUR",
+                "ROVER_AUTO_DUE_DAYS",
+            }
+        },
+        "Моляр": {
+            "fields": {
+                "PAINTER_REMIND_HOUR",
+                "PAINTER_AUTO_DUE_DAYS",
             }
         },
         "Сборка": {
             "fields": {
                 "ASSEMBLY_PRICE_PER_SQUARE",
+                "ASSEMBLY_REMIND_HOUR",
+                "ASSEMBLY_AUTO_DUE_DAYS",
             }
         },
         "Moliya": {

@@ -151,6 +151,8 @@ def bot_events(monkeypatch, settings):
     events = Events()
     monkeypatch.setattr("core.bot_notify.transaction.on_commit", lambda fn, *a, **k: fn())
     monkeypatch.setattr("core.tasks.notify_bot.delay", lambda env: events.append(env))
+    # on_commit runs at once here, so keep other Celery .delay calls off the broker
+    monkeypatch.setattr("order.rover.tasks.notify_painting_ready_task.delay", lambda rid: None)
     return events
 
 

@@ -23,6 +23,20 @@ def rover_and_painter(order_factory):
     return rover, painter, PainterType
 
 
+def _finish_rover(admin_api, rover):
+    """The worker hands the job in with the amount, a checker confirms it."""
+    r = admin_api.post(
+        f"/api/v1/rovers/{rover.pk}/done/",
+        {"price": {"amount": "150000", "currency": "UZS"}, "note": "Frezerlandi, 4 ta eshik"},
+        format="json",
+    )
+    assert r.status_code == 200, r.data
+    assert r.data["state"] == "checking"
+    r = admin_api.post(f"/api/v1/rovers/{rover.pk}/confirm/")
+    assert r.status_code == 200, r.data
+    assert r.data["state"] == "done"
+
+
 def test_painter_waits_for_rover(admin_api, rover_and_painter):
     rover, painter, _ = rover_and_painter
     assert admin_api.get("/api/v1/painters/").data["count"] == 0
@@ -31,7 +45,7 @@ def test_painter_waits_for_rover(admin_api, rover_and_painter):
     stages = {s["key"]: s["count"] for s in overview["production"]["stages"]}
     assert stages["rover"] == 1 and stages["painter"] == 0
 
-    admin_api.post(f"/api/v1/rovers/{rover.pk}/done/")
+    _finish_rover(admin_api, rover)
     assert admin_api.get("/api/v1/painters/").data["count"] == 1
 
 
@@ -47,7 +61,7 @@ def test_painter_actions_blocked_until_rover_done(rover_and_painter):
     with pytest.raises(ServiceError):
         assign_painter_type(painter, ptype)
     with pytest.raises(ServiceError):
-        mark_painter_done(painter)
+        mark_painter_done(painter, by=ptype.user, note="Bo'yaldi, 3 ta eshik")
 
 
 def test_order_without_rover_goes_straight_to_painter(admin_api, order_factory):
@@ -87,14 +101,36 @@ def test_unfiled_file_deletable_by_admin(admin_api, tmp_path, settings):
     assert admin_api.delete(f"/api/v1/files/{f.pk}/").status_code == 204
 
 
-def test_rover_done_notifies_painting_ready(admin_api, rover_and_painter, monkeypatch):
-    calls = []
+def test_rover_done_notifies_painting_ready(
+    admin_api,
+    rover_and_painter,
+    make_staff,
+    bot_events,
+    monkeypatch,
+    django_capture_on_commit_callbacks,
+):
+    """Rover confirmed -> the production heads get the painter.ready event (no bare
+    legacy Telegram message any more); a second run is a no-op."""
+    from oauth.models import User
+    from order.rover import tasks
+
+    def boom(*a, **k):
+        raise AssertionError("legacy bare notification")
+
+    monkeypatch.setattr(User, "send_messages", classmethod(boom))
+    monkeypatch.setattr(User, "send_message", boom)
     monkeypatch.setattr(
-        "oauth.models.User.send_messages", classmethod(lambda cls, *a, **k: calls.append((a, k)))
+        tasks.notify_painting_ready_task,
+        "delay",
+        lambda rid: tasks.notify_painting_ready_task.apply(args=(rid,)),
     )
+    make_staff("oauth.user_production_head", name="Rahbar", telegram_id=3001)
     rover, painter, _ = rover_and_painter
-    admin_api.post(f"/api/v1/rovers/{rover.pk}/done/")
-    assert calls and calls[0][0][0] == "assembly.manager"
+    with django_capture_on_commit_callbacks(execute=True):
+        _finish_rover(admin_api, rover)
+    assert bot_events.one("painter.ready")["to"] == [3001]
+    assert tasks.notify_painting_ready_task(rover.pk) is False  # second run is a no-op
+    assert len(bot_events.of("painter.ready")) == 1
 
 
 # --- assembly list starts after detailing ------------------------------------------

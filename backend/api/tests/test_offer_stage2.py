@@ -888,6 +888,35 @@ def test_offer_agenda_buckets(flow, designer, clock, make_staff):
     assert M.offer_agenda(Price.objects.all(), now=NOW)["counts"]["work"] == 1
 
 
+def test_design_archive_shows_ordered_designs_apart(flow, admin_api, default_factory):
+    """«Dizayn» archive: the designs whose zamer became an order are listed on their own
+    («Buyurtmaga o'tgan», any stage); the plain archive keeps only the rest."""
+    from metering.design.models import Design
+    from order.models import Order
+
+    other = Design.objects.create(metering=Metering.objects.create(client=flow.client))
+    Design.objects.filter(pk__in=[flow.design.pk, other.pk]).update(stage="approved")
+    Order.objects.create(
+        metering=flow,
+        client=flow.client,
+        reception_date=datetime(2026, 11, 3).date(),
+        address="x",
+        factory=default_factory,
+    )
+
+    counts = admin_api.get("/api/v1/designs/agenda/").data["counts"]
+    assert counts["ordered"] == 1 and counts["archive"] == 1
+    ordered = admin_api.get("/api/v1/designs/", {"ordered": "true"}).data["results"]
+    assert [r["id"] for r in ordered] == [flow.design.pk]
+    assert ordered[0]["order"]["order_number"]
+    rest = admin_api.get(
+        "/api/v1/designs/", {"ordered": "false", "stage": "approved,declined,cancelled"}
+    ).data["results"]
+    assert [r["id"] for r in rest] == [other.pk]
+    # the price page keeps one archive
+    assert "ordered" not in admin_api.get("/api/v1/prices/agenda/").data["counts"]
+
+
 def test_offer_queryset_scoping(flow, designer, make_staff):
     from metering.design.models import Design
 
@@ -1283,38 +1312,66 @@ def test_declined_price_is_not_done(flow, designer, manager, pricer):
 
 
 def test_no_order_from_an_unapproved_or_refused_design(
-    flow, designer, manager, admin_api, default_factory
+    flow, designer, pricer, manager, api, default_factory
 ):
+    """Owner's rule: the order is made only after the client approved the design AND
+    agreed to the price (the admin's archive path is tested separately)."""
     from metering.design.models import DesignType
     from order.models import Order
 
+    maker = api(
+        "order.add_order", "order.view_order", "design.view_design", "metering.view_metering"
+    )
     body = {"metering": flow.pk, "address": "Chilonzor", "count_days": 30}
     vt = DesignType.objects.filter(design=flow.design).first()
     body["design_type"] = vt.pk
+
+    def flag():
+        return maker.get(f"/api/v1/designs/{flow.design.pk}/").data["actions"]["create_order"]
+
     # in work
-    assert admin_api.post("/api/v1/orders/", body, format="json").status_code == 400
+    assert maker.post("/api/v1/orders/", body, format="json").status_code == 400
     # waiting for the client's answer
     ready_design(flow, designer)
-    r = admin_api.post("/api/v1/orders/", body, format="json")
+    r = maker.post("/api/v1/orders/", body, format="json")
     assert r.status_code == 400 and not Order.objects.exists()
-    # the action flag agrees
-    assert (
-        admin_api.get(f"/api/v1/designs/{flow.design.pk}/").data["actions"]["create_order"] is False
-    )
+    assert flag() is False
     DS.record_design_answer(flow.design, by=manager, answer="approved")
-    assert (
-        admin_api.get(f"/api/v1/designs/{flow.design.pk}/").data["actions"]["create_order"] is True
-    )
-    # the client later refuses the price
+    # the design is approved, the price is not: still no order
+    assert flag() is False
+    r = maker.post("/api/v1/orders/", body, format="json")
+    assert r.status_code == 400 and "narx" in str(r.data).lower()
+    assert not Order.objects.exists()
+    PS.mark_price_done(flow.price, by=pricer)
+    assert flag() is False  # the price is ready, the client has not answered
+    assert maker.post("/api/v1/orders/", body, format="json").status_code == 400
+    PS.record_price_answer(flow.price, by=manager, answer="approved")
+    assert flag() is True
+    # the client later refuses after all
     Metering.objects.filter(pk=flow.pk).update(client_result=ClientResult.price_declined)
-    assert (
-        admin_api.get(f"/api/v1/designs/{flow.design.pk}/").data["actions"]["create_order"] is False
-    )
-    r = admin_api.post("/api/v1/orders/", body, format="json")
+    assert flag() is False
+    r = maker.post("/api/v1/orders/", body, format="json")
     assert r.status_code == 400 and not Order.objects.exists()
-    Metering.objects.filter(pk=flow.pk).update(client_result="")
-    r = admin_api.post("/api/v1/orders/", body, format="json")
+    Metering.objects.filter(pk=flow.pk).update(client_result=ClientResult.agreed)
+    r = maker.post("/api/v1/orders/", body, format="json")
     assert r.status_code == 201, r.content
+
+
+def test_price_only_order_needs_the_price_answer(
+    operator, ali, pricer, manager, api, default_factory
+):
+    from order.models import Order
+
+    maker = api("order.add_order", "order.view_order")
+    m = finished(operator, ali, None, pricer, manager, step="price")
+    body = {"metering": m.pk, "address": "Chilonzor", "count_days": 30}
+    assert maker.post("/api/v1/orders/", body, format="json").status_code == 400
+    PS.mark_price_done(m.price, by=pricer)
+    assert maker.post("/api/v1/orders/", body, format="json").status_code == 400
+    PS.record_price_answer(m.price, by=manager, answer="approved")
+    r = maker.post("/api/v1/orders/", body, format="json")
+    assert r.status_code == 201, r.content
+    assert Order.objects.filter(metering=m).count() == 1
 
 
 def test_no_order_from_a_declined_design(flow, designer, manager, admin_api, default_factory):

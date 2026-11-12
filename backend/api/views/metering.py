@@ -549,7 +549,7 @@ def _offer_agenda_response(view, request, qs, kind):
             | Q(metering__client__phone__icontains=search)
             | Q(metering__address__icontains=search)
         )
-    data = offer_agenda(qs, now=metering_services._now())
+    data = offer_agenda(qs, now=metering_services._now(), split_ordered=kind == "design")
     ctx = view.get_serializer_context()
     out = {"counts": data["counts"]}
     for key in ("overdue", "today", "work", "review"):
@@ -577,6 +577,7 @@ class DesignViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
         qs = Design.objects.select_related(
             "metering__client",
             "metering__order",
+            "metering__price",
             "metering__manager",
             "metering__measurer",
             "user",
@@ -590,6 +591,10 @@ class DesignViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.G
         stages = csv_values(params.get("stage"))
         if stages:
             qs = qs.filter(stage__in=stages)
+        # ?ordered=true: the zamer already became an order («Buyurtmaga o'tgan»)
+        ordered = _bool_param(params.get("ordered"))
+        if ordered is not None:
+            qs = qs.filter(metering__order__isnull=not ordered)
         return apply_period(qs, "created_at", params)
 
     def _detail(self, design):

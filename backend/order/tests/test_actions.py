@@ -71,7 +71,8 @@ def test_go_to_assembly_action_notifies_assembly_permission_holders(
 
     order.refresh_from_db()
     assert order.status == OrderStatus.ASSEMBLY
-    mock_send_message.assert_called_once()
+    # the Telegram cards (assembly.ready / assembly.task) replace the bare message
+    mock_send_message.assert_not_called()
     batch = mock_bulk.call_args.args[0]
     assert len(batch) == 1
     assert batch[0]["phone"] == "998907776658"

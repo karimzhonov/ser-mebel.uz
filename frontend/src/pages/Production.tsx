@@ -1,14 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Plus } from "lucide-react";
-import { api } from "@/api/client";
+import { api, fieldErrors } from "@/api/client";
 import { useAction, useAll, useGet, useList, useMeta } from "@/api/hooks";
-import type { PainterType, ProductionItem, UserShort } from "@/api/types";
+import type { PainterPart, PainterType, ProductionItem, UserShort } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink, ROW_TONE } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
+import { DueLabel, DueModal } from "@/components/DueDate";
+import { PainterParts } from "@/components/PainterParts";
+import { RoverDueLabel, RoverDueModal } from "@/components/RoverDue";
 import {
+  Badge,
   Button,
   Card,
   Check,
@@ -26,6 +30,7 @@ import {
   Segmented,
   Select,
   StatTile,
+  Textarea,
 } from "@/components/ui";
 import { date, money, num, phone } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
@@ -48,12 +53,12 @@ export default function ProductionPage() {
 function ProductionList({ kind }: { kind: Kind }) {
   const cfg = CONFIG[kind];
   const { can } = useAuth();
-  const { state, page, set } = useUrlState({ search: "", [cfg.doneField]: "false", date_from: "", date_to: "", user: "" } as Record<string, string>);
+  const { state, page, set } = useUrlState({ search: "", [cfg.doneField]: "false", date_from: "", date_to: "", user: "", state: "" } as Record<string, string>);
   const [searchParams, setSearchParams] = useSearchParams();
   const openId = searchParams.get("open");
   const { data, isFetching } = useList<ProductionItem>(cfg.resource, { ...state, page });
   const { data: stats } = useGet<Record<string, number>>(`/${cfg.resource}/stats/`, { search: state.search, date_from: state.date_from, date_to: state.date_to });
-  const isManager = can("assembly.manager");
+  const isManager = can("assembly.manager") || can("oauth.user_production_head");
   const { data: assemblers } = useGet<UserShort[]>(kind === "assembly" && isManager ? "/assemblies/assemblers/" : null);
   const [types, setTypes] = useState(false);
 
@@ -71,18 +76,26 @@ function ProductionList({ kind }: { kind: Kind }) {
           )
         }
       />
-      <div className="mb-4 grid grid-cols-3 gap-3">
+      <div className={`mb-4 grid gap-3 ${kind === "rover" ? "grid-cols-2 sm:grid-cols-4" : kind === "assembly" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
         <StatTile label="Jami" value={stats?.total ?? "…"} tone="primary" />
         <StatTile label="Ishda" value={stats?.not_done ?? "…"} tone="warn" />
+        {(kind === "rover" || kind === "assembly") && <StatTile label="Tekshiruvda" value={stats?.checking ?? "…"} tone="warn" />}
         <StatTile label="Bajarildi" value={(kind === "assembly" ? stats?.installing_done : stats?.done) ?? "…"} tone="ok" />
       </div>
       <Card padded={false}>
         <div className="flex flex-col gap-3 border-b border-slate-100 p-4 lg:flex-row dark:border-slate-800">
           <Segmented
-            value={state[cfg.doneField]}
-            onChange={(v) => set({ [cfg.doneField]: v })}
+            value={(kind === "rover" || kind === "assembly") && state.state ? state.state : state[cfg.doneField]}
+            onChange={(v) =>
+              kind === "rover" || kind === "assembly"
+                ? v === "checking"
+                  ? set({ [cfg.doneField]: "", state: "checking" })
+                  : set({ [cfg.doneField]: v, state: "" })
+                : set({ [cfg.doneField]: v })
+            }
             options={[
               { value: "false", label: "Faol" },
+              ...(kind === "rover" || kind === "assembly" ? [{ value: "checking", label: "Tekshiruvda" }] : []),
               { value: "true", label: "Bajarilgan" },
               { value: "", label: "Barchasi" },
             ]}
@@ -103,27 +116,62 @@ function ProductionList({ kind }: { kind: Kind }) {
           loading={isFetching}
           rowKey={(r) => r.id}
           onRowClick={(r) => setSearchParams((p) => (p.set("open", String(r.id)), p))}
-          rowClassName={(r) => (r.done ? undefined : ROW_TONE[r.order.deadline.level])}
+          rowClassName={(r) => (r.done ? undefined : kind === "rover" ? (r.overdue ? ROW_TONE.danger : undefined) : r.order.deadline ? ROW_TONE[r.order.deadline.level] : undefined)}
           columns={[
             { key: "n", header: "Buyurtma", cell: (r) => <span className="font-semibold">№{r.order.order_number}</span> },
             { key: "client", header: "Mijoz", cell: (r) => r.order.client?.fio ?? "—" },
             { key: "status", header: "Buyurtma holati", cell: (r) => <OrderStatusBadge status={r.order.status} label={r.order.status_label} /> },
-            { key: "deadline", header: "Muddat", cell: (r) => <DeadlinePill deadline={r.order.deadline} /> },
+            ...(kind === "rover" ? [] : [{ key: "deadline", header: "Muddat", cell: (r: ProductionItem) => (r.order.deadline ? <DeadlinePill deadline={r.order.deadline} /> : <span className="muted">—</span>) }]),
             ...(kind === "detailing"
               ? [{ key: "due_at", header: "Detalirovka muddati", cell: (r: ProductionItem) => <DetailingDue dueAt={r.due_at} done={r.done} /> }]
               : []),
-            ...(kind === "assembly"
-              ? [{ key: "user", header: "Yig'uvchi", cell: (r: ProductionItem) => r.user_detail?.name || (r.user_detail ? phone(r.user_detail.phone) : <span className="muted">—</span>) }]
+            ...(kind === "rover"
+              ? [{ key: "due_date", header: "Rover muddati", cell: (r: ProductionItem) => <RoverDueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} /> }]
               : []),
-            ...(kind === "painter" ? [{ key: "type", header: "Tur", cell: (r: ProductionItem) => r.type_detail?.name ?? <span className="muted">—</span> }] : []),
+            ...(kind === "assembly"
+              ? [
+                  { key: "user", header: "Yig'uvchi", cell: (r: ProductionItem) => r.user_detail?.name || (r.user_detail ? phone(r.user_detail.phone) : <span className="muted">—</span>) },
+                  { key: "due_date", header: "Yig'ish muddati", cell: (r: ProductionItem) => <DueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} /> },
+                ]
+              : []),
+            ...(kind === "painter"
+              ? [
+                  {
+                    key: "type",
+                    header: "Jamoalar",
+                    cell: (r: ProductionItem) =>
+                      r.parts && r.parts.length ? (
+                        <span className="flex flex-wrap gap-1">
+                          {r.parts.map((p) => (
+                            <Badge key={p.id} tone={p.done ? "ok" : "idle"}>
+                              {p.done && "✅ "}
+                              {p.type_detail.name} · {num(p.square)} m²
+                            </Badge>
+                          ))}
+                          {r.parts_over && <Badge tone="warn">⚠️ m² oshib ketdi</Badge>}
+                          {!!r.remaining_square && r.remaining_square > 0 && (
+                            <span className="text-xs font-semibold text-rose-600 dark:text-rose-400">Qolgan: {num(r.remaining_square)} m²</span>
+                          )}
+                        </span>
+                      ) : (
+                        <span className="muted">— tayinlanmagan —</span>
+                      ),
+                  },
+                  { key: "due_date", header: "Molyar muddati", cell: (r: ProductionItem) => <DueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} /> },
+                ]
+              : []),
             { key: "square", header: "Maydon", cell: (r) => <span className="tabular-nums">{num(r.square)}</span> },
             ...(kind !== "detailing" ? [{ key: "price", header: "Narx", cell: (r: ProductionItem) => <span className="tabular-nums">{money(r.price)}</span> }] : []),
             {
               key: "done",
               header: "Bajarildi",
               cell: (r) =>
-                kind === "assembly" ? (
+                kind === "assembly" && r.state === "checking" ? (
+                  <Badge tone="warn">Tekshiruvda</Badge>
+                ) : kind === "assembly" ? (
                   <div className="flex gap-1"><Check ok={r.done} label="Yig'." /><Check ok={!!r.installing_done} label="O'rn." /></div>
+                ) : kind === "rover" && r.state === "checking" ? (
+                  <Badge tone="warn">Tekshiruvda</Badge>
                 ) : (
                   <Check ok={r.done} />
                 ),
@@ -133,16 +181,38 @@ function ProductionList({ kind }: { kind: Kind }) {
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="font-semibold">№{r.order.order_number} · {r.order.client?.fio}</span>
-                <Check ok={kind === "assembly" ? !!r.installing_done : r.done} />
+                {(kind === "rover" || kind === "assembly") && r.state === "checking" ? (
+                  <Badge tone="warn">Tekshiruvda</Badge>
+                ) : (
+                  <Check ok={kind === "assembly" ? !!r.installing_done : r.done} />
+                )}
               </div>
               <div className="flex items-center justify-between text-sm">
-                <DeadlinePill deadline={r.order.deadline} />
+                {kind === "rover" || !r.order.deadline ? <span /> : <DeadlinePill deadline={r.order.deadline} />}
                 <span className="muted">{num(r.square)} m²</span>
               </div>
               {kind === "detailing" && (
                 <div className="text-sm">
                   <span className="muted">Detalirovka: </span>
                   <DetailingDue dueAt={r.due_at} done={r.done} />
+                </div>
+              )}
+              {kind === "rover" && (
+                <div className="text-sm">
+                  <span className="muted">Rover muddati: </span>
+                  <RoverDueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} />
+                </div>
+              )}
+              {kind === "painter" && (
+                <div className="text-sm">
+                  <span className="muted">Molyar muddati: </span>
+                  <DueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} />
+                </div>
+              )}
+              {kind === "assembly" && (
+                <div className="text-sm">
+                  <span className="muted">Yig'ish muddati: </span>
+                  <DueLabel dueDate={r.due_date} auto={r.due_auto} overdue={r.overdue} />
                 </div>
               )}
             </div>
@@ -156,7 +226,7 @@ function ProductionList({ kind }: { kind: Kind }) {
           kind={kind}
           id={Number(openId)}
           assemblers={assemblers}
-          onClose={() => setSearchParams((p) => (p.delete("open"), p))}
+          onClose={() => setSearchParams((p) => (p.delete("open"), p.delete("split"), p))}
         />
       )}
       {types && <PainterTypesModal onClose={() => setTypes(false)} />}
@@ -176,11 +246,26 @@ function ProductionModal({
   onClose: () => void;
 }) {
   const cfg = CONFIG[kind];
+  const { can } = useAuth();
+  const [searchParams] = useSearchParams();
   const { data: item } = useGet<ProductionItem>(`/${cfg.resource}/${id}/`);
-  const { data: painterTypes } = useAll<PainterType>("painter-types", {}, kind === "painter");
+  const { data: painterTypes } = useAll<PainterType>(
+    "painter-types",
+    {},
+    kind === "painter" && can("oauth.user_production_head"),
+  );
   const [squares, setSquares] = useState({ square: "", painter_square: "", rover_square: "" });
   const [confirm, setConfirm] = useState<null | string>(null);
   const [moveDue, setMoveDue] = useState(false);
+  const [amountOpen, setAmountOpen] = useState(false);
+  const [roverDue, setRoverDue] = useState(false);
+  const [painterDue, setPainterDue] = useState<PainterPart | null>(null);
+  const [painterDoneOpen, setPainterDoneOpen] = useState<PainterPart | null>(null);
+  const [assemblyDue, setAssemblyDue] = useState(false);
+  const [installOpen, setInstallOpen] = useState(false);
+  const [note, setNote] = useState("");
+  const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
+  const [amount, setAmount] = useState<{ amount: number | string; currency: string }>({ amount: "", currency: "UZS" });
   useEffect(() => {
     if (item && kind === "detailing")
       setSquares({
@@ -195,31 +280,62 @@ function ProductionModal({
     success: "Saqlandi",
     invalidate: inv,
   });
+  const assemblyAssign = useAction((body: { user: number | null }) => api.post(`/assemblies/${id}/assign/`, body), {
+    success: "Saqlandi",
+    invalidate: inv,
+  });
   const run = useAction((path: string) => api.post(`/${cfg.resource}/${id}/${path}/`), {
     success: "Tayyor",
     invalidate: inv,
     onSuccess: () => setConfirm(null),
   });
 
+  const submit = useAction(
+    () =>
+      api.post(`/${cfg.resource}/${id}/done/`, {
+        price: { amount: Number(amount.amount), currency: amount.currency },
+        note: note.trim(),
+      }),
+    { success: "Tekshiruvga yuborildi", invalidate: inv, onSuccess: () => setAmountOpen(false) },
+  );
+
+  const painterDone = useAction(
+    () => api.post(`/painters/${id}/done/`, { note: note.trim(), part: painterDoneOpen?.id }),
+    { success: "Bajarildi", invalidate: inv, onSuccess: () => setPainterDoneOpen(null) },
+  );
+
+  const installDone = useAction(
+    () => api.post(`/assemblies/${id}/installing-done/`, { note: note.trim() }),
+    { success: "Tekshiruvga yuborildi — rahbar tasdiqlaydi", invalidate: inv, onSuccess: () => setInstallOpen(false) },
+  );
+
   if (!item) return null;
   const o = item.order;
   const a = item.actions;
+  const restricted = !!item.restricted;
 
   return (
     <Modal open onClose={onClose} title={`${cfg.title} · buyurtma №${o.order_number}`} size="lg">
       <div className="space-y-5">
         <div className="flex flex-wrap gap-2">
           <OrderStatusBadge status={o.status} label={o.status_label} />
-          <DeadlinePill deadline={o.deadline} />
+          {kind !== "rover" && o.deadline && <DeadlinePill deadline={o.deadline} />}
+          {(kind === "rover" || (kind === "painter" && !item.folder)) && (
+            <FolderButton folderId={item.design_folder} label="Dizayn papkasi" />
+          )}
           <FolderButton folderId={item.folder} label="Bosqich fayllari" />
           <FolderButton folderId={o.folder} label="Buyurtma fayllari" />
         </div>
         <KV
           items={[
             ["Mijoz", o.client?.fio ?? "—"],
-            ["Telefon", <PhoneLink value={o.client?.phone} />],
-            ["Manzil", <AddressLink address={o.address} link={o.address_link} mapUrl={o.map_url} lat={o.lat} lon={o.lon} />],
-            ["Topshirish sanasi", date(o.end_date, "ko'rsatilmagan")],
+            ...(restricted
+              ? []
+              : ([
+                  ["Telefon", <PhoneLink value={o.client?.phone} />],
+                  ["Manzil", <AddressLink address={o.address} link={o.address_link} mapUrl={o.map_url} lat={o.lat} lon={o.lon} />],
+                ] as [string, ReactNode][])),
+            ...(kind === "rover" || restricted ? [] : ([["Topshirish sanasi", date(o.end_date, "ko'rsatilmagan")]] as [string, ReactNode][])),
             ...(kind === "detailing"
               ? ([[
                   "Detalirovka muddati",
@@ -233,8 +349,67 @@ function ProductionModal({
                   </span>,
                 ]] as [string, JSX.Element][])
               : []),
-            ["Buyurtma", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Buyurtmani ochish →</Link>],
+            ...(kind === "painter"
+              ? ([
+                  ["Holat", item.state === "done" ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="idle">Ishda</Badge>],
+                  ...(item.done_at && item.state === "done" && can("oauth.user_production_head")
+                    ? [["Yakunlandi", `${item.done_by_detail?.name || (item.done_by_detail ? phone(item.done_by_detail.phone) : "—")} · ${date(item.done_at)}`]]
+                    : []),
+                ] as [string, ReactNode][])
+              : []),
+            ...(kind === "assembly"
+              ? ([
+                  [
+                    "Yig'ish muddati",
+                    <span className="flex flex-wrap items-center gap-2">
+                      <DueLabel dueDate={item.due_date} auto={item.due_auto} overdue={item.overdue} />
+                      {a.due && can("oauth.user_production_head") && (
+                        <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setAssemblyDue(true)}>
+                          o'zgartirish
+                        </button>
+                      )}
+                    </span>,
+                  ],
+                  [
+                    "Holat",
+                    item.state === "done" ? <Badge tone="ok">{item.state_label}</Badge> : item.state === "checking" || item.state === "assembled" ? <Badge tone="warn">{item.state_label}</Badge> : <Badge tone="idle">{item.state_label ?? "Ishda"}</Badge>,
+                  ],
+                  ...(item.note ? [["Izoh", <span className="whitespace-pre-wrap">{item.note}</span>]] : []),
+                  ...(item.finished_at
+                    ? [["O'rnatdi", `${item.finished_by_detail?.name || (item.finished_by_detail ? phone(item.finished_by_detail.phone) : "—")} · ${date(item.finished_at)}`]]
+                    : []),
+                  ...(item.confirmed_at
+                    ? [["Tasdiqladi", `${item.confirmed_by_detail?.name || (item.confirmed_by_detail ? phone(item.confirmed_by_detail.phone) : "—")} · ${date(item.confirmed_at)}`]]
+                    : []),
+                ] as [string, ReactNode][])
+              : []),
+            ...(item.can_open_order === false
+              ? []
+              : ([["Buyurtma", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Buyurtmani ochish →</Link>]] as [string, ReactNode][])),
             ...(kind !== "detailing" ? ([["Maydon", num(item.square)], ["Narx", money(item.price)]] as [string, string][]) : []),
+            ...(kind === "rover"
+              ? ([
+                  [
+                    "Rover muddati",
+                    <span className="flex flex-wrap items-center gap-2">
+                      <RoverDueLabel dueDate={item.due_date} auto={item.due_auto} overdue={item.overdue} />
+                      {a.due && can("oauth.user_production_head") && (
+                        <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setRoverDue(true)}>
+                          o'zgartirish
+                        </button>
+                      )}
+                    </span>,
+                  ],
+                  ["Holat", item.state === "checking" ? <Badge tone="warn">Tekshiruvda</Badge> : item.state === "done" ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="idle">Ishda</Badge>],
+                  ...(item.note ? [["Izoh", <span className="whitespace-pre-wrap">{item.note}</span>]] : []),
+                  ...(item.submitted_at
+                    ? [["Bajardi", `${item.submitted_by_detail?.name || (item.submitted_by_detail ? phone(item.submitted_by_detail.phone) : "—")} · ${date(item.submitted_at)}`]]
+                    : []),
+                  ...(item.checked_at
+                    ? [["Tasdiqladi", `${item.checked_by_detail?.name || (item.checked_by_detail ? phone(item.checked_by_detail.phone) : "—")} · ${date(item.checked_at)}`]]
+                    : []),
+                ] as [string, ReactNode][])
+              : []),
           ]}
         />
 
@@ -272,35 +447,94 @@ function ProductionModal({
         )}
 
         {kind === "painter" && (
-          <Field label="Bo'yash turi" hint="Tanlanganda molyarga xabar boradi, narx maydon bo'yicha qayta hisoblanadi">
-            <Select disabled={!a.edit} value={item.type ?? ""} onChange={(e) => patch.mutate({ type: e.target.value ? Number(e.target.value) : null })}>
-              <option value="">— tayinlanmagan —</option>
-              {painterTypes?.map((t) => (
-                <option key={t.id} value={t.id}>{t.name} — {money(t.price)}/m²</option>
-              ))}
-            </Select>
-          </Field>
+          <div className="space-y-3">
+            {!!item.remaining_square && item.remaining_square > 0 && (
+              <div className="rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 dark:bg-rose-950/40 dark:text-rose-300">
+                Qolgan: {num(item.remaining_square)} m² hali hech kimga berilmagan
+              </div>
+            )}
+            {item.parts_over && (
+              <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                ⚠️ Jamoalar maydoni ({num(item.assigned_square)} m²) ish maydonidan ({num(item.square)} m²) katta — qismlarni to'g'rilang
+              </div>
+            )}
+            {a.edit && can("oauth.user_production_head") && (
+              <PainterParts
+                painterId={item.id}
+                total={item.square}
+                parts={item.parts ?? []}
+                types={painterTypes ?? []}
+                startOpen={searchParams.get("split") === "1"}
+                invalidate={inv}
+              />
+            )}
+            {(item.parts ?? []).map((p) => (
+              <PartCard key={p.id} part={p} onDone={() => { setNote(""); setSubmitErrors({}); setPainterDoneOpen(p); }} onDue={() => setPainterDue(p)} canDue={can("oauth.user_production_head")} />
+            ))}
+            {!(item.parts ?? []).length && <div className="muted text-sm">— jamoa tayinlanmagan —</div>}
+          </div>
         )}
 
         {kind === "assembly" && (
-          <Field label="Yig'uvchi">
-            <Select disabled={!a.edit} value={item.user ?? ""} onChange={(e) => patch.mutate({ user: e.target.value ? Number(e.target.value) : null })}>
-              <option value="">— tayinlanmagan —</option>
-              {(assemblers ?? (item.user_detail ? [item.user_detail] : [])).map((u) => (
-                <option key={u.id} value={u.id}>{u.name || phone(u.phone)}</option>
-              ))}
-            </Select>
+          <Field
+            label="Jamoa (yig'uvchi)"
+            hint="«Сборка» holatiga o'tganda rahbar jamoani tanlaydi — tanlangan yig'uvchiga Telegram kartasi boradi"
+          >
+            {a.edit && can("oauth.user_production_head") ? (
+              <Select value={item.user ?? ""} onChange={(e) => assemblyAssign.mutate({ user: e.target.value ? Number(e.target.value) : null })}>
+                <option value="">— tayinlanmagan —</option>
+                {(assemblers ?? (item.user_detail ? [item.user_detail] : [])).map((u) => (
+                  <option key={u.id} value={u.id}>{u.name || phone(u.phone)}</option>
+                ))}
+              </Select>
+            ) : (
+              <div className="text-sm">{item.user_detail ? item.user_detail.name || phone(item.user_detail.phone) : "— tayinlanmagan —"}</div>
+            )}
           </Field>
         )}
 
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-4 dark:border-slate-800">
-          {a.done && (
-            <Button variant="success" icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setConfirm("done")}>
+          {a.done && kind !== "painter" && (
+            <Button
+              variant="success"
+              icon={<CheckCircle2 className="h-4 w-4" />}
+              onClick={() => {
+                if (kind === "rover") {
+                  setAmount({ amount: "", currency: item.price?.currency ?? "UZS" });
+                  setNote("");
+                  setSubmitErrors({});
+                  setAmountOpen(true);
+                } else setConfirm("done");
+              }}
+            >
               {kind === "assembly" ? "Yig'ish bajarildi" : kind === "detailing" ? "Detalirovka bajarildi" : "Bajarildi"}
             </Button>
           )}
+          {kind === "rover" && a.due && can("oauth.user_production_head") && (
+            <Button variant="outline" onClick={() => setRoverDue(true)}>
+              🕒 Muddat
+            </Button>
+          )}
+          {kind === "assembly" && a.due && can("oauth.user_production_head") && (
+            <Button variant="outline" onClick={() => setAssemblyDue(true)}>
+              🕒 Muddat
+            </Button>
+          )}
+          {a.confirm && (kind === "assembly" ? can("oauth.user_production_head") : can("oauth.user_rover_checker")) && (
+            <Button variant="success" onClick={() => setConfirm("confirm")}>
+              {kind === "assembly" ? "✅ Tayyor" : "✅ Tasdiqlash"}
+            </Button>
+          )}
           {a.installing_done && (
-            <Button variant="success" icon={<CheckCircle2 className="h-4 w-4" />} onClick={() => setConfirm("installing-done")}>
+            <Button
+              variant="success"
+              icon={<CheckCircle2 className="h-4 w-4" />}
+              onClick={() => {
+                setNote("");
+                setSubmitErrors({});
+                setInstallOpen(true);
+              }}
+            >
               O'rnatish bajarildi
             </Button>
           )}
@@ -311,9 +545,11 @@ function ProductionModal({
         onClose={() => setConfirm(null)}
         title="Bajarilganini tasdiqlang"
         text={
-          confirm === "installing-done"
-            ? "Buyurtma «Tayyor» holatini oladi."
-            : kind === "detailing"
+          confirm === "confirm" && kind === "assembly"
+            ? "Buyurtma «Готов» bo'ladi: kafolat xati va mijoz fikri boshlanadi."
+            : confirm === "confirm"
+              ? "Rover ishi tasdiqlanadi, molyarga xabar boradi."
+              : kind === "detailing"
               ? "Buyurtma «Xomashyo buyurtmasi» bosqichiga o'tadi."
               : kind === "assembly"
                 ? "Buyurtma «O'rnatish» bosqichiga o'tadi."
@@ -323,8 +559,130 @@ function ProductionModal({
         loading={run.isPending}
         onConfirm={() => confirm && run.mutate(confirm)}
       />
+      <Modal open={amountOpen} onClose={() => setAmountOpen(false)} title="Bajarilgan ish summasi" size="sm">
+        <div className="space-y-4">
+          <Field label="Summa" hint="Summa tekshiruvchiga yuboriladi" error={submitErrors.price}>
+            <MoneyInput value={amount} currencies={["UZS", "USD"]} onChange={setAmount} />
+          </Field>
+          <Field label="Izoh (nima ish qilindi, nechta eshik)" error={submitErrors.note}>
+            <Textarea required value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setAmountOpen(false)}>Bekor qilish</Button>
+            <Button
+              variant="success"
+              loading={submit.isPending}
+              disabled={!(Number(amount.amount) > 0) || note.trim().length < 3}
+              onClick={() => submit.mutateAsync().catch((e) => setSubmitErrors(fieldErrors(e)))}
+            >
+              Yuborish
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal open={!!painterDoneOpen} onClose={() => setPainterDoneOpen(null)} title={`Molyar ishi bajarildi${painterDoneOpen ? ` · ${painterDoneOpen.type_detail.name}` : ""}`} size="sm">
+        <div className="space-y-4">
+          <Field label="Izoh (nima ish qilindi)" error={submitErrors.note}>
+            <Textarea required value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setPainterDoneOpen(null)}>Bekor qilish</Button>
+            <Button
+              variant="success"
+              loading={painterDone.isPending}
+              disabled={note.trim().length < 3}
+              onClick={() => painterDone.mutateAsync().catch((e) => setSubmitErrors(fieldErrors(e)))}
+            >
+              Bajarildi
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal open={installOpen} onClose={() => setInstallOpen(false)} title="O'rnatish bajarildi" size="sm">
+        <div className="space-y-4">
+          <Field label="Izoh (nima ish qilindi)" hint="Rahbar tasdiqlagach buyurtma «Tayyor» bo'ladi" error={submitErrors.note}>
+            <Textarea required value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setInstallOpen(false)}>Bekor qilish</Button>
+            <Button
+              variant="success"
+              loading={installDone.isPending}
+              disabled={note.trim().length < 3}
+              onClick={() => installDone.mutateAsync().catch((e) => setSubmitErrors(fieldErrors(e)))}
+            >
+              O'rnatildi
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      {assemblyDue && (
+        <DueModal
+          resource="assemblies"
+          id={item.id}
+          dueDate={item.due_date}
+          title="Yig'ish muddati"
+          presets={[5, 10, 14]}
+          invalidate={["assemblies", "orders", "dashboard"]}
+          onClose={() => setAssemblyDue(false)}
+        />
+      )}
+      {painterDue && (
+        <DueModal
+          resource="painters"
+          id={item.id}
+          dueDate={painterDue.due_date}
+          extra={{ part: painterDue.id }}
+          title={`Molyar muddati · ${painterDue.type_detail.name}`}
+          presets={[5, 10, 14]}
+          invalidate={["painters", "orders", "dashboard"]}
+          onClose={() => setPainterDue(null)}
+        />
+      )}
+      {roverDue && <RoverDueModal roverId={item.id} dueDate={item.due_date} onClose={() => setRoverDue(false)} />}
       {moveDue && <DetailingDueModal detailingId={item.id} dueAt={item.due_at} onClose={() => setMoveDue(false)} />}
     </Modal>
+  );
+}
+
+function PartCard({ part: p, onDone, onDue, canDue }: { part: PainterPart; onDone: () => void; onDue: () => void; canDue: boolean }) {
+  return (
+    <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="font-semibold">
+          {p.type_detail.name} · <span className="tabular-nums">{num(p.square)} m²</span>
+        </div>
+        {p.done ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="idle">Ishda</Badge>}
+      </div>
+      <KV
+        items={[
+          ["Molyar", p.painter_detail ? p.painter_detail.name || phone(p.painter_detail.phone) : "—"],
+          ...(p.price ? ([["Narx", money(p.price)]] as [string, string][]) : []),
+          [
+            "Muddat",
+            <span className="flex flex-wrap items-center gap-2">
+              <DueLabel dueDate={p.due_date} auto={p.due_auto} overdue={p.overdue} />
+              {p.actions.due && canDue && (
+                <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={onDue}>
+                  o'zgartirish
+                </button>
+              )}
+            </span>,
+          ],
+          ...(p.note ? ([["Izoh", <span className="whitespace-pre-wrap">{p.note}</span>]] as [string, ReactNode][]) : []),
+          ...(p.done_at
+            ? ([["Bajardi", `${p.done_by_detail?.name || (p.done_by_detail ? phone(p.done_by_detail.phone) : "—")} · ${date(p.done_at)}`]] as [string, string][])
+            : []),
+        ]}
+      />
+      {p.actions.done && (
+        <div className="mt-2 flex justify-end">
+          <Button variant="success" icon={<CheckCircle2 className="h-4 w-4" />} onClick={onDone}>
+            Bajarildi
+          </Button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -334,10 +692,10 @@ function PainterTypesModal({ onClose }: { onClose: () => void }) {
   const { data: types } = useAll<PainterType>("painter-types");
   const { user } = useAuth();
   const { data: users } = useList<UserShort>("users", { page_size: 200 }, !!user?.is_superuser);
-  const [form, setForm] = useState<{ id?: number; name: string; price: { amount: number | string; currency: string }; user: string } | null>(null);
+  const [form, setForm] = useState<{ id?: number; name: string; price: { amount: number | string; currency: string }; user: string; outsource: boolean } | null>(null);
   const save = useAction(
     () => {
-      const body = { name: form!.name, price: form!.price, user: form!.user ? Number(form!.user) : null };
+      const body = { name: form!.name, price: form!.price, user: form!.user ? Number(form!.user) : null, outsource: form!.outsource };
       return form!.id ? api.patch(`/painter-types/${form!.id}/`, body) : api.post("/painter-types/", body);
     },
     { success: "Saqlandi", invalidate: ["painter-types"], onSuccess: () => setForm(null) },
@@ -349,12 +707,12 @@ function PainterTypesModal({ onClose }: { onClose: () => void }) {
           <li key={t.id} className="flex items-center justify-between py-2.5 text-sm">
             <div>
               <div className="font-medium">{t.name}</div>
-              <div className="muted text-xs">{t.user_detail ? t.user_detail.name || phone(t.user_detail.phone) : "ijrochisiz"}</div>
+              <div className="muted text-xs">{t.user_detail ? t.user_detail.name || phone(t.user_detail.phone) : "ijrochisiz"}{t.outsource ? " · Autsors" : ""}</div>
             </div>
             <div className="flex items-center gap-2">
               <span className="tabular-nums">{money(t.price)}</span>
               {can("painter.change_paintertype") && (
-                <Button size="sm" variant="ghost" onClick={() => setForm({ id: t.id, name: t.name, price: t.price, user: t.user ? String(t.user) : "" })}>
+                <Button size="sm" variant="ghost" onClick={() => setForm({ id: t.id, name: t.name, price: t.price, user: t.user ? String(t.user) : "", outsource: !!t.outsource })}>
                   Tahrirlash
                 </Button>
               )}
@@ -363,7 +721,7 @@ function PainterTypesModal({ onClose }: { onClose: () => void }) {
         ))}
       </ul>
       {can("painter.add_paintertype") && !form && (
-        <Button className="mt-3" variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ name: "", price: { amount: "", currency: meta?.default_currency ?? "USD" }, user: "" })}>
+        <Button className="mt-3" variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setForm({ name: "", price: { amount: "", currency: meta?.default_currency ?? "USD" }, user: "", outsource: false })}>
           Tur qo'shish
         </Button>
       )}
@@ -377,6 +735,14 @@ function PainterTypesModal({ onClose }: { onClose: () => void }) {
               {users?.results.map((u) => <option key={u.id} value={u.id}>{u.name || phone(u.phone)}</option>)}
             </Select>
           </Field>
+          {can("oauth.user_production_head") ? (
+            <label className="flex items-center gap-2 text-sm sm:col-span-3">
+              <input type="checkbox" checked={form.outsource} onChange={(e) => setForm({ ...form, outsource: e.target.checked })} />
+              Autsors jamoa <span className="muted text-xs">(ishchi mijoz telefoni, manzili va sanalarini ko'rmaydi)</span>
+            </label>
+          ) : (
+            <div className="text-sm sm:col-span-3">{form.outsource ? "Autsors jamoa" : "Ichki jamoa"}</div>
+          )}
           <div className="flex justify-end gap-2 sm:col-span-3">
             <Button variant="ghost" onClick={() => setForm(null)}>Bekor qilish</Button>
             <Button loading={save.isPending} onClick={() => save.mutate()}>Saqlash</Button>

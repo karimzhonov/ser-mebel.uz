@@ -48,6 +48,7 @@ class FakeSession(BaseSession):
 @pytest.fixture
 def env(monkeypatch):
     import bot as botpkg
+    from bot.assembly import router as assembly
     from bot.backend.client import backend
     from bot.common import link, start
     from bot.crm import router as crm
@@ -55,6 +56,8 @@ def env(monkeypatch):
     from bot.hr import group_router, private_router
     from bot.metering import router as metering
     from bot.offer import router as offer
+    from bot.painter import router as painter
+    from bot.rover import router as rover
     from bot.warehouse import ex_keeper_router as wh_ex
     from bot.warehouse import fallback_router as wh_fallback
     from bot.warehouse import router as wh
@@ -65,6 +68,9 @@ def env(monkeypatch):
         start.router,
         metering,
         offer,
+        rover,
+        painter,
+        assembly,
         wh,
         wh_ex,
         crm,

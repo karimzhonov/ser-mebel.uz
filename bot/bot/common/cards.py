@@ -106,6 +106,16 @@ class CardStore:
             log.warning("could not take cards of %s:%s", self.prefix, key, exc_info=True)
         return []
 
+    async def take_all(self, key) -> list[dict]:
+        """Read AND delete every stored card of the key, whatever the chat."""
+        try:
+            raw = await get_redis().lrange(self._key(key), 0, -1)
+        except Exception:  # noqa: BLE001
+            log.warning("could not load cards of %s:%s", self.prefix, key, exc_info=True)
+            return []
+        chats = {c for c in (_chat(e) for e in _load(raw)) if c is not None}
+        return await self.take(key, chats) if chats else []
+
     async def drop(self, key, chat_ids) -> None:
         await self.take(key, chat_ids)
 

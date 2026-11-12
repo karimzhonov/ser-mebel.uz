@@ -182,10 +182,11 @@ def can_create_order(design) -> bool:
     from order.models import Order
 
     metering = design.metering
+    price = getattr(metering, "price", None) if metering is not None else None
     return (
         design.stage == "approved"
-        and (
-            metering is None or metering.client_result not in ("design_declined", "price_declined")
-        )
+        and price is not None
+        and price.stage == "approved"
+        and metering.client_result not in ("design_declined", "price_declined")
         and not Order.objects.filter(metering_id=design.metering_id).exists()
     )

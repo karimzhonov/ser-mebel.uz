@@ -1,0 +1,71 @@
+{
+  "id": "00000000-0000-0000-0000-000000008017",
+  "event": "painter.remainder",
+  "data": {
+    "painter": {
+      "id": 31,
+      "order": {
+        "id": 88,
+        "number": 1042
+      },
+      "client": {
+        "fio": "Ali Valiyev",
+        "phone": "+998901112244"
+      },
+      "address": "Chilonzor 7-kvartal, 12-uy",
+      "map_url": "https://yandex.com/maps/?pt=69.2401,41.2995&z=17&l=map",
+      "square": 6.5,
+      "type": {
+        "id": 4,
+        "name": "Glyanets"
+      },
+      "outsource": false,
+      "painter": {
+        "id": 21,
+        "name": "Molyar ustasi"
+      },
+      "state": "new",
+      "state_label": "Ishda",
+      "started_at": "2026-11-05T14:20:00",
+      "done_at": null,
+      "done_by": null,
+      "due_date": "2026-11-10",
+      "due_auto": false,
+      "due_set_by": {
+        "id": 14,
+        "name": "Ishlab chiqarish rahbari"
+      },
+      "overdue": false,
+      "days_late": 0,
+      "note": "Fasad bo'yaldi, 8 ta eshik",
+      "rev": 4,
+      "url": "https://ser-mebel.uz/production/painter?open=31",
+      "parts": [
+        {
+          "id": 51,
+          "type": {
+            "id": 4,
+            "name": "Glyanets"
+          },
+          "painter": {
+            "id": 21,
+            "name": "Molyar ustasi"
+          },
+          "outsource": false,
+          "square": 4.5,
+          "state": "done",
+          "done_at": "2026-11-09T16:05:00",
+          "due_date": "2026-11-10",
+          "rev": 3
+        }
+      ],
+      "assigned_square": 4.5,
+      "remainder": 2.0,
+      "split_url": "https://ser-mebel.uz/production/painter?open=31&split=1"
+    },
+    "remainder": 2.0,
+    "to": [
+      555666777
+    ]
+  }
+}

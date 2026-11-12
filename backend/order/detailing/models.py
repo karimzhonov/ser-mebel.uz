@@ -11,7 +11,6 @@ from simple_history.models import HistoricalRecords
 
 from ..assembly.models import Assembly
 from ..painter.models import Painter
-from ..rover.models import Rover
 
 
 class Detailing(models.Model):
@@ -76,16 +75,9 @@ def create_detailing_folders(sender: Type[Detailing], instance: Detailing, creat
         )
 
     if instance.rover_square:
-        Rover.objects.update_or_create(
-            order=instance.order,
-            defaults={
-                "square": instance.rover_square,
-                "price": Money(
-                    amount=float(config.ROVER_PRICE_PER_SQUARE.amount) * instance.rover_square,
-                    currency=config.ROVER_PRICE_PER_SQUARE.currency,
-                ),
-            },
-        )
+        from order.rover.services import sync_rover_from_detailing
+
+        sync_rover_from_detailing(instance.order, instance.rover_square)
 
     if not created:
         return
