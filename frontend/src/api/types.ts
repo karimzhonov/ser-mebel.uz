@@ -380,6 +380,8 @@ export interface OfferAgendaCounts {
   work: number;
   review: number;
   archive?: number;
+  /** «Dizayn» only: the designs whose zamer already became an order */
+  ordered?: number;
 }
 
 /** GET /designs/agenda/, /prices/agenda/ */

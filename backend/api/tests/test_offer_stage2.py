@@ -888,6 +888,35 @@ def test_offer_agenda_buckets(flow, designer, clock, make_staff):
     assert M.offer_agenda(Price.objects.all(), now=NOW)["counts"]["work"] == 1
 
 
+def test_design_archive_shows_ordered_designs_apart(flow, admin_api, default_factory):
+    """«Dizayn» archive: the designs whose zamer became an order are listed on their own
+    («Buyurtmaga o'tgan», any stage); the plain archive keeps only the rest."""
+    from metering.design.models import Design
+    from order.models import Order
+
+    other = Design.objects.create(metering=Metering.objects.create(client=flow.client))
+    Design.objects.filter(pk__in=[flow.design.pk, other.pk]).update(stage="approved")
+    Order.objects.create(
+        metering=flow,
+        client=flow.client,
+        reception_date=datetime(2026, 11, 3).date(),
+        address="x",
+        factory=default_factory,
+    )
+
+    counts = admin_api.get("/api/v1/designs/agenda/").data["counts"]
+    assert counts["ordered"] == 1 and counts["archive"] == 1
+    ordered = admin_api.get("/api/v1/designs/", {"ordered": "true"}).data["results"]
+    assert [r["id"] for r in ordered] == [flow.design.pk]
+    assert ordered[0]["order"]["order_number"]
+    rest = admin_api.get(
+        "/api/v1/designs/", {"ordered": "false", "stage": "approved,declined,cancelled"}
+    ).data["results"]
+    assert [r["id"] for r in rest] == [other.pk]
+    # the price page keeps one archive
+    assert "ordered" not in admin_api.get("/api/v1/prices/agenda/").data["counts"]
+
+
 def test_offer_queryset_scoping(flow, designer, make_staff):
     from metering.design.models import Design
 
