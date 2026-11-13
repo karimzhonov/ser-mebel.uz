@@ -19,7 +19,7 @@ const TABS: Tab[] = ["review", "working", "order_ready"];
 
 /** «Mijozga ko'rsatish» — the manager's list: designs / prices ready to show to the client
  * (answer right here: Tasdiqladi / O'zgartirish / Rad etdi, Rozi / Qayta hisoblash / Qoniqtirmadi),
- * what is still in work, and the clients who agreed and need an order. `?open=d12` / `?open=p5`
+ * what is still in work, and the clients who agreed and need an order (made by the Bosh menejer). `?open=d12` / `?open=p5`
  * (the bot's «Saytda ochish») jumps to that row. */
 export default function PresentationsPage() {
   const { can } = useAuth();
@@ -111,6 +111,8 @@ function matches(r: PresentationRow, t: { kind: "d" | "p"; id: number }) {
 
 function PresentationItem({ row: r, tab, focused }: { row: PresentationRow; tab: Tab; focused: string | null }) {
   const { can } = useAuth();
+  // owner's rule: the managers' ready clients go to the «Bosh menejer», who makes the order
+  const canOrder = can("order.add_order") && can("metering.manage_metering");
   const m = r.metering;
   const isFocused = (!!r.design && focused === `d${r.design.id}`) || (!!r.price && focused === `p${r.price.id}`);
   const anchor = r.design ? `d${r.design.id}` : r.price ? `p${r.price.id}` : `m${m.id}`;
@@ -146,7 +148,10 @@ function PresentationItem({ row: r, tab, focused }: { row: PresentationRow; tab:
         {tab === "working" && r.waiting_for && (
           <p className="muted text-xs">{r.waiting_for === "design" ? "Dizayn tayyorlanmoqda" : "Narx hisoblanmoqda"} — tayyor bo'lsa xabar keladi.</p>
         )}
-        {tab === "order_ready" && can("order.add_order") && (
+        {tab === "order_ready" && !canOrder && (
+          <p className="muted text-xs">Bosh menejerga o'tdi — buyurtmani u yaratadi.</p>
+        )}
+        {tab === "order_ready" && canOrder && (
           <Link
             to={`/orders/new?metering=${m.id}${r.design ? `&design=${r.design.id}` : ""}`}
             className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-700 px-5 text-base font-semibold text-white transition hover:bg-brand-800 sm:w-auto sm:inline-flex"

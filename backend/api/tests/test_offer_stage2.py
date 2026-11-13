@@ -622,9 +622,11 @@ def approved_design(flow, designer, manager):
     return Metering.objects.get(pk=flow.pk)
 
 
-def test_price_approved_tells_the_order_makers(
+def test_price_approved_goes_to_the_head_manager(
     flow, designer, manager, pricer, make_staff, bot_events
 ):
+    """Owner's rule: every manager's ready client goes to the «Bosh menejer», who makes
+    the order; the plain order makers are told only while no Bosh menejer has Telegram."""
     make_staff("order.add_order", telegram_id=9040)
     m = approved_design(flow, designer, manager)
     PS.mark_price_done(m.price, by=pricer)
@@ -637,9 +639,10 @@ def test_price_approved_tells_the_order_makers(
         SolutionChoice.go_for_measured
     )
     ready = bot_events.one("offer.order_ready")
-    assert ready["to"] == [9040]
+    assert ready["to"] == [9040]  # no Bosh menejer yet: the fallback
     assert ready["url"].endswith(f"/orders/new?metering={m.pk}&design={m.design.pk}")
-    # when the manager can make orders himself, only he is told
+    # with a Bosh menejer only he is told, even when the manager may make orders
+    make_staff("metering.manage_metering", "order.add_order", telegram_id=9050)
     manager.user_permissions.add(
         Permission.objects.get(codename="add_order", content_type__app_label="order")
     )
@@ -654,7 +657,31 @@ def test_price_approved_tells_the_order_makers(
     PS.mark_price_done(m2.price, by=pricer)
     bot_events.clear()
     PS.record_price_answer(m2.price, by=manager, answer="approved")
-    assert bot_events.one("offer.order_ready")["to"] == [9003]
+    assert bot_events.one("offer.order_ready")["to"] == [9050]
+
+
+def test_only_the_head_manager_makes_the_order(
+    operator, ali, pricer, manager, api, make_staff, default_factory
+):
+    """A plain manager (even with order.add_order) cannot turn a ready client into an
+    order; the Bosh menejer and an admin can."""
+    from order.models import Order
+    from order.services import create_order
+
+    m = finished(operator, ali, None, pricer, manager, step="price")
+    PS.mark_price_done(m.price, by=pricer)
+    PS.record_price_answer(m.price, by=manager, answer="approved")
+    body = {"metering": m.pk, "address": "Chilonzor", "count_days": 30}
+    plain = api("order.add_order", "order.view_order", "metering.present_to_client")
+    r = plain.post("/api/v1/orders/", body, format="json")
+    assert r.status_code == 400 and "bosh menejer" in str(r.data).lower()
+    assert not Order.objects.exists()
+    with pytest.raises(ServiceError):
+        create_order(author=manager, metering=m, address="x", factory=default_factory)
+    boss = api("order.add_order", "order.view_order", "metering.manage_metering")
+    r = boss.post("/api/v1/orders/", body, format="json")
+    assert r.status_code == 201, r.content
+    assert Order.objects.filter(metering=m).count() == 1
 
 
 def test_price_recalc_and_declined(flow, designer, manager, pricer, operator, bot_events):
@@ -1320,7 +1347,11 @@ def test_no_order_from_an_unapproved_or_refused_design(
     from order.models import Order
 
     maker = api(
-        "order.add_order", "order.view_order", "design.view_design", "metering.view_metering"
+        "order.add_order",
+        "order.view_order",
+        "design.view_design",
+        "metering.view_metering",
+        "metering.manage_metering",
     )
     body = {"metering": flow.pk, "address": "Chilonzor", "count_days": 30}
     vt = DesignType.objects.filter(design=flow.design).first()
@@ -1362,7 +1393,7 @@ def test_price_only_order_needs_the_price_answer(
 ):
     from order.models import Order
 
-    maker = api("order.add_order", "order.view_order")
+    maker = api("order.add_order", "order.view_order", "metering.manage_metering")
     m = finished(operator, ali, None, pricer, manager, step="price")
     body = {"metering": m.pk, "address": "Chilonzor", "count_days": 30}
     assert maker.post("/api/v1/orders/", body, format="json").status_code == 400

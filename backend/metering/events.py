@@ -183,8 +183,8 @@ def offer_changed(obj, kind, *, how, by=None, to_users=(), to_name=None, answer=
 
 @_safe
 def offer_order_ready(price, *, to_users):
-    """The client agreed to the price: someone must make the order. The Bosh menejer
-    is always told."""
+    """The client agreed to the price: the «Bosh menejer» makes the order (every one is
+    told; `to_users` is the fallback when none of them has Telegram)."""
     to = _tg(*to_users, *_bosses())
     if not to:
         return
