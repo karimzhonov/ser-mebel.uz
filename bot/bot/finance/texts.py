@@ -24,6 +24,7 @@ KB_STAFF = reply_kb(
         ["💳 Hamyonim", "📋 Operatsiyalar"],
         ["🧾 Buyurtmalar", "📤 Oylik hisob"],
         ["🔄 Xodimga pul berish", "🙏 Rahbardan pul so'rash"],
+        ["📕 Qarzlar"],
     ]
 )
 KB_ADMIN = reply_kb(
@@ -33,7 +34,7 @@ KB_ADMIN = reply_kb(
         ["💸 Pul berish", "👛 Hamyonlar"],
         ["🧾 Buyurtmalar", "🔍 Tekshiruv"],
         ["📥 Excel", "❓ Yordam"],
-        ["🕘 Davomat"],
+        ["🕘 Davomat", "📕 Qarzlar"],
     ]
 )
 KB_TASK = reply_kb([["📋 Vazifalarim"], ["❓ Yordam"]])
@@ -60,6 +61,7 @@ HELP_STAFF = (
     "📤 <b>Oylik hisob</b> — oy oxirida hisobni tasdiqlab topshirish.\n"
     "🙏 <b>Rahbardan pul so'rash</b> — pul kerak bo'lsa, summa va sababini yozasiz, rahbarga boradi.\n"
     "🔄 <b>Xodimga pul berish</b> — boshqa xodimga pul bersangiz, ikkalangizning hamyoniga yoziladi (rahbar xabardor bo'ladi).\n"
+    "📕 <b>Qarzlar</b> — o'zingiz yozgan, kreditga olingan narsalar (do'kondan qarzga olingan LDSP, furnitura…): ro'yxat, yangi qarz yozish va to'lash. To'lov o'z hamyoningizdan chiqim bo'lib yoziladi.\n"
     "🗑 Xato yozuvni o'chirish: /ochir 25  (25 — amal raqami)"
 )
 HELP_ADMIN = HELP_STAFF + (
@@ -352,3 +354,120 @@ def _register_buttons() -> None:
 
 
 _register_buttons()
+
+
+# ------------------------------------------------------------------ qarzlar (debts)
+def debt_age_icon(days, status: str = "open") -> str:
+    if status == "closed":
+        return "✅"
+    days = int(days or 0)
+    return "🟢" if days <= 7 else ("🟡" if days <= 30 else "🔴")
+
+
+def debt_sum(v, cur: str) -> str:
+    """«1 500 000 so'm» or «300.00 $» (the debt's own currency)."""
+    return f"{fmt_cur(v, cur)} $" if cur == "USD" else money(v)
+
+
+def _debt_order(d: dict) -> str:
+    ref, client = d.get("order_ref"), d.get("client")
+    return f"🧾 {esc(ref)}" + (f" {esc(client)}" if client else "")
+
+
+def debt_line(d: dict) -> str:
+    cur = d.get("currency") or "UZS"
+    return (
+        f"{debt_age_icon(d.get('days'), d.get('status', 'open'))} #{d['number']} · {d.get('days', 0)} kun"
+        f" · {esc(d['creditor'])} — {esc(str(d['item'])[:40])} · {_debt_order(d)}"
+        f" · qoldiq {debt_sum(d.get('remaining'), cur)}"
+    )
+
+
+DEBT_PAGE = 20  # debts per page of the list (text lines and buttons)
+
+
+def debt_page_rows(rows: list[dict], page: int) -> tuple[list[dict], int, int]:
+    """(rows of the page, clamped page, pages)."""
+    pages = max(1, -(-len(rows) // DEBT_PAGE))
+    pg = max(0, min(page, pages - 1))
+    return rows[pg * DEBT_PAGE : (pg + 1) * DEBT_PAGE], pg, pages
+
+
+def debt_list_text(res: dict, closed: bool = False, page: int = 0) -> str:
+    rows = res.get("rows") or []
+    t = res.get("totals") or {}
+    part, pg, pages = debt_page_rows(rows, page)
+    pager = f" · {pg + 1}/{pages}-bet" if pages > 1 else ""
+    if closed:
+        head = "📗 <b>Yopilgan qarzlar</b> (oxirgi 30 ta)" + pager
+        if not rows:
+            return head + "\n\nHali yopilgan qarz yo'q."
+        return head + "\n\n" + "\n".join(debt_line(d) for d in part)
+    head = "📕 <b>Ochiq qarzlar</b>"
+    if not rows:
+        return head + "\n\n✅ Ochiq qarz yo'q."
+    tot = f"💰 Jami qoldiq: <b>{money(t.get('open_uzs'))}</b>"
+    if float(t.get("open_usd") or 0) > 0:
+        tot += f" + <b>{debt_sum(t.get('open_usd'), 'USD')}</b>"
+    lines = "\n".join(debt_line(d) for d in part)
+    return head + f" ({t.get('open_count', len(rows))} ta){pager}\n" + tot + "\n\n" + lines
+
+
+def debt_card(d: dict) -> str:
+    cur = d.get("currency") or "UZS"
+    lines = [
+        f"📕 <b>Qarz #{d['number']}</b>",
+        f"🏪 Kimdan: <b>{esc(d['creditor'])}</b>",
+        f"📦 Nima olindi: {esc(d['item'])}",
+        f"🗂 Kategoriya: {esc(cat_label(d.get('category')))}",
+        _debt_order(d),
+        f"📅 Olingan sana: {ddmm(d.get('date'))}",
+        f"💰 Summa: <b>{debt_sum(d.get('total'), cur)}</b>",
+        f"💸 To'langan: {debt_sum(d.get('paid'), cur)}",
+        f"🧮 Qoldiq: <b>{debt_sum(d.get('remaining'), cur)}</b>",
+    ]
+    if d.get("status") == "closed":
+        lines.append(f"✅ {d.get('days', 0)} kunda yopildi ({ddmm(d.get('closed_at'))[:5]})")
+    else:
+        lines.append(f"{debt_age_icon(d.get('days'))} {d.get('days', 0)} kun")
+    if d.get("comment"):
+        lines.append(f"📝 {esc(d['comment'])}")
+    if d.get("by_name"):
+        lines.append(f"👤 Kiritdi: {esc(d['by_name'])}")
+    pays = d.get("payments") or []
+    if pays:
+        lines += ["", "<b>To'lovlar:</b>"]
+        for p in pays:
+            who = (p.get("member") or {}).get("name") or ""
+            lines.append(
+                f"• #{p['number']} · {ddmm(p.get('date'))[:5]} · {money_text(p)}"
+                + (f" · {esc(who)}" if who else "")
+            )
+    return "\n".join(lines)
+
+
+def debt_draft_card(d: dict) -> str:
+    """The add-flow confirmation (draft keys: creditor, item, preview, cat_label, ord, client)."""
+    return "\n".join(
+        [
+            "📕 <b>Yangi qarz</b>",
+            f"🏪 Kimdan: <b>{esc(d['creditor'])}</b>",
+            f"📦 Nima olindi: {esc(d['item'])}",
+            f"💰 Summa: <b>{esc(d['preview'])}</b>",
+            f"🗂 Kategoriya: {esc(d['cat_label'])}",
+            _debt_order({"order_ref": d["ord"], "client": d.get("client")}),
+            "",
+            "To'lov keyinroq o'z hamyoningizdan, shu buyurtma chiqimiga yoziladi.",
+        ]
+    )
+
+
+def debt_pay_card(d: dict) -> str:
+    return "\n".join(
+        [
+            f"💸 To'lov: <b>{esc(d['pay_preview'])}</b>",
+            f"📕 Qarz #{d['n']}: {esc(d['item'])} — {esc(d['creditor'])}",
+            f"{_debt_order({'order_ref': d['ord'], 'client': d.get('client')})}",
+            "👛 Hamyon: sizniki",
+        ]
+    )

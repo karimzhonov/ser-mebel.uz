@@ -910,3 +910,92 @@ class ReportTemplateView(BotAPIView):
         self.require_admin()
         S.reset_report_template()
         return Response(status=204)
+
+
+# ------------------------------------------------------------------ debts («Qarzlar»)
+def _debt_rows(debts) -> list[dict]:
+    infos = S.order_infos([d.order_ref for d in debts])
+    return [
+        D.debt_dto(
+            d, infos[d.order_ref].client if d.order_ref in infos else "", S.debt_paid_annotated(d)
+        )
+        for d in debts
+    ]
+
+
+def _debt_one(pk: int) -> dict:
+    return _debt_rows([S.debts_qs("all").get(pk=pk)])[0]
+
+
+class DebtsView(BotAPIView):
+    def get(self, request):
+        me = self.require_active()
+        if me.is_task_only:
+            raise PermissionDenied("Siz qarzlarni ko'ra olmaysiz.")
+        status = "closed" if request.query_params.get("status") == "closed" else "open"
+        owner = None if me.is_admin else me  # staff see only their own debts
+        qs = S.debts_qs(status, owner)
+        qs = (
+            qs.order_by("-closed_at", "-number")[:30]
+            if status == "closed"
+            else qs.order_by("date", "number")
+        )
+        st = S.debt_stats(owner)
+        return Response(
+            {
+                "rows": _debt_rows(list(qs)),
+                "totals": {
+                    "open_count": st["open_count"],
+                    "open_uzs": D.dec(st["open_uzs"]),
+                    "open_usd": D.dec(st["open_usd"]),
+                },
+            }
+        )
+
+    def post(self, request):
+        me = self.require_active()
+        d = request.data
+        debt = S.create_debt_as(
+            me,
+            amount_text=str(d.get("amount_text") or ""),
+            creditor=d.get("creditor") or "",
+            item=d.get("item") or "",
+            category_code=d.get("category") or "",
+            order_ref=d.get("order_ref") or "",
+            comment=d.get("comment") or "",
+        )
+        row = _debt_one(debt.pk)
+        return Response(row, status=201)
+
+
+class DebtView(BotAPIView):
+    def get(self, request, number):
+        me = self.require_active()
+        if me.is_task_only:
+            raise PermissionDenied("Siz qarzlarni ko'ra olmaysiz.")
+        debt = S.debts_qs("all", None if me.is_admin else me).filter(number=number).first()
+        if not debt:
+            raise NotFound("Qarz topilmadi.")
+        row = _debt_rows([debt])[0]
+        pays = (
+            debt.payments.filter(is_deleted=False)
+            .select_related("member", "category", "author")
+            .order_by("date", "number")
+        )
+        row["payments"] = [D.operation_dto(op) for op in pays]
+        row["can_pay"] = bool(me.has_wallet and debt.status == "open")
+        return Response(row)
+
+
+class DebtPayView(BotAPIView):
+    def post(self, request, number):
+        me = self.require_active()
+        debt, op = S.pay_debt_as(me, number, request.data.get("amount_text") or None)
+        E.operation_created(op, author=me)
+        return Response(
+            {
+                "debt": _debt_one(debt.pk),
+                "operation": D.operation_dto(op),
+                "balance": D.dec(S.balance(me)),
+            }
+        )

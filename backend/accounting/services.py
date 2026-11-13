@@ -24,9 +24,9 @@ from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Q, Sum
+from django.db.models import Max, Min, Q, Sum
 
-from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden
+from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden, ServiceNotFound
 from core.geo import obj_map_url
 from oauth.models import TelegramMember, TelegramRole, User
 from order.constants import OrderStatus
@@ -37,6 +37,7 @@ from .constants import (
     BONUS_TIERS,
     CAT_ADVANCE,
     CAT_FROM_BOSS,
+    CAT_FUEL,
     CAT_REFUND,
     CAT_REST,
     CAT_SALARY,
@@ -48,6 +49,7 @@ from .constants import (
 )
 from .models import (
     ClientFeedback,
+    Debt,
     FinanceCategory,
     FinanceJobRun,
     ManualOrder,
@@ -444,7 +446,7 @@ def order_stats(ref: str) -> dict:
     """Spent / collected per order (orderStats_)."""
     rows = list(
         Operation.objects.filter(order_ref=str(ref), is_deleted=False)
-        .select_related("category", "member")
+        .select_related("category", "member", "debt")
         .order_by("date", "number")
     )
     st = {"spent": ZERO, "collected": ZERO, "cats": {}, "rows": rows}
@@ -580,6 +582,7 @@ def create_operation(
     number: int | None = None,
     actor_admin: bool = False,
     internal: bool = False,
+    debt: Debt | None = None,
 ) -> Operation:
     """addTx_: one row in a member's wallet.
 
@@ -638,6 +641,7 @@ def create_operation(
                     worker=(worker or "")[:255],
                     pay_type=pay_type,
                     source=source,
+                    debt=debt,
                 )
         except IntegrityError:
             if number:
@@ -784,6 +788,22 @@ def update_operation(
     with transaction.atomic():
         op = Operation.objects.select_for_update().select_related("category").get(pk=op.pk)
         before = _audit_snapshot(op)
+        if op.debt_id:
+            current = {
+                "kind": op.kind,
+                "category_code": op.category.code,
+                "currency": op.currency,
+                "order_ref": op.order_ref,
+            }
+            if data.get("date") and data["date"] < op.debt.date:
+                raise ServiceError("To'lov sanasi qarz olingan sanadan oldin bo'lishi mumkin emas.")
+            if "order_ref" in data:
+                data = {**data, "order_ref": _resolve_order(data["order_ref"])[0]}
+            if any(k in data and data[k] != v for k, v in current.items()):
+                raise ServiceError(
+                    "Bu qarz to'lovi — turi, kategoriyasi, valyutasi va buyurtmasi o'zgarmaydi; "
+                    "o'chirib qaytadan to'lang."
+                )
         pair = _pair_of(op)
         if pair or op.category.kind == CategoryKind.INTERNAL:
             current = {"kind": op.kind, "category_code": op.category.code, "member": op.member_id}
@@ -853,6 +873,8 @@ def update_operation(
             op.date = data["date"]
         op.site_user = site_user or op.site_user
         op.save()
+        if op.debt_id:
+            refresh_debt(op.debt_id)
         after = _audit_snapshot(op)
         diff = {k: [before[k], after[k]] for k in AUDIT_FIELDS if before[k] != after[k]}
         if diff:
@@ -893,6 +915,9 @@ def delete_operation(op: Operation, *, by_user=None, by_member=None) -> list[Ope
                 t.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
                 log_change(t, "delete", by_user=by_user, by_member=by_member)
                 deleted.append(t)
+        for t in deleted:
+            if t.debt_id:
+                refresh_debt(t.debt_id)
     return deleted
 
 
@@ -908,6 +933,8 @@ def restore_operation(op: Operation, *, by_user=None, by_member=None) -> Operati
                 t.deleted_at = None
                 t.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
                 log_change(t, "restore", by_user=by_user, by_member=by_member)
+                if t.debt_id:
+                    refresh_debt(t.debt_id)
     return op
 
 
@@ -2213,3 +2240,388 @@ def advance_reject(adv: OrderAdvance, boss: TelegramMember) -> OrderAdvance:
         adv.status, adv.answered_by, adv.answered_at = "rejected", boss, now()
         adv.save(update_fields=["status", "answered_by", "answered_at"])
     return adv
+
+
+# =================================================================== debts («Qarzlar»)
+DEBT_SKIP_CATS = {CAT_SALARY, CAT_FUEL}
+
+
+def _check_debt_category(cat: FinanceCategory | None, actor_admin: bool):
+    if (
+        not cat
+        or not cat.is_active
+        or cat.kind != CategoryKind.EXPENSE
+        or cat.no_order
+        or cat.excluded
+        or cat.code in DEBT_SKIP_CATS
+    ):
+        raise ServiceError("Bu kategoriya qarz uchun emas.")
+    if cat.admin_only and not actor_admin:
+        raise ServiceError("Bu kategoriyani faqat rahbar yoza oladi.")
+
+
+def debt_paid(debt: Debt) -> Decimal:
+    """Live payments, in the debt's currency."""
+    field_name = "orig_amount" if debt.currency == "USD" else "amount"
+    total = debt.payments.filter(is_deleted=False).aggregate(s=Sum(field_name))["s"]
+    return D(total)
+
+
+def debt_numbers(debt: Debt, paid=None) -> dict:
+    """{total, paid, remaining, days}: money in the debt's currency; days = how long it
+    was (is) open."""
+    total = D(debt.total_cur)
+    paid = debt_paid(debt) if paid is None else D(paid)
+    end = debt.closed_at if debt.status == "closed" and debt.closed_at else today()
+    return {
+        "total": total,
+        "paid": paid,
+        "remaining": max(total - paid, ZERO),
+        "days": max((end - debt.date).days, 0),
+    }
+
+
+def debts_qs(status: str = "open", owner: TelegramMember | None = None):
+    """Live debts with paid_uzs / paid_usd annotated (no N+1 on the paid sum).
+
+    owner: owner's rule — a staff member sees (and pays) only the debts he wrote
+    himself; None = everything (the boss / finance admins)."""
+    live = Q(payments__is_deleted=False)
+    qs = (
+        Debt.objects.filter(is_deleted=False)
+        .select_related("category", "created_by", "site_user")
+        .annotate(
+            paid_uzs=Sum("payments__amount", filter=live),
+            paid_usd=Sum("payments__orig_amount", filter=live),
+        )
+    )
+    if status in ("open", "closed"):
+        qs = qs.filter(status=status)
+    if owner is not None:
+        qs = qs.filter(created_by=owner)
+    return qs
+
+
+def debt_paid_annotated(debt: Debt) -> Decimal:
+    """The paid sum from debts_qs()'s annotation (falls back to a query)."""
+    if hasattr(debt, "paid_uzs"):
+        v = debt.paid_usd if debt.currency == "USD" else debt.paid_uzs
+        return D(v)
+    return debt_paid(debt)
+
+
+def debt_stats(owner: TelegramMember | None = None) -> dict:
+    """{open_count, open_uzs, open_usd}: what is still owed across open debts."""
+    out = {"open_count": 0, "open_uzs": ZERO, "open_usd": ZERO}
+    for d in debts_qs("open", owner):
+        rem = debt_numbers(d, debt_paid_annotated(d))["remaining"]
+        out["open_count"] += 1
+        out["open_usd" if d.currency == "USD" else "open_uzs"] += rem
+    return out
+
+
+def _debt_text(value: str, limit: int, label: str) -> str:
+    value = " ".join(str(value or "").split())
+    if not value:
+        raise ServiceError(f"{label} yozilmagan.")
+    return value[:limit]
+
+
+def _debt_date(on_date: date | None) -> date:
+    on_date = on_date or today()
+    if on_date > today():
+        raise ServiceError("Sana kelajakda bo'lishi mumkin emas.")
+    return on_date
+
+
+def _debt_money(
+    currency: str, amount, orig_amount
+) -> tuple[Decimal, Decimal | None, Decimal | None]:
+    """(so'm amount, orig, rate) from the entered sum; USD uses the server rate."""
+    if currency == "USD":
+        rate = usd_rate()
+        if not rate:
+            raise ServiceError("Dollar kursi topilmadi.")
+        orig = q2(orig_amount or 0)
+        if orig <= 0:
+            raise ServiceError("Summa 0 dan katta bo'lishi kerak.")
+        return q2(round(orig * rate)), orig, D(rate)
+    amount = q2(amount or 0)
+    if amount <= 0:
+        raise ServiceError("Summa 0 dan katta bo'lishi kerak.")
+    return amount, None, None
+
+
+def create_debt(
+    *,
+    creditor: str,
+    item: str,
+    category_code: str,
+    order_ref: str,
+    currency: str = "UZS",
+    amount=None,
+    orig_amount=None,
+    on_date: date | None = None,
+    comment: str = "",
+    created_by: TelegramMember | None = None,
+    site_user: User | None = None,
+    source: str = "bot",
+    actor_admin: bool = False,
+) -> Debt:
+    """A new debt (something taken on credit for a client's order). Books no money."""
+    creditor = _debt_text(creditor, 255, "Kimdan olinganini yozing")
+    item = _debt_text(item, 500, "Nima olinganini yozing")
+    on_date = _debt_date(on_date)
+    if currency not in ("UZS", "USD"):
+        raise ServiceError("Noto'g'ri valyuta.")
+    cat = category(category_code)
+    _check_debt_category(cat, actor_admin)
+    info = order_info(order_ref)
+    if info is None:
+        raise ServiceError("Buyurtma topilmadi.", "order_ref")
+    ref, order = _resolve_order(info.ref)
+    so_m, orig, rate = _debt_money(currency, amount, orig_amount)
+    for _ in range(5):
+        try:
+            with transaction.atomic():
+                return Debt.objects.create(
+                    number=_next_number(Debt),
+                    date=on_date,
+                    creditor=creditor,
+                    item=item,
+                    amount=so_m,
+                    currency=currency,
+                    orig_amount=orig,
+                    rate=rate,
+                    category=cat,
+                    order=order,
+                    order_ref=ref,
+                    comment=(comment or "")[:2000],
+                    created_by=created_by,
+                    site_user=site_user,
+                    source=source,
+                )
+        except IntegrityError:
+            continue
+    raise ServiceError("Qarzni saqlab bo'lmadi, qayta urinib ko'ring.")
+
+
+def refresh_debt(debt_id: int) -> Debt:
+    """Recompute status / closed_at from the live payments. Raises (rolling the caller's
+    transaction back) if the payments exceed the debt."""
+    with transaction.atomic():
+        debt = Debt.objects.select_for_update().get(pk=debt_id)
+        if debt.is_deleted:
+            raise ServiceError("Qarz o'chirilgan — avval qarzni tiklang.")
+        paid = debt_paid(debt)
+        total = D(debt.total_cur)
+        if paid > total:
+            raise ServiceError("To'lovlar qarz summasidan oshib ketadi.")
+        if paid >= total:
+            last = debt.payments.filter(is_deleted=False).aggregate(m=Max("date"))["m"]
+            debt.status, debt.closed_at = "closed", last or today()
+        else:
+            debt.status, debt.closed_at = "open", None
+        debt.save(update_fields=["status", "closed_at", "updated_at"])
+    return debt
+
+
+def pay_debt(
+    debt: Debt,
+    *,
+    payer: TelegramMember,
+    amount=None,
+    on_date: date | None = None,
+    author: TelegramMember | None = None,
+    site_user: User | None = None,
+    source: str = "bot",
+    actor_admin: bool = False,
+) -> tuple[Debt, Operation]:
+    """One payment = one expense in the payer's wallet, in the debt's category and on its
+    order. `amount` is in the debt's currency; None pays the whole remainder."""
+    with transaction.atomic():
+        debt = Debt.objects.select_for_update().select_related("category").get(pk=debt.pk)
+        if debt.is_deleted:
+            raise ServiceError("Qarz topilmadi.")
+        if debt.status == "closed":
+            raise ServiceConflict("Qarz allaqachon to'langan.")
+        if not payer.has_wallet:
+            raise ServiceError("Sizning hamyoningiz yo'q.")
+        rem = debt_numbers(debt)["remaining"]
+        amt = rem if amount is None else q2(amount)
+        if amt <= 0:
+            raise ServiceError("Summa 0 dan katta bo'lishi kerak.")
+        if amt > rem:
+            raise ServiceError(f"Qoldiqdan ({fmt_cur(rem, debt.currency)}) ko'p to'lab bo'lmaydi.")
+        on_date = on_date or today()
+        if on_date < debt.date:
+            raise ServiceError("To'lov sanasi qarz olingan sanadan oldin bo'lishi mumkin emas.")
+        if debt.currency == "USD":
+            rate = usd_rate()
+            if not rate:
+                raise ServiceError("Dollar kursi topilmadi.")
+            so_m, orig = q2(round(amt * rate)), amt
+        else:
+            rate, so_m, orig = None, amt, None
+        op = create_operation(
+            member=payer,
+            author=author,
+            kind=OpKind.EXPENSE,
+            amount=so_m,
+            category_code=debt.category.code,
+            currency=debt.currency,
+            orig_amount=orig,
+            rate=rate,
+            order_ref=debt.order_ref,
+            comment=f"📕 Qarz #{debt.number}: {debt.item} — {debt.creditor}"[:2000],
+            source=source,
+            site_user=site_user,
+            on_date=on_date,
+            actor_admin=actor_admin,
+            internal=False,
+            debt=debt,
+        )
+        debt = refresh_debt(debt.pk)
+    return debt, op
+
+
+def can_modify_debt(member: TelegramMember | None, debt: Debt | None, admin: bool) -> bool:
+    if not debt or debt.is_deleted:
+        return False
+    if admin:
+        return True
+    return bool(
+        member
+        and debt.created_by_id == member.id
+        and days_between(debt.created_at.date(), today()) <= STAFF_DAYS
+    )
+
+
+def update_debt(debt: Debt, data: dict, *, actor_admin: bool = False) -> Debt:
+    """Site edit. Category and order are frozen once a payment exists (they would stop
+    matching the booked expenses); the new total can't go under what is paid."""
+    allowed = {
+        "creditor",
+        "item",
+        "comment",
+        "date",
+        "category_code",
+        "order_ref",
+        "amount",
+        "orig_amount",
+    }
+    unknown = set(data) - allowed
+    if unknown:
+        raise ServiceError("Tahrirlab bo'lmaydigan maydon: " + ", ".join(sorted(unknown)))
+    with transaction.atomic():
+        debt = Debt.objects.select_for_update().select_related("category").get(pk=debt.pk)
+        if debt.is_deleted:
+            raise ServiceError("Qarz topilmadi.")
+        has_payments = debt.payments.filter(is_deleted=False).exists()
+        if "creditor" in data:
+            debt.creditor = _debt_text(data["creditor"], 255, "Kimdan olinganini yozing")
+        if "item" in data:
+            debt.item = _debt_text(data["item"], 500, "Nima olinganini yozing")
+        if "comment" in data:
+            debt.comment = (data["comment"] or "")[:2000]
+        if "date" in data and data["date"]:
+            new_date = _debt_date(data["date"])
+            first = debt.payments.filter(is_deleted=False).aggregate(m=Min("date"))["m"]
+            if first and new_date > first:
+                raise ServiceError("Qarz sanasi birinchi to'lovdan keyin bo'lishi mumkin emas.")
+            debt.date = new_date
+        if "category_code" in data and data["category_code"] != debt.category.code:
+            if has_payments:
+                raise ServiceError("To'lov bor — kategoriyani o'zgartirib bo'lmaydi.")
+            cat = category(data["category_code"])
+            _check_debt_category(cat, actor_admin)
+            debt.category = cat
+        if "order_ref" in data and _resolve_order(data["order_ref"])[0] != debt.order_ref:
+            if has_payments:
+                raise ServiceError("To'lov bor — buyurtmani o'zgartirib bo'lmaydi.")
+            info = order_info(data["order_ref"])
+            if info is None:
+                raise ServiceError("Buyurtma topilmadi.", "order_ref")
+            debt.order_ref, debt.order = _resolve_order(info.ref)
+        if "amount" in data or "orig_amount" in data:
+            debt.amount, debt.orig_amount, debt.rate = _debt_money(
+                debt.currency,
+                data.get("amount", debt.amount),
+                data.get("orig_amount", debt.orig_amount),
+            )
+        debt.save()
+        debt = refresh_debt(debt.pk)
+    return debt
+
+
+def delete_debt(debt: Debt) -> Debt:
+    with transaction.atomic():
+        debt = Debt.objects.select_for_update().get(pk=debt.pk)
+        if debt.is_deleted:
+            return debt
+        if debt.payments.filter(is_deleted=False).exists():
+            raise ServiceError("Avval qarz to'lovlarini o'chiring.")
+        debt.is_deleted, debt.deleted_at = True, now()
+        debt.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
+    return debt
+
+
+def _debt_actor(actor: TelegramMember):
+    if not actor.is_active_member or actor.is_task_only:
+        raise ServiceForbidden("Siz qarzlarni yurita olmaysiz.")
+
+
+def create_debt_as(actor: TelegramMember, *, amount_text: str, **fields) -> Debt:
+    """The bot's rule: any active member with a wallet (or a boss) adds a debt."""
+    _debt_actor(actor)
+    if not (actor.has_wallet or actor.is_admin):
+        raise ServiceForbidden("Sizning hamyoningiz yo'q.")
+    for spoofable in ("actor_admin", "created_by", "source", "site_user", "on_date"):
+        fields.pop(spoofable, None)
+    m = money_in(amount_text)
+    return create_debt(
+        currency=m["cur"],
+        amount=m["amount"],
+        orig_amount=m["orig"],
+        created_by=actor,
+        source="bot",
+        actor_admin=actor.is_admin,
+        **fields,
+    )
+
+
+def get_debt(number: int) -> Debt:
+    debt = Debt.objects.filter(number=number, is_deleted=False).first()
+    if not debt:
+        raise ServiceNotFound("Qarz topilmadi.")
+    return debt
+
+
+def pay_debt_as(
+    actor: TelegramMember, number: int, amount_text: str | None = None
+) -> tuple[Debt, Operation]:
+    """The bot's rule: the payer's own wallet pays; the sum must be in the debt's currency."""
+    _debt_actor(actor)
+    if not actor.has_wallet:
+        raise ServiceForbidden("Sizning hamyoningiz yo'q.")
+    debt = get_debt(number)
+    if not actor.is_admin and debt.created_by_id != actor.pk:
+        raise ServiceNotFound("Qarz topilmadi.")  # staff pay only their own debts
+    amount = None
+    if amount_text and str(amount_text).strip():
+        m = money_in(amount_text)
+        if m["cur"] != debt.currency:
+            raise ServiceError(
+                "Qarz dollarda — summani $ bilan yozing (masalan 300$)."
+                if debt.currency == "USD"
+                else "Qarz so'mda — summani so'mda yozing (masalan 500000)."
+            )
+        amount = m["orig"] if debt.currency == "USD" else m["amount"]
+    return pay_debt(
+        debt,
+        payer=actor,
+        author=actor,
+        amount=amount,
+        source="bot",
+        actor_admin=actor.is_admin,
+    )

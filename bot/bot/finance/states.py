@@ -64,6 +64,18 @@ class Template(StatesGroup):
     photo = State()
 
 
+class Debt(StatesGroup):
+    creditor = State()
+    item = State()
+    amount = State()
+    category = State()
+    order = State()
+    ord_text = State()
+    confirm = State()
+    pay_amount = State()
+    pay_confirm = State()
+
+
 # step name (the old BotSession.data["step"]) -> state
 STEP_STATE = {
     "amount": Tx.amount,
@@ -95,6 +107,15 @@ STEP_STATE = {
     "adv_sum": AdvanceSum.amount,
     "fikr": Feedback.photo,
     "tpl": Template.photo,
+    "qz_from": Debt.creditor,
+    "qz_item": Debt.item,
+    "qz_amount": Debt.amount,
+    "qz_cat": Debt.category,
+    "qz_order": Debt.order,
+    "qz_ord_text": Debt.ord_text,
+    "qz_confirm": Debt.confirm,
+    "qz_pay_amount": Debt.pay_amount,
+    "qz_pay_confirm": Debt.pay_confirm,
 }
 
 ALL_STATES = [
@@ -110,6 +131,7 @@ ALL_STATES = [
         AdvanceSum,
         Feedback,
         Template,
+        Debt,
     )
     for s in grp.__all_states__
 ]

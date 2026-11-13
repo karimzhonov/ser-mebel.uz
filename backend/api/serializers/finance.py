@@ -1,4 +1,5 @@
 import copy
+from decimal import Decimal
 
 from rest_framework import serializers
 
@@ -174,6 +175,7 @@ class OperationSerializer(serializers.ModelSerializer):
     source_label = serializers.CharField(source="get_source_display", read_only=True)
     has_receipt = serializers.SerializerMethodField()
     pair_number = serializers.SerializerMethodField()
+    debt_number = serializers.SerializerMethodField()
 
     class Meta:
         model = Operation
@@ -201,6 +203,7 @@ class OperationSerializer(serializers.ModelSerializer):
             "site_user_detail",
             "has_receipt",
             "pair_number",
+            "debt_number",
             "handover",
             "is_deleted",
             "source",
@@ -212,6 +215,9 @@ class OperationSerializer(serializers.ModelSerializer):
 
     def get_has_receipt(self, obj):
         return bool(obj.receipt_file_id)
+
+    def get_debt_number(self, obj):
+        return obj.debt.number if obj.debt_id else None
 
     def get_pair_number(self, obj):
         if obj.pair_id:
@@ -242,6 +248,51 @@ class OperationWriteSerializer(serializers.Serializer):
     comment = serializers.CharField(required=False, allow_blank=True)
     worker = serializers.CharField(max_length=255, required=False, allow_blank=True)
     pay_type = serializers.ChoiceField(choices=["", "Avans", "Oylik", "Uy uchun"], required=False)
+    date = serializers.DateField(required=False)
+
+
+class DebtWriteSerializer(serializers.Serializer):
+    """Input for a new debt; the rules are in accounting.services.create_debt."""
+
+    date = serializers.DateField(required=False)
+    creditor = serializers.CharField(max_length=255)
+    item = serializers.CharField(max_length=500)
+    category_code = serializers.SlugField()
+    order_ref = serializers.CharField(max_length=32)
+    currency = serializers.ChoiceField(choices=["UZS", "USD"], default="UZS")
+    amount = serializers.DecimalField(
+        max_digits=16, decimal_places=2, required=False, allow_null=True
+    )
+    orig_amount = serializers.DecimalField(
+        max_digits=16, decimal_places=2, required=False, allow_null=True
+    )
+    comment = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class DebtUpdateSerializer(serializers.Serializer):
+    date = serializers.DateField(required=False)
+    creditor = serializers.CharField(max_length=255, required=False)
+    item = serializers.CharField(max_length=500, required=False)
+    category_code = serializers.SlugField(required=False)
+    order_ref = serializers.CharField(max_length=32, required=False)
+    amount = serializers.DecimalField(
+        max_digits=16, decimal_places=2, required=False, allow_null=True
+    )
+    orig_amount = serializers.DecimalField(
+        max_digits=16, decimal_places=2, required=False, allow_null=True
+    )
+    comment = serializers.CharField(required=False, allow_blank=True)
+
+
+class DebtPaySerializer(serializers.Serializer):
+    member = serializers.PrimaryKeyRelatedField(queryset=TelegramMember.objects.all())
+    amount = serializers.DecimalField(
+        max_digits=16,
+        decimal_places=2,
+        required=False,
+        allow_null=True,
+        min_value=Decimal("0.01"),
+    )
     date = serializers.DateField(required=False)
 
 

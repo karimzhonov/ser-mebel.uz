@@ -1,16 +1,22 @@
 import { Link } from "react-router-dom";
 import { AlarmClockOff, Calculator, CalendarClock, PackageCheck, Presentation } from "lucide-react";
 import { useGet } from "@/api/hooks";
+import { useAuth } from "@/auth/AuthContext";
 import type { OfferAgenda, Presentations, Price, PresentationRow } from "@/api/types";
 import { Card, Empty, PageHeader, PageLoader, StatTile } from "@/components/ui";
 import { dateTime, phone } from "@/lib/format";
 
 /** «Vazifalarim» for a manager: the prices the zamerchi gave them to calculate (also sent
- * in the bot) and the clients waiting for them — a design / price to show, an order to make. */
+ * in the bot) and the clients waiting for them — a design / price to show; the agreed ones
+ * go to the Bosh menejer, who makes the order. */
 export default function ManagerTasksPage() {
   const { data: prices } = useGet<OfferAgenda<Price>>("/prices/agenda/", { user: "me" });
   const { data: pres } = useGet<Presentations>("/meterings/presentations/", { manager: "me" });
   const toPrice = prices ? [...prices.overdue, ...prices.today, ...prices.work] : [];
+  // owner's rule: a plain manager's agreed client goes to the Bosh menejer, who makes the order
+  const { can } = useAuth();
+  const boss = can("metering.manage_metering");
+  const readyLabel = boss ? "Buyurtma yaratish" : "Bosh menejerga o'tdi";
 
   return (
     <div>
@@ -23,7 +29,7 @@ export default function ManagerTasksPage() {
             <StatTile label="Narx — muddati o'tgan" value={prices.counts.overdue} tone="danger" icon={<AlarmClockOff className="h-5 w-5" />} />
             <StatTile label="Narx hisoblash" value={toPrice.length} tone="warn" icon={<Calculator className="h-5 w-5" />} />
             <StatTile label="Mijozga ko'rsatish" value={pres.counts.review} tone="info" icon={<Presentation className="h-5 w-5" />} />
-            <StatTile label="Buyurtma yaratish" value={pres.counts.order_ready} tone="ok" icon={<PackageCheck className="h-5 w-5" />} />
+            <StatTile label={readyLabel} value={pres.counts.order_ready} tone="ok" icon={<PackageCheck className="h-5 w-5" />} />
           </div>
 
           <Card title="Narxini hisoblash kerak" padded={false} actions={<Link className="text-sm underline" to="/prices">Narx hisoblash</Link>}>
@@ -46,7 +52,11 @@ export default function ManagerTasksPage() {
           </Card>
 
           <ClientList title="Mijozga ko'rsatish kerak" rows={pres.review} empty="Ko'rsatiladigan dizayn yoki narx yo'q" />
-          <ClientList title="Buyurtma yaratish kerak" rows={pres.order_ready} empty="Buyurtma kutayotgan mijoz yo'q" />
+          <ClientList
+            title={boss ? "Buyurtma yaratish kerak" : "Buyurtmaga tayyor — bosh menejerda"}
+            rows={pres.order_ready}
+            empty="Buyurtma kutayotgan mijoz yo'q"
+          />
         </div>
       )}
     </div>

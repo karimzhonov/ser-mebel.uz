@@ -14,6 +14,7 @@ from . import services as S
 from .constants import CAT_TRANSFER, WAREHOUSE_CAT, WAREHOUSE_CAT_EMOJI, WAREHOUSE_CAT_NAME
 from .models import (
     ClientFeedback,
+    Debt,
     FinanceCar,
     FinanceCategory,
     ManualOrder,
@@ -92,6 +93,42 @@ def operation_dto(op: Operation) -> dict:
         "receipt_file_id": op.receipt_file_id,
         "is_deleted": op.is_deleted,
         "handover": op.handover,
+    }
+
+
+def debt_dto(d: Debt, client: str | None = None, paid=None) -> dict:
+    """A debt with total / paid / remaining in its own currency. `paid` comes from
+    S.debts_qs()'s annotation when the caller has it (else one query)."""
+    nums = S.debt_numbers(d, paid)
+    if d.created_by_id:
+        by_name = d.created_by.name
+    elif d.site_user_id:
+        by_name = d.site_user.name or str(d.site_user.phone)
+    else:
+        by_name = ""
+    return {
+        "id": d.pk,
+        "number": d.number,
+        "date": iso(d.date),
+        "creditor": d.creditor,
+        "item": d.item,
+        "amount": dec(d.amount),
+        "currency": d.currency,
+        "orig_amount": dec(d.orig_amount),
+        "rate": dec(d.rate, 4),
+        "total": dec(nums["total"]),
+        "paid": dec(nums["paid"]),
+        "remaining": dec(nums["remaining"]),
+        "category": category_dto(d.category),
+        "order_ref": d.order_ref,
+        "client": client or "",
+        "status": d.status,
+        "status_label": d.get_status_display(),
+        "closed_at": iso(d.closed_at),
+        "days": nums["days"],
+        "by_name": by_name,
+        "comment": d.comment,
+        "created_at": d.created_at.isoformat(),
     }
 
 

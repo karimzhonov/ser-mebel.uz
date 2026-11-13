@@ -1202,9 +1202,10 @@ def record_price_answer(price, *, by, answer, comment="", due_at=None):
             )
         M.offer_answered(locked, "price", m, by=by, answer=answer)
         if answer == "approved":
-            # the manager if they may make orders, else everybody who may
-            if m.manager is not None and m.manager.has_perm("order.add_order"):
-                makers = [m.manager]
+            # owner's rule: the ready client goes to the «Bosh menejer» (events adds every
+            # one); only while nobody in that role has Telegram, whoever may make orders
+            if M.bosses().filter(telegram_id__isnull=False).exists():
+                makers = []
             else:
                 makers = list(M.order_creators())
             events.offer_order_ready(locked, to_users=makers)

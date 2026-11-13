@@ -11,6 +11,7 @@ from accounting.dto import (  # noqa: F401
     car_dto,
     category_dto,
     day_summary_dto,
+    debt_dto,
     dec,
     feedback_dto,
     iso,

@@ -182,3 +182,86 @@ def saved_kb(number: int, with_receipt: bool):
     if with_receipt:
         btns.insert(0, b("📎 Chek qo'shish", f"rcpt:{number}"))
     return ik([btns])
+
+
+# ------------------------------------------------------------------ qarzlar (callback prefix «qz:»)
+DEBT_SKIP_CATS = {"oylik", "zapravka"}  # same filter as the site's debt form
+
+
+def debt_cats(cats: list[dict], admin: bool) -> list[dict]:
+    return [
+        c
+        for c in cats
+        if c.get("kind", "expense") == "expense"
+        and c.get("is_active", True)
+        and not c.get("no_order")
+        and not c.get("excluded")
+        and c["code"] not in DEBT_SKIP_CATS
+        and (admin or not c.get("admin_only"))
+    ]
+
+
+def debts_kb(rows: list[dict], closed: bool, page: int = 0):
+    from bot.finance.texts import debt_page_rows
+
+    part, pg, pages = debt_page_rows(rows, page)
+    key = "z" if closed else "l"
+    btns = [
+        [b(f"#{d['number']} · {d['creditor'][:20]} · {d['item'][:18]}", f"qz:v:{d['number']}")]
+        for d in part
+    ]
+    nav = []
+    if pg > 0:
+        nav.append(b("◀️", f"qz:{key}:{pg - 1}"))
+    if pg + 1 < pages:
+        nav.append(b("▶️", f"qz:{key}:{pg + 1}"))
+    btns.append(nav)
+    btns.append(
+        [
+            b("➕ Yangi qarz", "qz:n"),
+            b("📕 Ochiqlar", "qz:l") if closed else b("📗 Yopilganlar", "qz:z"),
+        ]
+    )
+    return ik(btns)
+
+
+def debt_card_kb(d: dict):
+    rows = []
+    if d.get("status", "open") == "open" and d.get("can_pay", True):
+        rows.append([b("💸 To'lash", f"qz:p:{d['number']}")])
+    rows.append([b("⬅️ Ro'yxat", "qz:l")])
+    return ik(rows)
+
+
+def debt_cat_kb(cats: list[dict], admin: bool):
+    cs = debt_cats(cats, admin)
+    return ik(
+        grid([b(f"{c['emoji']} {c['name']}", f"qz:k:{c['code']}") for c in cs], 2) + [[CANCEL]]
+    )
+
+
+def debt_order_kb(orders: list[dict]):
+    rows = [
+        [
+            b(
+                f"{ORDER_ICONS.get(o['bucket'], '')}{o['ref']} · {o['client'][:28]}",
+                f"qz:o:{o['ref']}",
+            )
+        ]
+        for o in orders[:60]
+    ]
+    rows.append([b("⌨️ ID yozish", "qz:ot")])
+    rows.append([CANCEL])
+    return ik(rows)
+
+
+def debt_confirm_kb():
+    return ik([[b("✅ Saqlash", "qz:s")], [CANCEL]])
+
+
+def debt_pay_amount_kb(rem_text: str):
+    return ik([[b(f"✅ To'liq: {rem_text}", "qz:pf")], [CANCEL]])
+
+
+def debt_pay_confirm_kb():
+    return ik([[b("✅ To'lash", "qz:py")], [CANCEL]])

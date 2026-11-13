@@ -1174,6 +1174,17 @@ def default_manager():
     return found[0] if len(found) == 1 else None
 
 
+def can_make_order(user) -> bool:
+    """Owner's rule: every manager's agreed client goes to the «Bosh menejer»
+    (metering.manage_metering), who turns it into an order; admins may too. A plain
+    «Menejer» shows the offer and records the answer, but does not make the order."""
+    return bool(
+        user is not None
+        and user.is_active
+        and (user.is_superuser or user.has_perm(f"metering.{METERING_MANAGE_PERMISSION}"))
+    )
+
+
 def order_creators():
     """Who is told to make the order when the client agreed to the price: active staff
     holding order.add_order EXPLICITLY."""

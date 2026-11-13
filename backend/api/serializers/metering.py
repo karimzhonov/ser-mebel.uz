@@ -332,6 +332,7 @@ class DesignSerializer(OfferFieldsMixin, serializers.ModelSerializer):
             # can_create_order(), minus its query: metering__order / __price are
             # select_related. Owner's rule: only once the client agreed to the price.
             "create_order": user.has_perm("order.add_order")
+            and metering_services.can_make_order(user)
             and obj.stage == "approved"
             and _price_approved(obj.metering)
             and obj.metering.client_result not in ("design_declined", "price_declined")

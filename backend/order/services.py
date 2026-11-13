@@ -269,7 +269,8 @@ def create_order(*, count_days=None, author=None, **fields):
     - end_date = reception_date + count_days when count_days is given (else the order
       starts WAITING, see resolve_order_status_on_save);
     - the linked metering becomes "Сотилди", and so does its call-centre invoice;
-    - factory defaults to DEFAULT_FACTORY_NAME.
+    - factory defaults to DEFAULT_FACTORY_NAME;
+    - from a metering only the «Bosh menejer» / an admin (metering.can_make_order).
     """
     from datetime import timedelta
 
@@ -277,9 +278,10 @@ def create_order(*, count_days=None, author=None, **fields):
     from django.utils import timezone
 
     from call_center.constants import SolutionChoice
-    from core.exceptions import ServiceError
+    from core.exceptions import ServiceError, ServiceForbidden
     from core.geo import make_point
     from metering.constants import ClientResult, MeteringStatus, OfferStage
+    from metering.services import can_make_order
 
     from .constants import DEFAULT_FACTORY_NAME
     from .models import Factory, Order
@@ -287,6 +289,12 @@ def create_order(*, count_days=None, author=None, **fields):
     metering = fields.get("metering")
     design_type = fields.get("design_type")
     if metering is not None:
+        # owner's rule: the managers' ready clients go to the «Bosh menejer», who makes
+        # the order (author=None = an internal call, not a person)
+        if author is not None and not can_make_order(author):
+            raise ServiceForbidden(
+                "Buyurtmani bosh menejer yaratadi — mijoz unga «Buyurtmaga tayyor» ro'yxatida ko'rinadi"
+            )
         if Order.objects.filter(metering=metering).exists():
             raise ServiceError("Bu o'lchov uchun buyurtma allaqachon yaratilgan")
         # Reverse OneToOne: getattr with a default swallows RelatedObjectDoesNotExist.

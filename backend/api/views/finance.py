@@ -32,9 +32,11 @@ from accounting import events as E
 from accounting import salary as SAL
 from accounting import services as S
 from accounting.constants import WAREHOUSE_CAT, WAREHOUSE_CAT_EMOJI, WAREHOUSE_CAT_NAME
+from accounting.dto import debt_dto
 from accounting.excel import build_xlsx
 from accounting.models import (
     ClientFeedback,
+    Debt,
     FinanceCar,
     FinanceCategory,
     ManualOrder,
@@ -55,6 +57,9 @@ from oauth.models import TelegramMember, TelegramRole
 from ..permissions import IsSuperUser, ModelPermissions, is_staff, require_perm
 from ..serializers.finance import (
     ClientFeedbackSerializer,
+    DebtPaySerializer,
+    DebtUpdateSerializer,
+    DebtWriteSerializer,
     FinanceCarSerializer,
     FinanceCategorySerializer,
     ManualOrderSerializer,
@@ -108,7 +113,7 @@ class FinanceCategoryViewSet(_CatalogViewSet):
     serializer_class = FinanceCategorySerializer
 
     def perform_destroy(self, instance):
-        if instance.operations.exists():
+        if instance.operations.exists() or instance.debts.exists():
             raise ServiceError(
                 "Bu kategoriyada amallar bor — o'chirish o'rniga «Faol emas» qiling."
             )
@@ -275,7 +280,7 @@ class OperationViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = Operation.objects.select_related(
-            "member", "author", "site_user", "category", "pair"
+            "member", "author", "site_user", "category", "pair", "debt"
         ).prefetch_related(
             Prefetch("pair_of", queryset=Operation.objects.only("id", "number", "pair_id"))
         )
@@ -734,6 +739,183 @@ class FinanceOrdersView(APIView):
         return Response({"results": refs})
 
 
+# ===================================================================== debts («Qarzlar»)
+class OperationModelPermissions(ModelPermissions):
+    """The Operation permissions (view/add/change/delete_operation) gate the debts too:
+    Debt has no permissions of its own."""
+
+    def _queryset(self, view):
+        return Operation.objects.none()
+
+
+class DebtViewSet(
+    mixins.ListModelMixin,
+    mixins.RetrieveModelMixin,
+    mixins.CreateModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Owner's rule: a staff member sees / pays only the debts he wrote himself; users
+    with view_all_operations see all. Paying books an expense in the chosen wallet,
+    scoped like OperationViewSet.create."""
+
+    permission_classes = [OperationModelPermissions]
+    queryset = Debt.objects.none()
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+
+    def get_queryset(self):
+        p = self.request.query_params
+        status = p.get("status", "open") if self.action == "list" else "all"
+        qs = S.debts_qs(status, scoped_member(self.request))
+        if p.get("order_ref"):
+            qs = qs.filter(order_ref=p["order_ref"])
+        if self.action != "list":
+            return qs
+        q = (p.get("search") or "").strip()
+        if q:
+            qs = qs.filter(
+                Q(creditor__icontains=q)
+                | Q(item__icontains=q)
+                | Q(order_ref__icontains=q)
+                | Q(comment__icontains=q)
+            )
+        if status == "open":
+            return qs.order_by("date", "number")
+        if status == "closed":
+            return qs.order_by("-closed_at", "-number")
+        return qs.order_by("-date", "-number")
+
+    def _rows(self, debts) -> list[dict]:
+        infos = S.order_infos([d.order_ref for d in debts])
+        return [
+            debt_dto(
+                d,
+                infos[d.order_ref].client if d.order_ref in infos else "",
+                S.debt_paid_annotated(d),
+            )
+            for d in debts
+        ]
+
+    def _one(self, pk) -> dict:
+        d = S.debts_qs("all").get(pk=pk)
+        return self._rows([d])[0]
+
+    def _admin(self, request) -> bool:
+        return request.user.has_perm(VIEW_ALL)
+
+    def list(self, request, *args, **kwargs):
+        page = self.paginate_queryset(self.get_queryset())
+        return self.get_paginated_response(self._rows(page))
+
+    def retrieve(self, request, *args, **kwargs):
+        d = self.get_object()
+        row = self._rows([d])[0]
+        pays = (
+            d.payments.filter(is_deleted=False)
+            .select_related("member", "author", "site_user", "category", "pair", "debt")
+            .prefetch_related(
+                Prefetch("pair_of", queryset=Operation.objects.only("id", "number", "pair_id"))
+            )
+            .order_by("date", "number")
+        )
+        row["payments"] = OperationSerializer(pays, many=True).data
+        can = S.can_modify_debt(acting_member(request), d, self._admin(request))
+        row["can_change"] = can and request.user.has_perm("accounting.change_operation")
+        row["can_delete"] = (
+            can and not row["payments"] and request.user.has_perm("accounting.delete_operation")
+        )
+        return Response(row)
+
+    def create(self, request, *args, **kwargs):
+        s = DebtWriteSerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        d = s.validated_data
+        only = scoped_member(request)
+        me = acting_member(request)
+        if only and not only.has_wallet:
+            raise ValidationError({"detail": "Sizning hamyoningiz yo'q."})
+        debt = S.create_debt(
+            creditor=d["creditor"],
+            item=d["item"],
+            category_code=d["category_code"],
+            order_ref=d["order_ref"],
+            currency=d["currency"],
+            amount=d.get("amount"),
+            orig_amount=d.get("orig_amount"),
+            on_date=d.get("date"),
+            comment=d.get("comment", ""),
+            created_by=me,
+            site_user=request.user,
+            source="site",
+            actor_admin=only is None,
+        )
+        return Response(self._one(debt.pk), status=201)
+
+    def partial_update(self, request, *args, **kwargs):
+        debt = self.get_object()
+        s = DebtUpdateSerializer(data=request.data, partial=True)
+        s.is_valid(raise_exception=True)
+        only = scoped_member(request)
+        if not S.can_modify_debt(acting_member(request), debt, only is None):
+            raise PermissionDenied(
+                "Faqat o'zingiz kiritgan, oxirgi 2 kundagi qarzni o'zgartira olasiz."
+            )
+        S.update_debt(debt, dict(s.validated_data), actor_admin=only is None)
+        return Response(self._one(debt.pk))
+
+    def destroy(self, request, *args, **kwargs):
+        debt = self.get_object()
+        only = scoped_member(request)
+        if not S.can_modify_debt(acting_member(request), debt, only is None):
+            raise PermissionDenied(
+                "Faqat o'zingiz kiritgan, oxirgi 2 kundagi qarzni o'chira olasiz."
+            )
+        S.delete_debt(debt)
+        return Response(status=204)
+
+    @action(detail=True, methods=["post"])
+    def pay(self, request, pk=None):
+        require_perm(request.user, "accounting.add_operation")
+        debt = self.get_object()
+        s = DebtPaySerializer(data=request.data)
+        s.is_valid(raise_exception=True)
+        d = s.validated_data
+        only = scoped_member(request)
+        if only and d["member"].pk != only.pk:
+            raise PermissionDenied("Faqat o'z hamyoningizdan to'lay olasiz.")
+        if not d["member"].has_wallet:
+            raise ValidationError({"member": f"{d['member'].name}ning hamyoni yo'q."})
+        author = acting_member(request)
+        with transaction.atomic():
+            _, op = S.pay_debt(
+                debt,
+                payer=d["member"],
+                author=author,
+                amount=d.get("amount"),
+                on_date=d.get("date"),
+                site_user=request.user,
+                source="site",
+                actor_admin=only is None,
+            )
+        E.operation_created(op, author=author, from_site=True)
+        op = Operation.objects.select_related(
+            "member", "author", "site_user", "category", "pair", "debt"
+        ).get(pk=op.pk)
+        return Response({"debt": self._one(debt.pk), "operation": OperationSerializer(op).data})
+
+    @action(detail=False, methods=["get"])
+    def stats(self, request):
+        st = S.debt_stats(scoped_member(request))
+        return Response(
+            {
+                "open_count": st["open_count"],
+                "open_uzs": str(st["open_uzs"]),
+                "open_usd": str(st["open_usd"]),
+            }
+        )
+
+
 class FinanceOrderDetailView(APIView):
     permission_classes = [ModelPermissions]
     queryset = Operation.objects.none()
@@ -746,6 +928,10 @@ class FinanceOrderDetailView(APIView):
         st = S.order_stats(info.ref)
         row = _order_row(info, st)
         row["operations"] = OperationSerializer(st["rows"], many=True).data
+        row["debts"] = [
+            debt_dto(d, info.client, S.debt_paid_annotated(d))
+            for d in S.debts_qs("all").filter(order_ref=info.ref).order_by("date", "number")
+        ]
         row["warehouse"] = [
             {**r, "quantity": f(r["quantity"]), "total": f(r["total"])}
             for r in st["warehouse_rows"]
