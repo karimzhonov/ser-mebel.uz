@@ -189,6 +189,14 @@ class Operation(models.Model):
         related_name="pair_of",
         verbose_name="O'tkazmaning juft yozuvi",
     )
+    debt = models.ForeignKey(
+        "accounting.Debt",
+        models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="payments",
+        verbose_name="Qarz",
+    )
     # Money a worker collected from a client and has to hand to the boss (/topshiruv).
     handover = models.CharField(
         max_length=16,
@@ -284,6 +292,76 @@ class OrderAdvance(models.Model):
         ordering = ["-created_at", "-id"]
         verbose_name = "Buyurtma avansi"
         verbose_name_plural = "Buyurtma avanslari"
+
+
+class Debt(models.Model):
+    """«Qarzlar»: something taken on credit from a supplier for a client's order. Not an
+    Operation (no money moved yet): every payment is an expense Operation with `debt` set;
+    paid/remaining are always computed from the live payments (services.refresh_debt keeps
+    `status`/`closed_at` in sync)."""
+
+    STATUS = [("open", "Ochiq"), ("closed", "Yopilgan")]
+
+    number = models.PositiveIntegerField(unique=True, verbose_name="№")
+    date = models.DateField(verbose_name="Olingan sana")
+    creditor = models.CharField(max_length=255, verbose_name="Kimdan")
+    item = models.CharField(max_length=500, verbose_name="Nima olindi")
+    amount = models.DecimalField(max_digits=16, decimal_places=2, verbose_name="Summa (so'm)")
+    currency = models.CharField(
+        max_length=3, choices=Currency.choices, default=Currency.UZS, verbose_name="Valyuta"
+    )
+    orig_amount = models.DecimalField(
+        max_digits=16, decimal_places=2, null=True, blank=True, verbose_name="Asl summa"
+    )
+    rate = models.DecimalField(
+        max_digits=16, decimal_places=4, null=True, blank=True, verbose_name="Kurs"
+    )
+    category = models.ForeignKey(
+        FinanceCategory, models.PROTECT, related_name="debts", verbose_name="Kategoriya"
+    )
+    order = models.ForeignKey(
+        "order.Order",
+        models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="finance_debts",
+        verbose_name="Buyurtma",
+    )
+    order_ref = models.CharField(
+        max_length=32, blank=True, default="", db_index=True, verbose_name="Buyurtma ID"
+    )
+    comment = models.TextField(blank=True, default="", verbose_name="Izoh")
+    created_by = models.ForeignKey(
+        "oauth.TelegramMember", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    site_user = models.ForeignKey(
+        "oauth.User", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    source = models.CharField(
+        max_length=8, default="bot", choices=[("bot", "Telegram"), ("site", "Sayt")]
+    )
+    status = models.CharField(max_length=8, choices=STATUS, default="open", db_index=True)
+    closed_at = models.DateField(null=True, blank=True)
+    is_deleted = models.BooleanField(default=False, db_index=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-date", "-number"]
+        default_permissions = ()
+        verbose_name = "Qarz"
+        verbose_name_plural = "Qarzlar"
+        indexes = [models.Index(fields=["status", "date"])]
+
+    def __str__(self):
+        return f"Qarz #{self.number} {self.creditor}"
+
+    @property
+    def total_cur(self) -> Decimal:
+        if self.currency == Currency.USD and self.orig_amount is not None:
+            return self.orig_amount
+        return self.amount
 
 
 class MonthReport(models.Model):

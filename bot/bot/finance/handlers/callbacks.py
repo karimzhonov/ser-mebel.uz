@@ -10,6 +10,7 @@ from bot.finance import api as A
 from bot.finance import texts as T
 from bot.finance.ctx import Ctx
 from bot.finance.handlers import bonus as BN
+from bot.finance.handlers import debts as QZ
 from bot.finance.handlers import menu as MN
 from bot.finance.handlers import requests as RQ
 from bot.finance.handlers import tasks as TK
@@ -43,6 +44,8 @@ async def on_callback(ctx: Ctx, data: str):
 
     if cmd == "cancel":
         return await cancel_flow(ctx)
+    if cmd == "qz":
+        return await QZ.on_callback(ctx, arg, d)
     if cmd in ("bpaid", "bpok", "bpf", "bpq"):
         return await BN.bonus_paid_btn(ctx, cmd, arg)
     if cmd == "kfx":

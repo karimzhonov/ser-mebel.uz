@@ -158,6 +158,7 @@ FINANCE_MENU_BUTTONS: set[str] = {
     "🔍 Tekshiruv",
     "📥 Excel",
     "📋 Vazifalarim",
+    "📕 Qarzlar",
 }
 
 

@@ -72,6 +72,7 @@ export interface Operation {
   site_user_detail: { id: number; name: string | null; phone: string } | null;
   has_receipt: boolean;
   pair_number: number | null;
+  debt_number: number | null;
   handover: "" | "accepted" | "deleted";
   is_deleted: boolean;
   source: "bot" | "site" | "import";
@@ -260,6 +261,41 @@ export interface Issue {
   title: string;
   detail: string;
   fix: string;
+}
+
+export interface Debt {
+  id: number;
+  number: number;
+  date: string;
+  creditor: string;
+  item: string;
+  amount: string;
+  currency: "UZS" | "USD";
+  orig_amount: string | null;
+  rate: string | null;
+  /** total / paid / remaining are in `currency` */
+  total: string;
+  paid: string;
+  remaining: string;
+  category: { code: string; name: string; emoji: string };
+  order_ref: string;
+  client: string;
+  status: "open" | "closed";
+  status_label: string;
+  closed_at: string | null;
+  days: number;
+  by_name: string;
+  comment: string;
+  created_at: string;
+  payments?: Operation[];
+  can_delete?: boolean;
+  can_change?: boolean;
+}
+
+export interface DebtStats {
+  open_count: number;
+  open_uzs: string;
+  open_usd: string;
 }
 
 export interface FinMe {

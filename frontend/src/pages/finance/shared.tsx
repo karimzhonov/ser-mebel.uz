@@ -114,11 +114,14 @@ export function OperationModal({
   op,
   defaultMember,
   defaultKind = "expense",
+  onDebt,
   onClose,
 }: {
   op?: Operation | null;
   defaultMember?: number | null;
   defaultKind?: "income" | "expense";
+  /** shows a third «📕 Qarz» choice; the parent swaps this modal for the debt form */
+  onDebt?: () => void;
   onClose: () => void;
 }) {
   const { data: me } = useFinMe();
@@ -213,11 +216,12 @@ export function OperationModal({
       <div className="space-y-4">
         {!op?.pair_number && (
           <Segmented
-            value={f.kind}
-            onChange={(kind) => set({ kind, category_code: "" })}
+            value={f.kind as string}
+            onChange={(kind) => (kind === "debt" && onDebt ? onDebt() : set({ kind: kind as "income" | "expense", category_code: "" }))}
             options={[
               { value: "expense", label: "➖ Chiqim" },
               { value: "income", label: "➕ Kirim" },
+              ...(!op && onDebt ? [{ value: "debt", label: "📕 Qarz" }] : []),
             ]}
           />
         )}

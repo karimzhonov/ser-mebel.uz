@@ -16,6 +16,7 @@ from bot.finance import api as A
 from bot.finance import texts as T
 from bot.finance.ctx import Ctx, run
 from bot.finance.handlers import bonus as BN
+from bot.finance.handlers import debts as QZ
 from bot.finance.handlers import requests as RQ
 from bot.finance.handlers import tasks as TK
 from bot.finance.handlers import tx as TX
@@ -180,6 +181,7 @@ MENU_STAFF = {
     "📤 Oylik hisob": lambda c: RQ.month_start(c),
     "🙏 Rahbardan pul so'rash": lambda c: RQ.req_start(c),
     "🔄 Xodimga pul berish": lambda c: RQ.tr_start(c),
+    "📕 Qarzlar": lambda c: QZ.show_list(c),
     "❓ Yordam": lambda c: c.send(
         (T.HELP_ADMIN if c.admin else T.HELP_STAFF) + T.ver_line(), T.kb_for(c.member)
     ),
@@ -226,6 +228,8 @@ async def on_text(ctx: Ctx, text: str):
             return await TX.tx_text(ctx, d, step, text)
         if step in ("req_amount", "req_reason", "req_custom"):
             return await RQ.req_text(ctx, d, step, text)
+        if step.startswith("qz_"):
+            return await QZ.on_text(ctx, d, step, text)
         if step == "bpay":
             return await BN.bonus_pay_text(ctx, d, text)
         if step == "adv_sum":

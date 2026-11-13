@@ -87,6 +87,7 @@ Decimals are strings like `"250000.00"`; dates ISO.
 - **MoneyState** `{paid, rest, src}`
 - **MoneyRequest** `{number, member: Member, amount, currency, orig_amount, reason, status, answer, created_at, admin_messages: [[chat_id, message_id]], member_balance}`
 - **Advance** `{id, order_ref, order_id, client, phone, price_text, amount, currency, sum_text, by_name, status: pending|accepted|rejected, status_label, got_text, created_at}` — the advance a manager entered when creating an order, waiting for the boss («Avans tasdiqlash»)
+- **Debt** `{id, number, date, creditor, item, amount, currency, orig_amount, rate, total, paid, remaining, category: Category, order_ref, client, status: open|closed, status_label, closed_at, days, by_name, comment, created_at}` — «Qarzlar»: something taken on credit for a client's order. `amount` is so'm; `total` / `paid` / `remaining` are decimal strings in `currency` (USD debts: dollars). `days` = open days (`closed_at - date` once closed).
 - **Worker** `{id, name, group, position, is_boss}` (`is_boss` = the boss's own salary row: its salary takes the extra `pay_type` «Uy uchun») · **Car** `{id, name}`
 - **SiteEntryTask** `{code, order_ref, client, sum_text, rest_text, taken_by, date, is_done}`
 - **Feedback** `{order_ref, client, phone, status, ready_date, asked_date}` · **Warranty** `{order_ref, client, given}`
@@ -198,6 +199,8 @@ Actor comes from `X-Bot-Actor`. Every role rule is enforced server-side.
 | GET | `finance/summary/?month=&member=<tg\|all>` | `S.summary` + `member_balance`; non-admins forced to self | `info()` `:1024` |
 | GET | `finance/operations/?month=&member=` | `{rows: [Operation + signed_amount + internal]}`; bot paginates | `ops()` `:1102` |
 | GET | `finance/operations/{n}/` | `Operation + can_delete + can_attach` | `:1004`, `:2162`, `:2170` |
+| GET | `finance/debts/?status=open\|closed` | `{rows: [Debt], totals: {open_count, open_uzs, open_usd}}`; a staff member gets only the debts he wrote (`created_by`), an admin gets all (totals scoped the same); open = all of them, oldest first; closed = the last 30 by `closed_at` | `S.debts_qs`, `S.debt_stats` |
+| GET | `finance/debts/{n}/` | `Debt + payments: [Operation] + can_pay` (`can_pay` = actor has a wallet and the debt is open) / 404 (also for another member's debt unless the actor is admin) | `S.debts_qs` |
 | GET | `finance/months/?member=` | `S.months_series` | `months_view` |
 | GET | `finance/wallets/` (admin) | `{report_month, rows: [{member, balance, last_day, reported, month_spent}], pending: [Member], staff_total}` | `wallets_view` `:1177` |
 | GET | `finance/checks/` (admin) | `[issue]` | `S.checks` |
@@ -221,6 +224,8 @@ Actor comes from `X-Bot-Actor`. Every role rule is enforced server-side.
 |---|---|---|---|---|
 | POST | `finance/join/` | `{name, username}` → `{member, created}` | `S.register_member` | `finance.join_requested` (if created) |
 | POST | `finance/operations/` | `{member_tg, kind, amount, category, currency, orig_amount, rate, order_ref, comment, receipt_file_id, worker, pay_type}` → `{operation, balance}`; `actor_admin` derived server-side; `pay_type` (salary only) is `Avans` / `Oylik` / `Uy uchun` — `Uy uchun` only when `worker` is an `is_boss` worker, else 400; non-admins always get `Avans`; an inactive category is refused (400) | `S.create_operation`, then `followup.bonus_check(ref, ok_hour=False)` for client payments | `operation_created` |
+| POST | `finance/debts/` | `{creditor, item, amount_text, category, order_ref, comment}` → `Debt` (201); `amount_text` parsed by `S.money_in`; the order must exist (400); needs a wallet or admin (403) | `S.create_debt_as` | — (no notification: the debt shows on the site and in the bot list) |
+| POST | `finance/debts/{n}/pay/` | `{amount_text\|null}` (null/empty = the whole remainder) → `{debt, operation, balance}`; staff may pay only their own debts (another member's → 404, admin pays any); the sum must be in the debt's currency (400), more than the remainder → 400, already closed → 409; booked from the **actor's own** wallet as an expense in the debt's category on its `order_ref` | `S.pay_debt_as` | `operation_created` |
 | POST | `finance/operations/{n}/receipt/` | `{file_id}` → Operation (admin or author) | new `S.attach_receipt(op, file_id, actor)` | `receipt_attached` |
 | DELETE | `finance/operations/{n}/` | → `{deleted: [Operation]}` | `S.can_delete` + `S.delete_operation` | `operation_deleted` |
 | POST | `finance/transfers/` | `{to_tg, amount, comment}` → `{out, inc, balance}` | `S.create_transfer` | `transfer_created` |

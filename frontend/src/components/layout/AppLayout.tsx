@@ -43,6 +43,7 @@ import {
   UserCheck,
   ListTodo,
   Presentation,
+  BookX,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
@@ -111,6 +112,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
     items: [
       { to: "/finance", label: "Xulosa", icon: PieChart, perm: "accounting.view_operation" },
       { to: "/finance/operations", label: "Amallar", icon: ArrowLeftRight, perm: "accounting.view_operation" },
+      { to: "/finance/debts", label: "Qarzlar", icon: BookX, perm: "accounting.view_operation" },
       { to: "/finance/wallets", label: "Hamyonlar", icon: Wallet, perm: "accounting.view_operation" },
       { to: "/finance/orders", label: "Buyurtmalar moliyasi", icon: Receipt, perm: "accounting.view_all_operations" },
       { to: "/finance/requests", label: "Pul so'rovlari", icon: HandCoins, perm: "accounting.view_moneyrequest" },

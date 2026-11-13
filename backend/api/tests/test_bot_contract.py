@@ -157,3 +157,17 @@ def test_misc_fixtures_match_real_responses(bot_client, group, clock):
         data={"kind": "expense", "amount": "0", "category": "ovqat"},
     )
     assert bad.status_code == 400 and keys(bad.data) == keys(load_fixture("misc.error_400.json"))
+
+
+def test_debt_fixtures_match_the_dto(members, site_order):
+    _, ali, _ = members
+    d = S.create_debt(
+        creditor="A",
+        item="B",
+        category_code="material",
+        order_ref="406",
+        amount=1000,
+        actor_admin=True,
+    )
+    assert shape(dto.debt_dto(d, "K")) == shape(load_fixture("dto.debt.1.json"))
+    assert shape(load_fixture("dto.debt.2.json")) == shape(load_fixture("dto.debt.1.json"))

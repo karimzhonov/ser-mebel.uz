@@ -1,0 +1,33 @@
+{
+  "id": 7,
+  "number": 12,
+  "date": "2026-11-02",
+  "creditor": "Bahor LDSP do'koni",
+  "item": "LDSP 10 list",
+  "amount": "6000000.00",
+  "currency": "UZS",
+  "orig_amount": null,
+  "rate": null,
+  "total": "6000000.00",
+  "paid": "2000000.00",
+  "remaining": "4000000.00",
+  "category": {
+    "code": "material",
+    "name": "Material",
+    "emoji": "🧱",
+    "kind": "expense",
+    "admin_only": false,
+    "no_order": false,
+    "archive": true,
+    "excluded": false
+  },
+  "order_ref": "406",
+  "client": "Nazira Karimova",
+  "status": "open",
+  "status_label": "Ochiq",
+  "closed_at": null,
+  "days": 11,
+  "by_name": "Ali",
+  "comment": "",
+  "created_at": "2026-11-02T10:15:00+05:00"
+}

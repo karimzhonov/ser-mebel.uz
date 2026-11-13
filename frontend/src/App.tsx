@@ -18,6 +18,7 @@ import ProductionPage from "@/pages/Production";
 import FactoriesPage from "@/pages/Factories";
 import FinanceSummaryPage from "@/pages/finance/Summary";
 import FinanceOperationsPage from "@/pages/finance/Operations";
+import { FinanceDebtsPage } from "@/pages/finance/Debts";
 import FinanceSettingsPage from "@/pages/finance/Settings";
 import { FinanceOrdersPage, FinanceWalletsPage } from "@/pages/finance/Wallets";
 import { HrJournalPage, HrTodayPage } from "@/pages/hr/Today";
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="factories" element={<FactoriesPage />} />
         <Route path="finance" element={<FinanceSummaryPage />} />
         <Route path="finance/operations" element={<FinanceOperationsPage />} />
+        <Route path="finance/debts" element={<FinanceDebtsPage />} />
         <Route path="finance/wallets" element={<FinanceWalletsPage />} />
         <Route path="finance/orders" element={<FinanceOrdersPage />} />
         <Route path="finance/requests" element={<FinanceRequestsPage />} />

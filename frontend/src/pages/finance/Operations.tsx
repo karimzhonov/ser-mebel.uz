@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeftRight, History, Minus, Paperclip, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowLeftRight, BookX, History, Minus, Paperclip, Pencil, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { api } from "@/api/client";
 import { useAction, useGet, useList } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
@@ -7,6 +7,7 @@ import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilte
 import { Badge, Button, Card, DataTable, Empty, IconButton, Modal, PageHeader, Pagination, SearchInput, Segmented, Select, StatTile } from "@/components/ui";
 import { date, dateTime } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
+import { DebtModal } from "./Debts";
 import { CatLabel, OperationModal, ReceiptModal, TransferModal, som, useCategories, useFinMe, useMembers, usd } from "./shared";
 import type { Operation } from "./types";
 
@@ -31,6 +32,7 @@ export default function FinanceOperationsPage() {
   const [edit, setEdit] = useState<Operation | "income" | "expense" | null>(null);
   const [receipt, setReceipt] = useState<Operation | null>(null);
   const [transfer, setTransfer] = useState(false);
+  const [debt, setDebt] = useState(false);
   const [history, setHistory] = useState<Operation | null>(null);
   const remove = useAction((id: number) => api.delete(`/finance/operations/${id}/`), { success: "O'chirildi", invalidate: ["finance"] });
   const restore = useAction((id: number) => api.post(`/finance/operations/${id}/restore/`), { success: "Tiklandi", invalidate: ["finance"] });
@@ -56,6 +58,9 @@ export default function FinanceOperationsPage() {
               </Button>
               <Button icon={<Minus className="h-4 w-4" />} onClick={() => setEdit("expense")}>
                 Chiqim
+              </Button>
+              <Button variant="outline" icon={<BookX className="h-4 w-4" />} onClick={() => setDebt(true)}>
+                Qarz
               </Button>
             </>
           )
@@ -141,6 +146,11 @@ export default function FinanceOperationsPage() {
                   {r.order_ref && <span className="font-medium">🧾 {r.order_ref} </span>}
                   {r.worker && <span className="muted">👷 {r.worker}</span>}
                   {r.pay_type && <Badge tone="info" className="ml-1">{r.pay_type}</Badge>}
+                  {r.debt_number && (
+                    <Badge tone="warn" className="ml-1">
+                      📕 Qarz #{r.debt_number}
+                    </Badge>
+                  )}
                 </span>
               ),
               hideOnMobile: true,
@@ -203,10 +213,15 @@ export default function FinanceOperationsPage() {
           op={typeof edit === "string" ? null : edit}
           defaultKind={typeof edit === "string" ? edit : undefined}
           defaultMember={state.member ? Number(state.member) : me?.member?.id}
+          onDebt={() => {
+            setEdit(null);
+            setDebt(true);
+          }}
           onClose={() => setEdit(null)}
         />
       )}
       {receipt && <ReceiptModal op={receipt} onClose={() => setReceipt(null)} />}
+      {debt && <DebtModal onClose={() => setDebt(false)} />}
       {transfer && <TransferModal onClose={() => setTransfer(false)} />}
     </div>
   );
