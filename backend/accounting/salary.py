@@ -557,7 +557,9 @@ def due_tomorrow(on: date | None = None) -> list[tuple[Worker, date]]:
 
 def remind(on: date | None = None) -> int:
     """The day before a pay day: «{name} — oylik chiqarish kerak» to the accountant.
-    Once per worker and pay date (beat restarts and redelivery send nothing twice)."""
+    Called hourly in the daytime, so a pay day set after the first run of the day is
+    still caught; once per worker and pay date (the hourly runs, beat restarts and
+    redelivery send nothing twice)."""
     due = [(w, d) for w, d in due_tomorrow(on) if S.once(f"salary:{w.pk}:{d.isoformat()}")]
     if due:
         E.salary_due(due)

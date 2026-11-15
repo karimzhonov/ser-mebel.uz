@@ -13,6 +13,9 @@ from django.conf import settings
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 
 
+SALARY_REMIND_HOURS = "10-20"
+
+
 def _hour(value, default: int) -> int:
     try:
         h = int(value)
@@ -34,9 +37,12 @@ def periodic_tasks() -> dict[str, tuple[str, dict]]:
         ),
         "moliya: oy oxiri eslatmasi": ("accounting.tasks.month_job", {"minute": "0", "hour": "10"}),
         "moliya: buyurtmalar kuzatuvi": ("accounting.tasks.hourly_orders", {"minute": "0"}),
+        # every hour in the daytime, not once at 10:00: a pay day (or the «Bugalter»
+        # duty) set after 10:00, or a beat restart over the 10:00 tick, must not lose
+        # the reminder; salary.remind sends each worker + pay date only once
         "moliya: oylik eslatmasi": (
             "accounting.tasks.salary_reminder",
-            {"minute": "0", "hour": "10"},
+            {"minute": "0", "hour": SALARY_REMIND_HOURS},
         ),
         "moliya: tozalash": ("accounting.tasks.cleanup", {"minute": "30", "hour": "3"}),
         "hr: davomat jadvali": ("hr.tasks.tick", {"minute": "*"}),

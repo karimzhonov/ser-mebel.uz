@@ -153,6 +153,25 @@ def test_reminder_day_before_once(worker, members, bot_events):
     assert d["to"] == [members[1].telegram_id] and not d["fallback"]
 
 
+def test_reminder_runs_hourly_and_catches_a_late_pay_day(worker, members, bot_events):
+    """A pay day set after the first run of the day still gets its reminder the same
+    day (the beat runs it every hour in the daytime), and only once."""
+    from django_celery_beat.models import PeriodicTask
+
+    from accounting.schedule import sync_periodic_tasks
+
+    sync_periodic_tasks()
+    t = PeriodicTask.objects.get(task="accounting.tasks.salary_reminder")
+    assert (t.crontab.minute, t.crontab.hour) == ("0", "10-20")
+
+    Worker.objects.filter(pk=worker.pk).update(pay_day=None)
+    assert SAL.remind(date(2026, 11, 4)) == 0  # 10:00: no pay day yet
+    Worker.objects.filter(pk=worker.pk).update(pay_day=5)  # set at noon
+    assert SAL.remind(date(2026, 11, 4)) == 1  # the next hourly run
+    assert SAL.remind(date(2026, 11, 4)) == 0
+    assert len(bot_events.of("finance.salary_due")) == 1
+
+
 def test_reminder_falls_back_to_admins_and_short_months(members, bot_events):
     Worker.objects.create(group="Sex", name="Oxirgi", pay_day=31)
     assert SAL.remind(date(2026, 2, 27)) == 1
