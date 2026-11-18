@@ -170,6 +170,8 @@ class OrderDetailSerializer(OrderSerializer):
                     "rover_square": detailing.rover_square,
                     "due_at": detailing.due_at,
                     "service_out_at": detailing.service_out_at,
+                    "service_place": detailing.service_place,
+                    "service_note": detailing.service_note,
                     "folder": detailing.folder_id,
                 }
                 if detailing
@@ -354,6 +356,8 @@ class DetailingSerializer(serializers.ModelSerializer):
             "rover_square",
             "due_at",
             "service_out_at",
+            "service_place",
+            "service_note",
             "folder",
             "actions",
         ]
@@ -364,6 +368,8 @@ class DetailingSerializer(serializers.ModelSerializer):
             "working_done",
             "due_at",
             "service_out_at",
+            "service_place",
+            "service_note",
             "folder",
         ]
 
@@ -386,6 +392,8 @@ class DetailingDueSerializer(serializers.Serializer):
 
 class DetailingServiceOutSerializer(serializers.Serializer):
     service_out_at = serializers.DateTimeField()
+    service_place = serializers.CharField()
+    service_note = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class RoverSerializer(serializers.ModelSerializer):

@@ -209,22 +209,34 @@ def test_full_pipeline(admin_api, catalog):
     out = (timezone.now() + timedelta(days=2)).replace(microsecond=0)
     resp = admin_api.post(
         f"/api/v1/detailings/{detailing_id}/done/",
-        {"service_out_at": out.isoformat()},
+        {"service_out_at": out.isoformat(), "service_place": "nowhere"},
+        format="json",
+    )
+    assert resp.status_code == 400 and "service_place" in resp.data  # Timber / Eman
+    resp = admin_api.post(
+        f"/api/v1/detailings/{detailing_id}/done/",
+        {"service_out_at": out.isoformat(), "service_place": "timber", "service_note": " 2-sex "},
         format="json",
     )
     assert resp.data["done"] is True
+    assert resp.data["service_place"] == "timber" and resp.data["service_note"] == "2-sex"
     assert resp.data["service_out_at"] == out.isoformat()
     assert resp.data["actions"]["service_out"] is True
     assert Order.objects.get(pk=order_id).status == OrderStatus.WORKING
     later = out + timedelta(days=1)
     resp = admin_api.post(
         f"/api/v1/detailings/{detailing_id}/service-out/",
-        {"service_out_at": later.isoformat()},
+        {"service_out_at": later.isoformat(), "service_place": "eman"},
         format="json",
     )
     assert resp.status_code == 200, resp.content
     production = admin_api.get(f"/api/v1/orders/{order_id}/").data["production"]
     assert production["detailing"]["service_out_at"] == later
+    assert production["detailing"]["service_place"] == "eman"
+    queue = admin_api.get("/api/v1/dashboard/service-out/").data
+    row = next(r for r in queue["rows"] if r["order"] == order_id)
+    assert row["place"] == "eman" and row["overdue"] is False
+    assert [p["value"] for p in queue["places"]] == ["timber", "eman", "other"]
 
     resp = admin_api.post(f"/api/v1/orders/{order_id}/go-to-assembly/")
     assert resp.status_code == 200 and resp.data["status"] == OrderStatus.ASSEMBLY
@@ -249,6 +261,7 @@ def test_read_endpoints_respond(admin_api, catalog, order_factory):
     for url in [
         "/api/v1/meta/",
         "/api/v1/dashboard/boards/",
+        "/api/v1/dashboard/service-out/",
         "/api/v1/orders/?status=created,waiting&period=month",
         "/api/v1/orders/stats/",
         "/api/v1/orders/?warning=danger",
@@ -276,3 +289,10 @@ def test_client_detail_by_phone(admin_api, db_client):
     resp = admin_api.get("/api/v1/clients/+998901234567/related/")
     assert resp.status_code == 200
     assert set(resp.data) == {"invoices", "meterings", "orders"}
+
+
+def test_service_out_widget_is_for_the_production_head(api):
+    assert api("detailing.view_detailing").get("/api/v1/dashboard/service-out/").status_code == 403
+    head = api("oauth.user_production_head")
+    resp = head.get("/api/v1/dashboard/service-out/")
+    assert resp.status_code == 200 and resp.data["rows"] == []

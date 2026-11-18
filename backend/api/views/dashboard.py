@@ -8,10 +8,12 @@ from call_center.constants import LeadSource, SolutionChoice
 from core.geo import coord_str, obj_map_url
 from metering.constants import MeteringStatus
 from metering.price.models import InventoryType, ObjectType
+from oauth.constants import PRODUCTION_HEAD_PERMISSION
 from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
 
 from .. import i18n as uz
 from ..fields import MoneyField
+from ..permissions import require_perm
 from ..serializers.common import money_left
 from ..utils import order_deadline
 
@@ -203,3 +205,38 @@ class BoardsView(APIView):
                 }
             )
         return Response({"boards": boards})
+
+
+class ServiceOutView(APIView):
+    """GET /dashboard/service-out/ — the production head's home widget: orders in
+    «Заказ на сырье» whose parts are at the service (Timber / Eman / other), soonest
+    first, with the detailer's comment."""
+
+    def get(self, request):
+        from django.utils import timezone
+
+        from order.detailing.models import ServicePlace
+        from order.detailing.services import service_out_queue
+
+        require_perm(request.user, f"oauth.{PRODUCTION_HEAD_PERMISSION}")
+        now = timezone.now()
+        rows = [
+            {
+                "id": d.pk,
+                "order": d.order_id,
+                "number": d.order.order_number,
+                "client": str(d.order.client) if d.order.client_id else "—",
+                "factory": d.order.factory.name,
+                "service_out_at": d.service_out_at,
+                "overdue": bool(d.service_out_at and d.service_out_at <= now),
+                "place": d.service_place or "",
+                "note": d.service_note,
+            }
+            for d in service_out_queue()
+        ]
+        return Response(
+            {
+                "places": [{"value": v, "label": label} for v, label in ServicePlace.choices],
+                "rows": rows,
+            }
+        )

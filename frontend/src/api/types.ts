@@ -678,6 +678,9 @@ export interface OrderDetail extends Order {
       due_at: string | null;
       /** when the parts come out of the service (set on «Detalirovka bajarildi») */
       service_out_at?: string | null;
+      /** "timber" | "eman" | "other" | "" (old rows) */
+      service_place?: string;
+      service_note?: string;
       folder: number | null;
     } | null;
     rover: ProductionRow | null;
@@ -770,6 +773,8 @@ export interface ProductionItem {
   due_at?: string | null;
   /** when the parts come out of the service (set on «Detalirovka bajarildi») */
   service_out_at?: string | null;
+  service_place?: string;
+  service_note?: string;
   // painter
   type?: number | null;
   type_detail?: { id: number; name: string } | null;
@@ -1027,4 +1032,20 @@ export interface SalesPipeline {
   };
   overdue: { kind: string; id: number; client: string; person: string | PersonRef | null; due_at: string | null; late_hours: number | null; url?: string | null }[];
   load: { role: PipelineRole; person: { id: number; name: string } | null; open: number; overdue: number }[];
+}
+
+/** GET /dashboard/service-out/ — orders whose parts are at the service (production head) */
+export interface ServiceOutQueue {
+  places: { value: string; label: string }[];
+  rows: {
+    id: number;
+    order: number;
+    number: string | number;
+    client: string;
+    factory: string;
+    service_out_at: string | null;
+    overdue: boolean;
+    place: string;
+    note: string;
+  }[];
 }

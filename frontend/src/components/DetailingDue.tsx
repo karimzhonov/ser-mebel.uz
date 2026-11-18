@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api, fieldErrors } from "@/api/client";
 import { useAction } from "@/api/hooks";
-import { Button, Field, Input, Modal } from "@/components/ui";
+import { Button, Field, Input, Modal, Segmented, Textarea } from "@/components/ui";
 import { toLocalInput } from "@/lib/format";
 import { DueLabel, dueText } from "@/pages/offers/actions";
 
@@ -18,6 +18,17 @@ function inDays(n: number) {
   d.setDate(d.getDate() + n);
   d.setHours(18, 0, 0, 0);
   return d;
+}
+
+/** Where the parts are cut/edged — mirrors order.detailing.models.ServicePlace. */
+export const SERVICE_PLACES = [
+  { value: "timber", label: "Timber" },
+  { value: "eman", label: "Eman" },
+  { value: "other", label: "Boshqa" },
+] as const;
+
+export function servicePlaceLabel(value: string | null | undefined) {
+  return SERVICE_PLACES.find((p) => p.value === value)?.label ?? "";
 }
 
 export function isDetailingOverdue(dueAt: string | null | undefined, done: boolean) {
@@ -72,7 +83,7 @@ export function DetailingDueModal({
           <Button
             size="lg"
             variant={sending ? "success" : "primary"}
-            disabled={!value || past}
+            disabled={!value || past || !place}
             loading={save.isPending}
             onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}
           >
@@ -96,6 +107,16 @@ export function DetailingDueModal({
       <Field label="Muddat" error={error ?? (past ? "O'tgan vaqt — kelajakdagi vaqtni kiriting" : undefined)}>
         <Input className="h-12 text-base" type="datetime-local" required value={value} onChange={(e) => setValue(e.target.value)} />
       </Field>
+      <Field label="Qaysi usluga" error={errors.service_place}>
+        <Segmented
+          value={place}
+          onChange={setPlace}
+          options={SERVICE_PLACES.map((p) => ({ value: p.value as string, label: p.label }))}
+        />
+      </Field>
+      <Field label="Izoh" error={errors.service_note}>
+        <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Masalan: qaysi sex, kim olib keladi…" />
+      </Field>
     </Modal>
   );
 }
@@ -108,18 +129,29 @@ export function DetailingDueModal({
 export function ServiceOutModal({
   detailingId,
   current,
+  place: currentPlace,
+  note: currentNote,
   onClose,
 }: {
   detailingId: number;
   /** set -> changing an existing time; absent -> marking the detailing done */
   current?: string | null;
+  place?: string | null;
+  note?: string | null;
   onClose: () => void;
 }) {
   const finishing = current === undefined;
   const [value, setValue] = useState(current ? toLocalInput(current) : "");
+  const [place, setPlace] = useState<string>(currentPlace ?? "");
+  const [note, setNote] = useState(currentNote ?? "");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const save = useAction(
-    () => api.post(`/detailings/${detailingId}/${finishing ? "done" : "service-out"}/`, { service_out_at: value }),
+    () =>
+      api.post(`/detailings/${detailingId}/${finishing ? "done" : "service-out"}/`, {
+        service_out_at: value,
+        service_place: place,
+        service_note: note,
+      }),
     {
       success: finishing ? "Xomashyo buyurtmasiga o'tdi" : "Vaqt o'zgartirildi",
       invalidate: [...INVALIDATE, "rovers", "painters"],
@@ -139,7 +171,7 @@ export function ServiceOutModal({
           <Button
             size="lg"
             variant={finishing ? "success" : "primary"}
-            disabled={!value || past}
+            disabled={!value || past || !place}
             loading={save.isPending}
             onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}
           >
@@ -165,6 +197,16 @@ export function ServiceOutModal({
         error={errors.service_out_at ?? errors.detail ?? (past ? "O'tgan vaqt — kelajakdagi vaqtni kiriting" : undefined)}
       >
         <Input className="h-12 text-base" type="datetime-local" required value={value} onChange={(e) => setValue(e.target.value)} />
+      </Field>
+      <Field label="Qaysi usluga" error={errors.service_place}>
+        <Segmented
+          value={place}
+          onChange={setPlace}
+          options={SERVICE_PLACES.map((p) => ({ value: p.value as string, label: p.label }))}
+        />
+      </Field>
+      <Field label="Izoh" error={errors.service_note}>
+        <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Masalan: qaysi sex, kim olib keladi…" />
       </Field>
     </Modal>
   );

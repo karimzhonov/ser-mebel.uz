@@ -70,7 +70,20 @@ export function MoneyLeft({ left, total, className }: { left: Money | null | und
   );
 }
 
+/** Overdue / close deadlines get a solid, saturated pill so they stand out (owner's ask). */
+const STRONG_PILL: Partial<Record<Tone, string>> = {
+  danger: "bg-rose-600 text-white dark:bg-rose-500",
+  warn: "bg-amber-400 text-amber-950 dark:bg-amber-400",
+};
+
 export function DeadlinePill({ deadline }: { deadline: Deadline }) {
+  const strong = STRONG_PILL[deadline.level];
+  if (strong)
+    return (
+      <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold tabular-nums ${strong}`}>
+        {deadline.text}
+      </span>
+    );
   return (
     <Badge tone={deadline.level} dot={false} className="tabular-nums">
       {deadline.text}
@@ -79,8 +92,8 @@ export function DeadlinePill({ deadline }: { deadline: Deadline }) {
 }
 
 export const ROW_TONE: Partial<Record<Tone, string>> = {
-  danger: "bg-rose-50/60 dark:bg-rose-500/[.06]",
-  warn: "bg-amber-50/60 dark:bg-amber-500/[.06]",
+  danger: "bg-rose-200/80 hover:!bg-rose-200 dark:bg-rose-500/25 dark:hover:!bg-rose-500/30",
+  warn: "bg-amber-200/80 hover:!bg-amber-200 dark:bg-amber-500/25 dark:hover:!bg-amber-500/30",
 };
 
 export function BackLink({ to, children }: { to: string; children: ReactNode }) {

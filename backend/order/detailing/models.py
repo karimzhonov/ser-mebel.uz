@@ -13,6 +13,14 @@ from ..assembly.models import Assembly
 from ..painter.models import Painter
 
 
+class ServicePlace(models.TextChoices):
+    """Where the parts are cut/edged (the «usluga»)."""
+
+    TIMBER = "timber", "Timber"
+    EMAN = "eman", "Eman"
+    OTHER = "other", "Boshqa"
+
+
 class Detailing(models.Model):
     order = models.OneToOneField("order.Order", models.CASCADE, verbose_name="Заказ")
     folder = FilerFolderField(
@@ -30,6 +38,11 @@ class Detailing(models.Model):
     service_out_at = models.DateTimeField(
         null=True, blank=True, verbose_name="Выход из услуги"
     )
+    service_place = models.CharField(
+        max_length=16, choices=ServicePlace.choices, blank=True, default="",
+        verbose_name="Услуга (где)",
+    )
+    service_note = models.TextField(blank=True, default="", verbose_name="Комментарий к услуге")
 
     square = models.FloatField(default=0, verbose_name="Площадь")
     painter_square = models.FloatField(default=0, blank=True, verbose_name="Площадь покраски")

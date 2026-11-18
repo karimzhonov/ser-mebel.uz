@@ -23,16 +23,29 @@ def clean_service_out(service_out_at):
     return service_out_at
 
 
-def mark_detailing_done(detailing, *, service_out_at):
+def clean_service_place(service_place):
+    from .models import ServicePlace
+
+    if service_place not in ServicePlace.values:
+        raise ServiceError("Usluga joyini tanlang (Timber / Eman)", "service_place")
+    return service_place
+
+
+def mark_detailing_done(detailing, *, service_out_at, service_place, service_note=""):
     """The order moves to "Заказ на сырье"; the detailer says when the parts come
     out of the service (`service_out_at`)."""
     if detailing.done:
         raise ServiceError("Detalirovka allaqachon bajarilgan")
     service_out_at = clean_service_out(service_out_at)
+    service_place = clean_service_place(service_place)
     with transaction.atomic():
         detailing.done = True
         detailing.service_out_at = service_out_at
-        detailing.save(update_fields=["done", "service_out_at"])
+        detailing.service_place = service_place
+        detailing.service_note = (service_note or "").strip()
+        detailing.save(
+            update_fields=["done", "service_out_at", "service_place", "service_note"]
+        )
         detailing.order.status = OrderStatus.WORKING
         detailing.order.save(update_fields=["status"])
     return detailing
@@ -58,7 +71,7 @@ def set_detailing_due(detailing, *, due_at):
     return detailing
 
 
-def set_service_out(detailing, *, service_out_at):
+def set_service_out(detailing, *, service_out_at, service_place, service_note=""):
     """Move the service-out time of a done detailing while the order still waits
     for raw materials («Заказ на сырье»)."""
     if not detailing.done:
@@ -66,5 +79,19 @@ def set_service_out(detailing, *, service_out_at):
     if detailing.order.status != OrderStatus.WORKING:
         raise ServiceError("Buyurtma «Заказ на сырье» bosqichida emas")
     detailing.service_out_at = clean_service_out(service_out_at)
-    detailing.save(update_fields=["service_out_at"])
+    detailing.service_place = clean_service_place(service_place)
+    detailing.service_note = (service_note or "").strip()
+    detailing.save(update_fields=["service_out_at", "service_place", "service_note"])
     return detailing
+
+
+def service_out_queue():
+    """Orders waiting for their parts from the service («Заказ на сырье», detailing
+    done), soonest first — the production head's home widget."""
+    from .models import Detailing
+
+    return (
+        Detailing.objects.filter(done=True, order__status=OrderStatus.WORKING)
+        .select_related("order", "order__client", "order__factory")
+        .order_by("service_out_at", "pk")
+    )

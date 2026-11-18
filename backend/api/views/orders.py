@@ -410,9 +410,7 @@ class DetailingViewSet(_ProductionViewSet):
         body = DetailingServiceOutSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         return self._respond(
-            mark_detailing_done(
-                self.get_object(), service_out_at=body.validated_data["service_out_at"]
-            )
+            mark_detailing_done(self.get_object(), **body.validated_data)
         )
 
     @action(
@@ -427,9 +425,7 @@ class DetailingViewSet(_ProductionViewSet):
         body = DetailingServiceOutSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         return self._respond(
-            set_service_out(
-                self.get_object(), service_out_at=body.validated_data["service_out_at"]
-            )
+            set_service_out(self.get_object(), **body.validated_data)
         )
 
     @action(detail=True, methods=["post"], serializer_class=DetailingDueSerializer)
