@@ -38,7 +38,7 @@ import {
 } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { LocationEditModal, LocationField } from "@/components/LocationField";
-import { DetailingDue, DetailingDueModal, servicePlaceLabel } from "@/components/DetailingDue";
+import { DetailingDue, DetailingDueModal, ServiceList } from "@/components/DetailingDue";
 import {
   Badge,
   Button,
@@ -409,19 +409,13 @@ export function OrderDetailPage() {
                 </span>,
               ],
               ["Bajarildi", <Check ok={p.detailing.done} />],
-              ...(p.detailing.service_out_at
+              ...(p.detailing.service_out_at || p.detailing.services?.length
                 ? ([
                     [
                       "Usluga'dan chiqish",
-                      [
-                        dateTime(p.detailing.service_out_at),
-                        servicePlaceLabel(p.detailing.service_place),
-                        p.detailing.service_note,
-                      ]
-                        .filter(Boolean)
-                        .join(" · "),
+                      <ServiceList services={p.detailing.services} fallback={p.detailing.service_out_at} />,
                     ],
-                  ] as [string, string][])
+                  ] as [string, JSX.Element][])
                 : []),
             ]}
           />

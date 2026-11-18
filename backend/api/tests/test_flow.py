@@ -197,46 +197,59 @@ def test_full_pipeline(admin_api, catalog):
     assert production["assembly"]["square"] == 12
     assert production["rover"]["square"] == 3
 
-    resp = admin_api.post(f"/api/v1/detailings/{detailing_id}/done/")
-    assert resp.status_code == 400 and "service_out_at" in resp.data  # time is required
+    done_url = f"/api/v1/detailings/{detailing_id}/done/"
+    resp = admin_api.post(done_url, {"services": []}, format="json")
+    assert resp.status_code == 400 and resp.data["field"] == "services"  # at least one service
     past = (timezone.now() - timedelta(hours=1)).replace(microsecond=0)
     resp = admin_api.post(
-        f"/api/v1/detailings/{detailing_id}/done/",
-        {"service_out_at": past.isoformat()},
-        format="json",
+        done_url, {"services": [{"place": "timber", "out_at": past.isoformat()}]}, format="json"
     )
-    assert resp.status_code == 400 and "service_out_at" in resp.data
-    out = (timezone.now() + timedelta(days=2)).replace(microsecond=0)
+    assert resp.status_code == 400 and resp.data["field"] == "services"  # in the past
+    out = (timezone.now() + timedelta(days=3)).replace(microsecond=0)
     resp = admin_api.post(
-        f"/api/v1/detailings/{detailing_id}/done/",
-        {"service_out_at": out.isoformat(), "service_place": "nowhere"},
-        format="json",
+        done_url, {"services": [{"place": "nowhere", "out_at": out.isoformat()}]}, format="json"
     )
-    assert resp.status_code == 400 and "service_place" in resp.data  # Timber / Eman
+    assert resp.status_code == 400 and resp.data["field"] == "services"  # Timber / Eman
+    twice = [{"place": "eman", "out_at": out.isoformat()}] * 2
+    resp = admin_api.post(done_url, {"services": twice}, format="json")
+    assert resp.status_code == 400 and resp.data["field"] == "services"  # each place once
+    # half Timber, half Eman — each with its own time
+    eman_out = out + timedelta(days=2)
     resp = admin_api.post(
-        f"/api/v1/detailings/{detailing_id}/done/",
-        {"service_out_at": out.isoformat(), "service_place": "timber", "service_note": " 2-sex "},
+        done_url,
+        {
+            "services": [
+                {"place": "timber", "out_at": out.isoformat(), "note": " 2-sex "},
+                {"place": "eman", "out_at": eman_out.isoformat()},
+            ]
+        },
         format="json",
     )
+    assert resp.status_code == 200, resp.content
     assert resp.data["done"] is True
-    assert resp.data["service_place"] == "timber" and resp.data["service_note"] == "2-sex"
-    assert resp.data["service_out_at"] == out.isoformat()
+    assert [(s["place"], s["note"]) for s in resp.data["services"]] == [
+        ("timber", "2-sex"),
+        ("eman", ""),
+    ]
+    assert resp.data["service_out_at"] == eman_out.isoformat()  # the rover waits for both
     assert resp.data["actions"]["service_out"] is True
     assert Order.objects.get(pk=order_id).status == OrderStatus.WORKING
+
+    queue = admin_api.get("/api/v1/dashboard/service-out/").data
+    mine = [r for r in queue["rows"] if r["order"] == order_id]
+    assert [(r["place"], r["also"]) for r in mine] == [("timber", ["eman"]), ("eman", ["timber"])]
+    assert [p["value"] for p in queue["places"]] == ["timber", "eman", "other"]
+
     later = out + timedelta(days=1)
     resp = admin_api.post(
         f"/api/v1/detailings/{detailing_id}/service-out/",
-        {"service_out_at": later.isoformat(), "service_place": "eman"},
+        {"services": [{"place": "timber", "out_at": later.isoformat()}]},
         format="json",
     )
     assert resp.status_code == 200, resp.content
     production = admin_api.get(f"/api/v1/orders/{order_id}/").data["production"]
     assert production["detailing"]["service_out_at"] == later
-    assert production["detailing"]["service_place"] == "eman"
-    queue = admin_api.get("/api/v1/dashboard/service-out/").data
-    row = next(r for r in queue["rows"] if r["order"] == order_id)
-    assert row["place"] == "eman" and row["overdue"] is False
-    assert [p["value"] for p in queue["places"]] == ["timber", "eman", "other"]
+    assert [s["place"] for s in production["detailing"]["services"]] == ["timber"]
 
     resp = admin_api.post(f"/api/v1/orders/{order_id}/go-to-assembly/")
     assert resp.status_code == 200 and resp.data["status"] == OrderStatus.ASSEMBLY

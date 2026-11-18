@@ -393,7 +393,9 @@ class DetailingViewSet(_ProductionViewSet):
     serializer_class = DetailingSerializer
 
     def get_queryset(self):
-        return self.filter_common(Detailing.objects.select_related("order__client"))
+        return self.filter_common(
+            Detailing.objects.select_related("order__client").prefetch_related("services")
+        )
 
     def update(self, request, *args, **kwargs):
         kwargs["partial"] = True

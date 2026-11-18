@@ -23,29 +23,62 @@ def clean_service_out(service_out_at):
     return service_out_at
 
 
-def clean_service_place(service_place):
+def clean_services(services, *, keep=None):
+    """The services the parts were given to: 1-3 rows {place, out_at, note}, each place
+    once, each time in the future. `keep` = {place: out_at} already stored — an unchanged
+    time may stay even if it has passed (those parts are already out)."""
     from .models import ServicePlace
 
-    if service_place not in ServicePlace.values:
-        raise ServiceError("Usluga joyini tanlang (Timber / Eman)", "service_place")
-    return service_place
+    keep = keep or {}
+    if not isinstance(services, (list, tuple)) or not services:
+        raise ServiceError("Kamida bitta usluga kiriting (Timber / Eman)", "services")
+    if len(services) > len(ServicePlace.values):
+        raise ServiceError("Usluga'lar soni juda ko'p", "services")
+    out, seen = [], set()
+    for row in services:
+        place = (row or {}).get("place")
+        if place not in ServicePlace.values:
+            raise ServiceError("Usluga joyini tanlang (Timber / Eman)", "services")
+        if place in seen:
+            raise ServiceError(f"{ServicePlace(place).label} ikki marta tanlangan", "services")
+        seen.add(place)
+        out_at = row.get("out_at")
+        if not isinstance(out_at, datetime):
+            raise ServiceError(
+                f"{ServicePlace(place).label}: chiqish vaqtini kiriting", "services"
+            )
+        if out_at.tzinfo is not None:
+            out_at = timezone.make_naive(out_at)
+        if out_at <= timezone.now() and keep.get(place) != out_at:
+            raise ServiceError(
+                f"{ServicePlace(place).label}: o'tgan vaqt — kelajakdagi vaqtni kiriting",
+                "services",
+            )
+        out.append({"place": place, "out_at": out_at, "note": (row.get("note") or "").strip()})
+    return out
 
 
-def mark_detailing_done(detailing, *, service_out_at, service_place, service_note=""):
-    """The order moves to "Заказ на сырье"; the detailer says when the parts come
-    out of the service (`service_out_at`)."""
+def _save_services(detailing, rows):
+    """Replace the detailing's services and keep `service_out_at` = the last one."""
+    from .models import DetailingService
+
+    detailing.services.all().delete()
+    DetailingService.objects.bulk_create(
+        [DetailingService(detailing=detailing, **row) for row in rows]
+    )
+    detailing.service_out_at = max(row["out_at"] for row in rows)
+
+
+def mark_detailing_done(detailing, *, services):
+    """The order moves to "Заказ на сырье"; the detailer says which service(s) got the
+    parts and when each one gives them back (half Timber, half Eman is fine)."""
     if detailing.done:
         raise ServiceError("Detalirovka allaqachon bajarilgan")
-    service_out_at = clean_service_out(service_out_at)
-    service_place = clean_service_place(service_place)
+    rows = clean_services(services)
     with transaction.atomic():
         detailing.done = True
-        detailing.service_out_at = service_out_at
-        detailing.service_place = service_place
-        detailing.service_note = (service_note or "").strip()
-        detailing.save(
-            update_fields=["done", "service_out_at", "service_place", "service_note"]
-        )
+        _save_services(detailing, rows)
+        detailing.save(update_fields=["done", "service_out_at"])
         detailing.order.status = OrderStatus.WORKING
         detailing.order.save(update_fields=["status"])
     return detailing
@@ -71,27 +104,38 @@ def set_detailing_due(detailing, *, due_at):
     return detailing
 
 
-def set_service_out(detailing, *, service_out_at, service_place, service_note=""):
-    """Move the service-out time of a done detailing while the order still waits
-    for raw materials («Заказ на сырье»)."""
+def set_service_out(detailing, *, services):
+    """Change the services / their times while the order still waits for raw materials
+    («Заказ на сырье»)."""
     if not detailing.done:
         raise ServiceError("Avval detalirovkani bajaring")
     if detailing.order.status != OrderStatus.WORKING:
         raise ServiceError("Buyurtma «Заказ на сырье» bosqichida emas")
-    detailing.service_out_at = clean_service_out(service_out_at)
-    detailing.service_place = clean_service_place(service_place)
-    detailing.service_note = (service_note or "").strip()
-    detailing.save(update_fields=["service_out_at", "service_place", "service_note"])
+    keep = dict(detailing.services.values_list("place", "out_at"))
+    rows = clean_services(services, keep=keep)
+    with transaction.atomic():
+        _save_services(detailing, rows)
+        detailing.save(update_fields=["service_out_at"])
     return detailing
 
 
 def service_out_queue():
-    """Orders waiting for their parts from the service («Заказ на сырье», detailing
-    done), soonest first — the production head's home widget."""
-    from .models import Detailing
+    """The production head's home widget: every service row of the orders waiting for
+    raw materials («Заказ на сырье»), soonest first, plus the done detailings that have
+    no service row (done before services existed)."""
+    from .models import Detailing, DetailingService
 
-    return (
-        Detailing.objects.filter(done=True, order__status=OrderStatus.WORKING)
+    waiting = dict(done=True, order__status=OrderStatus.WORKING)
+    rows = (
+        DetailingService.objects.filter(**{f"detailing__{k}": v for k, v in waiting.items()})
+        .select_related(
+            "detailing__order", "detailing__order__client", "detailing__order__factory"
+        )
+        .order_by("out_at", "pk")
+    )
+    bare = (
+        Detailing.objects.filter(**waiting, services__isnull=True)
         .select_related("order", "order__client", "order__factory")
         .order_by("service_out_at", "pk")
     )
+    return rows, bare

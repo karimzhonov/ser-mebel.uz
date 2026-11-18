@@ -678,9 +678,8 @@ export interface OrderDetail extends Order {
       due_at: string | null;
       /** when the parts come out of the service (set on «Detalirovka bajarildi») */
       service_out_at?: string | null;
-      /** "timber" | "eman" | "other" | "" (old rows) */
-      service_place?: string;
-      service_note?: string;
+      /** where the parts were given (half Timber, half Eman…), each with its own time */
+      services?: { place: string; out_at: string; note: string }[];
       folder: number | null;
     } | null;
     rover: ProductionRow | null;
@@ -773,8 +772,7 @@ export interface ProductionItem {
   due_at?: string | null;
   /** when the parts come out of the service (set on «Detalirovka bajarildi») */
   service_out_at?: string | null;
-  service_place?: string;
-  service_note?: string;
+  services?: { place: string; out_at: string; note: string }[];
   // painter
   type?: number | null;
   type_detail?: { id: number; name: string } | null;
@@ -1038,7 +1036,7 @@ export interface SalesPipeline {
 export interface ServiceOutQueue {
   places: { value: string; label: string }[];
   rows: {
-    id: number;
+    id: string;
     order: number;
     number: string | number;
     client: string;
@@ -1047,5 +1045,7 @@ export interface ServiceOutQueue {
     overdue: boolean;
     place: string;
     note: string;
+    /** the other services this order is split with */
+    also: string[];
   }[];
 }

@@ -170,8 +170,7 @@ class OrderDetailSerializer(OrderSerializer):
                     "rover_square": detailing.rover_square,
                     "due_at": detailing.due_at,
                     "service_out_at": detailing.service_out_at,
-                    "service_place": detailing.service_place,
-                    "service_note": detailing.service_note,
+                    "services": detailing_services(detailing),
                     "folder": detailing.folder_id,
                 }
                 if detailing
@@ -339,9 +338,21 @@ class ProductionOrderSerializer(OrderSerializer):
         read_only_fields = fields
 
 
+def detailing_services(detailing):
+    """[{place, out_at, note}] — where the parts were given and when each comes back."""
+    return [
+        {"place": s.place, "out_at": s.out_at, "note": s.note}
+        for s in detailing.services.all()
+    ]
+
+
 class DetailingSerializer(serializers.ModelSerializer):
     order = ProductionOrderSerializer(read_only=True)
+    services = serializers.SerializerMethodField()
     actions = serializers.SerializerMethodField()
+
+    def get_services(self, obj):
+        return detailing_services(obj)
 
     class Meta:
         model = Detailing
@@ -356,8 +367,7 @@ class DetailingSerializer(serializers.ModelSerializer):
             "rover_square",
             "due_at",
             "service_out_at",
-            "service_place",
-            "service_note",
+            "services",
             "folder",
             "actions",
         ]
@@ -368,8 +378,6 @@ class DetailingSerializer(serializers.ModelSerializer):
             "working_done",
             "due_at",
             "service_out_at",
-            "service_place",
-            "service_note",
             "folder",
         ]
 
@@ -390,10 +398,17 @@ class DetailingDueSerializer(serializers.Serializer):
     due_at = serializers.DateTimeField()
 
 
+class DetailingServiceRowSerializer(serializers.Serializer):
+    place = serializers.CharField()
+    out_at = serializers.DateTimeField()
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
 class DetailingServiceOutSerializer(serializers.Serializer):
-    service_out_at = serializers.DateTimeField()
-    service_place = serializers.CharField()
-    service_note = serializers.CharField(required=False, allow_blank=True, default="")
+    """{services: [{place: "timber"|"eman"|"other", out_at, note?}]} (1-3 rows; the rules
+    live in order.detailing.services.clean_services)."""
+
+    services = DetailingServiceRowSerializer(many=True)
 
 
 class RoverSerializer(serializers.ModelSerializer):

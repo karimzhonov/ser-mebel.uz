@@ -129,6 +129,11 @@ function ServiceOutPanel() {
                       <div className="muted flex items-center gap-1 text-xs">
                         <Factory className="h-3 w-3" /> {r.factory}
                       </div>
+                      {r.also.length > 0 && (
+                        <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                          Bo'lingan: {r.also.map((p) => data.places.find((x) => x.value === p)?.label ?? p).join(", ")}da ham bor
+                        </div>
+                      )}
                       {r.note && (
                         <p className="flex items-start gap-1 text-xs text-slate-600 dark:text-slate-300">
                           <MessageSquare className="mt-0.5 h-3 w-3 shrink-0" /> {r.note}

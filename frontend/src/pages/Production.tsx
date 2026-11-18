@@ -7,7 +7,7 @@ import type { PainterPart, PainterType, ProductionItem, UserShort } from "@/api/
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink, ROW_TONE } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
-import { DetailingDue, DetailingDueModal, ServiceOutModal, servicePlaceLabel } from "@/components/DetailingDue";
+import { DetailingDue, DetailingDueModal, ServiceList, ServiceOutModal } from "@/components/DetailingDue";
 import { DueLabel, DueModal } from "@/components/DueDate";
 import { PainterParts } from "@/components/PainterParts";
 import { RoverDueLabel, RoverDueModal } from "@/components/RoverDue";
@@ -32,7 +32,7 @@ import {
   StatTile,
   Textarea,
 } from "@/components/ui";
-import { date, dateTime, money, num, phone } from "@/lib/format";
+import { date, money, num, phone } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 
 type Kind = "detailing" | "rover" | "painter" | "assembly";
@@ -354,9 +354,7 @@ function ProductionModal({
               ? ([[
                   "Usluga'dan chiqish",
                   <span className="flex flex-wrap items-center gap-2">
-                    {item.service_out_at ? dateTime(item.service_out_at) : <span className="muted">—</span>}
-                    {item.service_place && <Badge tone="info" dot={false}>{servicePlaceLabel(item.service_place)}</Badge>}
-                    {item.service_note && <span className="muted text-xs">{item.service_note}</span>}
+                    <ServiceList services={item.services} fallback={item.service_out_at} />
                     {a.service_out && (
                       <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setServiceOut("move")}>
                         o'zgartirish
@@ -560,9 +558,7 @@ function ProductionModal({
       {serviceOut && (
         <ServiceOutModal
           detailingId={item.id}
-          current={serviceOut === "move" ? item.service_out_at ?? null : undefined}
-          place={item.service_place}
-          note={item.service_note}
+          current={serviceOut === "move" ? item.services ?? [] : undefined}
           onClose={() => setServiceOut(null)}
         />
       )}

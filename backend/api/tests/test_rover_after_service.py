@@ -65,3 +65,25 @@ def test_order_page_marks_rover_waiting(order_factory, admin_api):
     det, rover = _setup(order_factory)
     data = admin_api.get(f"/api/v1/orders/{det.order_id}/").data
     assert data["production"]["rover"]["released"] is False
+
+
+def test_split_service_keeps_a_passed_time_and_waits_for_the_last(admin_api, order_factory):
+    from order.detailing.models import DetailingService
+    from order.detailing.services import set_service_out
+    from order.constants import OrderStatus
+
+    det, rover = _setup(order_factory)
+    det.order.status = OrderStatus.WORKING
+    det.order.save(update_fields=["status"])
+    passed = (timezone.now() - timedelta(hours=1)).replace(microsecond=0)
+    Detailing.objects.filter(pk=det.pk).update(done=True, service_out_at=passed)
+    DetailingService.objects.create(detailing=det, place="timber", out_at=passed)
+    det.refresh_from_db()
+    later = (timezone.now() + timedelta(days=5)).replace(microsecond=0)
+    # Timber's parts are already out (unchanged past time is fine), Eman added later
+    set_service_out(
+        det, services=[{"place": "timber", "out_at": passed}, {"place": "eman", "out_at": later}]
+    )
+    det.refresh_from_db()
+    assert det.service_out_at == later
+    assert RS.release_due_rovers(timezone.now()) == 0  # Eman's half is still out

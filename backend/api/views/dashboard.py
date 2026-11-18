@@ -209,10 +209,12 @@ class BoardsView(APIView):
 
 class ServiceOutView(APIView):
     """GET /dashboard/service-out/ — the production head's home widget: orders in
-    «Заказ на сырье» whose parts are at the service (Timber / Eman / other), soonest
-    first, with the detailer's comment."""
+    «Заказ на сырье» whose parts are at the service, one row per service (an order split
+    between Timber and Eman shows in both columns, each with its own time), soonest first."""
 
     def get(self, request):
+        from collections import defaultdict
+
         from django.utils import timezone
 
         from order.detailing.models import ServicePlace
@@ -220,20 +222,30 @@ class ServiceOutView(APIView):
 
         require_perm(request.user, f"oauth.{PRODUCTION_HEAD_PERMISSION}")
         now = timezone.now()
-        rows = [
-            {
-                "id": d.pk,
-                "order": d.order_id,
-                "number": d.order.order_number,
-                "client": str(d.order.client) if d.order.client_id else "—",
-                "factory": d.order.factory.name,
-                "service_out_at": d.service_out_at,
-                "overdue": bool(d.service_out_at and d.service_out_at <= now),
-                "place": d.service_place or "",
-                "note": d.service_note,
+        services, bare = service_out_queue()
+        services = list(services)
+        places_of = defaultdict(list)
+        for s in services:
+            places_of[s.detailing_id].append(s.place)
+
+        def row(key, detailing, place, out_at, note):
+            order = detailing.order
+            return {
+                "id": key,
+                "order": order.pk,
+                "number": order.order_number,
+                "client": str(order.client) if order.client_id else "—",
+                "factory": order.factory.name,
+                "service_out_at": out_at,
+                "overdue": bool(out_at and out_at <= now),
+                "place": place,
+                "note": note,
+                # the other services this order is split with (e.g. ["eman"])
+                "also": [p for p in places_of[detailing.pk] if p != place],
             }
-            for d in service_out_queue()
-        ]
+
+        rows = [row(f"s{s.pk}", s.detailing, s.place, s.out_at, s.note) for s in services]
+        rows += [row(f"d{d.pk}", d, "", d.service_out_at, "") for d in bare]
         return Response(
             {
                 "places": [{"value": v, "label": label} for v, label in ServicePlace.choices],
