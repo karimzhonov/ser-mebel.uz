@@ -29,7 +29,7 @@ from order.constants import (
     OrderStatus,
 )
 from order.detailing.models import Detailing
-from order.detailing.services import mark_detailing_done, set_detailing_due
+from order.detailing.services import mark_detailing_done, set_detailing_due, set_service_out
 from order.models import Factory, Order
 from order.painter.models import Painter, PainterPart, PainterType
 from order.painter.services import (
@@ -62,6 +62,7 @@ from ..serializers.orders import (
     AssemblyFinishSerializer,
     AssemblySerializer,
     DetailingDueSerializer,
+    DetailingServiceOutSerializer,
     DetailingSerializer,
     FactorySerializer,
     OrderCreateSerializer,
@@ -392,7 +393,9 @@ class DetailingViewSet(_ProductionViewSet):
     serializer_class = DetailingSerializer
 
     def get_queryset(self):
-        return self.filter_common(Detailing.objects.select_related("order__client"))
+        return self.filter_common(
+            Detailing.objects.select_related("order__client").prefetch_related("services")
+        )
 
     def update(self, request, *args, **kwargs):
         kwargs["partial"] = True
@@ -401,10 +404,31 @@ class DetailingViewSet(_ProductionViewSet):
             super().update(request, *args, **kwargs)
         return self._respond(self.get_object())
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], serializer_class=DetailingServiceOutSerializer)
     def done(self, request, pk=None):
+        """Detailing done -> «Заказ на сырье»: {service_out_at} (when the parts come
+        out of the service)."""
         require_perm(request.user, "detailing.change_detailing")
-        return self._respond(mark_detailing_done(self.get_object()))
+        body = DetailingServiceOutSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            mark_detailing_done(self.get_object(), **body.validated_data)
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="service-out",
+        serializer_class=DetailingServiceOutSerializer,
+    )
+    def service_out(self, request, pk=None):
+        """Move the service-out time while the order is in «Заказ на сырье»."""
+        require_perm(request.user, "detailing.change_detailing")
+        body = DetailingServiceOutSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            set_service_out(self.get_object(), **body.validated_data)
+        )
 
     @action(detail=True, methods=["post"], serializer_class=DetailingDueSerializer)
     def due(self, request, pk=None):
@@ -433,7 +457,8 @@ class RoverViewSet(_ProductionViewSet):
         qs = Rover.objects.select_related(
             "order__client", "order__metering", "submitted_by", "checked_by", "due_set_by"
         ).annotate(design_folder_pk=design)
-        qs = self.filter_common(qs)
+        # a job reaches the rover section only once its parts are out of the service
+        qs = self.filter_common(qs.filter(released_at__isnull=False))
         if _bool_param(self.request.query_params.get("overdue")):
             qs = qs.filter(done=False, submitted_at__isnull=True, due_date__lt=accounting_today())
         state = self.request.query_params.get("state")

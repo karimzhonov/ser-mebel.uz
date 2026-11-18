@@ -223,7 +223,8 @@ def test_confirm_api(rover, worker, api):
 def _detailing(order):
     from order.detailing.models import Detailing
 
-    return Detailing.objects.create(order=order, rover_square=2)
+    # done before the service-out time existed: the rover starts at once
+    return Detailing.objects.create(order=order, rover_square=2, done=True)
 
 
 def test_detailing_square_recomputes_price_only_while_new(

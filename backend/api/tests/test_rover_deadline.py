@@ -58,8 +58,9 @@ def fixed_clock(monkeypatch):
 
 
 def age(rover, **delta):
-    """created_at is auto_now_add: move it back with an UPDATE."""
-    Rover.objects.filter(pk=rover.pk).update(created_at=NOW - timedelta(**delta))
+    """created_at is auto_now_add: move it (and the release time) back with an UPDATE."""
+    t = NOW - timedelta(**delta)
+    Rover.objects.filter(pk=rover.pk).update(created_at=t, released_at=t)
     return Rover.objects.get(pk=rover.pk)
 
 
@@ -301,7 +302,7 @@ def test_auto_due_window(order_factory, bot_events, fixed_clock):
     assert RS.auto_set_rover_dues(NOW) == 1
     r = Rover.objects.get(pk=old.pk)
     assert r.due_auto and r.due_set_by is None and r.due_set_at == NOW and r.rev == 1
-    assert r.due_date == r.created_at.date() + timedelta(days=5)
+    assert r.due_date == r.released_at.date() + timedelta(days=5)
     assert Rover.objects.get(pk=fresh.pk).due_date is None
     assert Rover.objects.get(pk=ancient.pk).due_date is None
     assert len(bot_events.of("rover.due_set")) == 1
@@ -332,7 +333,7 @@ def test_auto_due_days_setting(rover, fixed_clock):
     with override_config(ROVER_AUTO_DUE_DAYS=2):
         RS.auto_set_rover_dues(NOW)
     r = Rover.objects.get(pk=rover.pk)
-    assert r.due_date == r.created_at.date() + timedelta(days=2)
+    assert r.due_date == r.released_at.date() + timedelta(days=2)
 
 
 # --- reminders --------------------------------------------------------------------
@@ -344,9 +345,10 @@ def at(day, hour):
 
 def test_reminders_before_hour_only_auto(rover, worker, fixed_clock, bot_events):
     early = at(TODAY, 8)
-    Rover.objects.filter(pk=rover.pk).update(created_at=early - timedelta(hours=25))
+    t = early - timedelta(hours=25)
+    Rover.objects.filter(pk=rover.pk).update(created_at=t, released_at=t)
     out = RS.due_rover_reminders(early)
-    assert out == {"auto": 1, "soon": 0, "overdue": 0}
+    assert out == {"released": 0, "auto": 1, "soon": 0, "overdue": 0}
     assert bot_events.of("rover.remind") == []
 
 
@@ -383,7 +385,8 @@ def test_no_reminders_for_submitted(rover, worker, fixed_clock, bot_events):
     Rover.objects.filter(pk=rover.pk).update(due_date=TODAY - timedelta(days=2))
     RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
     bot_events.clear()
-    assert RS.due_rover_reminders(at(TODAY, 10)) == {"auto": 0, "soon": 0, "overdue": 0}
+    out = RS.due_rover_reminders(at(TODAY, 10))
+    assert out == {"released": 0, "auto": 0, "soon": 0, "overdue": 0}
     assert bot_events.of("rover.remind") == []
 
 

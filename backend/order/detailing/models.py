@@ -13,6 +13,14 @@ from ..assembly.models import Assembly
 from ..painter.models import Painter
 
 
+class ServicePlace(models.TextChoices):
+    """Where the parts are cut/edged (the «usluga»)."""
+
+    TIMBER = "timber", "Timber"
+    EMAN = "eman", "Eman"
+    OTHER = "other", "Boshqa"
+
+
 class Detailing(models.Model):
     order = models.OneToOneField("order.Order", models.CASCADE, verbose_name="Заказ")
     folder = FilerFolderField(
@@ -25,6 +33,12 @@ class Detailing(models.Model):
     due_at = models.DateTimeField(
         null=True, blank=True, db_index=True, verbose_name="Срок деталировки"
     )
+    # Set when the detailing is done and the order goes to «Заказ на сырье»: when the
+    # LAST part comes out of the service (= max of `services.out_at`; the rover waits for
+    # it). Null on rows done before it existed.
+    service_out_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Выход из услуги"
+    )
 
     square = models.FloatField(default=0, verbose_name="Площадь")
     painter_square = models.FloatField(default=0, blank=True, verbose_name="Площадь покраски")
@@ -34,6 +48,31 @@ class Detailing(models.Model):
 
     def __str__(self):
         return str(self.order)
+
+
+class DetailingService(models.Model):
+    """One service the parts were given to (an order can be split, e.g. half to Timber
+    and half to Eman): where, when its parts come out, a comment."""
+
+    detailing = models.ForeignKey(
+        Detailing, models.CASCADE, related_name="services", verbose_name="Деталировка"
+    )
+    place = models.CharField(max_length=16, choices=ServicePlace.choices, verbose_name="Услуга")
+    out_at = models.DateTimeField(db_index=True, verbose_name="Выход из услуги")
+    note = models.TextField(blank=True, default="", verbose_name="Комментарий")
+
+    class Meta:
+        verbose_name = "Услуга деталировки"
+        verbose_name_plural = "Услуги деталировки"
+        ordering = ["out_at", "pk"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["detailing", "place"], name="detailing_service_unique_place"
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.detailing} · {self.get_place_display()}"
 
 
 @receiver(post_save, sender=Detailing)

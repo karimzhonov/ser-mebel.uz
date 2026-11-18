@@ -319,3 +319,19 @@ def test_old_menejer_lavozim_gets_the_manager_flag(make_staff):
     mod.menejer_presents(apps, None)  # safe twice
     assert {"metering.present_to_client", "metering.view_metering", "price.view_price"} <= perms_of(g)
     assert u.pk in set(managers().values_list("pk", flat=True))
+
+
+def test_production_head_home_has_no_money(api, admin_api):
+    perms = (
+        "oauth.user_production_head",
+        "order.view_order",
+        "order.view_order_price",
+        "accounting.view_all_operations",
+    )
+    data = api(*perms).get("/api/v1/dashboard/overview/").data
+    for key in ("money", "accounting", "underpaid"):
+        assert data[key] is None, key
+    assert data["timeline"] == {"series": [], "points": []}
+    assert data["orders"] is not None  # the production view stays
+    full = admin_api.get("/api/v1/dashboard/overview/").data
+    assert full["money"] is not None and full["timeline"]["series"]

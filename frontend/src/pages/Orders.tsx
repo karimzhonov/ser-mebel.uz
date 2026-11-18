@@ -38,7 +38,7 @@ import {
 } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { LocationEditModal, LocationField } from "@/components/LocationField";
-import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
+import { DetailingDue, DetailingDueModal, ServiceList } from "@/components/DetailingDue";
 import {
   Badge,
   Button,
@@ -409,13 +409,31 @@ export function OrderDetailPage() {
                 </span>,
               ],
               ["Bajarildi", <Check ok={p.detailing.done} />],
+              ...(p.detailing.service_out_at || p.detailing.services?.length
+                ? ([
+                    [
+                      "Usluga'dan chiqish",
+                      <ServiceList services={p.detailing.services} fallback={p.detailing.service_out_at} />,
+                    ],
+                  ] as [string, JSX.Element][])
+                : []),
             ]}
           />
           <ProdCard
             title="Rover"
-            to={p.rover ? `/production/rover?open=${p.rover.id}` : undefined}
+            to={p.rover && p.rover.released !== false ? `/production/rover?open=${p.rover.id}` : undefined}
             folder={p.rover?.folder}
             rows={p.rover && [
+              ...(p.rover.released === false
+                ? ([[
+                    "Holat",
+                    <Badge tone="idle">
+                      {p.detailing?.service_out_at
+                        ? `Usluga'da · ${dateTime(p.detailing.service_out_at)} da roverga o'tadi`
+                        : "Detalirovka tugashini kutmoqda"}
+                    </Badge>,
+                  ]] as [string, JSX.Element][])
+                : []),
               ["Maydon", num(p.rover.square)],
               ...(p.rover.price ? ([["Narx", money(p.rover.price)]] as [string, string][]) : []),
               ...(p.rover.state === "checking"

@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { AlarmClockOff, CalendarClock, CalendarDays, ChevronRight, Clock, Columns3, Factory, LayoutGrid, ListChecks, PartyPopper, Phone } from "lucide-react";
+import { AlarmClockOff, CalendarClock, CalendarDays, ChevronRight, Clock, Columns3, Factory, LayoutGrid, ListChecks, MessageSquare, PartyPopper, Phone, Truck } from "lucide-react";
 import { useGet } from "@/api/hooks";
-import type { Board, TaskAgenda } from "@/api/types";
+import type { Board, ServiceOutQueue, TaskAgenda } from "@/api/types";
 import { LeadDetailModal } from "@/pages/callcenter/LeadDetailModal";
 import { TaskRow } from "@/pages/callcenter/shared";
 import ManagerTasksPage from "@/pages/offers/ManagerTasks";
@@ -52,6 +52,7 @@ function FullDashboard() {
           )
         }
       />
+      {!operator && can("oauth.user_production_head") && <ServiceOutPanel />}
       {operator ? (
         <TodayWork />
       ) : (
@@ -67,6 +68,86 @@ function FullDashboard() {
       )}
       {tab === "board" ? <Boards /> : <OverviewPanel from={state.date_from} to={state.date_to} />}
     </div>
+  );
+}
+
+/** Production head: orders in «Заказ на сырье» whose parts are at the service, one
+ * column per place (Timber / Eman / …), soonest first. */
+function ServiceOutPanel() {
+  const navigate = useNavigate();
+  const { data, isError } = useGet<ServiceOutQueue>("/dashboard/service-out/");
+  if (isError) return null;
+  const columns = data
+    ? [
+        ...data.places.filter((p) => p.value !== "other" || data.rows.some((r) => r.place === p.value)),
+        ...(data.rows.some((r) => !r.place) ? [{ value: "", label: "Joyi ko'rsatilmagan" }] : []),
+      ]
+    : [];
+  return (
+    <Card
+      className="mb-4"
+      title={
+        <span className="flex items-center gap-2">
+          <Truck className="h-4 w-4" /> Usluga'dan chiqadigan buyurtmalar
+          {data && <span className="muted text-sm font-normal">· {data.rows.length}</span>}
+        </span>
+      }
+    >
+      {!data ? (
+        <PageLoader />
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {columns.map((col) => {
+            const rows = data.rows.filter((r) => r.place === col.value);
+            return (
+              <section key={col.value || "none"} className="rounded-2xl bg-slate-100/70 p-2 dark:bg-slate-900/60">
+                <header className="flex items-center justify-between px-1.5 pb-2 pt-1">
+                  <h3 className="text-sm font-semibold">{col.label}</h3>
+                  <span className="rounded-md bg-white px-1.5 text-xs font-semibold tabular-nums text-slate-600 shadow-sm dark:bg-slate-800 dark:text-slate-300">
+                    {rows.length}
+                  </span>
+                </header>
+                {!rows.length && <p className="muted px-2 py-4 text-center text-xs">Bo'sh</p>}
+                <div className="scrollbar-thin flex max-h-80 flex-col gap-2 overflow-y-auto">
+                  {rows.map((r) => (
+                    <button
+                      key={r.id}
+                      onClick={() => navigate(`/orders/${r.order}`)}
+                      className="card w-full space-y-1 p-3 text-left text-sm transition hover:shadow-pop"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-semibold text-slate-900 dark:text-white">№{r.number}</span>
+                        {r.service_out_at ? (
+                          <Badge tone={r.overdue ? "danger" : "info"} dot={false}>
+                            <Clock className="h-3 w-3" /> {dateTime(r.service_out_at)}
+                          </Badge>
+                        ) : (
+                          <span className="muted text-xs">vaqt yo'q</span>
+                        )}
+                      </div>
+                      <div className="font-medium">{r.client}</div>
+                      <div className="muted flex items-center gap-1 text-xs">
+                        <Factory className="h-3 w-3" /> {r.factory}
+                      </div>
+                      {r.also.length > 0 && (
+                        <div className="text-xs font-medium text-amber-700 dark:text-amber-300">
+                          Bo'lingan: {r.also.map((p) => data.places.find((x) => x.value === p)?.label ?? p).join(", ")}da ham bor
+                        </div>
+                      )}
+                      {r.note && (
+                        <p className="flex items-start gap-1 text-xs text-slate-600 dark:text-slate-300">
+                          <MessageSquare className="mt-0.5 h-3 w-3 shrink-0" /> {r.note}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }
 

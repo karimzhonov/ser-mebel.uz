@@ -197,9 +197,59 @@ def test_full_pipeline(admin_api, catalog):
     assert production["assembly"]["square"] == 12
     assert production["rover"]["square"] == 3
 
-    resp = admin_api.post(f"/api/v1/detailings/{detailing_id}/done/")
+    done_url = f"/api/v1/detailings/{detailing_id}/done/"
+    resp = admin_api.post(done_url, {"services": []}, format="json")
+    assert resp.status_code == 400 and resp.data["field"] == "services"  # at least one service
+    past = (timezone.now() - timedelta(hours=1)).replace(microsecond=0)
+    resp = admin_api.post(
+        done_url, {"services": [{"place": "timber", "out_at": past.isoformat()}]}, format="json"
+    )
+    assert resp.status_code == 400 and resp.data["field"] == "services"  # in the past
+    out = (timezone.now() + timedelta(days=3)).replace(microsecond=0)
+    resp = admin_api.post(
+        done_url, {"services": [{"place": "nowhere", "out_at": out.isoformat()}]}, format="json"
+    )
+    assert resp.status_code == 400 and resp.data["field"] == "services"  # Timber / Eman
+    twice = [{"place": "eman", "out_at": out.isoformat()}] * 2
+    resp = admin_api.post(done_url, {"services": twice}, format="json")
+    assert resp.status_code == 400 and resp.data["field"] == "services"  # each place once
+    # half Timber, half Eman — each with its own time
+    eman_out = out + timedelta(days=2)
+    resp = admin_api.post(
+        done_url,
+        {
+            "services": [
+                {"place": "timber", "out_at": out.isoformat(), "note": " 2-sex "},
+                {"place": "eman", "out_at": eman_out.isoformat()},
+            ]
+        },
+        format="json",
+    )
+    assert resp.status_code == 200, resp.content
     assert resp.data["done"] is True
+    assert [(s["place"], s["note"]) for s in resp.data["services"]] == [
+        ("timber", "2-sex"),
+        ("eman", ""),
+    ]
+    assert resp.data["service_out_at"] == eman_out.isoformat()  # the rover waits for both
+    assert resp.data["actions"]["service_out"] is True
     assert Order.objects.get(pk=order_id).status == OrderStatus.WORKING
+
+    queue = admin_api.get("/api/v1/dashboard/service-out/").data
+    mine = [r for r in queue["rows"] if r["order"] == order_id]
+    assert [(r["place"], r["also"]) for r in mine] == [("timber", ["eman"]), ("eman", ["timber"])]
+    assert [p["value"] for p in queue["places"]] == ["timber", "eman", "other"]
+
+    later = out + timedelta(days=1)
+    resp = admin_api.post(
+        f"/api/v1/detailings/{detailing_id}/service-out/",
+        {"services": [{"place": "timber", "out_at": later.isoformat()}]},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.content
+    production = admin_api.get(f"/api/v1/orders/{order_id}/").data["production"]
+    assert production["detailing"]["service_out_at"] == later
+    assert [s["place"] for s in production["detailing"]["services"]] == ["timber"]
 
     resp = admin_api.post(f"/api/v1/orders/{order_id}/go-to-assembly/")
     assert resp.status_code == 200 and resp.data["status"] == OrderStatus.ASSEMBLY
@@ -224,6 +274,7 @@ def test_read_endpoints_respond(admin_api, catalog, order_factory):
     for url in [
         "/api/v1/meta/",
         "/api/v1/dashboard/boards/",
+        "/api/v1/dashboard/service-out/",
         "/api/v1/orders/?status=created,waiting&period=month",
         "/api/v1/orders/stats/",
         "/api/v1/orders/?warning=danger",
@@ -251,3 +302,10 @@ def test_client_detail_by_phone(admin_api, db_client):
     resp = admin_api.get("/api/v1/clients/+998901234567/related/")
     assert resp.status_code == 200
     assert set(resp.data) == {"invoices", "meterings", "orders"}
+
+
+def test_service_out_widget_is_for_the_production_head(api):
+    assert api("detailing.view_detailing").get("/api/v1/dashboard/service-out/").status_code == 403
+    head = api("oauth.user_production_head")
+    resp = head.get("/api/v1/dashboard/service-out/")
+    assert resp.status_code == 200 and resp.data["rows"] == []

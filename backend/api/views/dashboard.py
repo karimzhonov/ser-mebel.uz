@@ -8,10 +8,12 @@ from call_center.constants import LeadSource, SolutionChoice
 from core.geo import coord_str, obj_map_url
 from metering.constants import MeteringStatus
 from metering.price.models import InventoryType, ObjectType
+from oauth.constants import PRODUCTION_HEAD_PERMISSION
 from order.constants import ORDER_VIEW_PRICE_PERMISSION, OrderStatus
 
 from .. import i18n as uz
 from ..fields import MoneyField
+from ..permissions import require_perm
 from ..serializers.common import money_left
 from ..utils import order_deadline
 
@@ -203,3 +205,50 @@ class BoardsView(APIView):
                 }
             )
         return Response({"boards": boards})
+
+
+class ServiceOutView(APIView):
+    """GET /dashboard/service-out/ — the production head's home widget: orders in
+    «Заказ на сырье» whose parts are at the service, one row per service (an order split
+    between Timber and Eman shows in both columns, each with its own time), soonest first."""
+
+    def get(self, request):
+        from collections import defaultdict
+
+        from django.utils import timezone
+
+        from order.detailing.models import ServicePlace
+        from order.detailing.services import service_out_queue
+
+        require_perm(request.user, f"oauth.{PRODUCTION_HEAD_PERMISSION}")
+        now = timezone.now()
+        services, bare = service_out_queue()
+        services = list(services)
+        places_of = defaultdict(list)
+        for s in services:
+            places_of[s.detailing_id].append(s.place)
+
+        def row(key, detailing, place, out_at, note):
+            order = detailing.order
+            return {
+                "id": key,
+                "order": order.pk,
+                "number": order.order_number,
+                "client": str(order.client) if order.client_id else "—",
+                "factory": order.factory.name,
+                "service_out_at": out_at,
+                "overdue": bool(out_at and out_at <= now),
+                "place": place,
+                "note": note,
+                # the other services this order is split with (e.g. ["eman"])
+                "also": [p for p in places_of[detailing.pk] if p != place],
+            }
+
+        rows = [row(f"s{s.pk}", s.detailing, s.place, s.out_at, s.note) for s in services]
+        rows += [row(f"d{d.pk}", d, "", d.service_out_at, "") for d in bare]
+        return Response(
+            {
+                "places": [{"value": v, "label": label} for v, label in ServicePlace.choices],
+                "rows": rows,
+            }
+        )

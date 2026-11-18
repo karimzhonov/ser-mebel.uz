@@ -22,6 +22,7 @@ from call_center.models import Invoice
 from core.geo import coord_str, obj_map_url
 from metering.constants import MeteringStatus
 from metering.models import Metering
+from oauth.constants import PRODUCTION_HEAD_PERMISSION
 from order.assembly.constants import ASSEMBLY_MANAGER_PERMISSION
 from order.assembly.models import Assembly
 from order.assembly.services import ready_for_assembly
@@ -55,6 +56,17 @@ def sales_only(user) -> bool:
     return not user.is_superuser and user.has_perm("metering.manage_metering")
 
 
+def production_only(user) -> bool:
+    """The Ishlab chiqarish rahbari (not an administrator): owner's rule — his home shows
+    the production, not the money: no «Dinamika» chart, no «Pul» block (nor the debt /
+    profit tiles), no «65% dan kam to'lagan» list."""
+    return (
+        not user.is_superuser
+        and user.has_perm(f"oauth.{PRODUCTION_HEAD_PERMISSION}")
+        and not sales_only(user)
+    )
+
+
 def _pct(part, whole):
     return round(part * 100 / whole) if whole else None
 
@@ -68,6 +80,7 @@ class OverviewView(APIView):
         # orders only the clients who have not paid the first payment yet
         sales = sales_only(user)
         full = not sales
+        cash = full and not production_only(user)
         return Response(
             {
                 "range": {"from": start, "to": end},
@@ -75,17 +88,21 @@ class OverviewView(APIView):
                 "sales_only": sales,
                 "funnel": self.funnel(user, params),
                 "orders": self.orders(user, params) if full else None,
-                "money": self.money(user, params) if full else None,
-                "accounting": self.accounting(user, params) if full else None,
+                "money": self.money(user, params) if cash else None,
+                "accounting": self.accounting(user, params) if cash else None,
                 "production": self.production(user) if full else None,
                 "meterings": self.meterings(user),
                 "pipeline": self.pipeline(user),
                 "call_center": self.call_center(user),
-                "underpaid": self.underpaid(user),
+                "underpaid": self.underpaid(user) if cash or sales else None,
                 "warehouse": self.warehouse(user, params) if full else None,
                 "hr": self.hr(user) if full else None,
                 "wallets": self.wallets(user) if full else None,
-                "timeline": self.timeline(user, params, orders=full),
+                "timeline": (
+                    self.timeline(user, params, orders=full)
+                    if cash or sales
+                    else {"series": [], "points": []}
+                ),
             }
         )
 
@@ -416,7 +433,12 @@ class OverviewView(APIView):
                 "/production/detailing",
             )
         if user.has_perm("rover.view_rover"):
-            stage("rover", "Rover", Rover.objects.filter(done=False), "/production/rover")
+            stage(
+                "rover",
+                "Rover",
+                Rover.objects.filter(done=False, released_at__isnull=False),
+                "/production/rover",
+            )
         if user.has_perm("painter.view_painter"):
             if manager:
                 painters = ready_for_painter(Painter.objects.filter(done=False))

@@ -657,6 +657,8 @@ export interface ProductionRow {
   price?: Money | null;
   /** rover only: new | checking | done */
   state?: "new" | "checking" | "done" | null;
+  /** rover only: false while the parts are still at the service (not in the rover section yet) */
+  released?: boolean;
 }
 
 export interface OrderDetail extends Order {
@@ -674,6 +676,10 @@ export interface OrderDetail extends Order {
       painter_square: number;
       rover_square: number;
       due_at: string | null;
+      /** when the parts come out of the service (set on «Detalirovka bajarildi») */
+      service_out_at?: string | null;
+      /** where the parts were given (half Timber, half Eman…), each with its own time */
+      services?: { place: string; out_at: string; note: string }[];
       folder: number | null;
     } | null;
     rover: ProductionRow | null;
@@ -764,6 +770,9 @@ export interface ProductionItem {
   painter_square?: number;
   rover_square?: number;
   due_at?: string | null;
+  /** when the parts come out of the service (set on «Detalirovka bajarildi») */
+  service_out_at?: string | null;
+  services?: { place: string; out_at: string; note: string }[];
   // painter
   type?: number | null;
   type_detail?: { id: number; name: string } | null;
@@ -1021,4 +1030,22 @@ export interface SalesPipeline {
   };
   overdue: { kind: string; id: number; client: string; person: string | PersonRef | null; due_at: string | null; late_hours: number | null; url?: string | null }[];
   load: { role: PipelineRole; person: { id: number; name: string } | null; open: number; overdue: number }[];
+}
+
+/** GET /dashboard/service-out/ — orders whose parts are at the service (production head) */
+export interface ServiceOutQueue {
+  places: { value: string; label: string }[];
+  rows: {
+    id: string;
+    order: number;
+    number: string | number;
+    client: string;
+    factory: string;
+    service_out_at: string | null;
+    overdue: boolean;
+    place: string;
+    note: string;
+    /** the other services this order is split with */
+    also: string[];
+  }[];
 }

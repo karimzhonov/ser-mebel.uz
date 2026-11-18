@@ -169,6 +169,8 @@ class OrderDetailSerializer(OrderSerializer):
                     "painter_square": detailing.painter_square,
                     "rover_square": detailing.rover_square,
                     "due_at": detailing.due_at,
+                    "service_out_at": detailing.service_out_at,
+                    "services": detailing_services(detailing),
                     "folder": detailing.folder_id,
                 }
                 if detailing
@@ -178,6 +180,7 @@ class OrderDetailSerializer(OrderSerializer):
                 rover,
                 state=rover.state if rover else None,
                 price=money(rover.price) if rover and show_price else None,
+                released=bool(rover and rover.released_at),
             ),
             "painter": _production_row(
                 painter,
@@ -335,9 +338,21 @@ class ProductionOrderSerializer(OrderSerializer):
         read_only_fields = fields
 
 
+def detailing_services(detailing):
+    """[{place, out_at, note}] — where the parts were given and when each comes back."""
+    return [
+        {"place": s.place, "out_at": s.out_at, "note": s.note}
+        for s in detailing.services.all()
+    ]
+
+
 class DetailingSerializer(serializers.ModelSerializer):
     order = ProductionOrderSerializer(read_only=True)
+    services = serializers.SerializerMethodField()
     actions = serializers.SerializerMethodField()
+
+    def get_services(self, obj):
+        return detailing_services(obj)
 
     class Meta:
         model = Detailing
@@ -351,10 +366,20 @@ class DetailingSerializer(serializers.ModelSerializer):
             "painter_square",
             "rover_square",
             "due_at",
+            "service_out_at",
+            "services",
             "folder",
             "actions",
         ]
-        read_only_fields = ["order", "created_at", "done", "working_done", "due_at", "folder"]
+        read_only_fields = [
+            "order",
+            "created_at",
+            "done",
+            "working_done",
+            "due_at",
+            "service_out_at",
+            "folder",
+        ]
 
     def get_actions(self, obj):
         user = self.context["request"].user
@@ -363,11 +388,27 @@ class DetailingSerializer(serializers.ModelSerializer):
             "edit": can_change,
             "done": can_change and not obj.done,
             "due": user.has_perm("detailing.add_detailing") and not obj.done,
+            "service_out": can_change
+            and obj.done
+            and obj.order.status == OrderStatus.WORKING,
         }
 
 
 class DetailingDueSerializer(serializers.Serializer):
     due_at = serializers.DateTimeField()
+
+
+class DetailingServiceRowSerializer(serializers.Serializer):
+    place = serializers.CharField()
+    out_at = serializers.DateTimeField()
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+
+class DetailingServiceOutSerializer(serializers.Serializer):
+    """{services: [{place: "timber"|"eman"|"other", out_at, note?}]} (1-3 rows; the rules
+    live in order.detailing.services.clean_services)."""
+
+    services = DetailingServiceRowSerializer(many=True)
 
 
 class RoverSerializer(serializers.ModelSerializer):
