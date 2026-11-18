@@ -83,7 +83,7 @@ export function DetailingDueModal({
           <Button
             size="lg"
             variant={sending ? "success" : "primary"}
-            disabled={!value || past || !place}
+            disabled={!value || past}
             loading={save.isPending}
             onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}
           >
@@ -106,16 +106,6 @@ export function DetailingDueModal({
       </div>
       <Field label="Muddat" error={error ?? (past ? "O'tgan vaqt — kelajakdagi vaqtni kiriting" : undefined)}>
         <Input className="h-12 text-base" type="datetime-local" required value={value} onChange={(e) => setValue(e.target.value)} />
-      </Field>
-      <Field label="Qaysi usluga" error={errors.service_place}>
-        <Segmented
-          value={place}
-          onChange={setPlace}
-          options={SERVICE_PLACES.map((p) => ({ value: p.value as string, label: p.label }))}
-        />
-      </Field>
-      <Field label="Izoh" error={errors.service_note}>
-        <Textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Masalan: qaysi sex, kim olib keladi…" />
       </Field>
     </Modal>
   );
