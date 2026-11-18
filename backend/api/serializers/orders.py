@@ -179,6 +179,7 @@ class OrderDetailSerializer(OrderSerializer):
                 rover,
                 state=rover.state if rover else None,
                 price=money(rover.price) if rover and show_price else None,
+                released=bool(rover and rover.released_at),
             ),
             "painter": _production_row(
                 painter,

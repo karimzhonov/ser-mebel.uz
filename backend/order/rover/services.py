@@ -67,6 +67,57 @@ NOTE_MIN = 3
 NOTE_MAX = 2000
 
 
+def _service_passed(detailing, at) -> bool:
+    """The rover may start: no detailing row (legacy/admin), or the detailing is done and
+    its parts are out of the service (no time = done before the time existed)."""
+    if detailing is None:
+        return True
+    if not detailing.done:
+        return False
+    return detailing.service_out_at is None or detailing.service_out_at <= at
+
+
+def release_rover(rover_id, at=None) -> bool:
+    """Hand the job to the rover section once the parts are out of the service: stamp
+    `released_at` and announce it. Idempotent (row lock + `released_at` check)."""
+    from order.detailing.models import Detailing
+
+    at = at or timezone.now()
+    with transaction.atomic():
+        rover = (
+            Rover.objects.select_for_update(of=("self",))
+            .select_related("order__client")
+            .filter(pk=rover_id)
+            .first()
+        )
+        if rover is None or rover.released_at is not None or rover.done:
+            return False
+        detailing = Detailing.objects.filter(order_id=rover.order_id).first()
+        if not _service_passed(detailing, at):
+            return False
+        rover.released_at = at
+        rover.save(update_fields=["released_at"])
+        announce_new_rover(rover)
+    return True
+
+
+def release_due_rovers(at) -> int:
+    """Beat tick: every waiting job whose parts came out of the service goes to rover."""
+    from django.db.models import Q
+
+    ready = Q(order__detailing__isnull=True) | Q(order__detailing__done=True) & (
+        Q(order__detailing__service_out_at__isnull=True)
+        | Q(order__detailing__service_out_at__lte=at)
+    )
+    ids = list(
+        Rover.objects.filter(released_at__isnull=True, done=False)
+        .filter(ready)
+        .order_by("pk")
+        .values_list("pk", flat=True)[:200]
+    )
+    return sum(1 for pk in ids if release_rover(pk, at))
+
+
 def announce_new_rover(rover) -> None:
     """A new rover job: the full task card to the workers in the bot, the deadline
     question to the production heads, an SMS to workers without Telegram. Never raises -
@@ -111,6 +162,8 @@ def submit_rover(rover, *, by, price, note) -> Rover:
             raise ServiceConflict("Rover allaqachon bajarilgan")
         if locked.submitted_at:
             raise ServiceConflict("Rover allaqachon tekshiruvga yuborilgan")
+        if locked.released_at is None:
+            raise ServiceConflict("Detallar hali usluga'dan chiqmagan — rover ishi boshlanmagan")
         locked.price = price
         locked.note = note
         locked.rev += 1
@@ -188,14 +241,14 @@ def set_rover_due(rover, *, by, due_date=None, days=None) -> Rover:
 
 
 def auto_set_rover_dues(at) -> int:
-    """Nobody set a deadline within a day of creation: it becomes created + N days
-    (ROVER_AUTO_DUE_DAYS). Only jobs created 1-3 days ago are looked at."""
+    """Nobody set a deadline within a day of reaching rover: it becomes released + N days
+    (ROVER_AUTO_DUE_DAYS). Only jobs released 1-3 days ago are looked at."""
     base = Rover.objects.filter(
         done=False,
         submitted_at__isnull=True,
         due_date__isnull=True,
-        created_at__lte=at - timedelta(days=1),
-        created_at__gte=at - timedelta(days=3),
+        released_at__lte=at - timedelta(days=1),
+        released_at__gte=at - timedelta(days=3),
     )
     days = int(config.ROVER_AUTO_DUE_DAYS)
     count = 0
@@ -209,7 +262,7 @@ def auto_set_rover_dues(at) -> int:
             )
             if r is None or r.due_date is not None or r.done or r.submitted_at:
                 continue
-            r.due_date = r.created_at.date() + timedelta(days=days)
+            r.due_date = r.released_at.date() + timedelta(days=days)
             r.due_auto = True
             r.due_set_by = None
             r.due_set_at = at
@@ -225,12 +278,22 @@ def due_rover_reminders(at) -> dict:
     the daily overdue reminders - each once (accounting.services.once)."""
     from accounting.services import once
 
-    out = {"auto": auto_set_rover_dues(at), "soon": 0, "overdue": 0}
+    out = {
+        "released": release_due_rovers(at),
+        "auto": auto_set_rover_dues(at),
+        "soon": 0,
+        "overdue": 0,
+    }
     if at.hour < int(config.ROVER_REMIND_HOUR):
         return out
     d = at.date()
     base = (
-        Rover.objects.filter(done=False, submitted_at__isnull=True, due_date__isnull=False)
+        Rover.objects.filter(
+            done=False,
+            submitted_at__isnull=True,
+            due_date__isnull=False,
+            released_at__isnull=False,
+        )
         .select_related("order__client", "submitted_by", "checked_by", "due_set_by")
         .order_by("due_date", "pk")
     )

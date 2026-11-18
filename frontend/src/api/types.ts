@@ -657,6 +657,8 @@ export interface ProductionRow {
   price?: Money | null;
   /** rover only: new | checking | done */
   state?: "new" | "checking" | "done" | null;
+  /** rover only: false while the parts are still at the service (not in the rover section yet) */
+  released?: boolean;
 }
 
 export interface OrderDetail extends Order {

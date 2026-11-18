@@ -47,6 +47,12 @@ class Rover(models.Model):
     due_set_at = models.DateTimeField(null=True, blank=True)
     note = models.TextField(blank=True, default="", verbose_name="Izoh")
     rev = models.PositiveIntegerField(default=0)
+    # When the job reached the rover section: the detailing is done and its parts came
+    # out of the service (Detailing.service_out_at). Until then the job is hidden from
+    # the rover section, nobody is told and it can't be handed in.
+    released_at = models.DateTimeField(
+        null=True, blank=True, db_index=True, verbose_name="Roverga o'tdi"
+    )
 
     history = HistoricalRecords()
 
@@ -90,7 +96,7 @@ def create_rover_folders(sender: Type[Rover], instance: Rover, created, **kwargs
         return
     from . import services
 
-    services.announce_new_rover(instance)
+    services.release_rover(instance.pk)
 
     if instance.order.folder is None:
         return

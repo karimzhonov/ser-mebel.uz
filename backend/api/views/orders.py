@@ -459,7 +459,8 @@ class RoverViewSet(_ProductionViewSet):
         qs = Rover.objects.select_related(
             "order__client", "order__metering", "submitted_by", "checked_by", "due_set_by"
         ).annotate(design_folder_pk=design)
-        qs = self.filter_common(qs)
+        # a job reaches the rover section only once its parts are out of the service
+        qs = self.filter_common(qs.filter(released_at__isnull=False))
         if _bool_param(self.request.query_params.get("overdue")):
             qs = qs.filter(done=False, submitted_at__isnull=True, due_date__lt=accounting_today())
         state = self.request.query_params.get("state")

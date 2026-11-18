@@ -20,7 +20,8 @@ def notify_painting_ready_task(rover_id):
 
 @shared_task
 def rover_reminders():
-    """Every minute: auto deadlines, «1 day left» and daily overdue reminders."""
+    """Every minute: jobs whose parts came out of the service go to rover, then auto
+    deadlines, «1 day left» and daily overdue reminders."""
     from accounting.text import now
 
     from . import services

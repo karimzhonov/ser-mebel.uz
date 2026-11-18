@@ -416,7 +416,12 @@ class OverviewView(APIView):
                 "/production/detailing",
             )
         if user.has_perm("rover.view_rover"):
-            stage("rover", "Rover", Rover.objects.filter(done=False), "/production/rover")
+            stage(
+                "rover",
+                "Rover",
+                Rover.objects.filter(done=False, released_at__isnull=False),
+                "/production/rover",
+            )
         if user.has_perm("painter.view_painter"):
             if manager:
                 painters = ready_for_painter(Painter.objects.filter(done=False))

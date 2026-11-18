@@ -416,9 +416,19 @@ export function OrderDetailPage() {
           />
           <ProdCard
             title="Rover"
-            to={p.rover ? `/production/rover?open=${p.rover.id}` : undefined}
+            to={p.rover && p.rover.released !== false ? `/production/rover?open=${p.rover.id}` : undefined}
             folder={p.rover?.folder}
             rows={p.rover && [
+              ...(p.rover.released === false
+                ? ([[
+                    "Holat",
+                    <Badge tone="idle">
+                      {p.detailing?.service_out_at
+                        ? `Usluga'da · ${dateTime(p.detailing.service_out_at)} da roverga o'tadi`
+                        : "Detalirovka tugashini kutmoqda"}
+                    </Badge>,
+                  ]] as [string, JSX.Element][])
+                : []),
               ["Maydon", num(p.rover.square)],
               ...(p.rover.price ? ([["Narx", money(p.rover.price)]] as [string, string][]) : []),
               ...(p.rover.state === "checking"
