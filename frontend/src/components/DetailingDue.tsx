@@ -99,3 +99,73 @@ export function DetailingDueModal({
     </Modal>
   );
 }
+
+/**
+ * «Detalirovka bajarildi» -> «Заказ на сырье» with the time the parts come out of
+ * the service (POST /detailings/{id}/done/ {service_out_at}), or moving that time
+ * later (POST /detailings/{id}/service-out/ {service_out_at}).
+ */
+export function ServiceOutModal({
+  detailingId,
+  current,
+  onClose,
+}: {
+  detailingId: number;
+  /** set -> changing an existing time; absent -> marking the detailing done */
+  current?: string | null;
+  onClose: () => void;
+}) {
+  const finishing = current === undefined;
+  const [value, setValue] = useState(current ? toLocalInput(current) : "");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const save = useAction(
+    () => api.post(`/detailings/${detailingId}/${finishing ? "done" : "service-out"}/`, { service_out_at: value }),
+    {
+      success: finishing ? "Xomashyo buyurtmasiga o'tdi" : "Vaqt o'zgartirildi",
+      invalidate: [...INVALIDATE, "rovers", "painters"],
+      onSuccess: onClose,
+    },
+  );
+  const past = !!value && new Date(value).getTime() <= Date.now();
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={finishing ? "Detalirovka bajarildi" : "Usluga'dan chiqish vaqti"}
+      size="sm"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>Bekor qilish</Button>
+          <Button
+            size="lg"
+            variant={finishing ? "success" : "primary"}
+            disabled={!value || past}
+            loading={save.isPending}
+            onClick={() => save.mutateAsync().catch((e) => setErrors(fieldErrors(e)))}
+          >
+            {finishing ? "Bajarildi" : "Saqlash"}
+          </Button>
+        </>
+      }
+    >
+      <p className="muted mb-3 text-sm">
+        {finishing
+          ? "Buyurtma «Xomashyo buyurtmasi» bosqichiga o'tadi. Detallar usluga'dan qachon chiqadi?"
+          : <>Hozirgi vaqt: <b className="text-slate-700 dark:text-slate-200">{dueText(current)}</b></>}
+      </p>
+      <div className="mb-3 grid grid-cols-4 gap-2">
+        {[1, 2, 3, 5].map((n) => (
+          <Button key={n} size="lg" variant="secondary" onClick={() => setValue(localInput(inDays(n)))}>
+            +{n} kun
+          </Button>
+        ))}
+      </div>
+      <Field
+        label="Usluga'dan chiqish vaqti"
+        error={errors.service_out_at ?? errors.detail ?? (past ? "O'tgan vaqt — kelajakdagi vaqtni kiriting" : undefined)}
+      >
+        <Input className="h-12 text-base" type="datetime-local" required value={value} onChange={(e) => setValue(e.target.value)} />
+      </Field>
+    </Modal>
+  );
+}

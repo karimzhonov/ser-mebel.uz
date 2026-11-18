@@ -409,6 +409,9 @@ export function OrderDetailPage() {
                 </span>,
               ],
               ["Bajarildi", <Check ok={p.detailing.done} />],
+              ...(p.detailing.service_out_at
+                ? ([["Usluga'dan chiqish", dateTime(p.detailing.service_out_at)]] as [string, string][])
+                : []),
             ]}
           />
           <ProdCard

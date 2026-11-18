@@ -674,6 +674,8 @@ export interface OrderDetail extends Order {
       painter_square: number;
       rover_square: number;
       due_at: string | null;
+      /** when the parts come out of the service (set on «Detalirovka bajarildi») */
+      service_out_at?: string | null;
       folder: number | null;
     } | null;
     rover: ProductionRow | null;
@@ -764,6 +766,8 @@ export interface ProductionItem {
   painter_square?: number;
   rover_square?: number;
   due_at?: string | null;
+  /** when the parts come out of the service (set on «Detalirovka bajarildi») */
+  service_out_at?: string | null;
   // painter
   type?: number | null;
   type_detail?: { id: number; name: string } | null;

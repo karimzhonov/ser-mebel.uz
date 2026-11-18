@@ -10,13 +10,29 @@ from core.exceptions import ServiceError
 from ..constants import OrderStatus
 
 
-def mark_detailing_done(detailing):
-    """Mirrors DetailingAdmin.done_action: the order moves to "Заказ на сырье"."""
+def clean_service_out(service_out_at):
+    """When the parts come out of the service: required, in the future (naive local)."""
+    if not isinstance(service_out_at, datetime):
+        raise ServiceError("Usluga'dan chiqish vaqtini kiriting", "service_out_at")
+    if service_out_at.tzinfo is not None:
+        service_out_at = timezone.make_naive(service_out_at)
+    if service_out_at <= timezone.now():
+        raise ServiceError(
+            "O'tgan vaqt — kelajakdagi vaqtni kiriting", "service_out_at"
+        )
+    return service_out_at
+
+
+def mark_detailing_done(detailing, *, service_out_at):
+    """The order moves to "Заказ на сырье"; the detailer says when the parts come
+    out of the service (`service_out_at`)."""
     if detailing.done:
         raise ServiceError("Detalirovka allaqachon bajarilgan")
+    service_out_at = clean_service_out(service_out_at)
     with transaction.atomic():
         detailing.done = True
-        detailing.save(update_fields=["done"])
+        detailing.service_out_at = service_out_at
+        detailing.save(update_fields=["done", "service_out_at"])
         detailing.order.status = OrderStatus.WORKING
         detailing.order.save(update_fields=["status"])
     return detailing
@@ -39,4 +55,16 @@ def set_detailing_due(detailing, *, due_at):
         raise ServiceError("Detalirovka bajarilgan — muddatni o'zgartirib bo'lmaydi")
     detailing.due_at = clean_detailing_due(due_at)
     detailing.save(update_fields=["due_at"])
+    return detailing
+
+
+def set_service_out(detailing, *, service_out_at):
+    """Move the service-out time of a done detailing while the order still waits
+    for raw materials («Заказ на сырье»)."""
+    if not detailing.done:
+        raise ServiceError("Avval detalirovkani bajaring")
+    if detailing.order.status != OrderStatus.WORKING:
+        raise ServiceError("Buyurtma «Заказ на сырье» bosqichida emas")
+    detailing.service_out_at = clean_service_out(service_out_at)
+    detailing.save(update_fields=["service_out_at"])
     return detailing

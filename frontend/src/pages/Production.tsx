@@ -7,7 +7,7 @@ import type { PainterPart, PainterType, ProductionItem, UserShort } from "@/api/
 import { useAuth } from "@/auth/AuthContext";
 import { AddressLink, DeadlinePill, FolderButton, OrderStatusBadge, PhoneLink, ROW_TONE } from "@/components/domain";
 import { DateRangeFilter } from "@/components/DateRangeFilter";
-import { DetailingDue, DetailingDueModal } from "@/components/DetailingDue";
+import { DetailingDue, DetailingDueModal, ServiceOutModal } from "@/components/DetailingDue";
 import { DueLabel, DueModal } from "@/components/DueDate";
 import { PainterParts } from "@/components/PainterParts";
 import { RoverDueLabel, RoverDueModal } from "@/components/RoverDue";
@@ -32,7 +32,7 @@ import {
   StatTile,
   Textarea,
 } from "@/components/ui";
-import { date, money, num, phone } from "@/lib/format";
+import { date, dateTime, money, num, phone } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 
 type Kind = "detailing" | "rover" | "painter" | "assembly";
@@ -257,6 +257,7 @@ function ProductionModal({
   const [squares, setSquares] = useState({ square: "", painter_square: "", rover_square: "" });
   const [confirm, setConfirm] = useState<null | string>(null);
   const [moveDue, setMoveDue] = useState(false);
+  const [serviceOut, setServiceOut] = useState<null | "done" | "move">(null);
   const [amountOpen, setAmountOpen] = useState(false);
   const [roverDue, setRoverDue] = useState(false);
   const [painterDue, setPainterDue] = useState<PainterPart | null>(null);
@@ -343,6 +344,19 @@ function ProductionModal({
                     <DetailingDue dueAt={item.due_at} done={item.done} />
                     {a.due && (
                       <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setMoveDue(true)}>
+                        o'zgartirish
+                      </button>
+                    )}
+                  </span>,
+                ]] as [string, JSX.Element][])
+              : []),
+            ...(kind === "detailing" && (item.done || item.service_out_at)
+              ? ([[
+                  "Usluga'dan chiqish",
+                  <span className="flex flex-wrap items-center gap-2">
+                    {item.service_out_at ? dateTime(item.service_out_at) : <span className="muted">—</span>}
+                    {a.service_out && (
+                      <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setServiceOut("move")}>
                         o'zgartirish
                       </button>
                     )}
@@ -504,7 +518,8 @@ function ProductionModal({
                   setNote("");
                   setSubmitErrors({});
                   setAmountOpen(true);
-                } else setConfirm("done");
+                } else if (kind === "detailing") setServiceOut("done");
+                else setConfirm("done");
               }}
             >
               {kind === "assembly" ? "Yig'ish bajarildi" : kind === "detailing" ? "Detalirovka bajarildi" : "Bajarildi"}
@@ -540,6 +555,13 @@ function ProductionModal({
           )}
         </div>
       </div>
+      {serviceOut && (
+        <ServiceOutModal
+          detailingId={item.id}
+          current={serviceOut === "move" ? item.service_out_at ?? null : undefined}
+          onClose={() => setServiceOut(null)}
+        />
+      )}
       <Confirm
         open={!!confirm}
         onClose={() => setConfirm(null)}

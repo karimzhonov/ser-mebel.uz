@@ -169,6 +169,7 @@ class OrderDetailSerializer(OrderSerializer):
                     "painter_square": detailing.painter_square,
                     "rover_square": detailing.rover_square,
                     "due_at": detailing.due_at,
+                    "service_out_at": detailing.service_out_at,
                     "folder": detailing.folder_id,
                 }
                 if detailing
@@ -351,10 +352,19 @@ class DetailingSerializer(serializers.ModelSerializer):
             "painter_square",
             "rover_square",
             "due_at",
+            "service_out_at",
             "folder",
             "actions",
         ]
-        read_only_fields = ["order", "created_at", "done", "working_done", "due_at", "folder"]
+        read_only_fields = [
+            "order",
+            "created_at",
+            "done",
+            "working_done",
+            "due_at",
+            "service_out_at",
+            "folder",
+        ]
 
     def get_actions(self, obj):
         user = self.context["request"].user
@@ -363,11 +373,18 @@ class DetailingSerializer(serializers.ModelSerializer):
             "edit": can_change,
             "done": can_change and not obj.done,
             "due": user.has_perm("detailing.add_detailing") and not obj.done,
+            "service_out": can_change
+            and obj.done
+            and obj.order.status == OrderStatus.WORKING,
         }
 
 
 class DetailingDueSerializer(serializers.Serializer):
     due_at = serializers.DateTimeField()
+
+
+class DetailingServiceOutSerializer(serializers.Serializer):
+    service_out_at = serializers.DateTimeField()
 
 
 class RoverSerializer(serializers.ModelSerializer):

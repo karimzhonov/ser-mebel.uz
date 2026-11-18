@@ -198,8 +198,33 @@ def test_full_pipeline(admin_api, catalog):
     assert production["rover"]["square"] == 3
 
     resp = admin_api.post(f"/api/v1/detailings/{detailing_id}/done/")
+    assert resp.status_code == 400 and "service_out_at" in resp.data  # time is required
+    past = (timezone.now() - timedelta(hours=1)).replace(microsecond=0)
+    resp = admin_api.post(
+        f"/api/v1/detailings/{detailing_id}/done/",
+        {"service_out_at": past.isoformat()},
+        format="json",
+    )
+    assert resp.status_code == 400 and "service_out_at" in resp.data
+    out = (timezone.now() + timedelta(days=2)).replace(microsecond=0)
+    resp = admin_api.post(
+        f"/api/v1/detailings/{detailing_id}/done/",
+        {"service_out_at": out.isoformat()},
+        format="json",
+    )
     assert resp.data["done"] is True
+    assert resp.data["service_out_at"] == out.isoformat()
+    assert resp.data["actions"]["service_out"] is True
     assert Order.objects.get(pk=order_id).status == OrderStatus.WORKING
+    later = out + timedelta(days=1)
+    resp = admin_api.post(
+        f"/api/v1/detailings/{detailing_id}/service-out/",
+        {"service_out_at": later.isoformat()},
+        format="json",
+    )
+    assert resp.status_code == 200, resp.content
+    production = admin_api.get(f"/api/v1/orders/{order_id}/").data["production"]
+    assert production["detailing"]["service_out_at"] == later
 
     resp = admin_api.post(f"/api/v1/orders/{order_id}/go-to-assembly/")
     assert resp.status_code == 200 and resp.data["status"] == OrderStatus.ASSEMBLY

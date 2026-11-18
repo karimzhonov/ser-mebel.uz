@@ -29,7 +29,7 @@ from order.constants import (
     OrderStatus,
 )
 from order.detailing.models import Detailing
-from order.detailing.services import mark_detailing_done, set_detailing_due
+from order.detailing.services import mark_detailing_done, set_detailing_due, set_service_out
 from order.models import Factory, Order
 from order.painter.models import Painter, PainterPart, PainterType
 from order.painter.services import (
@@ -62,6 +62,7 @@ from ..serializers.orders import (
     AssemblyFinishSerializer,
     AssemblySerializer,
     DetailingDueSerializer,
+    DetailingServiceOutSerializer,
     DetailingSerializer,
     FactorySerializer,
     OrderCreateSerializer,
@@ -401,10 +402,35 @@ class DetailingViewSet(_ProductionViewSet):
             super().update(request, *args, **kwargs)
         return self._respond(self.get_object())
 
-    @action(detail=True, methods=["post"])
+    @action(detail=True, methods=["post"], serializer_class=DetailingServiceOutSerializer)
     def done(self, request, pk=None):
+        """Detailing done -> «Заказ на сырье»: {service_out_at} (when the parts come
+        out of the service)."""
         require_perm(request.user, "detailing.change_detailing")
-        return self._respond(mark_detailing_done(self.get_object()))
+        body = DetailingServiceOutSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            mark_detailing_done(
+                self.get_object(), service_out_at=body.validated_data["service_out_at"]
+            )
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="service-out",
+        serializer_class=DetailingServiceOutSerializer,
+    )
+    def service_out(self, request, pk=None):
+        """Move the service-out time while the order is in «Заказ на сырье»."""
+        require_perm(request.user, "detailing.change_detailing")
+        body = DetailingServiceOutSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            set_service_out(
+                self.get_object(), service_out_at=body.validated_data["service_out_at"]
+            )
+        )
 
     @action(detail=True, methods=["post"], serializer_class=DetailingDueSerializer)
     def due(self, request, pk=None):

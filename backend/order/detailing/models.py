@@ -25,6 +25,11 @@ class Detailing(models.Model):
     due_at = models.DateTimeField(
         null=True, blank=True, db_index=True, verbose_name="Срок деталировки"
     )
+    # Set when the detailing is done and the order goes to «Заказ на сырье»: when the
+    # parts come out of the service (раскрой/кромка). Null on rows done before it existed.
+    service_out_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="Выход из услуги"
+    )
 
     square = models.FloatField(default=0, verbose_name="Площадь")
     painter_square = models.FloatField(default=0, blank=True, verbose_name="Площадь покраски")
