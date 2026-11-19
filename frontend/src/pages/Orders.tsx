@@ -401,7 +401,7 @@ export function OrderDetailPage() {
                 "Muddat",
                 <span className="flex flex-wrap items-center gap-2">
                   <DetailingDue dueAt={p.detailing.due_at} done={p.detailing.done} />
-                  {!p.detailing.done && can("detailing.add_detailing") && (
+                  {!p.detailing.done && a.detailing_due && (
                     <button type="button" className="text-xs text-brand-700 hover:underline dark:text-brand-300" onClick={() => setMoveDetailingDue(true)}>
                       o'zgartirish
                     </button>
@@ -489,7 +489,7 @@ export function OrderDetailPage() {
       )}
       {sendDetailing && <DetailingDueModal orderId={o.id} onClose={() => setSendDetailing(false)} />}
       {moveDetailingDue && p.detailing && (
-        <DetailingDueModal detailingId={p.detailing.id} dueAt={p.detailing.due_at} onClose={() => setMoveDetailingDue(false)} />
+        <DetailingDueModal orderId={o.id} detailingId={p.detailing.id} dueAt={p.detailing.due_at} onClose={() => setMoveDetailingDue(false)} />
       )}
       <Confirm
         open={!!confirm}

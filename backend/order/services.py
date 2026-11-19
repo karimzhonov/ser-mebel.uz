@@ -402,6 +402,25 @@ def set_order_location(order, *, point, link=UNSET, address=UNSET, by=None):
     return order, bool(fields)
 
 
+DETAILING_SEND_MSG = "Detalirovkaga bosh menejer yuboradi"
+
+
+def can_send_to_detailing(user) -> bool:
+    """Who sends a «Yaratildi» order to detailing and moves its deadline: the «Bosh
+    menejer» (metering.manage_metering — the default role has no detailing rights),
+    whoever holds detailing.add_detailing, and superusers."""
+    from metering.constants import METERING_MANAGE_PERMISSION
+
+    return bool(
+        user is not None
+        and user.is_active
+        and (
+            user.has_perm("detailing.add_detailing")
+            or user.has_perm(f"metering.{METERING_MANAGE_PERMISSION}")
+        )
+    )
+
+
 def send_order_to_detailing(order, *, due_at):
     """The bosh menejer sends a «Yaratildi» order to detailing with a deadline."""
     from core.exceptions import ServiceError

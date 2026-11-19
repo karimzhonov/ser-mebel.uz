@@ -42,7 +42,9 @@ export function DetailingDue({ dueAt, done }: { dueAt: string | null | undefined
 
 /**
  * «Detalirovkaga» with its deadline (POST /orders/{id}/detailing/ {due_at}),
- * or moving the deadline later (POST /detailings/{id}/due/ {due_at}).
+ * or moving the deadline later (POST /detailings/{id}/due/ {due_at}; from the order page,
+ * where orderId is given too, POST /orders/{id}/detailing-due/ — the Bosh menejer has no
+ * access to the detailings section).
  */
 export function DetailingDueModal({
   orderId,
@@ -62,7 +64,9 @@ export function DetailingDueModal({
     () =>
       sending
         ? api.post(`/orders/${orderId}/detailing/`, { due_at: value })
-        : api.post(`/detailings/${detailingId}/due/`, { due_at: value }),
+        : orderId
+          ? api.post(`/orders/${orderId}/detailing-due/`, { due_at: value })
+          : api.post(`/detailings/${detailingId}/due/`, { due_at: value }),
     {
       success: sending ? "Detalirovkaga yuborildi" : "Muddat o'zgartirildi",
       invalidate: INVALIDATE,

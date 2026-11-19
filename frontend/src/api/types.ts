@@ -689,6 +689,7 @@ export interface OrderDetail extends Order {
   actions: {
     edit: boolean;
     detailing: boolean;
+    detailing_due?: boolean;
     next_status: boolean;
     next_status_label: string | null;
     next_status_hint?: string | null;

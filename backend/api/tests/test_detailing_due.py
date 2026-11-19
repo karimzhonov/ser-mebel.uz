@@ -108,3 +108,29 @@ def test_next_status_from_installing_needs_head_tayyor_when_assembly_exists(
     assert data["next_status"] is True and data["next_status_hint"] is None
     assert admin_api.post(f"/api/v1/orders/{without.pk}/next-status/").status_code == 200
     assert Order.objects.get(pk=without.pk).status == OrderStatus.DONE
+
+
+def test_head_manager_sends_and_moves_without_detailing_rights(api, order_factory, today):
+    """The default «Bosh menejer» role has metering.manage_metering but no detailing
+    rights: he still sends a «Yaratildi» order to detailing and moves its deadline from
+    the order page; a plain manager cannot."""
+    order = order_factory(end_date=today)
+    boss = api("order.view_order", "metering.manage_metering")
+    plain = api("order.view_order", "metering.present_to_client")
+    url = f"/api/v1/orders/{order.pk}/"
+
+    assert plain.get(url).data["actions"]["detailing"] is False
+    due = {"due_at": _future().isoformat()}
+    assert plain.post(f"{url}detailing/", due, format="json").status_code == 403
+    assert boss.get(url).data["actions"]["detailing"] is True
+    resp = boss.post(f"{url}detailing/", {"due_at": _future().isoformat()}, format="json")
+    assert resp.status_code == 200, resp.content
+    assert resp.data["status"] == OrderStatus.DETAILING
+    assert resp.data["actions"]["detailing_due"] is True
+
+    new_due = _future(6)
+    resp = boss.post(f"{url}detailing-due/", {"due_at": new_due.isoformat()}, format="json")
+    assert resp.status_code == 200, resp.content
+    assert Detailing.objects.get(order=order).due_at == new_due
+    later = {"due_at": _future(8).isoformat()}
+    assert plain.post(f"{url}detailing-due/", later, format="json").status_code == 403
