@@ -44,8 +44,10 @@ from order.painter.services import (
 from order.rover.models import Rover
 from order.rover.services import confirm_rover, set_rover_due, submit_rover
 from order.services import (
+    DETAILING_SEND_MSG,
     advance_order_status,
     can_send_to_assembly,
+    can_send_to_detailing,
     create_order,
     send_order_to_assembly,
     send_order_to_detailing,
@@ -266,11 +268,32 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], serializer_class=DetailingDueSerializer)
     def detailing(self, request, pk=None):
         """Send to detailing with its deadline: {due_at}."""
-        require_perm(request.user, "detailing.add_detailing")
+        if not can_send_to_detailing(request.user):
+            raise PermissionDenied(DETAILING_SEND_MSG)
         order = self.get_object()
         body = DetailingDueSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         send_order_to_detailing(order, due_at=body.validated_data["due_at"])
+        return self._detail(order)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="detailing-due",
+        serializer_class=DetailingDueSerializer,
+    )
+    def detailing_due(self, request, pk=None):
+        """Move the detailing deadline from the order page: {due_at}. Same rule as
+        sending; the Bosh menejer has no access to the detailings section itself."""
+        if not can_send_to_detailing(request.user):
+            raise PermissionDenied(DETAILING_SEND_MSG)
+        order = self.get_object()
+        detailing = Detailing.objects.filter(order=order).first()
+        if detailing is None:
+            raise ServiceError("Buyurtma hali detalirovkaga yuborilmagan")
+        body = DetailingDueSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        set_detailing_due(detailing, due_at=body.validated_data["due_at"])
         return self._detail(order)
 
     @action(detail=True, methods=["post"], url_path="next-status")
@@ -433,7 +456,8 @@ class DetailingViewSet(_ProductionViewSet):
     @action(detail=True, methods=["post"], serializer_class=DetailingDueSerializer)
     def due(self, request, pk=None):
         """Move the deadline (whoever may send to detailing): {due_at}."""
-        require_perm(request.user, "detailing.add_detailing")
+        if not can_send_to_detailing(request.user):
+            raise PermissionDenied(DETAILING_SEND_MSG)
         body = DetailingDueSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         return self._respond(

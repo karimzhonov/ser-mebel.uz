@@ -18,6 +18,7 @@ from order.services import (
     ASSEMBLY_SEND_MSG,
     INSTALLING_CONFIRM_MSG,
     can_send_to_assembly,
+    can_send_to_detailing,
     installing_needs_head_confirm,
 )
 from order.visibility import sees_full_order, strip_order
@@ -220,8 +221,11 @@ class OrderDetailSerializer(OrderSerializer):
         )
         return {
             "edit": user.has_perm("order.change_order"),
-            "detailing": user.has_perm("detailing.add_detailing")
-            and obj.status == OrderStatus.CREATED,
+            "detailing": can_send_to_detailing(user) and obj.status == OrderStatus.CREATED,
+            # move the detailing deadline from the order page (POST orders/{id}/detailing-due/)
+            "detailing_due": can_send_to_detailing(user)
+            and getattr(obj, "detailing", None) is not None
+            and not obj.detailing.done,
             # «Yaratildi» → detailing only through «Detalirovkaga yuborish» (with a deadline)
             "next_status": user.has_perm(f"order.{ORDER_CHANGE_STATUS_PERMISSION}")
             and OrderStatus.next_status(obj.status)
@@ -387,7 +391,7 @@ class DetailingSerializer(serializers.ModelSerializer):
         return {
             "edit": can_change,
             "done": can_change and not obj.done,
-            "due": user.has_perm("detailing.add_detailing") and not obj.done,
+            "due": can_send_to_detailing(user) and not obj.done,
             "service_out": can_change
             and obj.done
             and obj.order.status == OrderStatus.WORKING,
