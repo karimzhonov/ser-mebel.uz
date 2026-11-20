@@ -8,6 +8,7 @@ import { Button, Empty, Field, Input, Modal, Skeleton } from "@/components/ui";
 import { date } from "@/lib/format";
 import { som } from "./shared";
 import type { SalaryInfo, WorkerCard } from "./types";
+import { UploadModal } from "./WorkerFolder";
 
 const PLACEHOLDERS: [string, string][] = [
   ["{ism}", "ism"],
@@ -34,6 +35,7 @@ export function SalaryModal({ card, onClose }: { card: WorkerCard; onClose: () =
   const custom = !!(range.date_from && range.date_to);
   const [payDay, setPayDay] = useState(card.pay_day ? String(card.pay_day) : "");
   const [busy, setBusy] = useState(false);
+  const [saveSheet, setSaveSheet] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const { data: info, isLoading } = useGet<SalaryInfo>(`/finance/workers/${id}/salary/`, {
     month,
@@ -89,6 +91,11 @@ export function SalaryModal({ card, onClose }: { card: WorkerCard; onClose: () =
           <Button variant="ghost" onClick={onClose}>
             Yopish
           </Button>
+          {canEdit && (
+            <Button variant="outline" icon={<Upload className="h-4 w-4" />} disabled={!ym} onClick={() => setSaveSheet(true)}>
+              To'ldirilganini papkaga saqlash
+            </Button>
+          )}
           <Button
             icon={<Download className="h-4 w-4" />}
             loading={busy}
@@ -102,6 +109,7 @@ export function SalaryModal({ card, onClose }: { card: WorkerCard; onClose: () =
         </>
       }
     >
+      {saveSheet && <UploadModal workerId={id} kind="salary" month={ym} lockKind onClose={() => setSaveSheet(false)} />}
       <div className="space-y-5">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Oylik beriladigan oy" hint="Bo'sh — keyingi oylik kuni">

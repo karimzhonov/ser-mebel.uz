@@ -405,3 +405,48 @@ export interface SalaryPayment {
   member: string;
   comment: string;
 }
+
+/* «Ishchi kartasi» → the worker's own folder (GET /finance/workers/{id}/profile|files|months/) */
+export interface WorkerProfile {
+  birth_date: string | null;
+  phone: string;
+  address: string;
+  passport_number: string;
+  passport_issued_by: string;
+  passport_issued_on: string | null;
+  passport_expires: string | null;
+  pinfl: string;
+  license_number: string;
+  license_categories: string;
+  license_expires: string | null;
+  hired_on: string | null;
+  prior_experience_months: number;
+  experience_note: string;
+  experience: { here: number; prior: number; total: number };
+}
+
+export type WorkerFileKind = "salary" | "passport" | "license" | "contract" | "other";
+
+export interface WorkerFile {
+  id: number;
+  kind: WorkerFileKind;
+  kind_label: string;
+  month: string | null;
+  name: string;
+  content_type: string;
+  size: number;
+  comment: string;
+  uploaded_at: string;
+  uploaded_by: string;
+}
+
+export interface WorkerMonth {
+  month: string;
+  count: number;
+  advance: number;
+  salary: number;
+  home: number;
+  other: number;
+  total: number;
+  files: WorkerFile[];
+}
