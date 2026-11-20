@@ -275,16 +275,17 @@ def test_serializer_actions_per_role_and_state(rover, worker, checker, api):
     def acts(client):
         return client.get(url).data["actions"]
 
-    assert acts(w) == {"done": True, "confirm": False, "due": False}
-    assert acts(c) == {"done": False, "confirm": False, "due": False}
-    assert acts(both) == {"done": True, "confirm": False, "due": False}
+    off = {"done": False, "confirm": False, "reject": False, "due": False}
+    assert acts(w) == {**off, "done": True}
+    assert acts(c) == off
+    assert acts(both) == {**off, "done": True}
     RS.submit_rover(rover, by=worker, price=money(), note=NOTE)
-    assert acts(w) == {"done": False, "confirm": False, "due": False}
-    assert acts(c) == {"done": False, "confirm": True, "due": False}
-    assert acts(both) == {"done": False, "confirm": True, "due": False}
+    assert acts(w) == off
+    assert acts(c) == {**off, "confirm": True, "reject": True}
+    assert acts(both) == {**off, "confirm": True, "reject": True}
     RS.confirm_rover(rover, by=checker)
     for client in (w, c, both):
-        assert acts(client) == {"done": False, "confirm": False, "due": False}
+        assert acts(client) == off
     data = c.get(url).data
     assert data["state"] == "done" and data["state_label"] and data["checked_by_detail"]["name"]
 

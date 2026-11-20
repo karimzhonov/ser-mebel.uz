@@ -15,7 +15,9 @@ from accounting.models import (
     SiteEntryTask,
     WarrantyLetter,
     Worker,
+    WorkerFile,
 )
+from accounting.workers import PROFILE_FIELDS
 from oauth.models import TelegramMember, User
 
 from .common import UserShortSerializer
@@ -152,6 +154,45 @@ class WorkerSerializer(serializers.ModelSerializer):
         if v is not None and not 1 <= v <= 31:
             raise serializers.ValidationError("Oyning kuni: 1 dan 31 gacha.")
         return v
+
+
+class WorkerProfileSerializer(serializers.ModelSerializer):
+    """«Ishchi kartasi» → «Ma'lumotlar». Parses types only; the rules are in
+    accounting.workers.update_profile."""
+
+    class Meta:
+        model = Worker
+        fields = PROFILE_FIELDS
+        # typed with spaces («123 456 …»); the service strips them and checks 14 digits
+        extra_kwargs = {"pinfl": {"max_length": 32}}
+
+
+class WorkerFileSerializer(serializers.ModelSerializer):
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+    month = serializers.SerializerMethodField()
+    uploaded_by = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkerFile
+        fields = [
+            "id",
+            "kind",
+            "kind_label",
+            "month",
+            "name",
+            "content_type",
+            "size",
+            "comment",
+            "uploaded_at",
+            "uploaded_by",
+        ]
+
+    def get_month(self, f) -> str | None:
+        return f.month.strftime("%Y-%m") if f.month else None
+
+    def get_uploaded_by(self, f) -> str:
+        u = f.uploaded_by
+        return (u.name or str(u.phone)) if u else ""
 
 
 class FinanceCarSerializer(serializers.ModelSerializer):

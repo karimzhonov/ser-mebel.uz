@@ -7,6 +7,7 @@ import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 import { SalaryModal } from "./SalaryModal";
+import { WorkerFiles, WorkerMonths, WorkerProfilePanel } from "./WorkerFolder";
 import { som, usd } from "./shared";
 import type { WorkerCard, WorkerCardResponse, WorkerListItem } from "./types";
 
@@ -181,7 +182,9 @@ function GiversTable({ card }: { card: WorkerCard }) {
 function CardView({ card, period }: { card: WorkerCard; period: string }) {
   const [salary, setSalary] = useState(false);
   const [filter, setFilter] = useState<PayFilter>("");
+  const [tab, setTab] = useState<"pay" | "months" | "profile" | "files">("pay");
   const withHome = card.is_boss || card.home > 0;
+  const folder = !!card.worker_id;
   return (
     <div className="space-y-4">
       {salary && <SalaryModal card={card} onClose={() => setSalary(false)} />}
@@ -206,6 +209,25 @@ function CardView({ card, period }: { card: WorkerCard; period: string }) {
         )}
       </div>
 
+      {folder ? (
+        <Segmented
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "pay", label: "💰 To'lovlar" },
+            { value: "months", label: "📅 Oyma-oy" },
+            { value: "profile", label: "🪪 Ma'lumotlar" },
+            { value: "files", label: "📁 Papka" },
+          ]}
+        />
+      ) : (
+        <p className="muted text-xs">Papka, pasport / prava va oyma-oy oyliklar — ishchini «Ishchilar» ro'yxatiga qo'shgandan keyin.</p>
+      )}
+      {tab === "months" && folder && <WorkerMonths card={card} />}
+      {tab === "profile" && folder && <WorkerProfilePanel card={card} />}
+      {tab === "files" && folder && <WorkerFiles card={card} />}
+      {(tab === "pay" || !folder) && (
+      <>
       <div className={cn("grid grid-cols-2 gap-3", withHome ? "xl:grid-cols-5" : "xl:grid-cols-4")}>
         <StatTile tone="warn" label="💵 Avans (shu davrda)" value={som(card.advance)} />
         <StatTile tone="ok" label="🧾 Oylik (shu davrda)" value={som(card.salary)} hint={card.other ? `Turi yozilmagan: ${som(card.other)}` : undefined} />
@@ -238,6 +260,8 @@ function CardView({ card, period }: { card: WorkerCard; period: string }) {
           <PaymentsSheet card={card} filter={filter} />
         </Card>
       </div>
+      </>
+      )}
     </div>
   );
 }

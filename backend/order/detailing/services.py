@@ -101,7 +101,22 @@ def set_detailing_due(detailing, *, due_at):
         raise ServiceError("Detalirovka bajarilgan — muddatni o'zgartirib bo'lmaydi")
     detailing.due_at = clean_detailing_due(due_at)
     detailing.save(update_fields=["due_at"])
+    from .events import detailing_task
+
+    detailing_task(detailing, how="moved")
     return detailing
+
+
+def on_order_detailing(order):
+    """The order moved to «Деталировка»: the detailers get the task card in Telegram
+    (deadline, client, «Bajardim» link to the site) instead of the bare message."""
+    from .events import detailing_task
+    from .models import Detailing
+
+    detailing = Detailing.objects.select_related("order__client").filter(order=order).first()
+    if detailing is None:
+        return
+    detailing_task(detailing, how="new")
 
 
 def set_service_out(detailing, *, services):

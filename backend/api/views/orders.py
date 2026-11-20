@@ -1,5 +1,16 @@
 from django.db import transaction
-from django.db.models import Count, Exists, Min, OuterRef, Prefetch, ProtectedError, Q, Subquery
+from django.db.models import (
+    Count,
+    Exists,
+    F,
+    Min,
+    OuterRef,
+    Prefetch,
+    ProtectedError,
+    Q,
+    Subquery,
+    Sum,
+)
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -41,8 +52,18 @@ from order.painter.services import (
     set_painter_parts,
     set_part_due,
 )
-from order.rover.models import Rover
-from order.rover.services import confirm_rover, set_rover_due, submit_rover
+from order.rover.models import Rover, RoverRework
+from order.rover.services import (
+    can_check_rover,
+    confirm_rover,
+    create_rework,
+    delete_rework,
+    reject_rover,
+    rework_orders,
+    sees_all_reworks,
+    set_rover_due,
+    submit_rover,
+)
 from order.services import (
     DETAILING_SEND_MSG,
     advance_order_status,
@@ -79,6 +100,8 @@ from ..serializers.orders import (
     PainterTypeSerializer,
     RoverDoneSerializer,
     RoverDueSerializer,
+    RoverRejectSerializer,
+    RoverReworkSerializer,
     RoverSerializer,
 )
 from ..utils import apply_period, csv_values, int_param, timeseries, warning_filter
@@ -434,9 +457,7 @@ class DetailingViewSet(_ProductionViewSet):
         require_perm(request.user, "detailing.change_detailing")
         body = DetailingServiceOutSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        return self._respond(
-            mark_detailing_done(self.get_object(), **body.validated_data)
-        )
+        return self._respond(mark_detailing_done(self.get_object(), **body.validated_data))
 
     @action(
         detail=True,
@@ -449,9 +470,7 @@ class DetailingViewSet(_ProductionViewSet):
         require_perm(request.user, "detailing.change_detailing")
         body = DetailingServiceOutSerializer(data=request.data)
         body.is_valid(raise_exception=True)
-        return self._respond(
-            set_service_out(self.get_object(), **body.validated_data)
-        )
+        return self._respond(set_service_out(self.get_object(), **body.validated_data))
 
     @action(detail=True, methods=["post"], serializer_class=DetailingDueSerializer)
     def due(self, request, pk=None):
@@ -479,8 +498,13 @@ class RoverViewSet(_ProductionViewSet):
     def get_queryset(self):
         design = _design_folder_subquery()
         qs = Rover.objects.select_related(
-            "order__client", "order__metering", "submitted_by", "checked_by", "due_set_by"
-        ).annotate(design_folder_pk=design)
+            "order__client",
+            "order__metering",
+            "submitted_by",
+            "checked_by",
+            "rejected_by",
+            "due_set_by",
+        ).annotate(design_folder_pk=design, detailing_folder_pk=F("order__detailing__folder_id"))
         # a job reaches the rover section only once its parts are out of the service
         qs = self.filter_common(qs.filter(released_at__isnull=False))
         if _bool_param(self.request.query_params.get("overdue")):
@@ -518,6 +542,7 @@ class RoverViewSet(_ProductionViewSet):
                 self.get_object(),
                 by=request.user,
                 price=body.validated_data["price"],
+                price_usd=body.validated_data.get("price_usd") or 0,
                 note=body.validated_data["note"],
             )
         )
@@ -536,8 +561,100 @@ class RoverViewSet(_ProductionViewSet):
 
     @action(detail=True, methods=["post"])
     def confirm(self, request, pk=None):
-        require_perm(request.user, "oauth.user_rover_checker")
+        """«Tasdiqlash»: a rover checker or the production head accepts the hand-in."""
+        if not can_check_rover(request.user):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
         return self._respond(confirm_rover(self.get_object(), by=request.user))
+
+    @action(detail=True, methods=["post"], serializer_class=RoverRejectSerializer)
+    def reject(self, request, pk=None):
+        """«Bekor qilish»: {reason} - the hand-in goes back to the worker (state `new`)."""
+        if not can_check_rover(request.user):
+            raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+        body = RoverRejectSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        return self._respond(
+            reject_rover(self.get_object(), by=request.user, reason=body.validated_data["reason"])
+        )
+
+
+class RoverReworkViewSet(
+    mixins.ListModelMixin,
+    mixins.CreateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
+    """Client «peredelka» jobs the rover worker records (order/client, m², so'm and/or $).
+    Reading needs rover.view_rover, writing rover.change_rover (the Rover role has both);
+    a worker sees only their own rows, checkers / production heads every row."""
+
+    serializer_class = RoverReworkSerializer
+    filter_backends = [SearchFilter]
+    search_fields = ["order__client__fio", "=order__order_number", "note"]
+
+    def get_queryset(self):
+        require_perm(self.request.user, "rover.view_rover")
+        qs = RoverRework.objects.select_related("order__client", "created_by")
+        if not sees_all_reworks(self.request.user):
+            qs = qs.filter(created_by=self.request.user)
+        params = self.request.query_params
+        user_id = int_param(params, "user")
+        if user_id is not None and sees_all_reworks(self.request.user):
+            qs = qs.filter(created_by_id=user_id)
+        return apply_period(qs, "created_at", params)
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        totals = self.filter_queryset(self.get_queryset()).aggregate(
+            square=Sum("square"), uzs=Sum("price_uzs"), usd=Sum("price_usd")
+        )
+        response.data["totals"] = {
+            "square": totals["square"] or 0,
+            "price_uzs": totals["uzs"] or 0,
+            "price_usd": totals["usd"] or 0,
+        }
+        return response
+
+    def create(self, request, *args, **kwargs):
+        require_perm(request.user, "rover.change_rover")
+        body = self.get_serializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        rework = create_rework(
+            by=request.user,
+            order=data["order"],
+            square=data["square"],
+            price_uzs=data.get("price_uzs") or 0,
+            price_usd=data.get("price_usd") or 0,
+            note=data.get("note") or "",
+        )
+        return Response(self.get_serializer(rework).data, status=status.HTTP_201_CREATED)
+
+    def perform_destroy(self, instance):
+        delete_rework(instance, by=self.request.user)
+
+    @action(detail=False, methods=["get"])
+    def orders(self, request):
+        """Order picker for the rework form: ?search= by order № or client name ->
+        [{id, order_number, client_fio}] (no phone: the rover worker never sees it)."""
+        require_perm(request.user, "rover.change_rover")
+        term = (request.query_params.get("search") or "").strip()
+        qs = rework_orders().select_related("client").order_by("-order_number")
+        if term:
+            q = Q(client__fio__icontains=term)
+            if term.lstrip("№#").isdigit():
+                q |= Q(order_number=int(term.lstrip("№#")))
+            qs = qs.filter(q)
+        return Response(
+            [
+                {
+                    "id": o.pk,
+                    "order_number": o.order_number,
+                    "client_fio": o.client.fio if o.client_id else "",
+                }
+                for o in qs[:20]
+            ]
+        )
 
 
 class PainterTypeViewSet(viewsets.ModelViewSet):
@@ -597,6 +714,7 @@ class PainterViewSet(_ProductionViewSet):
             )
             .annotate(
                 design_folder_pk=design,
+                detailing_folder_pk=F("order__detailing__folder_id"),
                 next_due=Min("parts__due_date", filter=Q(parts__done=False)),
             )
         )

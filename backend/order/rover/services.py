@@ -6,6 +6,7 @@ old meaning, so the painter / assembly / dashboard rules read it as before."""
 
 import logging
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 
 from constance import config
 from django.db import transaction
@@ -17,7 +18,7 @@ from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden
 from oauth.constants import PRODUCTION_HEAD_PERMISSION, ROVER_CHECKER_PERMISSION, ROVER_PERMISSION
 
 from . import events
-from .models import Rover, RoverState
+from .models import Rover, RoverRework, RoverState
 
 logger = logging.getLogger(__name__)
 
@@ -140,12 +141,33 @@ def _queue_task_sms(task, rover_id) -> None:
         logger.exception("Rover SMS not queued for rover %s", rover_id)
 
 
-def submit_rover(rover, *, by, price, note) -> Rover:
+def _money_amount(value, field) -> Decimal:
+    try:
+        amount = Decimal(str(value if value not in (None, "") else 0))
+    except (InvalidOperation, ValueError):
+        raise ServiceError("Summa noto'g'ri", field=field)
+    if not amount.is_finite() or amount < 0:
+        raise ServiceError("Summa manfiy bo'lishi mumkin emas", field=field)
+    return amount.quantize(Decimal("0.01"))
+
+
+def submit_rover(rover, *, by, price, note, price_usd=0) -> Rover:
     """The worker's «Bajarildi»: the actual amount and a note (what was done, how many
-    doors) replace the price and the job waits for a checker."""
+    doors) replace the price and the job waits for a checker. The amount may be given in
+    both currencies at once: `price` (so'm, or what the bot sends) + `price_usd`; at least
+    one of them must be above 0."""
     if not by.has_perm("rover.change_rover"):
         raise ServiceForbidden(NO_PERM)
-    if price is None or price.amount is None or price.amount <= 0:
+    price_usd = _money_amount(price_usd, "price_usd")
+    if price is None or price.amount is None or price.amount < 0:
+        raise ServiceError("Summa 0 dan katta bo'lishi kerak", field="price")
+    if str(price.currency) == "USD" and price_usd <= 0:
+        # a dollar amount sent as `price`: it is the dollar part
+        price_usd = _money_amount(price.amount, "price")
+        price = Money(0, "UZS")
+    elif str(price.currency) != "UZS":
+        raise ServiceError("Summa so'mda; dollar qismini alohida kiriting", field="price")
+    if price.amount <= 0 and price_usd <= 0:
         raise ServiceError("Summa 0 dan katta bo'lishi kerak", field="price")
     note = note.strip() if isinstance(note, str) else ""
     if len(note) < NOTE_MIN:
@@ -165,19 +187,65 @@ def submit_rover(rover, *, by, price, note) -> Rover:
         if locked.released_at is None:
             raise ServiceConflict("Detallar hali usluga'dan chiqmagan — rover ishi boshlanmagan")
         locked.price = price
+        locked.price_usd = price_usd
         locked.note = note
         locked.rev += 1
         locked.submitted_at = timezone.now()
         locked.submitted_by = by
+        locked.reject_reason = ""
+        locked.rejected_at = None
+        locked.rejected_by = None
         locked._history_user = by
         locked.save()
         events.rover_check(locked)
     return locked
 
 
+def can_check_rover(user) -> bool:
+    """Who confirms or sends back a handed-in rover job: a rover checker or the
+    production head."""
+    return bool(
+        user.has_perm(f"oauth.{ROVER_CHECKER_PERMISSION}")
+        or user.has_perm(f"oauth.{PRODUCTION_HEAD_PERMISSION}")
+    )
+
+
+def reject_rover(rover, *, by, reason) -> Rover:
+    """«Bekor qilish»: the hand-in is sent back - the job is `new` (Faol) again and the
+    worker fixes the amount / note and hands it in again. The previous amount and note
+    stay as the starting point; the reason tells the worker what to fix."""
+    if not can_check_rover(by):
+        raise ServiceForbidden(NO_PERM)
+    reason = reason.strip() if isinstance(reason, str) else ""
+    if len(reason) < NOTE_MIN:
+        raise ServiceError("Sababini yozing: nimani to'g'rilash kerak", field="reason")
+    if len(reason) > NOTE_MAX:
+        raise ServiceError(f"Sabab juda uzun (eng ko'pi {NOTE_MAX} belgi)", field="reason")
+    with transaction.atomic():
+        locked = (
+            Rover.objects.select_for_update(of=("self",))
+            .select_related("order__client")
+            .get(pk=rover.pk)
+        )
+        if locked.done:
+            raise ServiceConflict("Rover allaqachon tasdiqlangan")
+        if locked.submitted_at is None:
+            raise ServiceConflict("Rover tekshiruvda emas")
+        locked.submitted_at = None
+        locked.submitted_by = None
+        locked.reject_reason = reason
+        locked.rejected_at = timezone.now()
+        locked.rejected_by = by
+        locked.rev += 1
+        locked._history_user = by
+        locked.save()
+    return locked
+
+
 def confirm_rover(rover, *, by) -> Rover:
-    """The checker accepts the job: only now it is done and the painter hears of it."""
-    if not by.has_perm(f"oauth.{ROVER_CHECKER_PERMISSION}"):
+    """The checker (or the production head) accepts the job: only now it is done and the
+    painter hears of it."""
+    if not can_check_rover(by):
         raise ServiceForbidden(NO_PERM)
     with transaction.atomic():
         locked = (
@@ -319,3 +387,77 @@ def notify_painting_ready(order):
     from order.painter.services import on_rover_finished
 
     on_rover_finished(order)
+
+
+# --- client «peredelka» (rework) ------------------------------------------------------
+
+REWORK_SQUARE_MAX = 10000
+
+
+def sees_all_reworks(user) -> bool:
+    """Checkers, production heads, managers and superusers see every rework; a rover worker
+    only their own."""
+    from order.visibility import sees_full_order
+
+    return bool(
+        user.is_superuser
+        or sees_full_order(user)
+        or user.has_perm(f"oauth.{ROVER_CHECKER_PERMISSION}")
+    )
+
+
+def rework_orders():
+    """Orders a rework may be recorded for: the ones whose job reached the rover section
+    (the worker already sees their client name there)."""
+    from order.models import Order
+
+    return Order.objects.filter(rover__released_at__isnull=False)
+
+
+def create_rework(*, by, order, square, price_uzs=0, price_usd=0, note="") -> RoverRework:
+    """The rover worker records a client's rework: the order (client), m² and the amount
+    in so'm and/or $ (at least one above 0)."""
+    if not by.has_perm("rover.change_rover"):
+        raise ServiceForbidden(NO_PERM)
+    if order is None:
+        raise ServiceError("Buyurtmani (mijozni) tanlang", field="order")
+    if not rework_orders().filter(pk=order.pk).exists():
+        raise ServiceError("Bu buyurtma rover bo'limidan o'tmagan", field="order")
+    try:
+        square = float(square)
+    except (TypeError, ValueError):
+        raise ServiceError("Maydonni kiriting", field="square")
+    if not (0 < square <= REWORK_SQUARE_MAX):
+        raise ServiceError("Maydon 0 dan katta bo'lishi kerak", field="square")
+    price_uzs = _money_amount(price_uzs, "price_uzs")
+    price_usd = _money_amount(price_usd, "price_usd")
+    if price_uzs <= 0 and price_usd <= 0:
+        raise ServiceError("Summani kiriting (so'm yoki $)", field="price_uzs")
+    note = note.strip() if isinstance(note, str) else ""
+    if len(note) > NOTE_MAX:
+        raise ServiceError(f"Izoh juda uzun (eng ko'pi {NOTE_MAX} belgi)", field="note")
+    return RoverRework.objects.create(
+        order=order,
+        square=square,
+        price_uzs=price_uzs,
+        price_usd=price_usd,
+        note=note,
+        created_by=by,
+    )
+
+
+def can_delete_rework(rework, user) -> bool:
+    """The author on the same day (a typo), or the production head / a superuser."""
+    if user.is_superuser or user.has_perm(f"oauth.{PRODUCTION_HEAD_PERMISSION}"):
+        return True
+    return (
+        rework.created_by_id == user.pk
+        and user.has_perm("rover.change_rover")
+        and rework.created_at.date() == today()
+    )
+
+
+def delete_rework(rework, *, by) -> None:
+    if not can_delete_rework(rework, by):
+        raise ServiceForbidden("Faqat o'sha kuni o'zingiz yozgan peredelkani o'chira olasiz")
+    rework.delete()

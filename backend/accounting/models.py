@@ -61,6 +61,35 @@ class Worker(models.Model):
         max_length=255, blank=True, default="", verbose_name="Oylik shabloni"
     )
     salary_template_at = models.DateTimeField(null=True, blank=True)
+    # «Ishchi kartasi» → «Ma'lumotlar»: personal data (accounting/workers.py). Only
+    # those who see every wallet read it — never in the plain /finance/workers/ list.
+    birth_date = models.DateField(null=True, blank=True, verbose_name="Tug'ilgan sana")
+    phone = models.CharField(max_length=32, blank=True, default="", verbose_name="Telefon")
+    address = models.CharField(max_length=255, blank=True, default="", verbose_name="Manzil")
+    passport_number = models.CharField(
+        max_length=32, blank=True, default="", verbose_name="Pasport seriya va raqami"
+    )
+    passport_issued_by = models.CharField(
+        max_length=255, blank=True, default="", verbose_name="Pasport kim tomonidan berilgan"
+    )
+    passport_issued_on = models.DateField(null=True, blank=True, verbose_name="Pasport berilgan")
+    passport_expires = models.DateField(null=True, blank=True, verbose_name="Pasport amal qiladi")
+    pinfl = models.CharField(max_length=14, blank=True, default="", verbose_name="JShShIR")
+    license_number = models.CharField(
+        max_length=32, blank=True, default="", verbose_name="Prava raqami"
+    )
+    license_categories = models.CharField(
+        max_length=32, blank=True, default="", verbose_name="Prava toifalari"
+    )
+    license_expires = models.DateField(null=True, blank=True, verbose_name="Prava amal qiladi")
+    hired_on = models.DateField(null=True, blank=True, verbose_name="Ishga kirgan sana")
+    # staj before this company, in months; the total = this + time since hired_on
+    prior_experience_months = models.PositiveIntegerField(
+        default=0, verbose_name="Oldingi ish staji (oy)"
+    )
+    experience_note = models.TextField(
+        blank=True, default="", verbose_name="Ish staji (oldingi ish joylari)"
+    )
 
     class Meta:
         ordering = ["ordering", "id"]
@@ -72,6 +101,42 @@ class Worker(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class WorkerFile(models.Model):
+    """«Ishchi kartasi» → the worker's own folder: passport / prava scans, contracts and
+    each month's salary sheet (also past months, uploaded by hand). Bytes live in the
+    DB like the salary template: passports must never sit in public /media."""
+
+    class Kind(models.TextChoices):
+        SALARY = "salary", "Oylik varaqasi"
+        PASSPORT = "passport", "Pasport"
+        LICENSE = "license", "Prava"
+        CONTRACT = "contract", "Shartnoma"
+        OTHER = "other", "Boshqa"
+
+    worker = models.ForeignKey(Worker, models.CASCADE, related_name="files", verbose_name="Ishchi")
+    kind = models.CharField(max_length=16, choices=Kind.choices, verbose_name="Turi")
+    # salary sheets: the 1st of the month they are for; empty for the other kinds
+    month = models.DateField(null=True, blank=True, verbose_name="Oy")
+    name = models.CharField(max_length=255, verbose_name="Fayl nomi")
+    content_type = models.CharField(max_length=128, blank=True, default="")
+    size = models.PositiveIntegerField(default=0)
+    data = models.BinaryField(editable=False)
+    comment = models.CharField(max_length=255, blank=True, default="", verbose_name="Izoh")
+    uploaded_by = models.ForeignKey(
+        "oauth.User", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-month", "-uploaded_at", "-id"]
+        verbose_name = "Ishchi fayli"
+        verbose_name_plural = "Ishchi fayllari"
+        indexes = [models.Index(fields=["worker", "kind"], name="workerfile_worker_kind")]
+
+    def __str__(self):
+        return f"{self.worker} · {self.name}"
 
 
 class FinanceCar(models.Model):

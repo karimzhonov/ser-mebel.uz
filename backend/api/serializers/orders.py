@@ -13,7 +13,8 @@ from order.models import Factory, Order
 from order.painter.models import Painter, PainterPart, PainterType
 from order.painter.services import can_override_part
 from order.rover.dto import design_folder_id
-from order.rover.models import Rover
+from order.rover.models import Rover, RoverRework
+from order.rover.services import can_check_rover
 from order.services import (
     ASSEMBLY_SEND_MSG,
     INSTALLING_CONFIRM_MSG,
@@ -345,8 +346,7 @@ class ProductionOrderSerializer(OrderSerializer):
 def detailing_services(detailing):
     """[{place, out_at, note}] — where the parts were given and when each comes back."""
     return [
-        {"place": s.place, "out_at": s.out_at, "note": s.note}
-        for s in detailing.services.all()
+        {"place": s.place, "out_at": s.out_at, "note": s.note} for s in detailing.services.all()
     ]
 
 
@@ -392,9 +392,7 @@ class DetailingSerializer(serializers.ModelSerializer):
             "edit": can_change,
             "done": can_change and not obj.done,
             "due": can_send_to_detailing(user) and not obj.done,
-            "service_out": can_change
-            and obj.done
-            and obj.order.status == OrderStatus.WORKING,
+            "service_out": can_change and obj.done and obj.order.status == OrderStatus.WORKING,
         }
 
 
@@ -415,14 +413,29 @@ class DetailingServiceOutSerializer(serializers.Serializer):
     services = DetailingServiceRowSerializer(many=True)
 
 
+def detailing_folder_of(obj):
+    """The order's «Деталировка» folder of a Rover / Painter job: the rover and molyar
+    workers read it too (read-only, see order.visibility.design_folder_access)."""
+    if hasattr(obj, "detailing_folder_pk"):  # annotated by the viewset (no query per row)
+        return obj.detailing_folder_pk
+    return (
+        Detailing.objects.filter(order_id=obj.order_id).values_list("folder_id", flat=True).first()
+    )
+
+
 class RoverSerializer(serializers.ModelSerializer):
     order = ProductionOrderSerializer(read_only=True)
     design_folder = serializers.SerializerMethodField()
+    detailing_folder = serializers.SerializerMethodField()
     price = MoneyField(read_only=True)
+    price_usd = serializers.DecimalField(
+        max_digits=12, decimal_places=2, coerce_to_string=False, read_only=True
+    )
     state = serializers.CharField(read_only=True)
     state_label = serializers.CharField(read_only=True)
     submitted_by_detail = UserShortSerializer(source="submitted_by", read_only=True)
     checked_by_detail = UserShortSerializer(source="checked_by", read_only=True)
+    rejected_by_detail = UserShortSerializer(source="rejected_by", read_only=True)
     due_set_by_detail = UserShortSerializer(source="due_set_by", read_only=True)
     overdue = serializers.BooleanField(read_only=True)
     actions = serializers.SerializerMethodField()
@@ -440,8 +453,12 @@ class RoverSerializer(serializers.ModelSerializer):
             "submitted_by_detail",
             "checked_at",
             "checked_by_detail",
+            "reject_reason",
+            "rejected_at",
+            "rejected_by_detail",
             "square",
             "price",
+            "price_usd",
             "note",
             "due_date",
             "due_auto",
@@ -450,6 +467,7 @@ class RoverSerializer(serializers.ModelSerializer):
             "overdue",
             "folder",
             "design_folder",
+            "detailing_folder",
             "actions",
         ]
         read_only_fields = fields
@@ -459,6 +477,9 @@ class RoverSerializer(serializers.ModelSerializer):
         if hasattr(obj, "design_folder_pk"):  # annotated by RoverViewSet (no query per row)
             return obj.design_folder_pk or (None if restricted else obj.order.folder_id)
         return design_folder_id(obj.order, fallback=not restricted)
+
+    def get_detailing_folder(self, obj):
+        return detailing_folder_of(obj)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -477,14 +498,72 @@ class RoverSerializer(serializers.ModelSerializer):
         user = self.context["request"].user
         return {
             "done": user.has_perm("rover.change_rover") and obj.state == "new",
-            "confirm": user.has_perm("oauth.user_rover_checker") and obj.state == "checking",
+            "confirm": can_check_rover(user) and obj.state == "checking",
+            "reject": can_check_rover(user) and obj.state == "checking",
             "due": user.has_perm("oauth.user_production_head") and obj.state != "done",
         }
 
 
 class RoverDoneSerializer(serializers.Serializer):
+    """{price: {amount, currency}, price_usd?, note}: the so'm part in `price` and the
+    dollar part in `price_usd` (either may be 0, not both)."""
+
     price = MoneyField()
+    price_usd = serializers.DecimalField(
+        max_digits=12, decimal_places=2, min_value=0, required=False, default=0
+    )
     note = serializers.CharField(allow_blank=True, trim_whitespace=False)
+
+
+class RoverReworkSerializer(serializers.ModelSerializer):
+    """A client's «peredelka» by the rover worker. Write: {order, square, price_uzs,
+    price_usd, note}; the rules live in order.rover.services.create_rework."""
+
+    order = serializers.PrimaryKeyRelatedField(queryset=Order.objects.all())
+    order_detail = serializers.SerializerMethodField()
+    square = serializers.FloatField()
+    price_uzs = serializers.DecimalField(
+        max_digits=14, decimal_places=2, coerce_to_string=False, required=False, default=0
+    )
+    price_usd = serializers.DecimalField(
+        max_digits=12, decimal_places=2, coerce_to_string=False, required=False, default=0
+    )
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+    created_by_detail = UserShortSerializer(source="created_by", read_only=True)
+    can_delete = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RoverRework
+        fields = [
+            "id",
+            "order",
+            "order_detail",
+            "square",
+            "price_uzs",
+            "price_usd",
+            "note",
+            "created_at",
+            "created_by_detail",
+            "can_delete",
+        ]
+        read_only_fields = ["created_at"]
+
+    def get_order_detail(self, obj):
+        order = obj.order
+        return {
+            "id": order.pk,
+            "order_number": order.order_number,
+            "client_fio": order.client.fio if order.client_id else "",
+        }
+
+    def get_can_delete(self, obj):
+        from order.rover.services import can_delete_rework
+
+        return can_delete_rework(obj, self.context["request"].user)
+
+
+class RoverRejectSerializer(serializers.Serializer):
+    reason = serializers.CharField(allow_blank=True, trim_whitespace=False)
 
 
 class RoverDueSerializer(serializers.Serializer):
@@ -567,6 +646,7 @@ class PainterSerializer(serializers.ModelSerializer):
 
     order = ProductionOrderSerializer(read_only=True)
     design_folder = serializers.SerializerMethodField()
+    detailing_folder = serializers.SerializerMethodField()
     price = serializers.SerializerMethodField()
     type = serializers.SerializerMethodField()
     type_detail = serializers.SerializerMethodField()
@@ -617,9 +697,13 @@ class PainterSerializer(serializers.ModelSerializer):
             "overdue",
             "folder",
             "design_folder",
+            "detailing_folder",
             "actions",
         ]
         read_only_fields = fields
+
+    def get_detailing_folder(self, obj):
+        return detailing_folder_of(obj)
 
     # --- which parts the viewer sees -----------------------------------------------
     def _user(self):

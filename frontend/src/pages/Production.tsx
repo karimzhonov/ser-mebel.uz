@@ -11,6 +11,7 @@ import { DetailingDue, DetailingDueModal, ServiceList, ServiceOutModal } from "@
 import { DueLabel, DueModal } from "@/components/DueDate";
 import { PainterParts } from "@/components/PainterParts";
 import { RoverDueLabel, RoverDueModal } from "@/components/RoverDue";
+import { AmountInput, RoverReworkModal, twoCurrencies, type Amount } from "@/components/RoverRework";
 import {
   Badge,
   Button,
@@ -61,6 +62,7 @@ function ProductionList({ kind }: { kind: Kind }) {
   const isManager = can("assembly.manager") || can("oauth.user_production_head");
   const { data: assemblers } = useGet<UserShort[]>(kind === "assembly" && isManager ? "/assemblies/assemblers/" : null);
   const [types, setTypes] = useState(false);
+  const [reworks, setReworks] = useState(false);
 
   return (
     <div>
@@ -68,12 +70,15 @@ function ProductionList({ kind }: { kind: Kind }) {
         title={cfg.title}
         subtitle={cfg.subtitle}
         actions={
-          kind === "painter" &&
-          can("painter.view_paintertype") && (
+          kind === "painter" && can("painter.view_paintertype") ? (
             <Button variant="outline" onClick={() => setTypes(true)}>
               Bo'yash turlari
             </Button>
-          )
+          ) : kind === "rover" && can("rover.view_rover") ? (
+            <Button variant="outline" onClick={() => setReworks(true)}>
+              🔁 Mijoz peredelkasi
+            </Button>
+          ) : undefined
         }
       />
       <div className={`mb-4 grid gap-3 ${kind === "rover" ? "grid-cols-2 sm:grid-cols-4" : kind === "assembly" ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
@@ -161,7 +166,7 @@ function ProductionList({ kind }: { kind: Kind }) {
                 ]
               : []),
             { key: "square", header: "Maydon", cell: (r) => <span className="tabular-nums">{num(r.square)}</span> },
-            ...(kind !== "detailing" ? [{ key: "price", header: "Narx", cell: (r: ProductionItem) => <span className="tabular-nums">{money(r.price)}</span> }] : []),
+            ...(kind !== "detailing" ? [{ key: "price", header: "Narx", cell: (r: ProductionItem) => <span className="tabular-nums">{kind === "rover" ? roverPrice(r) : money(r.price)}</span> }] : []),
             {
               key: "done",
               header: "Bajarildi",
@@ -172,6 +177,8 @@ function ProductionList({ kind }: { kind: Kind }) {
                   <div className="flex gap-1"><Check ok={r.done} label="Yig'." /><Check ok={!!r.installing_done} label="O'rn." /></div>
                 ) : kind === "rover" && r.state === "checking" ? (
                   <Badge tone="warn">Tekshiruvda</Badge>
+                ) : kind === "rover" && r.state === "new" && r.reject_reason ? (
+                  <Badge tone="danger">↩️ Qaytarildi</Badge>
                 ) : (
                   <Check ok={r.done} />
                 ),
@@ -183,6 +190,8 @@ function ProductionList({ kind }: { kind: Kind }) {
                 <span className="font-semibold">№{r.order.order_number} · {r.order.client?.fio}</span>
                 {(kind === "rover" || kind === "assembly") && r.state === "checking" ? (
                   <Badge tone="warn">Tekshiruvda</Badge>
+                ) : kind === "rover" && r.state === "new" && r.reject_reason ? (
+                  <Badge tone="danger">↩️ Qaytarildi</Badge>
                 ) : (
                   <Check ok={kind === "assembly" ? !!r.installing_done : r.done} />
                 )}
@@ -230,6 +239,7 @@ function ProductionList({ kind }: { kind: Kind }) {
         />
       )}
       {types && <PainterTypesModal onClose={() => setTypes(false)} />}
+      {reworks && <RoverReworkModal onClose={() => setReworks(false)} />}
     </div>
   );
 }
@@ -266,7 +276,9 @@ function ProductionModal({
   const [installOpen, setInstallOpen] = useState(false);
   const [note, setNote] = useState("");
   const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
-  const [amount, setAmount] = useState<{ amount: number | string; currency: string }>({ amount: "", currency: "UZS" });
+  const [amount, setAmount] = useState<Amount>({ amount: "", currency: "UZS" });
+  const [rejectOpen, setRejectOpen] = useState(false);
+  const [rejectReason, setRejectReason] = useState("");
   useEffect(() => {
     if (item && kind === "detailing")
       setSquares({
@@ -294,11 +306,18 @@ function ProductionModal({
   const submit = useAction(
     () =>
       api.post(`/${cfg.resource}/${id}/done/`, {
-        price: { amount: Number(amount.amount), currency: amount.currency },
+        // one amount in so'm or $; the backend keeps a $ amount as the dollar part
+        price: { amount: Number(amount.amount || 0), currency: amount.currency },
         note: note.trim(),
       }),
     { success: "Tekshiruvga yuborildi", invalidate: inv, onSuccess: () => setAmountOpen(false) },
   );
+
+  const reject = useAction(() => api.post(`/rovers/${id}/reject/`, { reason: rejectReason.trim() }), {
+    success: "Qaytarildi — ish «Faol»ga tushdi",
+    invalidate: inv,
+    onSuccess: () => setRejectOpen(false),
+  });
 
   const painterDone = useAction(
     () => api.post(`/painters/${id}/done/`, { note: note.trim(), part: painterDoneOpen?.id }),
@@ -324,6 +343,7 @@ function ProductionModal({
           {(kind === "rover" || (kind === "painter" && !item.folder)) && (
             <FolderButton folderId={item.design_folder} label="Dizayn papkasi" />
           )}
+          {(kind === "rover" || kind === "painter") && <FolderButton folderId={item.detailing_folder} label="Detalirovka papkasi" />}
           <FolderButton folderId={item.folder} label="Bosqich fayllari" />
           <FolderButton folderId={o.folder} label="Buyurtma fayllari" />
         </div>
@@ -400,7 +420,7 @@ function ProductionModal({
             ...(item.can_open_order === false
               ? []
               : ([["Buyurtma", <Link to={`/orders/${o.id}`} className="text-brand-700 hover:underline dark:text-brand-300">Buyurtmani ochish →</Link>]] as [string, ReactNode][])),
-            ...(kind !== "detailing" ? ([["Maydon", num(item.square)], ["Narx", money(item.price)]] as [string, string][]) : []),
+            ...(kind !== "detailing" ? ([["Maydon", num(item.square)], ["Narx", kind === "rover" ? roverPrice(item) : money(item.price)]] as [string, string][]) : []),
             ...(kind === "rover"
               ? ([
                   [
@@ -414,7 +434,29 @@ function ProductionModal({
                       )}
                     </span>,
                   ],
-                  ["Holat", item.state === "checking" ? <Badge tone="warn">Tekshiruvda</Badge> : item.state === "done" ? <Badge tone="ok">Bajarildi</Badge> : <Badge tone="idle">Ishda</Badge>],
+                  [
+                    "Holat",
+                    item.state === "checking" ? (
+                      <Badge tone="warn">Tekshiruvda</Badge>
+                    ) : item.state === "done" ? (
+                      <Badge tone="ok">Bajarildi</Badge>
+                    ) : item.reject_reason ? (
+                      <Badge tone="danger">↩️ Qaytarildi — to'g'rilab qayta yuboring</Badge>
+                    ) : (
+                      <Badge tone="idle">Ishda</Badge>
+                    ),
+                  ],
+                  ...(item.state === "new" && item.reject_reason
+                    ? [[
+                        "Qaytarish sababi",
+                        <span className="whitespace-pre-wrap font-medium text-rose-700 dark:text-rose-300">
+                          {item.reject_reason}
+                          <span className="muted block text-xs font-normal">
+                            {item.rejected_by_detail?.name || (item.rejected_by_detail ? phone(item.rejected_by_detail.phone) : "—")} · {date(item.rejected_at)}
+                          </span>
+                        </span>,
+                      ]]
+                    : []),
                   ...(item.note ? [["Izoh", <span className="whitespace-pre-wrap">{item.note}</span>]] : []),
                   ...(item.submitted_at
                     ? [["Bajardi", `${item.submitted_by_detail?.name || (item.submitted_by_detail ? phone(item.submitted_by_detail.phone) : "—")} · ${date(item.submitted_at)}`]]
@@ -514,8 +556,18 @@ function ProductionModal({
               icon={<CheckCircle2 className="h-4 w-4" />}
               onClick={() => {
                 if (kind === "rover") {
-                  setAmount({ amount: "", currency: item.price?.currency ?? "UZS" });
-                  setNote("");
+                  // sent back: start from the previous hand-in so only the mistake is fixed
+                  const again = !!item.reject_reason;
+                  const usd = Number(item.price_usd) || 0;
+                  const uzs = item.price?.currency === "UZS" ? Number(item.price.amount) || 0 : 0;
+                  setAmount(
+                    !again
+                      ? { amount: "", currency: "UZS" }
+                      : usd > 0
+                        ? { amount: usd, currency: "USD" }
+                        : { amount: uzs > 0 ? uzs : "", currency: "UZS" },
+                  );
+                  setNote(again ? item.note ?? "" : "");
                   setSubmitErrors({});
                   setAmountOpen(true);
                 } else if (kind === "detailing") setServiceOut("done");
@@ -535,7 +587,20 @@ function ProductionModal({
               🕒 Muddat
             </Button>
           )}
-          {a.confirm && (kind === "assembly" ? can("oauth.user_production_head") : can("oauth.user_rover_checker")) && (
+          {kind === "rover" && a.reject && (
+            <Button
+              variant="danger"
+              onClick={() => {
+                setRejectReason("");
+                setSubmitErrors({});
+                setRejectOpen(true);
+              }}
+            >
+              ↩️ Bekor qilish
+            </Button>
+          )}
+          {/* rover: the server decides (rover checker or production head) */}
+          {a.confirm && (kind === "assembly" ? can("oauth.user_production_head") : true) && (
             <Button variant="success" onClick={() => setConfirm("confirm")}>
               {kind === "assembly" ? "✅ Tayyor" : "✅ Tasdiqlash"}
             </Button>
@@ -581,10 +646,29 @@ function ProductionModal({
         loading={run.isPending}
         onConfirm={() => confirm && run.mutate(confirm)}
       />
+      <Modal open={rejectOpen} onClose={() => setRejectOpen(false)} title="Rover ishini qaytarish" size="sm">
+        <div className="space-y-4">
+          <p className="muted text-sm">Ish «Faol»ga qaytadi: rover xodimi summa va izohni to'g'rilab, qaytadan tekshiruvga yuboradi.</p>
+          <Field label="Sabab (nimani to'g'rilash kerak)" error={submitErrors.reason}>
+            <Textarea required autoFocus value={rejectReason} maxLength={2000} onChange={(e) => setRejectReason(e.target.value)} />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setRejectOpen(false)}>Yopish</Button>
+            <Button
+              variant="danger"
+              loading={reject.isPending}
+              disabled={rejectReason.trim().length < 3}
+              onClick={() => reject.mutateAsync().catch((e) => setSubmitErrors(fieldErrors(e)))}
+            >
+              Bekor qilish
+            </Button>
+          </div>
+        </div>
+      </Modal>
       <Modal open={amountOpen} onClose={() => setAmountOpen(false)} title="Bajarilgan ish summasi" size="sm">
         <div className="space-y-4">
-          <Field label="Summa" hint="Summa tekshiruvchiga yuboriladi" error={submitErrors.price}>
-            <MoneyInput value={amount} currencies={["UZS", "USD"]} onChange={setAmount} />
+          <Field label="Summa (so'm yoki $)" hint="Summa tekshiruvchiga yuboriladi" error={submitErrors.price || submitErrors.price_usd}>
+            <AmountInput value={amount} onChange={setAmount} />
           </Field>
           <Field label="Izoh (nima ish qilindi, nechta eshik)" error={submitErrors.note}>
             <Textarea required value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
@@ -665,6 +749,13 @@ function ProductionModal({
       {moveDue && <DetailingDueModal detailingId={item.id} dueAt={item.due_at} onClose={() => setMoveDue(false)} />}
     </Modal>
   );
+}
+
+/** Rover amount: the so'm part (`price`) plus the dollar part (`price_usd`). */
+function roverPrice(r: ProductionItem) {
+  if (!Number(r.price_usd)) return money(r.price);
+  if (!r.price || !Number(r.price.amount)) return twoCurrencies(0, r.price_usd);
+  return `${money(r.price)} + $${num(Number(r.price_usd))}`;
 }
 
 function PartCard({ part: p, onDone, onDue, canDue }: { part: PainterPart; onDone: () => void; onDue: () => void; canDue: boolean }) {

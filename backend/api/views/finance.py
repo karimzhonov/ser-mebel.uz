@@ -12,6 +12,7 @@ the Telegram member linked to their account.
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date
 from decimal import Decimal
 from urllib.parse import quote
@@ -31,6 +32,7 @@ from rest_framework.views import APIView
 from accounting import events as E
 from accounting import salary as SAL
 from accounting import services as S
+from accounting import workers as WK
 from accounting.constants import WAREHOUSE_CAT, WAREHOUSE_CAT_EMOJI, WAREHOUSE_CAT_NAME
 from accounting.dto import debt_dto
 from accounting.excel import build_xlsx
@@ -47,6 +49,7 @@ from accounting.models import (
     SiteEntryTask,
     WarrantyLetter,
     Worker,
+    WorkerFile,
 )
 from accounting.schedule import sync_periodic_tasks
 from accounting.text import month_bounds, today
@@ -72,6 +75,8 @@ from ..serializers.finance import (
     TelegramMemberSerializer,
     TransferSerializer,
     WarrantyLetterSerializer,
+    WorkerFileSerializer,
+    WorkerProfileSerializer,
     WorkerSerializer,
 )
 from ..utils import apply_period, date_range, int_param
@@ -126,6 +131,15 @@ class WorkerViewSet(_CatalogViewSet):
 
     queryset = Worker.objects.defer("salary_template")
     serializer_class = WorkerSerializer
+
+    def perform_destroy(self, instance):
+        # the folder (passport scans, past salary sheets) must not vanish with a
+        # catalog delete — and delete_worker alone does not even let you read it
+        if instance.files.exists():
+            raise ServiceError(
+                "Ishchining papkasida fayllar bor — o'chirish o'rniga «Faol emas» qiling."
+            )
+        instance.delete()
 
     def _worker(self):
         return Worker.objects.get(pk=self.get_object().pk)  # with the template bytes
@@ -190,6 +204,97 @@ class WorkerViewSet(_CatalogViewSet):
         require_perm(request.user, VIEW_ALL)
         return _xlsx(
             *SAL.salary_xlsx(self._worker(), _month_param(request), *_period_override(request))
+        )
+
+    # ------------------------------------------------ the worker's own folder
+    # Personal data and files are company-private: reading them needs «every wallet»
+    # (like the card itself), writing also accounting.change_worker.
+    def _profile_data(self, w):
+        return {
+            **WorkerProfileSerializer(w).data,
+            "experience": WK.experience_months(w),
+        }
+
+    @action(detail=True, methods=["get", "patch"])
+    def profile(self, request, pk=None):
+        """«Ma'lumotlar»: passport, prava, ish staji, phone / address / birth date."""
+        require_perm(request.user, VIEW_ALL)
+        w = self.get_object()
+        if request.method == "PATCH":
+            require_perm(request.user, "accounting.change_worker")
+            ser = WorkerProfileSerializer(w, data=request.data, partial=True)
+            ser.is_valid(raise_exception=True)
+            WK.update_profile(w, **ser.validated_data)
+        return Response(self._profile_data(w))
+
+    @action(detail=True, methods=["get", "post"], parser_classes=[MultiPartParser, FormParser])
+    def files(self, request, pk=None):
+        """GET = every file (no bytes; ?kind= filters); POST multipart file + kind
+        (+ month YYYY-MM for a salary sheet, comment) = upload."""
+        require_perm(request.user, VIEW_ALL)
+        w = self.get_object()
+        if request.method == "POST":
+            require_perm(request.user, "accounting.change_worker")
+            upload = request.FILES.get("file")
+            if not upload:
+                raise ServiceError("Faylni tanlang.", "file")
+            if upload.size > WK.MAX_FILE:
+                raise ServiceError("Fayl juda katta (10 MB gacha).", "file")
+            f = WK.save_file(
+                w,
+                kind=str(request.data.get("kind") or ""),
+                name=upload.name,
+                content=upload.read(),
+                month=request.data.get("month") or None,
+                comment=str(request.data.get("comment") or ""),
+                user=request.user,
+            )
+            return Response(WorkerFileSerializer(f).data, status=201)
+        qs = WK.files(w)
+        kind = request.query_params.get("kind")
+        if kind:
+            qs = qs.filter(kind=kind)
+        return Response(WorkerFileSerializer(qs, many=True).data)
+
+    @action(detail=True, methods=["get", "delete"], url_path=r"files/(?P<file_id>\d+)")
+    def file(self, request, pk=None, file_id=None):
+        """GET = download the file; DELETE = remove it."""
+        require_perm(request.user, VIEW_ALL)
+        w = self.get_object()
+        try:
+            f = WorkerFile.objects.get(pk=file_id, worker=w)
+        except WorkerFile.DoesNotExist:
+            raise NotFound("Fayl topilmadi.") from None
+        if request.method == "DELETE":
+            require_perm(request.user, "accounting.change_worker")
+            WK.delete_file(f)
+            return Response(status=204)
+        resp = HttpResponse(
+            bytes(f.data), content_type=f.content_type or "application/octet-stream"
+        )
+        ascii_name = f.name.encode("ascii", "ignore").decode()
+        ascii_name = re.sub(r'["\\;]', "", ascii_name) or "fayl"
+        resp["Content-Disposition"] = (
+            f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(f.name)}"
+        )
+        resp["X-Content-Type-Options"] = "nosniff"
+        return resp
+
+    @action(detail=True, methods=["get"])
+    def months(self, request, pk=None):
+        """Month by month (newest first): avans / oylik / uy uchun paid that month and
+        the salary sheets kept for it."""
+        require_perm(request.user, VIEW_ALL)
+        w = self.get_object()
+        return Response(
+            [
+                {
+                    **{k: m[k] for k in ("month", "count")},
+                    **{k: f(m[k]) for k in ("advance", "salary", "home", "other", "total")},
+                    "files": WorkerFileSerializer(m["files"], many=True).data,
+                }
+                for m in WK.salary_months(w)
+            ]
         )
 
 

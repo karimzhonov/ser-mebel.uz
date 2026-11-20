@@ -31,9 +31,9 @@ def send_order_status_sms(order) -> None:
             vaqt="",
         )
     extra = {}
-    if order.status == OrderStatus.ASSEMBLY:
-        # the Telegram cards (assembly.ready / assembly.task) replace the bare message;
-        # the SMS stays only for staff who have no Telegram
+    if order.status in (OrderStatus.ASSEMBLY, OrderStatus.DETAILING):
+        # the Telegram cards (assembly.ready / assembly.task, detailing.task) replace the
+        # bare message; the SMS stays only for staff who have no Telegram
         extra = {"telegram": False, "sms_only_without_telegram": True}
     User.send_messages(
         OrderStatus.permission(order.status),
