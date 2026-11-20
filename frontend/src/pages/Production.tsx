@@ -11,7 +11,7 @@ import { DetailingDue, DetailingDueModal, ServiceList, ServiceOutModal } from "@
 import { DueLabel, DueModal } from "@/components/DueDate";
 import { PainterParts } from "@/components/PainterParts";
 import { RoverDueLabel, RoverDueModal } from "@/components/RoverDue";
-import { RoverReworkModal, twoCurrencies } from "@/components/RoverRework";
+import { AmountInput, RoverReworkModal, twoCurrencies, type Amount } from "@/components/RoverRework";
 import {
   Badge,
   Button,
@@ -276,8 +276,7 @@ function ProductionModal({
   const [installOpen, setInstallOpen] = useState(false);
   const [note, setNote] = useState("");
   const [submitErrors, setSubmitErrors] = useState<Record<string, string>>({});
-  const [amount, setAmount] = useState<{ amount: number | string; currency: string }>({ amount: "", currency: "UZS" });
-  const [amountUsd, setAmountUsd] = useState<number | string>("");
+  const [amount, setAmount] = useState<Amount>({ amount: "", currency: "UZS" });
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   useEffect(() => {
@@ -307,8 +306,8 @@ function ProductionModal({
   const submit = useAction(
     () =>
       api.post(`/${cfg.resource}/${id}/done/`, {
-        price: { amount: Number(amount.amount || 0), currency: "UZS" },
-        price_usd: Number(amountUsd || 0),
+        // one amount in so'm or $; the backend keeps a $ amount as the dollar part
+        price: { amount: Number(amount.amount || 0), currency: amount.currency },
         note: note.trim(),
       }),
     { success: "Tekshiruvga yuborildi", invalidate: inv, onSuccess: () => setAmountOpen(false) },
@@ -559,9 +558,15 @@ function ProductionModal({
                 if (kind === "rover") {
                   // sent back: start from the previous hand-in so only the mistake is fixed
                   const again = !!item.reject_reason;
-                  const uzs = again && item.price?.currency === "UZS" ? Number(item.price.amount) : 0;
-                  setAmount({ amount: uzs > 0 ? uzs : "", currency: "UZS" });
-                  setAmountUsd(again && Number(item.price_usd) > 0 ? Number(item.price_usd) : "");
+                  const usd = Number(item.price_usd) || 0;
+                  const uzs = item.price?.currency === "UZS" ? Number(item.price.amount) || 0 : 0;
+                  setAmount(
+                    !again
+                      ? { amount: "", currency: "UZS" }
+                      : usd > 0
+                        ? { amount: usd, currency: "USD" }
+                        : { amount: uzs > 0 ? uzs : "", currency: "UZS" },
+                  );
                   setNote(again ? item.note ?? "" : "");
                   setSubmitErrors({});
                   setAmountOpen(true);
@@ -662,15 +667,9 @@ function ProductionModal({
       </Modal>
       <Modal open={amountOpen} onClose={() => setAmountOpen(false)} title="Bajarilgan ish summasi" size="sm">
         <div className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Summa (so'm)" error={submitErrors.price}>
-              <Input type="number" min="0" value={amount.amount} onChange={(e) => setAmount({ amount: e.target.value, currency: "UZS" })} />
-            </Field>
-            <Field label="Summa ($)" error={submitErrors.price_usd}>
-              <Input type="number" min="0" step="0.01" value={amountUsd} onChange={(e) => setAmountUsd(e.target.value)} />
-            </Field>
-          </div>
-          <p className="muted -mt-2 text-xs">So'm va/yoki $ da kiriting — summa tekshiruvchiga yuboriladi</p>
+          <Field label="Summa (so'm yoki $)" hint="Summa tekshiruvchiga yuboriladi" error={submitErrors.price || submitErrors.price_usd}>
+            <AmountInput value={amount} onChange={setAmount} />
+          </Field>
           <Field label="Izoh (nima ish qilindi, nechta eshik)" error={submitErrors.note}>
             <Textarea required value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)} />
           </Field>
@@ -679,7 +678,7 @@ function ProductionModal({
             <Button
               variant="success"
               loading={submit.isPending}
-              disabled={!(Number(amount.amount) > 0 || Number(amountUsd) > 0) || note.trim().length < 3}
+              disabled={!(Number(amount.amount) > 0) || note.trim().length < 3}
               onClick={() => submit.mutateAsync().catch((e) => setSubmitErrors(fieldErrors(e)))}
             >
               Yuborish

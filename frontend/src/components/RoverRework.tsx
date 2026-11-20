@@ -16,7 +16,34 @@ export function twoCurrencies(uzs: number | string | null | undefined, usd: numb
   return parts.length ? parts.join(" + ") : "—";
 }
 
-type ReworkList = Paginated<RoverRework> & { totals?: { square: number; price_uzs: number; price_usd: number } };
+export type Amount = { amount: number | string; currency: "UZS" | "USD" };
+
+/** One amount with a so'm / $ switch (the rover enters either, not both). */
+export function AmountInput({ value, onChange }: { value: Amount; onChange: (v: Amount) => void }) {
+  return (
+    <div className="flex">
+      <input
+        type="number"
+        inputMode="decimal"
+        min="0"
+        step="0.01"
+        className="input rounded-r-none"
+        value={value.amount}
+        onChange={(e) => onChange({ ...value, amount: e.target.value })}
+      />
+      <select
+        className="input w-24 rounded-l-none border-l-0"
+        value={value.currency}
+        onChange={(e) => onChange({ ...value, currency: e.target.value as Amount["currency"] })}
+      >
+        <option value="UZS">so'm</option>
+        <option value="USD">$</option>
+      </select>
+    </div>
+  );
+}
+
+type ReworkList =Paginated<RoverRework> & { totals?: { square: number; price_uzs: number; price_usd: number } };
 
 /** «Mijoz peredelkasi»: the rover worker's client rework log (order/client, m², so'm and $). */
 export function RoverReworkModal({ onClose }: { onClose: () => void }) {
@@ -141,7 +168,8 @@ function ReworkForm({ onClose }: { onClose: () => void }) {
   const [term, setTerm] = useState("");
   const [debounced, setDebounced] = useState("");
   const [picked, setPicked] = useState<RoverReworkOrder | null>(null);
-  const [form, setForm] = useState({ square: "", price_uzs: "", price_usd: "", note: "" });
+  const [form, setForm] = useState({ square: "", note: "" });
+  const [amount, setAmount] = useState<Amount>({ amount: "", currency: "UZS" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   useEffect(() => {
     const t = setTimeout(() => setDebounced(term.trim()), 300);
@@ -153,18 +181,20 @@ function ReworkForm({ onClose }: { onClose: () => void }) {
       api.post("/rover-reworks/", {
         order: picked?.id,
         square: Number(form.square),
-        price_uzs: Number(form.price_uzs || 0),
-        price_usd: Number(form.price_usd || 0),
+        price_uzs: amount.currency === "UZS" ? Number(amount.amount || 0) : 0,
+        price_usd: amount.currency === "USD" ? Number(amount.amount || 0) : 0,
         note: form.note.trim(),
       }),
     { success: "Peredelka saqlandi", invalidate: ["rover-reworks"], onSuccess: onClose },
   );
-  const ready = !!picked && Number(form.square) > 0 && (Number(form.price_uzs) > 0 || Number(form.price_usd) > 0);
+  const ready = !!picked && Number(form.square) > 0 && Number(amount.amount) > 0;
 
   return (
     <Modal open onClose={onClose} title="Mijoz peredelkasi qo'shish" size="md">
       <div className="space-y-4">
-        <Field label="Mijoz (buyurtma № yoki ism)" error={errors.order}>
+        {/* not a <Field>: that is a <label>, and a label swallows clicks on the result buttons */}
+        <div>
+          <span className="label">Mijoz (buyurtma № yoki ism)</span>
           {picked ? (
             <div className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700">
               <span>
@@ -194,18 +224,14 @@ function ReworkForm({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           )}
-        </Field>
+          {errors.order && <span className="mt-1 block text-xs text-rose-600">{errors.order}</span>}
+        </div>
         <Field label="Maydon (m²)" error={errors.square}>
           <Input type="number" min="0" step="0.01" value={form.square} onChange={(e) => setForm({ ...form, square: e.target.value })} />
         </Field>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Summa (so'm)" error={errors.price_uzs}>
-            <Input type="number" min="0" value={form.price_uzs} onChange={(e) => setForm({ ...form, price_uzs: e.target.value })} />
-          </Field>
-          <Field label="Summa ($)" error={errors.price_usd}>
-            <Input type="number" min="0" step="0.01" value={form.price_usd} onChange={(e) => setForm({ ...form, price_usd: e.target.value })} />
-          </Field>
-        </div>
+        <Field label="Summa (so'm yoki $)" error={errors.price_uzs || errors.price_usd}>
+          <AmountInput value={amount} onChange={setAmount} />
+        </Field>
         <Field label="Izoh (nima qilindi)" error={errors.note}>
           <Textarea value={form.note} maxLength={2000} onChange={(e) => setForm({ ...form, note: e.target.value })} />
         </Field>
