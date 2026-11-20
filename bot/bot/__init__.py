@@ -34,6 +34,7 @@ def build_dispatcher() -> Dispatcher:
     d.message.outer_middleware(actor)
     d.callback_query.outer_middleware(actor)
 
+    from bot import detailing  # noqa: F401  (registers detailing.* /notify renderers)
     from bot import hr
     from bot.assembly import router as assembly_router
     from bot.common import link, start

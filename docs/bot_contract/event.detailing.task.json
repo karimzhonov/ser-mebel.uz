@@ -1,0 +1,28 @@
+{
+  "id": "00000000-0000-0000-0000-000000007101",
+  "event": "detailing.task",
+  "data": {
+    "detailing": {
+      "id": 31,
+      "order": {
+        "id": 88,
+        "number": 1042
+      },
+      "client": {
+        "fio": "Ali Valiyev",
+        "phone": "+998901112244"
+      },
+      "address": "Chilonzor 7-kvartal, 12-uy",
+      "map_url": "https://yandex.com/maps/?pt=69.2401,41.2995&z=17&l=map",
+      "end_date": "2026-12-05",
+      "due_at": "2026-11-21T18:00:00",
+      "done": false,
+      "url": "https://ser-mebel.uz/production/detailing?open=31",
+      "folder_url": "https://ser-mebel.uz/files/120"
+    },
+    "how": "new",
+    "to": [
+      777888999
+    ]
+  }
+}

@@ -126,6 +126,10 @@ class Order(models.Model):
             from .assembly.services import on_order_assembly
 
             on_order_assembly(self)
+        if status == OrderStatus.DETAILING:
+            from .detailing.services import on_order_detailing
+
+            on_order_detailing(self)
 
     def send_sms(self):
         from .services import send_order_status_sms
