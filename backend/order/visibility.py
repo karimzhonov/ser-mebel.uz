@@ -68,9 +68,12 @@ def design_folder_access(user, folder):
     (the «Дизайн» folder under the metering folder, see `order.rover.dto.design_folder_id`)
     of an order they work on, and everything below it:
     - rover: `rover.view_rover` and the order has a Rover row (rovers are not split per worker);
-    - molyar: any part (open or done) of the order's Painter job belongs to the user's team."""
+    - molyar: any part (open or done) of the order's Painter job belongs to the user's team.
+    Both also read the order's «Деталировка» folder (`Detailing.folder`) on the same terms."""
+    from django.db.models import Q
     from filer.models import Folder
 
+    from order.detailing.models import Detailing
     from order.models import Order
     from order.painter.models import Painter
     from order.painter.services import ready_for_painter
@@ -79,10 +82,12 @@ def design_folder_access(user, folder):
     if user is None or not getattr(user, "is_authenticated", False) or folder is None:
         return None
     is_rover = user.has_perm("rover.view_rover")
-    if not (is_rover or user.has_perm("painter.view_painter")):
+    is_painter = user.has_perm("painter.view_painter")
+    if not (is_rover or is_painter):
         return None
-    node, depth, owner = folder, 0, None
+    node, depth, owner, chain = folder, 0, None, []
     while node is not None and depth < 20:
+        chain.append(node)
         if node.name == DESIGN_FOLDER_NAME and node.parent_id:
             # after the order is made «Дизайн» sits under the order folder; before, under
             # the metering folder
@@ -95,7 +100,23 @@ def design_folder_access(user, folder):
         node = Folder.objects.filter(pk=node.parent_id).first() if node.parent_id else None
         depth += 1
     if owner is None:
-        return None
+        # the order's «Деталировка» folder (or a folder inside it): a rover job, or a
+        # Molyar job one of the user's team parts is in (same rule as «Дизайн»)
+        allowed = Q(pk__in=[])
+        if is_rover:
+            allowed |= Q(order__rover__isnull=False)
+        if is_painter:
+            allowed |= Q(
+                order__in=ready_for_painter(Painter.objects.filter(parts__type__user=user)).values(
+                    "order_id"
+                )
+            )
+        hits = set(
+            Detailing.objects.filter(folder_id__in=[n.pk for n in chain])
+            .filter(allowed)
+            .values_list("folder_id", flat=True)
+        )
+        return next((n for n in chain if n.pk in hits), None)
     if is_rover and Rover.objects.filter(order__in=owner).exists():
         return node
     jobs = ready_for_painter(

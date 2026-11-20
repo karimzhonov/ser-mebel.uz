@@ -27,6 +27,11 @@ class Rover(models.Model):
 
     square = models.FloatField(verbose_name="Площадь")
     price = MoneyField(max_digits=12, blank=True, null=True, verbose_name="Нарх")
+    # The worker may name the amount in both currencies at once: `price` holds the so'm
+    # part (or whatever the bot sent), this the dollar part (0 = none).
+    price_usd = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name="Нарх ($)"
+    )
 
     submitted_at = models.DateTimeField(
         null=True, blank=True, verbose_name="Tekshiruvga yuborilgan"
@@ -46,6 +51,14 @@ class Rover(models.Model):
     )
     due_set_at = models.DateTimeField(null=True, blank=True)
     note = models.TextField(blank=True, default="", verbose_name="Izoh")
+    # The checker / production head sent the hand-in back («Bekor qilish»): the job is
+    # `new` again, the worker fixes the amount / note and hands it in again. Cleared on
+    # the next hand-in (the history keeps it).
+    reject_reason = models.TextField(blank=True, default="", verbose_name="Qaytarish sababi")
+    rejected_at = models.DateTimeField(null=True, blank=True, verbose_name="Qaytarilgan")
+    rejected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.SET_NULL, null=True, blank=True, related_name="+"
+    )
     rev = models.PositiveIntegerField(default=0)
     # When the job reached the rover section: the detailing is done and its parts came
     # out of the service (Detailing.service_out_at). Until then the job is hidden from
@@ -88,6 +101,35 @@ class Rover(models.Model):
     class Meta:
         verbose_name = "Ровер"
         verbose_name_plural = "Роверы"
+
+
+class RoverRework(models.Model):
+    """A client's «peredelka» the rover worker did (re-milling for an order already made):
+    which order/client, how many m² and for how much (so'm and/or $)."""
+
+    order = models.ForeignKey(
+        "order.Order", models.CASCADE, related_name="rover_reworks", verbose_name="Заказ"
+    )
+    square = models.FloatField(verbose_name="Площадь")
+    price_uzs = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0, verbose_name="Сумма (сум)"
+    )
+    price_usd = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0, verbose_name="Сумма ($)"
+    )
+    note = models.TextField(blank=True, default="", verbose_name="Izoh")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Переделка (ровер)"
+        verbose_name_plural = "Переделки (ровер)"
+        ordering = ["-created_at", "-pk"]
+
+    def __str__(self):
+        return f"{self.order} · {self.square} m²"
 
 
 @receiver(post_save, sender=Rover)

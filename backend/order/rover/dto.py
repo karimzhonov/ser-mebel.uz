@@ -54,6 +54,11 @@ def rover_task(r) -> dict:
     order = r.order
     client = order.client
     price = r.price
+    # dollar-only hand-in: price is 0 so'm, the amount is in price_usd
+    if (price is None or not price.amount) and r.price_usd:
+        from djmoney.money import Money
+
+        price = Money(r.price_usd, "USD")
     return {
         "id": r.pk,
         "order": {"id": order.pk, "number": order.order_number},

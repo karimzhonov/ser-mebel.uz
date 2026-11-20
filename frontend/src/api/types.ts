@@ -749,6 +749,10 @@ export interface ProductionItem {
   can_open_order?: boolean;
   design_folder?: number | null;
   // rover
+  /** the order's «Деталировка» folder (rover and molyar workers read it too) */
+  detailing_folder?: number | null;
+  /** the dollar part of the rover amount (`price` = the so'm part); 0 = none */
+  price_usd?: number;
   state?: "new" | "checking" | "assembled" | "done";
   state_label?: string;
   // painter
@@ -760,6 +764,10 @@ export interface ProductionItem {
   submitted_by_detail?: UserShort | null;
   checked_at?: string | null;
   checked_by_detail?: UserShort | null;
+  /** rover: why the checker / production head sent the hand-in back ("" = not sent back) */
+  reject_reason?: string;
+  rejected_at?: string | null;
+  rejected_by_detail?: UserShort | null;
   note?: string;
   due_date?: string | null;
   due_auto?: boolean;
@@ -793,6 +801,26 @@ export interface ProductionItem {
   user?: number | null;
   user_detail?: UserShort | null;
   actions: Record<string, boolean>;
+}
+
+export interface RoverReworkOrder {
+  id: number;
+  order_number: number;
+  client_fio: string;
+}
+
+/** A client «peredelka» recorded by the rover worker. */
+export interface RoverRework {
+  id: number;
+  order: number;
+  order_detail: RoverReworkOrder;
+  square: number;
+  price_uzs: number;
+  price_usd: number;
+  note: string;
+  created_at: string;
+  created_by_detail: UserShort | null;
+  can_delete: boolean;
 }
 
 export interface PainterType {
