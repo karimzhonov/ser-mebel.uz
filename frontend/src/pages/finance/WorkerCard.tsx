@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { FileSpreadsheet, HardHat, Search } from "lucide-react";
 import { useGet } from "@/api/hooks";
+import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO, rangeLabel } from "@/components/DateRangeFilter";
 import { Badge, Button, Card, Empty, Input, PageHeader, Segmented, Select, Skeleton, StatTile } from "@/components/ui";
 import { cn } from "@/lib/cn";
@@ -180,11 +181,13 @@ function GiversTable({ card }: { card: WorkerCard }) {
 
 /* ------------------------------------------------------------------ one worker */
 function CardView({ card, period }: { card: WorkerCard; period: string }) {
+  const { can } = useAuth();
   const [salary, setSalary] = useState(false);
   const [filter, setFilter] = useState<PayFilter>("");
   const [tab, setTab] = useState<"pay" | "months" | "profile" | "files">("pay");
   const withHome = card.is_boss || card.home > 0;
-  const folder = !!card.worker_id;
+  // salary sheets and the passport folder are `view_worker` data
+  const folder = !!card.worker_id && can("accounting.view_worker");
   return (
     <div className="space-y-4">
       {salary && <SalaryModal card={card} onClose={() => setSalary(false)} />}
@@ -202,7 +205,7 @@ function CardView({ card, period }: { card: WorkerCard; period: string }) {
           <span className="muted text-xs">Butun davr: {som(card.all_time)}</span>
           {card.pay_day && <span className="muted text-xs">🗓 Oylik kuni: har oyning {card.pay_day}-sanasi</span>}
         </div>
-        {card.worker_id && (
+        {folder && (
           <Button icon={<FileSpreadsheet className="h-4 w-4" />} onClick={() => setSalary(true)}>
             Oylik chiqarish
           </Button>
@@ -221,7 +224,7 @@ function CardView({ card, period }: { card: WorkerCard; period: string }) {
           ]}
         />
       ) : (
-        <p className="muted text-xs">Papka, pasport / prava va oyma-oy oyliklar — ishchini «Ishchilar» ro'yxatiga qo'shgandan keyin.</p>
+        !card.worker_id && <p className="muted text-xs">Papka, pasport / prava va oyma-oy oyliklar — ishchini «Ishchilar» ro'yxatiga qo'shgandan keyin.</p>
       )}
       {tab === "months" && folder && <WorkerMonths card={card} />}
       {tab === "profile" && folder && <WorkerProfilePanel card={card} />}

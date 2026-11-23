@@ -26,7 +26,6 @@ export interface Member {
 
 export interface MemberShort {
   id: number;
-  telegram_id: number;
   name: string;
   role: Role;
 }
@@ -302,6 +301,23 @@ export interface FinMe {
   member: Member | null;
   view_all: boolean;
   balance: number | null;
+}
+
+/** GET /finance/options/: read-only lists for the finance forms. `members` is empty
+ * without «Barcha hamyonlar», `workers` / `cars` without add/change_operation. */
+export interface FinOptionMember {
+  id: number;
+  name: string;
+  role: Role;
+  has_wallet: boolean;
+}
+
+export interface FinOptions {
+  categories: FinCategory[];
+  usd_rate: number;
+  members: FinOptionMember[];
+  workers: { name: string; is_active: boolean; is_boss: boolean }[];
+  cars: { name: string; is_active: boolean }[];
 }
 
 export interface Worker {

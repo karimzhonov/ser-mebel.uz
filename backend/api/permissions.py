@@ -122,6 +122,11 @@ def require_perm(user, *perms: str) -> None:
         raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
 
 
+def require_any_perm(user, *perms: str) -> None:
+    if not any(user.has_perm(p) for p in perms):
+        raise PermissionDenied("Bu amal uchun huquq yetarli emas.")
+
+
 class IsBot(BasePermission):
     """Only the signed internal bot channel (api.authentication.BotSignatureAuthentication)."""
 

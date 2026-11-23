@@ -446,6 +446,18 @@ def debt_card(d: dict) -> str:
     return "\n".join(lines)
 
 
+DEBT_ASK_DELETE = "🗑 <b>Qarz o'chirilsinmi?</b>"
+DEBT_NO_DELETE = "ℹ️ Bu qarzni o'chirib bo'lmaydi: unga to'lov yozilgan."
+
+
+def debt_gone(number: int) -> str:
+    return f"❗ Qarz #{number} topilmadi yoki allaqachon o'chirilgan."
+
+
+def debt_deleted(number: int) -> str:
+    return f"🗑 Qarz #{number} o'chirildi."
+
+
 def debt_draft_card(d: dict) -> str:
     """The add-flow confirmation (draft keys: creditor, item, preview, cat_label, ord, client)."""
     return "\n".join(

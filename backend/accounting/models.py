@@ -285,7 +285,18 @@ class Operation(models.Model):
         ordering = ["-date", "-number"]
         verbose_name = "Amal"
         verbose_name_plural = "Amallar"
-        permissions = [("view_all_operations", "Barcha hamyonlar va amallarni ko'rish")]
+        permissions = [
+            ("view_all_operations", "Barcha hamyonlar va amallarni ko'rish"),
+            ("view_finance_home", "Bosh sahifada moliya"),
+            ("view_finance_summary", "Moliya: Xulosa"),
+            ("view_finance_wallets", "Moliya: Hamyonlar"),
+            ("view_finance_orders", "Moliya: Buyurtmalar moliyasi"),
+            ("view_worker_card", "Moliya: Ishchi kartasi"),
+            ("view_advances", "Moliya: Avanslarni ko'rish"),
+            ("change_advances", "Moliya: Avanslarni tasdiqlash"),
+            ("view_finance_checks", "Moliya: Tekshiruv"),
+            ("view_order_bonus_line", "Moliya: Buyurtmadagi bonus"),
+        ]
         indexes = [
             models.Index(fields=["member", "date"]),
             models.Index(fields=["category", "date"]),
@@ -414,7 +425,6 @@ class Debt(models.Model):
 
     class Meta:
         ordering = ["-date", "-number"]
-        default_permissions = ()
         verbose_name = "Qarz"
         verbose_name_plural = "Qarzlar"
         indexes = [models.Index(fields=["status", "date"])]

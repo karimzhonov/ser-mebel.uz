@@ -204,7 +204,7 @@ def test_list_open_oldest_first_closed_and_totals(site_order, members, bot_clien
 def test_pay_fixtures_match_real_responses(site_order, members, bot_client):
     created = bot_client.post("finance/debts/", actor=200, data={**DATA, "amount_text": "6 mln"})
     assert keys(load_fixture("misc.debt_create_request.json")) == set(DATA) | {"comment"}
-    assert shape(created.json()) == shape(load_fixture("dto.debt.1.json"))
+    assert shape(created.json()) == shape(load_fixture("misc.debt_create_response.json"))
     n = created.json()["number"]
     req = load_fixture("misc.debt_pay_request.json")
     assert keys(req) == {"amount_text"}
@@ -214,7 +214,11 @@ def test_pay_fixtures_match_real_responses(site_order, members, bot_client):
     assert shape(real.json()) == shape(fx)
     assert shape(real.json()["debt"]) == shape(load_fixture("dto.debt.1.json"))
     one = bot_client.get(f"finance/debts/{n}/", actor=200).json()
-    assert set(one) == set(load_fixture("dto.debt.1.json")) | {"payments", "can_pay"}
+    assert set(one) == set(load_fixture("dto.debt.1.json")) | {
+        "payments",
+        "can_pay",
+        "can_delete",
+    }
 
 
 # ------------------------------------------------------------------ owner scoping
@@ -263,4 +267,3 @@ def test_boss_sees_and_pays_all_debts(site_order, members, bot_client):
     for d in (a, b):
         r = bot_client.post(f"finance/debts/{d.number}/pay/", actor=100, data={})
         assert r.status_code == 200 and r.json()["debt"]["status"] == "closed"
-

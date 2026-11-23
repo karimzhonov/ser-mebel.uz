@@ -34,9 +34,10 @@ class Section:
     extra: tuple[str, ...] = ()  # "app.codename": part of «edit»
     edit: bool = True
     hint: str = ""
+    view_extra: tuple[str, ...] = ()  # "app.codename": custom perms that are part of «view»
 
     def view_perms(self) -> set[str]:
-        return {_perm(m, "view") for m in self.models + self.reads}
+        return {_perm(m, "view") for m in self.models + self.reads} | set(self.view_extra)
 
     def edit_perms(self) -> set[str]:
         out = self.view_perms() | set(self.extra)
@@ -227,32 +228,106 @@ SECTIONS: tuple[Section, ...] = (
     ),
     Section("factories", "Buyurtmalar", "Zavodlar", ("order.factory",)),
     Section(
-        "finance",
+        "finance_all",
         "Moliya",
+        "Barcha hamyonlar",
+        (),
+        edit=False,
+        hint="Belgilanmasa, faqat o'z amallarini ko'radi. Kompaniya bo'yicha sahifalar uchun ham kerak",
+    ),
+    Section(
+        "finance_home",
         "Moliya",
+        "Bosh sahifada moliya",
+        (),
+        edit=False,
+        hint="Bosh sahifada kirim-chiqim va hamyonlar. «Barcha hamyonlar» ham yoqilgan bo'lishi kerak",
+    ),
+    Section(
+        "finance_summary",
+        "Moliya",
+        "Xulosa",
+        (),
+        edit=False,
+        view_extra=("accounting.view_finance_summary",),
+    ),
+    Section("finance_operations", "Moliya", "Amallar", ("accounting.operation",)),
+    Section(
+        "finance_debts",
+        "Moliya",
+        "Qarzlar",
+        ("accounting.debt",),
+        hint="«O'zgartirish» qarzni hamyondan to'lashga ham ruxsat beradi",
+    ),
+    Section(
+        "finance_wallets",
+        "Moliya",
+        "Hamyonlar",
+        (),
+        edit=False,
+        view_extra=("accounting.view_finance_wallets",),
+    ),
+    Section(
+        "finance_orders",
+        "Moliya",
+        "Buyurtmalar moliyasi",
+        (),
+        edit=False,
+        view_extra=("accounting.view_finance_orders",),
+        hint="«Barcha hamyonlar» ham yoqilgan bo'lishi kerak",
+    ),
+    Section("finance_requests", "Moliya", "Pul so'rovlari", ("accounting.moneyrequest",)),
+    Section("finance_reports", "Moliya", "Oylik hisob", ("accounting.monthreport",)),
+    Section(
+        "finance_worker_card",
+        "Moliya",
+        "Ishchi kartasi",
+        ("accounting.worker",),
+        view_extra=("accounting.view_worker_card",),
+        hint="«Barcha hamyonlar» ham yoqilgan bo'lishi kerak",
+    ),
+    Section(
+        "finance_advances",
+        "Moliya",
+        "Avans tasdiqlash",
+        (),
+        extra=("accounting.change_advances",),
+        view_extra=("accounting.view_advances",),
+        hint="«Barcha hamyonlar» ham yoqilgan bo'lishi kerak",
+    ),
+    Section(
+        "finance_followup",
+        "Moliya",
+        "Готов va bonuslar",
         (
-            "accounting.operation",
-            "accounting.monthreport",
-            "accounting.moneyrequest",
             "accounting.orderbonus",
-            "accounting.financecategory",
-            "accounting.worker",
-            "accounting.financecar",
-            "accounting.manualorder",
             "accounting.warrantyletter",
             "accounting.siteentrytask",
             "accounting.clientfeedback",
         ),
+        view_extra=("accounting.view_order_bonus_line",),
     ),
     Section(
-        "finance_all",
+        "finance_checks",
         "Moliya",
-        "Moliya — barcha hamyonlar",
+        "Tekshiruv",
         (),
         edit=False,
-        hint="Belgilanmasa, faqat o'z amallarini ko'radi",
+        view_extra=("accounting.view_finance_checks",),
+        hint="«Barcha hamyonlar» ham yoqilgan bo'lishi kerak",
     ),
-    Section("finance_settings", "Moliya", "Moliya sozlamalari", ("oauth.telegrammember",)),
+    Section(
+        "finance_catalogs",
+        "Moliya",
+        "Sozlamalar: ro'yxatlar va parametrlar",
+        ("accounting.financecategory", "accounting.financecar", "accounting.manualorder"),
+    ),
+    Section(
+        "finance_settings",
+        "Moliya",
+        "Sozlamalar: Telegram a'zolar",
+        ("oauth.telegrammember",),
+    ),
     Section(
         "warehouse",
         "Ombor",
@@ -295,6 +370,7 @@ SECTIONS: tuple[Section, ...] = (
 _SINGLE = {
     "order_price": "order.view_order_price",
     "finance_all": "accounting.view_all_operations",
+    "finance_home": "accounting.view_finance_home",
     "call_center_manager": "call_center.manage_invoice",
     "flag_call_center": "oauth.user_call_center",
     "flag_detailing": "oauth.user_detailing",

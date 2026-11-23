@@ -965,6 +965,7 @@ class DebtsView(BotAPIView):
             comment=d.get("comment") or "",
         )
         row = _debt_one(debt.pk)
+        row["can_delete"] = True  # just written by the actor, nothing paid yet
         return Response(row, status=201)
 
 
@@ -984,7 +985,13 @@ class DebtView(BotAPIView):
         )
         row["payments"] = [D.operation_dto(op) for op in pays]
         row["can_pay"] = bool(me.has_wallet and debt.status == "open")
+        row["can_delete"] = S.can_delete_debt(me, debt, me.is_admin)
         return Response(row)
+
+    def delete(self, request, number):
+        me = self.require_active()
+        S.delete_debt_as(me, number)
+        return Response(status=204)
 
 
 class DebtPayView(BotAPIView):

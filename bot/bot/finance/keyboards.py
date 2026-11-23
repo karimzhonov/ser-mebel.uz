@@ -229,8 +229,25 @@ def debt_card_kb(d: dict):
     rows = []
     if d.get("status", "open") == "open" and d.get("can_pay", True):
         rows.append([b("💸 To'lash", f"qz:p:{d['number']}")])
+    if d.get("can_delete"):  # the backend's verdict; a missing flag means no button
+        rows.append([b("🗑 O'chirish", f"qz:d:{d['number']}")])
     rows.append([b("⬅️ Ro'yxat", "qz:l")])
     return ik(rows)
+
+
+def debt_delete_kb(number: int):
+    """Confirmation. «Yo'q» is `qz:v` (not the shared cancel: that would wipe a debt draft)."""
+    return ik(
+        [[b("🗑 Ha, o'chirish", f"qz:dy:{number}"), b("Yo'q", f"qz:v:{number}")]],
+    )
+
+
+def debt_gone_kb():
+    return ik([[b("⬅️ Ro'yxat", "qz:l")]])
+
+
+def debt_back_kb(number: int):
+    return ik([[b("⬅️ Qarzga qaytish", f"qz:v:{number}")]])
 
 
 def debt_cat_kb(cats: list[dict], admin: bool):

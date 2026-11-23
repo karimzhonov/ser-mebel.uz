@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { BookX, ListChecks, Plus, Trash2, Wallet } from "lucide-react";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useGet, useList } from "@/api/hooks";
@@ -7,7 +8,7 @@ import { iso } from "@/components/DateRangeFilter";
 import { Badge, Button, Card, DataTable, Empty, Field, IconButton, Input, Modal, PageHeader, Pagination, SearchInput, Segmented, Select, StatTile, Textarea } from "@/components/ui";
 import { date } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
-import { CatLabel, inCur, som, useCategories, useFinMe, useMembers, usd } from "./shared";
+import { CatLabel, inCur, som, useFinMe, useFinOptions, usd } from "./shared";
 import type { Debt, DebtStats } from "./types";
 
 function DaysBadge({ d }: { d: Debt }) {
@@ -27,7 +28,22 @@ export function FinanceDebtsPage() {
   const [paying, setPaying] = useState<Debt | null>(null);
   const [payments, setPayments] = useState<Debt | null>(null);
   const remove = useAction((id: number) => api.delete(`/finance/debts/${id}/`), { success: "O'chirildi", invalidate: ["finance"] });
-  const canAdd = can("accounting.add_operation");
+  const canAdd = can("accounting.add_debt");
+  const qc = useQueryClient();
+
+  /** The row and the modal both delete here. The modal closes first, so its detail query
+   * is not refetched for a debt that no longer exists. */
+  const askDelete = (d: Debt) => {
+    if (remove.isPending || !confirm(`Qarz #${d.number} (${d.creditor} — ${d.item}) o'chirilsinmi?`)) return;
+    setPayments(null);
+    const lastOnPage = data?.results.length === 1 && page > 1;
+    remove.mutate(d.id, {
+      // an emptied last page would 404 and keep showing the deleted row
+      onSuccess: () => lastOnPage && set({ page: page - 1 }),
+      // the row was stale (paid or deleted elsewhere): the toast explains, the list refreshes
+      onError: () => qc.invalidateQueries({ predicate: (q) => String(q.queryKey[0]).includes("finance") }),
+    });
+  };
 
   return (
     <div>
@@ -116,6 +132,11 @@ export function FinanceDebtsPage() {
                   <IconButton label="To'lovlar" onClick={() => setPayments(r)}>
                     <ListChecks className="h-4 w-4" />
                   </IconButton>
+                  {r.can_delete && (
+                    <IconButton label="O'chirish" disabled={remove.isPending} className="disabled:opacity-50" onClick={() => askDelete(r)}>
+                      <Trash2 className="h-4 w-4" />
+                    </IconButton>
+                  )}
                 </div>
               ),
             },
@@ -125,13 +146,13 @@ export function FinanceDebtsPage() {
       </Card>
       {creating && <DebtModal onClose={() => setCreating(false)} />}
       {paying && <DebtPayModal debt={paying} onClose={() => setPaying(null)} />}
-      {payments && <DebtPaymentsModal debt={payments} onClose={() => setPayments(null)} onDelete={(id) => remove.mutateAsync(id).then(() => setPayments(null))} />}
+      {payments && <DebtPaymentsModal debt={payments} onClose={() => setPayments(null)} onDelete={askDelete} deleting={remove.isPending} />}
     </div>
   );
 }
 
 /** Payments of one debt (detail endpoint) + delete when allowed. */
-function DebtPaymentsModal({ debt, onClose, onDelete }: { debt: Debt; onClose: () => void; onDelete: (id: number) => void }) {
+function DebtPaymentsModal({ debt, onClose, onDelete, deleting }: { debt: Debt; onClose: () => void; onDelete: (d: Debt) => void; deleting: boolean }) {
   const { data } = useGet<Debt>(`/finance/debts/${debt.id}/`);
   return (
     <Modal open onClose={onClose} title={`📕 Qarz #${debt.number} — to'lovlar`}>
@@ -154,7 +175,7 @@ function DebtPaymentsModal({ debt, onClose, onDelete }: { debt: Debt; onClose: (
       )}
       {data?.can_delete && (
         <div className="mt-4 flex justify-end">
-          <Button variant="outline" icon={<Trash2 className="h-4 w-4" />} onClick={() => confirm(`Qarz #${debt.number} o'chirilsinmi?`) && onDelete(debt.id)}>
+          <Button variant="outline" icon={<Trash2 className="h-4 w-4" />} disabled={deleting} onClick={() => onDelete(debt)}>
             Qarzni o'chirish
           </Button>
         </div>
@@ -168,7 +189,8 @@ const NO_DEBT_CATS = ["oylik", "zapravka"];
 /** «Yangi qarz»: nothing is booked until a payment is made. */
 export function DebtModal({ onClose }: { onClose: () => void }) {
   const { data: me } = useFinMe();
-  const { data: cats } = useCategories();
+  const { data: fin } = useFinOptions();
+  const cats = fin?.categories;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [f, setF] = useState({ date: iso(new Date()), creditor: "", item: "", category_code: "", currency: "UZS" as "UZS" | "USD", amount: "", orig_amount: "", order_ref: "", comment: "" });
   const options = (cats ?? []).filter(
@@ -262,13 +284,14 @@ export function DebtModal({ onClose }: { onClose: () => void }) {
 /** «To'lash»: an expense in the chosen wallet, on the debt's order. */
 export function DebtPayModal({ debt, onClose }: { debt: Debt; onClose: () => void }) {
   const { data: me } = useFinMe();
-  const { data: members } = useMembers({}, !!me?.view_all);
+  const { data: fin } = useFinOptions();
+  const members = fin?.members;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [member, setMember] = useState("");
   const [amount, setAmount] = useState(String(Number(debt.remaining)));
   const [day, setDay] = useState(iso(new Date()));
   const wallet = member || (me?.member ? String(me.member.id) : "");
-  const wallets = me?.view_all ? (members ?? []).filter((m) => m.has_wallet) : me?.member ? [me.member] : [];
+  const wallets: { id: number; name: string }[] = me?.view_all ? (members ?? []).filter((m) => m.has_wallet) : me?.member ? [me.member] : [];
   const save = useAction(
     () => api.post(`/finance/debts/${debt.id}/pay/`, { member: Number(wallet), amount, date: day }),
     { success: "To'landi", invalidate: ["finance"], onSuccess: onClose },

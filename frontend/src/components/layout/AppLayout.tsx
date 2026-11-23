@@ -52,6 +52,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { isAnyManager } from "@/lib/roles";
 import { cn } from "@/lib/cn";
 import { phone } from "@/lib/format";
+import { canOpenFinancePage, type FinancePage } from "@/pages/finance/access";
 
 interface NavItem {
   to: string;
@@ -60,6 +61,8 @@ interface NavItem {
   perm?: string;
   /** shown when the user holds any of these (instead of `perm`) */
   anyPerm?: string[];
+  /** a Moliya page: its rule lives in pages/finance/access.ts */
+  finance?: FinancePage;
   superuser?: boolean;
   /** active only on this exact path (a parent of other menu items) */
   end?: boolean;
@@ -110,18 +113,18 @@ const NAV: { title: string; items: NavItem[] }[] = [
     // Moliya = the finance Telegram bot moved onto the site (accounting/services.py).
     title: "Moliya",
     items: [
-      { to: "/finance", label: "Xulosa", icon: PieChart, perm: "accounting.view_operation" },
-      { to: "/finance/operations", label: "Amallar", icon: ArrowLeftRight, perm: "accounting.view_operation" },
-      { to: "/finance/debts", label: "Qarzlar", icon: BookX, perm: "accounting.view_operation" },
-      { to: "/finance/wallets", label: "Hamyonlar", icon: Wallet, perm: "accounting.view_operation" },
-      { to: "/finance/orders", label: "Buyurtmalar moliyasi", icon: Receipt, perm: "accounting.view_all_operations" },
-      { to: "/finance/requests", label: "Pul so'rovlari", icon: HandCoins, perm: "accounting.view_moneyrequest" },
-      { to: "/finance/reports", label: "Oylik hisob", icon: CalendarCheck, perm: "accounting.view_monthreport" },
-      { to: "/finance/worker-card", label: "Ishchi kartasi", icon: HardHat, perm: "accounting.view_all_operations" },
-      { to: "/finance/advances", label: "Avans tasdiqlash", icon: BadgeCheck, perm: "accounting.view_all_operations" },
-      { to: "/finance/followup", label: "Готов va bonuslar", icon: Gift, perm: "accounting.view_orderbonus" },
-      { to: "/finance/checks", label: "Tekshiruv", icon: ShieldCheck, perm: "accounting.view_all_operations" },
-      { to: "/finance/settings", label: "Sozlamalar", icon: SlidersHorizontal, perm: "oauth.view_telegrammember" },
+      { to: "/finance", label: "Xulosa", icon: PieChart, finance: "summary" },
+      { to: "/finance/operations", label: "Amallar", icon: ArrowLeftRight, finance: "operations" },
+      { to: "/finance/debts", label: "Qarzlar", icon: BookX, finance: "debts" },
+      { to: "/finance/wallets", label: "Hamyonlar", icon: Wallet, finance: "wallets" },
+      { to: "/finance/orders", label: "Buyurtmalar moliyasi", icon: Receipt, finance: "orders" },
+      { to: "/finance/requests", label: "Pul so'rovlari", icon: HandCoins, finance: "requests" },
+      { to: "/finance/reports", label: "Oylik hisob", icon: CalendarCheck, finance: "reports" },
+      { to: "/finance/worker-card", label: "Ishchi kartasi", icon: HardHat, finance: "workerCard" },
+      { to: "/finance/advances", label: "Avans tasdiqlash", icon: BadgeCheck, finance: "advances" },
+      { to: "/finance/followup", label: "Готов va bonuslar", icon: Gift, finance: "followup" },
+      { to: "/finance/checks", label: "Tekshiruv", icon: ShieldCheck, finance: "checks" },
+      { to: "/finance/settings", label: "Sozlamalar", icon: SlidersHorizontal, finance: "settings" },
     ],
   },
   {
@@ -188,7 +191,7 @@ export function AppLayout() {
   const keeperOnly = !!user?.is_warehouse_keeper && !user.is_superuser;
   const visible = (item: NavItem) =>
     item.managers ? isAnyManager(user) : keeperOnly ? item.to.startsWith("/warehouse") && (!item.perm || can(item.perm)) && !item.superuser
-      : item.superuser ? user?.is_superuser : item.anyPerm ? canAny(...item.anyPerm) : !item.perm || can(item.perm);
+      : item.superuser ? user?.is_superuser : item.finance ? canOpenFinancePage(item.finance, can) : item.anyPerm ? canAny(...item.anyPerm) : !item.perm || can(item.perm);
   const sections = NAV.map((s) => ({ ...s, items: s.items.filter(visible) })).filter((s) => s.items.length);
 
   const sidebar = (

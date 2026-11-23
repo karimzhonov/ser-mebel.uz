@@ -93,10 +93,22 @@ class TelegramMemberSerializer(serializers.ModelSerializer):
         return user
 
 
+class MemberPublicSerializer(serializers.ModelSerializer):
+    """What a wallet page needs about a member: no Telegram id, username or site user."""
+
+    role_label = serializers.CharField(source="get_role_display", read_only=True)
+    has_wallet = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = TelegramMember
+        fields = ["id", "name", "role", "role_label", "has_wallet"]
+        read_only_fields = fields
+
+
 class MemberShortSerializer(serializers.ModelSerializer):
     class Meta:
         model = TelegramMember
-        fields = ["id", "telegram_id", "name", "role"]
+        fields = ["id", "name", "role"]
 
 
 class FinanceCategorySerializer(serializers.ModelSerializer):
@@ -205,6 +217,33 @@ class ManualOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = ManualOrder
         fields = ["id", "ref", "client", "phone", "price", "is_closed", "opened", "closed"]
+
+
+class OperationBriefSerializer(serializers.ModelSerializer):
+    """A debt payment for someone without view_operation: only what the debt's payment
+    list shows (same key names as OperationSerializer)."""
+
+    member_detail = MemberPublicSerializer(source="member", read_only=True)
+    debt_number = serializers.SerializerMethodField()
+
+    def get_debt_number(self, obj):
+        return obj.debt.number if obj.debt_id else None
+
+    class Meta:
+        model = Operation
+        fields = [
+            "id",
+            "number",
+            "date",
+            "debt_number",
+            "kind",
+            "amount",
+            "currency",
+            "orig_amount",
+            "member",
+            "member_detail",
+        ]
+        read_only_fields = fields
 
 
 class OperationSerializer(serializers.ModelSerializer):

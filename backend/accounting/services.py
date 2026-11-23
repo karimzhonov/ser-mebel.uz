@@ -13,6 +13,7 @@ for the bot service (core/bot_notify.py).
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
@@ -77,6 +78,8 @@ from .text import (
     parse_money,
     today,
 )
+
+log = logging.getLogger("accounting")
 
 ZERO = Decimal("0")
 
@@ -2560,10 +2563,65 @@ def delete_debt(debt: Debt) -> Debt:
         if debt.is_deleted:
             return debt
         if debt.payments.filter(is_deleted=False).exists():
-            raise ServiceError("Avval qarz to'lovlarini o'chiring.")
+            raise ServiceConflict("Avval qarz to'lovlarini o'chiring.")
         debt.is_deleted, debt.deleted_at = True, now()
         debt.save(update_fields=["is_deleted", "deleted_at", "updated_at"])
     return debt
+
+
+def debt_has_live_payments(debt) -> bool:
+    # debts_qs() annotation: the SUM over zero live rows is NULL (Operation.amount is
+    # NOT NULL, so any live payment gives a non-NULL sum). No query per row.
+    if hasattr(debt, "paid_uzs"):
+        return debt.paid_uzs is not None
+    return debt.payments.filter(is_deleted=False).exists()
+
+
+def can_delete_debt(member, debt, admin: bool) -> bool:
+    """Owner's rule: the admin deletes any debt, staff only the ones they wrote (at any
+    age — only EDITING has the 2-day limit); a debt with live payments is never deleted."""
+    if not debt or debt.is_deleted or debt_has_live_payments(debt):
+        return False
+    return bool(admin or _own_debt_actor(member, debt))
+
+
+def _own_debt_actor(member, debt) -> bool:
+    """A non-admin may delete only his own debt, and only while he may run debts at all
+    (not pending / blocked / task-only), same as the bot's `_debt_actor`."""
+    return bool(
+        member
+        and debt.created_by_id == member.id
+        and member.is_active_member
+        and not member.is_task_only
+    )
+
+
+def delete_debt_by(debt, member, admin: bool, by_user=None) -> Debt:
+    with transaction.atomic():
+        locked = Debt.objects.select_for_update().get(pk=debt.pk)
+        if locked.is_deleted:
+            raise ServiceNotFound("Qarz topilmadi.")
+        if not (admin or _own_debt_actor(member, locked)):
+            raise ServiceForbidden("Faqat o'zingiz kiritgan qarzni o'chira olasiz.")
+        done = delete_debt(locked)
+    # WARNING on purpose: the backend has no LOGGING config, INFO would be dropped
+    log.warning(
+        "debt #%s deleted: member=%s site_user=%s admin=%s channel=%s",
+        done.number,
+        getattr(member, "id", None),
+        getattr(by_user, "id", None),
+        admin,
+        "site" if by_user is not None else "bot",
+    )
+    return done
+
+
+def delete_debt_as(actor: TelegramMember, number: int) -> Debt:
+    _debt_actor(actor)
+    debt = get_debt(number)
+    if not actor.is_admin and debt.created_by_id != actor.pk:
+        raise ServiceNotFound("Qarz topilmadi.")  # same hiding as pay_debt_as
+    return delete_debt_by(debt, actor, actor.is_admin)
 
 
 def _debt_actor(actor: TelegramMember):

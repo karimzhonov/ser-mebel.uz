@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/auth/AuthContext";
+import { canOpenFinancePage } from "@/pages/finance/access";
 import {
   AlertTriangle,
   ArrowRight,
@@ -46,6 +48,7 @@ function moneyList(items: Money[] | undefined) {
 
 /** The overview tab of the dashboard. `from`/`to` are YYYY-MM-DD or "". */
 export function OverviewPanel({ from, to }: { from: string; to: string }) {
+  const { can } = useAuth();
   const { data, isLoading } = useGet<Overview>("/dashboard/overview/", { date_from: from, date_to: to });
   if (isLoading || !data) return <PageLoader />;
   const { funnel, orders, money: cash, accounting, meterings, call_center } = data;
@@ -115,7 +118,7 @@ export function OverviewPanel({ from, to }: { from: string; to: string }) {
         )}
         {accounting && accounting.profit !== null && (
           <Kpi
-            to="/finance"
+            to={canOpenFinancePage("summary", can) ? "/finance" : undefined}
             icon={<TrendingUp className="h-5 w-5" />}
             tone={accounting.profit >= 0 ? "ok" : "danger"}
             label={`Foyda ${range}`}
@@ -348,7 +351,8 @@ function Kpi({
   alert,
   small,
 }: {
-  to: string;
+  /** no link when the user cannot open the target page */
+  to?: string;
   icon: ReactNode;
   tone: Tone;
   label: string;
@@ -357,8 +361,8 @@ function Kpi({
   alert?: boolean;
   small?: boolean;
 }) {
-  return (
-    <Link to={to} className="card group relative flex flex-col gap-3 p-4 transition hover:-translate-y-0.5 hover:shadow-pop">
+  const body = (
+    <>
       <div className="flex items-center justify-between">
         <div className={cn("rounded-xl p-2", TONES[tone].soft, TONES[tone].text)}>{icon}</div>
         {alert && <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />}
@@ -370,7 +374,14 @@ function Kpi({
         </div>
         {hint && <div className="muted mt-0.5 truncate text-xs">{hint}</div>}
       </div>
+    </>
+  );
+  return to ? (
+    <Link to={to} className="card group relative flex flex-col gap-3 p-4 transition hover:-translate-y-0.5 hover:shadow-pop">
+      {body}
     </Link>
+  ) : (
+    <div className="card relative flex flex-col gap-3 p-4">{body}</div>
   );
 }
 
@@ -590,6 +601,7 @@ function WarehouseCard({ w, range }: { w: NonNullable<Overview["warehouse"]>; ra
 }
 
 function WalletsCard({ w }: { w: NonNullable<Overview["wallets"]> }) {
+  const { can } = useAuth();
   const som = (v: number) => money({ amount: v, currency: w.currency });
   return (
     <Card
@@ -599,7 +611,7 @@ function WalletsCard({ w }: { w: NonNullable<Overview["wallets"]> }) {
         </span>
       }
       padded={false}
-      actions={<MoreLink to="/finance/wallets" />}
+      actions={canOpenFinancePage("wallets", can) ? <MoreLink to="/finance/wallets" /> : undefined}
     >
       <dl className="px-5 pt-4">
         <MoneyRow label={`Hozir qo'lda jami · ${w.count} ta hamyon`} value={som(w.total)} tone={w.total < 0 ? "danger" : undefined} />

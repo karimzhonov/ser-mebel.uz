@@ -1,6 +1,6 @@
 """«📕 Qarzlar»: list, add flow, pay flow, notify renderer (mocked backend, fakeredis)."""
 
-from bot.backend.client import Conflict, ServiceRefusal
+from bot.backend.client import Conflict, Forbidden, NotFound, ServiceRefusal
 from bot.finance import keyboards as K
 from bot.finance import texts as T
 from bot.finance.handlers import callbacks as CB
@@ -283,3 +283,127 @@ async def test_wallet_less_member_cannot_start_add(be, make_ctx):
     ctx = make_ctx(member={"has_wallet": False}, admin=True)
     await CB.on_callback(ctx, "qz:n")
     assert (await ctx.st())["step"] == "qz_from"
+
+
+# ---------------------------------------------------------------- delete (can_delete)
+def cb_data(kb):
+    return [x.callback_data for r in kb.inline_keyboard for x in r]
+
+
+def last_kb(ctx):
+    return ctx.bot.send_message.call_args.kwargs["reply_markup"]
+
+
+def test_card_kb_offers_delete_only_when_can_delete():
+    assert "qz:d:12" in cb_data(K.debt_card_kb(debt(can_delete=True)))
+    assert "qz:d:12" not in cb_data(K.debt_card_kb(debt(can_delete=False)))
+    assert "qz:d:12" not in cb_data(K.debt_card_kb(debt()))  # flag missing = no button
+
+
+async def test_saved_card_offers_delete_from_create_response(be, cats, make_ctx):
+    routes(be, cats)
+    be.routes[("POST", "finance/debts/")] = debt(can_delete=True)
+    ctx = make_ctx()
+    await ctx.set_st(
+        {
+            "t": "qz",
+            "step": "qz_confirm",
+            "creditor": "Do'kon",
+            "item": "LDSP",
+            "amount_text": "1.5 mln",
+            "cat": "material",
+            "ord": "406",
+        }
+    )
+    await ctx.load()
+    await CB.on_callback(ctx, "qz:s")
+    assert "qz:d:12" in cb_data(last_kb(ctx))
+
+
+async def test_ask_delete_confirms_without_deleting(be, make_ctx):
+    be.routes[("GET", "finance/debts/12/")] = debt(can_delete=True)
+    ctx = make_ctx()
+    await CB.on_callback(ctx, "qz:d:12")
+    assert [c[:2] for c in be.calls] == [("GET", "finance/debts/12/")]
+    assert "o'chirilsinmi" in texts(ctx)[-1] and "Qarz #12" in texts(ctx)[-1]
+    assert cb_data(last_kb(ctx)) == ["qz:dy:12", "qz:v:12"]
+
+
+async def test_ask_delete_without_permission_shows_card_with_note(be, make_ctx):
+    be.routes[("GET", "finance/debts/12/")] = debt(can_delete=False, paid="1.00")
+    ctx = make_ctx()
+    await CB.on_callback(ctx, "qz:d:12")
+    assert "to'lov yozilgan" in texts(ctx)[-1]
+    assert "qz:dy:12" not in cb_data(last_kb(ctx))
+    assert all(c[0] == "GET" for c in be.calls)
+
+
+async def test_confirm_calls_delete_once(be, make_ctx):
+    be.routes[("DELETE", "finance/debts/12/")] = None
+    ctx = make_ctx()
+    await CB.on_callback(ctx, "qz:dy:12")
+    assert [c[:2] for c in be.calls] == [("DELETE", "finance/debts/12/")]
+    assert "Qarz #12 o'chirildi" in texts(ctx)[-1]
+    assert cb_data(last_kb(ctx)) == ["qz:l"]
+
+
+async def test_delete_404_says_already_gone(be, make_ctx):
+    be.routes[("DELETE", "finance/debts/12/")] = NotFound("x", 404)
+    be.routes[("GET", "finance/debts/12/")] = NotFound("x", 404)
+    for arg in ("qz:dy:12", "qz:d:12"):
+        ctx = make_ctx()
+        await CB.on_callback(ctx, arg)
+        assert "allaqachon o'chirilgan" in texts(ctx)[-1]
+        assert cb_data(last_kb(ctx)) == ["qz:l"]
+
+
+async def test_delete_409_and_403_show_backend_detail_with_back_button(be, make_ctx):
+    for exc, detail in (
+        (Conflict("Qarzga to'lov yozilgan.", 409), "to'lov yozilgan"),
+        (Forbidden("Ruxsat yo'q.", 403), "Ruxsat yo'q"),
+    ):
+        be.routes[("DELETE", "finance/debts/12/")] = exc
+        ctx = make_ctx()
+        await CB.on_callback(ctx, "qz:dy:12")
+        assert detail in texts(ctx)[-1]
+        assert cb_data(last_kb(ctx)) == ["qz:v:12"]
+
+
+async def test_draft_survives_delete_prompt_and_no(be, make_ctx):
+    be.routes[("GET", "finance/debts/12/")] = debt(can_delete=True)
+    ctx = make_ctx()
+    draft = {"t": "qz", "step": "qz_confirm", "creditor": "X", "item": "Y"}
+    await ctx.set_st(dict(draft))
+    await ctx.load()
+    await CB.on_callback(ctx, "qz:d:12")
+    assert await ctx.st() == draft
+    assert "qz:v:12" in cb_data(last_kb(ctx))  # «Yo'q» is not the shared cancel
+    assert "cancel" not in cb_data(last_kb(ctx))
+    be.routes[("GET", "finance/debts/12/")] = debt(can_delete=True, payments=[])
+    await CB.on_callback(ctx, "qz:v:12")
+    assert await ctx.st() == draft
+    assert "Qarz #12" in texts(ctx)[-1]
+
+
+async def test_non_digit_delete_callbacks_make_no_call(be, make_ctx):
+    ctx = make_ctx()
+    for arg in ("qz:d:abc", "qz:dy:abc", "qz:d:", "qz:dy"):
+        await CB.on_callback(ctx, arg)
+    await ctx.set_st({"t": "qz", "step": "qz_from"})
+    await ctx.load()
+    for arg in ("qz:d:abc", "qz:dy:abc"):
+        await CB.on_callback(ctx, arg)
+    assert be.calls == [] and texts(ctx) == []
+    assert (await ctx.st())["step"] == "qz_from"
+
+
+def test_delete_callback_data_within_64_bytes():
+    n = 10**12
+    for kb in (
+        K.debt_card_kb(debt(number=n, can_delete=True)),
+        K.debt_delete_kb(n),
+        K.debt_back_kb(n),
+        K.debt_gone_kb(),
+    ):
+        for data in cb_data(kb):
+            assert len(data.encode()) <= 64

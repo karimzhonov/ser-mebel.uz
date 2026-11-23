@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import re
 
-from bot.backend.client import Conflict, NotFound, ServiceRefusal
+from bot.backend.client import Conflict, Forbidden, NotFound, ServiceRefusal
 from bot.common.fmt import esc, money
 from bot.common.kb import CANCEL, ik
 from bot.finance import api as A
@@ -40,6 +40,29 @@ async def show_card(ctx: Ctx, number: int):
     except NotFound:
         return await ctx.send("❗ Bunday qarz topilmadi.")
     await ctx.show(T.debt_card(d), K.debt_card_kb(d))
+
+
+# ====================================================================== delete flow
+# Stateless on purpose: no FSM step, so an open debt draft survives `qz:d` / «Yo'q».
+async def ask_delete(ctx: Ctx, number: int):
+    try:
+        d = await ctx.get(f"finance/debts/{number}/")
+    except NotFound:
+        return await ctx.show(T.debt_gone(number), K.debt_gone_kb())
+    if not d.get("can_delete"):
+        return await ctx.show(T.debt_card(d) + "\n\n" + T.DEBT_NO_DELETE, K.debt_card_kb(d))
+    await ctx.show(T.DEBT_ASK_DELETE + "\n\n" + T.debt_card(d), K.debt_delete_kb(number))
+
+
+async def do_delete(ctx: Ctx, number: int):
+    try:
+        await ctx.api("DELETE", f"finance/debts/{number}/")
+    except NotFound:
+        return await ctx.show(T.debt_gone(number), K.debt_gone_kb())
+    except (Conflict, Forbidden) as e:
+        return await ctx.show(f"ℹ️ {esc(e.detail)}", K.debt_back_kb(number))
+    logger.info("debt #%s deleted from the bot by tg %s", number, ctx.tg_id)
+    await ctx.show(T.debt_deleted(number), K.debt_gone_kb())
 
 
 # ====================================================================== add flow
@@ -230,6 +253,10 @@ async def on_callback(ctx: Ctx, arg: str, d: dict | None):
         return await start_add(ctx)
     if act == "p" and rest.isdigit():
         return await start_pay(ctx, int(rest))
+    if act == "d" and rest.isdigit():
+        return await ask_delete(ctx, int(rest))
+    if act == "dy" and rest.isdigit():
+        return await do_delete(ctx, int(rest))
     if not step:
         return
     if act == "k" and step == "qz_cat":

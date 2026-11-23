@@ -8,14 +8,15 @@ import { Badge, Button, Card, DataTable, Empty, IconButton, Modal, PageHeader, P
 import { date, dateTime } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 import { DebtModal } from "./Debts";
-import { CatLabel, OperationModal, ReceiptModal, TransferModal, som, useCategories, useFinMe, useMembers, usd } from "./shared";
+import { CatLabel, OperationModal, ReceiptModal, TransferModal, som, useFinMe, useFinOptions, usd } from "./shared";
 import type { Operation } from "./types";
 
 export default function FinanceOperationsPage() {
   const { can } = useAuth();
   const { data: me } = useFinMe();
-  const { data: members } = useMembers({}, !!me?.view_all);
-  const { data: cats } = useCategories();
+  const { data: options } = useFinOptions();
+  const members = options?.members;
+  const cats = options?.categories;
   const { state, page, set } = useUrlState({
     date_from: monthStartISO(),
     date_to: iso(new Date()),
@@ -39,6 +40,7 @@ export default function FinanceOperationsPage() {
   const canAdd = can("accounting.add_operation");
   const canChange = can("accounting.change_operation");
   const canDelete = can("accounting.delete_operation");
+  const canAddDebt = can("accounting.add_debt");
 
   return (
     <div>
@@ -46,22 +48,28 @@ export default function FinanceOperationsPage() {
         title="Amallar"
         subtitle="Telegram botda, saytda kiritilgan va Google jadvaldan ko'chirilgan barcha kirim-chiqimlar"
         actions={
-          canAdd && (
+          (canAdd || canAddDebt) && (
             <>
-              {me?.view_all && (
-                <Button variant="outline" icon={<ArrowLeftRight className="h-4 w-4" />} onClick={() => setTransfer(true)}>
-                  O'tkazma
+              {canAdd && (
+                <>
+                  {me?.view_all && (
+                    <Button variant="outline" icon={<ArrowLeftRight className="h-4 w-4" />} onClick={() => setTransfer(true)}>
+                      O'tkazma
+                    </Button>
+                  )}
+                  <Button variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setEdit("income")}>
+                    Kirim
+                  </Button>
+                  <Button icon={<Minus className="h-4 w-4" />} onClick={() => setEdit("expense")}>
+                    Chiqim
+                  </Button>
+                </>
+              )}
+              {canAddDebt && (
+                <Button variant="outline" icon={<BookX className="h-4 w-4" />} onClick={() => setDebt(true)}>
+                  Qarz
                 </Button>
               )}
-              <Button variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setEdit("income")}>
-                Kirim
-              </Button>
-              <Button icon={<Minus className="h-4 w-4" />} onClick={() => setEdit("expense")}>
-                Chiqim
-              </Button>
-              <Button variant="outline" icon={<BookX className="h-4 w-4" />} onClick={() => setDebt(true)}>
-                Qarz
-              </Button>
             </>
           )
         }
@@ -213,10 +221,14 @@ export default function FinanceOperationsPage() {
           op={typeof edit === "string" ? null : edit}
           defaultKind={typeof edit === "string" ? edit : undefined}
           defaultMember={state.member ? Number(state.member) : me?.member?.id}
-          onDebt={() => {
-            setEdit(null);
-            setDebt(true);
-          }}
+          onDebt={
+            canAddDebt
+              ? () => {
+                  setEdit(null);
+                  setDebt(true);
+                }
+              : undefined
+          }
           onClose={() => setEdit(null)}
         />
       )}

@@ -57,7 +57,14 @@ from core.bot_notify import fetch_file
 from core.exceptions import ServiceError
 from oauth.models import TelegramMember, TelegramRole
 
-from ..permissions import IsSuperUser, ModelPermissions, is_staff, require_perm
+from ..permissions import (
+    IsStaffUser,
+    IsSuperUser,
+    ModelPermissions,
+    is_staff,
+    require_any_perm,
+    require_perm,
+)
 from ..serializers.finance import (
     ClientFeedbackSerializer,
     DebtPaySerializer,
@@ -66,8 +73,10 @@ from ..serializers.finance import (
     FinanceCarSerializer,
     FinanceCategorySerializer,
     ManualOrderSerializer,
+    MemberPublicSerializer,
     MoneyRequestSerializer,
     MonthReportSerializer,
+    OperationBriefSerializer,
     OperationSerializer,
     OperationWriteSerializer,
     OrderBonusSerializer,
@@ -84,6 +93,7 @@ from ..utils import apply_period, date_range, int_param
 log = logging.getLogger("finance.api")
 
 VIEW_ALL = "accounting.view_all_operations"
+ACC = "accounting."
 
 
 def f(v) -> float:
@@ -599,10 +609,10 @@ def _items(items):
 class FinanceSummaryView(APIView):
     """«Xulosa»: cards, by category, salaries, 12 months — for a period (and a member)."""
 
-    permission_classes = [ModelPermissions]
-    queryset = Operation.objects.none()
+    permission_classes = [IsStaffUser]
 
     def get(self, request):
+        require_perm(request.user, ACC + "view_finance_summary")
         start, end = _period(request)
         member = scoped_member(request)
         mid = int_param(request.query_params, "member")
@@ -610,11 +620,15 @@ class FinanceSummaryView(APIView):
             member = TelegramMember.objects.filter(pk=mid).first()
         sm = S.summary(start, end, member)
         months = S.months_series(member, 12)
+        # company-wide pay is the worker card's data: a scoped user keeps his own wallet's
+        hide_pay = request.user.has_perm(VIEW_ALL) and not request.user.has_perm(
+            ACC + "view_worker_card"
+        )
         return Response(
             {
                 "date_from": start,
                 "date_to": end,
-                "member": TelegramMemberSerializer(member).data if member else None,
+                "member": MemberPublicSerializer(member).data if member else None,
                 "expense": f(sm["expense"]),
                 "income": f(sm["income"]),
                 "balance": f(sm["balance"]),
@@ -626,9 +640,11 @@ class FinanceSummaryView(APIView):
                 "count": sm["count"],
                 "expense_by_category": _items(sm["expense_by_category"]),
                 "income_by_category": _items(sm["income_by_category"]),
-                "salary_by_worker": [
-                    {"name": n, "amount": f(v)} for n, v in sm["salary_by_worker"]
-                ],
+                "salary_by_worker": (
+                    []
+                    if hide_pay
+                    else [{"name": n, "amount": f(v)} for n, v in sm["salary_by_worker"]]
+                ),
                 "months": [
                     {
                         "month": x["month"],
@@ -649,11 +665,10 @@ class WorkerCardView(APIView):
     advances / salaries, who paid them and every payment. Company-wide pay, so only
     for those who see every wallet."""
 
-    permission_classes = [ModelPermissions]
-    queryset = Operation.objects.none()
+    permission_classes = [IsStaffUser]
 
     def get(self, request):
-        require_perm(request.user, VIEW_ALL)
+        require_perm(request.user, ACC + "view_worker_card", VIEW_ALL)
         start, end = _period(request)
         workers = [{**w, "total": f(w["total"])} for w in S.worker_list(start, end)]
         name = str(request.query_params.get("worker") or "").strip()
@@ -701,10 +716,10 @@ class WorkerCardView(APIView):
 
 
 class WalletsView(APIView):
-    permission_classes = [ModelPermissions]
-    queryset = Operation.objects.none()
+    permission_classes = [IsStaffUser]
 
     def get(self, request):
+        require_perm(request.user, ACC + "view_finance_wallets")
         only = scoped_member(request)
         start, end = _period(request)
         bal = S.balances()
@@ -737,7 +752,7 @@ class WalletsView(APIView):
             p = per.get(m.id, {})
             rows.append(
                 {
-                    "member": TelegramMemberSerializer(m).data,
+                    "member": MemberPublicSerializer(m).data,
                     "balance": f(bal.get(m.id, 0)),
                     "period_income": f(p.get("inc")),
                     "period_expense": f(p.get("exp")),
@@ -805,11 +820,10 @@ def _order_row(info, st, names: dict | None = None) -> dict:
 class FinanceOrdersView(APIView):
     """Money per order: spent (bot/site expenses), collected, contract, profit."""
 
-    permission_classes = [ModelPermissions]
-    queryset = Operation.objects.none()
+    permission_classes = [IsStaffUser]
 
     def get(self, request):
-        require_perm(request.user, VIEW_ALL)
+        require_perm(request.user, ACC + "view_finance_orders", VIEW_ALL)
         p = request.query_params
         buckets = (p.get("bucket") or "jarayonda,yangi,kutish,yakun").split(",")
         refs = []
@@ -845,12 +859,20 @@ class FinanceOrdersView(APIView):
 
 
 # ===================================================================== debts («Qarzlar»)
-class OperationModelPermissions(ModelPermissions):
-    """The Operation permissions (view/add/change/delete_operation) gate the debts too:
-    Debt has no permissions of its own."""
+class DebtModelPermissions(ModelPermissions):
+    """view/add/change/delete_debt. The view's get_queryset is row-scoped (it raises for an
+    unlinked user), so DRF must not call it during the permission check."""
 
     def _queryset(self, view):
-        return Operation.objects.none()
+        return Debt.objects.none()
+
+
+def _op_ser(request, many=False):
+    """Full operation rows only for view_operation holders; a debt page shows the rest a
+    trimmed row."""
+    full = request.user.has_perm(ACC + "view_operation")
+    cls = OperationSerializer if full else OperationBriefSerializer
+    return lambda obj: cls(obj, many=many)
 
 
 class DebtViewSet(
@@ -865,7 +887,7 @@ class DebtViewSet(
     with view_all_operations see all. Paying books an expense in the chosen wallet,
     scoped like OperationViewSet.create."""
 
-    permission_classes = [OperationModelPermissions]
+    permission_classes = [DebtModelPermissions]
     queryset = Debt.objects.none()
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
@@ -911,7 +933,12 @@ class DebtViewSet(
 
     def list(self, request, *args, **kwargs):
         page = self.paginate_queryset(self.get_queryset())
-        return self.get_paginated_response(self._rows(page))
+        rows = self._rows(page)
+        me, admin = acting_member(request), self._admin(request)
+        perm = request.user.has_perm("accounting.delete_debt")
+        for row, d in zip(rows, page):
+            row["can_delete"] = perm and S.can_delete_debt(me, d, admin)
+        return self.get_paginated_response(rows)
 
     def retrieve(self, request, *args, **kwargs):
         d = self.get_object()
@@ -924,11 +951,12 @@ class DebtViewSet(
             )
             .order_by("date", "number")
         )
-        row["payments"] = OperationSerializer(pays, many=True).data
-        can = S.can_modify_debt(acting_member(request), d, self._admin(request))
-        row["can_change"] = can and request.user.has_perm("accounting.change_operation")
-        row["can_delete"] = (
-            can and not row["payments"] and request.user.has_perm("accounting.delete_operation")
+        row["payments"] = _op_ser(request, many=True)(pays).data
+        me, admin = acting_member(request), self._admin(request)
+        can = S.can_modify_debt(me, d, admin)
+        row["can_change"] = can and request.user.has_perm("accounting.change_debt")
+        row["can_delete"] = request.user.has_perm("accounting.delete_debt") and S.can_delete_debt(
+            me, d, admin
         )
         return Response(row)
 
@@ -971,17 +999,12 @@ class DebtViewSet(
 
     def destroy(self, request, *args, **kwargs):
         debt = self.get_object()
-        only = scoped_member(request)
-        if not S.can_modify_debt(acting_member(request), debt, only is None):
-            raise PermissionDenied(
-                "Faqat o'zingiz kiritgan, oxirgi 2 kundagi qarzni o'chira olasiz."
-            )
-        S.delete_debt(debt)
+        S.delete_debt_by(debt, acting_member(request), self._admin(request), by_user=request.user)
         return Response(status=204)
 
     @action(detail=True, methods=["post"])
     def pay(self, request, pk=None):
-        require_perm(request.user, "accounting.add_operation")
+        require_perm(request.user, "accounting.add_debt")
         debt = self.get_object()
         s = DebtPaySerializer(data=request.data)
         s.is_valid(raise_exception=True)
@@ -1007,7 +1030,7 @@ class DebtViewSet(
         op = Operation.objects.select_related(
             "member", "author", "site_user", "category", "pair", "debt"
         ).get(pk=op.pk)
-        return Response({"debt": self._one(debt.pk), "operation": OperationSerializer(op).data})
+        return Response({"debt": self._one(debt.pk), "operation": _op_ser(request)(op).data})
 
     @action(detail=False, methods=["get"])
     def stats(self, request):
@@ -1022,26 +1045,35 @@ class DebtViewSet(
 
 
 class FinanceOrderDetailView(APIView):
-    permission_classes = [ModelPermissions]
-    queryset = Operation.objects.none()
+    permission_classes = [IsStaffUser]
 
     def get(self, request, ref):
-        require_perm(request.user, VIEW_ALL)
+        require_perm(request.user, ACC + "view_finance_orders", VIEW_ALL)
+        u = request.user
         info = S.order_info(ref)
         if not info:
             raise NotFound("Buyurtma topilmadi.")
         st = S.order_stats(info.ref)
         row = _order_row(info, st)
-        row["operations"] = OperationSerializer(st["rows"], many=True).data
-        row["debts"] = [
-            debt_dto(d, info.client, S.debt_paid_annotated(d))
-            for d in S.debts_qs("all").filter(order_ref=info.ref).order_by("date", "number")
-        ]
+        can_ops = u.has_perm(ACC + "view_operation")
+        row["operations"] = OperationSerializer(st["rows"], many=True).data if can_ops else []
+        row["debts"] = (
+            [
+                debt_dto(d, info.client, S.debt_paid_annotated(d))
+                for d in S.debts_qs("all").filter(order_ref=info.ref).order_by("date", "number")
+            ]
+            if u.has_perm(ACC + "view_debt")
+            else []
+        )
         row["warehouse"] = [
             {**r, "quantity": f(r["quantity"]), "total": f(r["total"])}
             for r in st["warehouse_rows"]
         ]
-        bn = OrderBonus.objects.filter(order_ref=info.ref).first()
+        bn = (
+            OrderBonus.objects.filter(order_ref=info.ref).first()
+            if u.has_perm(ACC + "view_order_bonus_line")
+            else None
+        )
         row["bonus"] = OrderBonusSerializer(bn).data if bn else None
         return Response(row)
 
@@ -1049,10 +1081,10 @@ class FinanceOrderDetailView(APIView):
 class FinanceOrderOptionsView(APIView):
     """Order picker for the operation form (same lists as the bot keyboards)."""
 
-    permission_classes = [ModelPermissions]
-    queryset = Operation.objects.none()
+    permission_classes = [IsStaffUser]
 
     def get(self, request):
+        require_any_perm(request.user, ACC + "view_operation", ACC + "view_debt")
         buckets = (request.query_params.get("bucket") or "jarayonda,yangi,kutish,yakun").split(",")
         return Response(
             [{"ref": i.ref, "client": i.client, "bucket": i.bucket} for i in S.open_orders(buckets)]
@@ -1060,20 +1092,26 @@ class FinanceOrderOptionsView(APIView):
 
 
 class ChecksView(APIView):
-    permission_classes = [ModelPermissions]
-    queryset = Operation.objects.none()
+    permission_classes = [IsStaffUser]
 
     def get(self, request):
-        require_perm(request.user, VIEW_ALL)
+        require_perm(request.user, ACC + "view_finance_checks", VIEW_ALL)
         return Response(S.checks())
 
 
 class ExportView(APIView):
-    permission_classes = [ModelPermissions]
-    queryset = Operation.objects.none()
+    permission_classes = [IsStaffUser]
 
     def get(self, request):
-        require_perm(request.user, VIEW_ALL)
+        require_perm(
+            request.user,
+            ACC + "view_finance_summary",
+            ACC + "view_operation",
+            ACC + "view_finance_checks",
+            ACC + "view_worker_card",
+            ACC + "view_finance_wallets",
+            VIEW_ALL,
+        )
         start, end = _period(request)
         content = build_xlsx(start, end)
         resp = HttpResponse(
@@ -1084,6 +1122,52 @@ class ExportView(APIView):
             f'attachment; filename="SerMebel_{start:%Y-%m-%d}_{end:%Y-%m-%d}.xlsx"'
         )
         return resp
+
+
+class FinanceOptionsView(APIView):
+    """Read-only lists the finance forms need (categories, USD rate, wallet members,
+    workers, cars), so a form does not borrow the Settings permissions. Members and the
+    worker / car names are cut to what the caller may use them for."""
+
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        u = request.user
+        require_any_perm(
+            u,
+            ACC + "view_operation",
+            ACC + "view_debt",
+            ACC + "view_finance_summary",
+            ACC + "view_finance_orders",
+            ACC + "view_monthreport",
+        )
+        members, workers, cars = [], [], []
+        cats = FinanceCategory.objects.all()
+        if not u.has_perm(VIEW_ALL):
+            cats = cats.filter(admin_only=False)  # staff never saw these (categories CRUD 403)
+        if u.has_perm(VIEW_ALL):
+            members = [
+                {"id": m.id, "name": m.name, "role": m.role, "has_wallet": m.has_wallet}
+                for m in TelegramMember.objects.select_related("user").order_by("role", "name")
+            ]
+        if u.has_perm(ACC + "add_operation") or u.has_perm(ACC + "change_operation"):
+            workers = [
+                {"name": w.name, "is_active": w.is_active, "is_boss": w.is_boss}
+                for w in Worker.objects.only("name", "is_active", "is_boss")
+            ]
+            cars = [
+                {"name": c.name, "is_active": c.is_active}
+                for c in FinanceCar.objects.only("name", "is_active")
+            ]
+        return Response(
+            {
+                "categories": FinanceCategorySerializer(cats, many=True).data,
+                "usd_rate": f(S.usd_rate()),
+                "members": members,
+                "workers": workers,
+                "cars": cars,
+            }
+        )
 
 
 SETTING_KEYS = [
@@ -1162,6 +1246,7 @@ class MonthReportViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     @action(detail=False, methods=["get"])
     def preview(self, request):
         """What «📤 Oylik hisob» would submit for a member and month."""
+        require_perm(request.user, ACC + "add_monthreport")
         only = scoped_member(request)
         mid = int_param(request.query_params, "member")
         member = only or TelegramMember.objects.filter(pk=mid).first()
@@ -1373,14 +1458,13 @@ class OrderAdvanceView(APIView):
     GET ?status=pending|accepted|rejected|all; POST {advance, action: accept|reject,
     amount_text?} — accept books the money into the boss's cash."""
 
-    permission_classes = [ModelPermissions]
-    queryset = Operation.objects.none()
+    permission_classes = [IsStaffUser]
 
     def get(self, request):
         from accounting.dto import advance_dto
         from accounting.models import OrderAdvance
 
-        require_perm(request.user, VIEW_ALL)
+        require_perm(request.user, ACC + "view_advances", VIEW_ALL)
         st = request.query_params.get("status") or "pending"
         qs = OrderAdvance.objects.select_related("order__client", "created_by")
         if st != "all":
@@ -1391,7 +1475,7 @@ class OrderAdvanceView(APIView):
         from accounting.dto import advance_dto
         from accounting.models import OrderAdvance
 
-        require_perm(request.user, VIEW_ALL, "accounting.add_operation")
+        require_perm(request.user, ACC + "change_advances", VIEW_ALL)
         adv = OrderAdvance.objects.filter(pk=request.data.get("advance")).first()
         if not adv:
             raise NotFound()
