@@ -2,10 +2,12 @@ import { useState } from "react";
 import { Download, Minus, Plus } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useGet } from "@/api/hooks";
+import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
 import { Button, Card, Empty, PageHeader, Select, StatTile } from "@/components/ui";
 import { useUrlState } from "@/lib/useUrlState";
-import { CatLabel, downloadFile, OperationModal, som, useFinMe, useMembers } from "./shared";
+import { EXPORT_PERMS } from "./access";
+import { CatLabel, downloadFile, OperationModal, som, useFinMe, useFinOptions } from "./shared";
 import type { CatItem, Summary } from "./types";
 
 function CategoryList({ items, tone }: { items: CatItem[]; tone: "danger" | "ok" }) {
@@ -37,9 +39,11 @@ function CategoryList({ items, tone }: { items: CatItem[]; tone: "danger" | "ok"
 }
 
 export default function FinanceSummaryPage() {
+  const { can } = useAuth();
   const { data: me } = useFinMe();
   const { state, set } = useUrlState({ date_from: monthStartISO(), date_to: iso(new Date()), member: "" });
-  const { data: members } = useMembers({}, !!me?.view_all);
+  const { data: options } = useFinOptions();
+  const members = options?.members;
   const { data: s, isFetching } = useGet<Summary>("/finance/summary/", state);
   const [form, setForm] = useState<"income" | "expense" | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -51,7 +55,7 @@ export default function FinanceSummaryPage() {
         subtitle={s?.member ? `👤 ${s.member.name}` : "🏢 Ser mebel (hammasi)"}
         actions={
           <>
-            {me?.view_all && (
+            {me?.view_all && can(...EXPORT_PERMS) && (
               <Button
                 variant="outline"
                 icon={<Download className="h-4 w-4" />}
@@ -64,7 +68,7 @@ export default function FinanceSummaryPage() {
                 Excel
               </Button>
             )}
-            {(me?.view_all || me?.member) && (
+            {(me?.view_all || me?.member) && can("accounting.add_operation") && (
               <>
                 <Button variant="outline" icon={<Plus className="h-4 w-4" />} onClick={() => setForm("income")}>
                   Kirim
@@ -131,20 +135,23 @@ export default function FinanceSummaryPage() {
             <Empty title="Ma'lumot yo'q" />
           )}
         </Card>
-        <Card title="👷 Oylik — kimga">
-          {s?.salary_by_worker?.length ? (
-            <ul className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
-              {s.salary_by_worker.map((w) => (
-                <li key={w.name} className="flex justify-between py-2">
-                  <span>{w.name}</span>
-                  <span className="font-medium tabular-nums">{som(w.amount)}</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <Empty title="Bu davrda oylik yo'q" />
-          )}
-        </Card>
+        {/* «Barcha hamyonlar» without «Ishchi kartasi»: the server sends no list, «no salary» would be wrong */}
+        {me && (can("accounting.view_worker_card") || !me.view_all) && (
+          <Card title="👷 Oylik — kimga">
+            {s?.salary_by_worker?.length ? (
+              <ul className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+                {s.salary_by_worker.map((w) => (
+                  <li key={w.name} className="flex justify-between py-2">
+                    <span>{w.name}</span>
+                    <span className="font-medium tabular-nums">{som(w.amount)}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Empty title="Bu davrda oylik yo'q" />
+            )}
+          </Card>
+        )}
         {!s?.member && (
           <Card title="Ichki harakatlar">
             <ul className="space-y-2 text-sm">

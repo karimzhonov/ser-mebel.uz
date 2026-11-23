@@ -112,9 +112,9 @@ def test_no_double_counting(site_order, members):
 # ------------------------------------------------------------------ site API
 def test_site_api(site_order, members, api, make_staff, bot_events):
     _, ali, _ = members
-    ali.user = make_staff("accounting.view_operation", "accounting.add_operation")
+    ali.user = make_staff("accounting.view_debt", "accounting.add_debt")
     ali.save()
-    c = api("accounting.view_operation", "accounting.add_operation")
+    c = api("accounting.view_debt", "accounting.add_debt")
     c.user.telegram_member = ali  # reverse one-to-one set below
     ali.user = c.user
     ali.save()

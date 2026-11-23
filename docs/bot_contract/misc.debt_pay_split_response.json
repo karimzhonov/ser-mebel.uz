@@ -1,0 +1,128 @@
+{
+  "debt": {
+    "id": 9,
+    "number": 14,
+    "date": "2026-10-20",
+    "creditor": "Furnitura Plus",
+    "item": "Furnitura to'plami",
+    "amount": "1205000.00",
+    "currency": "USD",
+    "orig_amount": "100.00",
+    "rate": "12050.0000",
+    "total": "100.00",
+    "paid": "10.00",
+    "remaining": "90.00",
+    "category": {
+      "code": "material",
+      "name": "Material",
+      "emoji": "🧱",
+      "kind": "expense",
+      "admin_only": false,
+      "no_order": false,
+      "archive": true,
+      "excluded": false
+    },
+    "order_ref": "406, 407, 408",
+    "client": "",
+    "status": "open",
+    "status_label": "Ochiq",
+    "closed_at": null,
+    "days": 3,
+    "by_name": "Maftuna (sayt)",
+    "comment": "",
+    "created_at": "2026-10-20T10:15:00+05:00",
+    "allocations": [
+      {
+        "id": 41,
+        "order_ref": "406",
+        "client": "Nazira Karimova",
+        "amount": "20.00",
+        "paid": "0.00",
+        "remaining": "20.00"
+      },
+      {
+        "id": 42,
+        "order_ref": "407",
+        "client": "Dilshod Rahimov",
+        "amount": "30.00",
+        "paid": "10.00",
+        "remaining": "20.00"
+      },
+      {
+        "id": 43,
+        "order_ref": "408",
+        "client": "Malika Yusupova",
+        "amount": "50.00",
+        "paid": "0.00",
+        "remaining": "50.00"
+      }
+    ]
+  },
+  "operation": {
+    "number": 241,
+    "date": "2026-11-13",
+    "time": "12:30",
+    "kind": "expense",
+    "amount": "120500.00",
+    "currency": "USD",
+    "orig_amount": "10.00",
+    "rate": "12050.0000",
+    "category": {
+      "code": "material",
+      "name": "Material",
+      "emoji": "🧱",
+      "kind": "expense",
+      "admin_only": false,
+      "no_order": false,
+      "archive": true,
+      "excluded": false
+    },
+    "member": {
+      "telegram_id": 100,
+      "name": "Ali"
+    },
+    "author_tg": 100,
+    "order_ref": "407",
+    "comment": "📕 Qarz #14 (407): Furnitura to'plami — Bahor LDSP do'koni",
+    "worker": "",
+    "pay_type": "",
+    "receipt_file_id": "",
+    "is_deleted": false,
+    "handover": ""
+  },
+  "operations": [
+    {
+      "number": 241,
+      "date": "2026-11-13",
+      "time": "12:30",
+      "kind": "expense",
+      "amount": "120500.00",
+      "currency": "USD",
+      "orig_amount": "10.00",
+      "rate": "12050.0000",
+      "category": {
+        "code": "material",
+        "name": "Material",
+        "emoji": "🧱",
+        "kind": "expense",
+        "admin_only": false,
+        "no_order": false,
+        "archive": true,
+        "excluded": false
+      },
+      "member": {
+        "telegram_id": 100,
+        "name": "Ali"
+      },
+      "author_tg": 100,
+      "order_ref": "407",
+      "comment": "📕 Qarz #14 (407): Furnitura to'plami — Bahor LDSP do'koni",
+      "worker": "",
+      "pay_type": "",
+      "receipt_file_id": "",
+      "is_deleted": false,
+      "handover": ""
+    }
+  ],
+  "balance": "-120500.00"
+}

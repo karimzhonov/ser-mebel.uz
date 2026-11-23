@@ -13,7 +13,9 @@ from bot.finance.texts import CAT_ADVANCE, CAT_FROM_BOSS, CAT_REST, OP_EXPENSE, 
 def cat_kb(cats: list[dict], admin: bool):
     """Expense categories (`cats` = kind expense)."""
     cs = [c for c in cats if admin or not c["admin_only"]]
-    return ik(grid([b(f"{c['emoji']} {c['name']}", f"cat:{c['code']}") for c in cs], 2) + [[CANCEL]])
+    return ik(
+        grid([b(f"{c['emoji']} {c['name']}", f"cat:{c['code']}") for c in cs], 2) + [[CANCEL]]
+    )
 
 
 def src_kb(cats: list[dict]):
@@ -57,7 +59,12 @@ def arx_kb(orders: list[dict], page: int):
     pages = max(1, -(-len(orders) // n))
     pg = max(0, min(page, pages - 1))
     rows = [
-        [b(f"🗄 {x['ref']} · {x['client'][:24]} ({ddmm(x.get('ready_date'))[:5]})", f"ord:{x['ref']}")]
+        [
+            b(
+                f"🗄 {x['ref']} · {x['client'][:24]} ({ddmm(x.get('ready_date'))[:5]})",
+                f"ord:{x['ref']}",
+            )
+        ]
         for x in orders[pg * n : pg * n + n]
     ]
     nav = []
@@ -115,7 +122,8 @@ def group_label(g: str, workers: list[dict]) -> str:
             (
                 w
                 for w in workers
-                if w["group"] == g and re.search(r"bosh|бош|глав|brigadir", w.get("position") or "", re.I)
+                if w["group"] == g
+                and re.search(r"bosh|бош|глав|brigadir", w.get("position") or "", re.I)
             ),
             None,
         )
@@ -229,8 +237,25 @@ def debt_card_kb(d: dict):
     rows = []
     if d.get("status", "open") == "open" and d.get("can_pay", True):
         rows.append([b("💸 To'lash", f"qz:p:{d['number']}")])
+    if d.get("can_delete"):  # the backend's verdict; a missing flag means no button
+        rows.append([b("🗑 O'chirish", f"qz:d:{d['number']}")])
     rows.append([b("⬅️ Ro'yxat", "qz:l")])
     return ik(rows)
+
+
+def debt_delete_kb(number: int):
+    """Confirmation. «Yo'q» is `qz:v` (not the shared cancel: that would wipe a debt draft)."""
+    return ik(
+        [[b("🗑 Ha, o'chirish", f"qz:dy:{number}"), b("Yo'q", f"qz:v:{number}")]],
+    )
+
+
+def debt_gone_kb():
+    return ik([[b("⬅️ Ro'yxat", "qz:l")]])
+
+
+def debt_back_kb(number: int):
+    return ik([[b("⬅️ Qarzga qaytish", f"qz:v:{number}")]])
 
 
 def debt_cat_kb(cats: list[dict], admin: bool):
@@ -240,28 +265,67 @@ def debt_cat_kb(cats: list[dict], admin: bool):
     )
 
 
-def debt_order_kb(orders: list[dict]):
+def _row_buttons(rows: list[dict] | None) -> list[list]:
+    """«❌ 406» per entered order (`qz:x:{row id}`; row ids are digits, never the ref)."""
+    return [[b(f"❌ {r['r'][:24]}", f"qz:x:{r['i']}")] for r in rows or []]
+
+
+def debt_order_kb(orders: list[dict], rows: list[dict] | None = None):
+    """Order picker. Orders already in `rows` are left out; an order whose `qz:o:` data
+    would not fit Telegram's 64 BYTES is left out too (it can still be typed)."""
+    used = {r["r"].casefold() for r in rows or []}
+    out = []
+    for o in orders[:60]:
+        data = f"qz:o:{o['ref']}"
+        if o["ref"].casefold() in used or len(data.encode()) > 64:
+            continue
+        label = f"{ORDER_ICONS.get(o['bucket'], '')}{o['ref']} · {o['client'][:28]}"
+        out.append([b(label, data)])
+    out += _row_buttons(rows)
+    out.append([b("⌨️ ID yozish", "qz:ot")])
+    out.append([CANCEL])
+    return ik(out)
+
+
+def debt_share_kb(rem_text: str):
+    return ik(
+        [
+            [b(f"✅ Hammasi shu ID ga: {rem_text}", "qz:wa")],
+            [b("⬅️ Boshqa ID", "qz:sb")],
+            [CANCEL],
+        ]
+    )
+
+
+def debt_confirm_kb(rows: list[dict] | None = None):
+    return ik([[b("✅ Saqlash", "qz:s")], *_row_buttons(rows), [CANCEL]])
+
+
+def debt_pay_order_kb(deb: dict, rem_text: str):
+    """Pay picker of a split debt: one button per UNPAID order + «Hammasi»."""
+    from bot.finance.texts import debt_sum
+
+    cur = deb.get("currency") or "UZS"
+    n = deb["number"]
     rows = [
         [
             b(
-                f"{ORDER_ICONS.get(o['bucket'], '')}{o['ref']} · {o['client'][:28]}",
-                f"qz:o:{o['ref']}",
+                f"🧾 {str(a.get('order_ref'))[:24]} — qoldiq {debt_sum(a.get('remaining'), cur)}",
+                f"qz:po:{n}:{a['id']}",
             )
         ]
-        for o in orders[:60]
+        for a in deb.get("allocations") or []
+        if a.get("id") is not None and float(a.get("remaining") or 0) > 0
     ]
-    rows.append([b("⌨️ ID yozish", "qz:ot")])
-    rows.append([CANCEL])
+    rows.append([b(f"✅ Hammasi: {rem_text}", f"qz:pw:{n}")])
+    rows.append([b("⬅️ Qarzga qaytish", f"qz:v:{n}")])
     return ik(rows)
 
 
-def debt_confirm_kb():
-    return ik([[b("✅ Saqlash", "qz:s")], [CANCEL]])
+def debt_pay_amount_kb(rem_text: str, nonce: str = ""):
+    """`qz:pf:{nonce}`: the nonce ties the button to the prompt it came with (bare = old)."""
+    return ik([[b(f"✅ To'liq: {rem_text}", f"qz:pf:{nonce}" if nonce else "qz:pf")], [CANCEL]])
 
 
-def debt_pay_amount_kb(rem_text: str):
-    return ik([[b(f"✅ To'liq: {rem_text}", "qz:pf")], [CANCEL]])
-
-
-def debt_pay_confirm_kb():
-    return ik([[b("✅ To'lash", "qz:py")], [CANCEL]])
+def debt_pay_confirm_kb(nonce: str = ""):
+    return ik([[b("✅ To'lash", f"qz:py:{nonce}" if nonce else "qz:py")], [CANCEL]])

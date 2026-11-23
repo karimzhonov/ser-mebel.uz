@@ -5,36 +5,40 @@ import { useAction, useAll, useGet } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
 import { Badge, Button, Card, Confirm, DataTable, Field, IconButton, Input, Modal, PageHeader, SearchInput, Segmented, Select } from "@/components/ui";
 import { useUrlState } from "@/lib/useUrlState";
+import { SETTINGS_TAB_PERMS, type SettingsTab } from "./access";
 import { RoleBadge, som, useCategories, useMembers } from "./shared";
 import type { Car, FinCategory, ManualOrder, Member, Role, Worker } from "./types";
 
-type Tab = "members" | "workers" | "categories" | "cars" | "orders" | "params";
+const SETTINGS_TABS: { value: SettingsTab; label: string }[] = [
+  { value: "members", label: "👥 Telegram a'zolar" },
+  { value: "workers", label: "👷 Ishchilar" },
+  { value: "categories", label: "🗂 Kategoriyalar" },
+  { value: "cars", label: "🚗 Mashinalar" },
+  { value: "orders", label: "🧾 Qo'lda buyurtmalar" },
+  { value: "params", label: "⚙️ Parametrlar" },
+];
 
 export default function FinanceSettingsPage() {
-  const { state, set } = useUrlState({ tab: "members" as Tab });
+  const { can } = useAuth();
+  const { state, set } = useUrlState({ tab: "members" as SettingsTab });
+  const tabs = SETTINGS_TABS.filter((t) => can(...SETTINGS_TAB_PERMS[t.value]));
+  const tab = tabs.some((t) => t.value === state.tab) ? (state.tab as SettingsTab) : tabs[0]?.value;
   return (
     <div>
       <PageHeader title="Moliya sozlamalari" subtitle="Telegram rollari, ro'yxatlar va bot parametrlari" />
       <div className="mb-4">
         <Segmented
-          value={state.tab as Tab}
-          onChange={(tab) => set({ tab })}
-          options={[
-            { value: "members", label: "👥 Telegram a'zolar" },
-            { value: "workers", label: "👷 Ishchilar" },
-            { value: "categories", label: "🗂 Kategoriyalar" },
-            { value: "cars", label: "🚗 Mashinalar" },
-            { value: "orders", label: "🧾 Qo'lda buyurtmalar" },
-            { value: "params", label: "⚙️ Parametrlar" },
-          ]}
+          value={tab}
+          onChange={(next) => set({ tab: next })}
+          options={tabs}
         />
       </div>
-      {state.tab === "members" && <MembersTab />}
-      {state.tab === "workers" && <WorkersTab />}
-      {state.tab === "categories" && <CategoriesTab />}
-      {state.tab === "cars" && <CarsTab />}
-      {state.tab === "orders" && <ManualOrdersTab />}
-      {state.tab === "params" && <ParamsTab />}
+      {tab === "members" && <MembersTab />}
+      {tab === "workers" && <WorkersTab />}
+      {tab === "categories" && <CategoriesTab />}
+      {tab === "cars" && <CarsTab />}
+      {tab === "orders" && <ManualOrdersTab />}
+      {tab === "params" && <ParamsTab />}
     </div>
   );
 }
@@ -218,18 +222,21 @@ function MemberModal({ m, onClose }: { m: Member; onClose: () => void }) {
 function useCatalogActions(resource: string) {
   const save = useAction((v: { id?: number; body: Record<string, unknown> }) => (v.id ? api.patch(`/${resource}/${v.id}/`, v.body) : api.post(`/${resource}/`, v.body)), {
     success: "Saqlandi",
-    invalidate: [resource],
+    invalidate: [resource, "/finance/options/"],
   });
-  const remove = useAction((id: number) => api.delete(`/${resource}/${id}/`), { success: "O'chirildi", invalidate: [resource] });
+  const remove = useAction((id: number) => api.delete(`/${resource}/${id}/`), { success: "O'chirildi", invalidate: [resource, "/finance/options/"] });
   return { save, remove };
 }
 
 function WorkersTab() {
+  const { can } = useAuth();
+  const canChange = can("accounting.change_worker");
   const { data } = useAll<Worker>("finance/workers");
   const { save, remove } = useCatalogActions("finance/workers");
   const [f, setF] = useState({ group: "", name: "", position: "" });
   return (
     <Card padded={false}>
+      {can("accounting.add_worker") && (
       <div className="grid gap-2 border-b border-slate-100 p-4 sm:grid-cols-4 dark:border-slate-800">
         <Input list="worker-groups" placeholder="Bo'lim (masalan Zavod)" value={f.group} onChange={(e) => setF({ ...f, group: e.target.value })} />
         <datalist id="worker-groups">{[...new Set(data?.map((w) => w.group))].map((g) => <option key={g} value={g} />)}</datalist>
@@ -239,6 +246,7 @@ function WorkersTab() {
           Qo'shish
         </Button>
       </div>
+      )}
       <DataTable
         rows={data}
         rowKey={(r) => r.id}
@@ -254,6 +262,7 @@ function WorkersTab() {
                 type="checkbox"
                 title="Rahbar oyligi: «Avans / Oylik»dan tashqari «Uy uchun» turi ham bor"
                 checked={r.is_boss}
+                disabled={!canChange}
                 onChange={(e) => save.mutate({ id: r.id, body: { is_boss: e.target.checked } })}
               />
             ),
@@ -261,16 +270,17 @@ function WorkersTab() {
           {
             key: "a",
             header: "Faol",
-            cell: (r) => <input type="checkbox" checked={r.is_active} onChange={(e) => save.mutate({ id: r.id, body: { is_active: e.target.checked } })} />,
+            cell: (r) => <input type="checkbox" checked={r.is_active} disabled={!canChange} onChange={(e) => save.mutate({ id: r.id, body: { is_active: e.target.checked } })} />,
           },
           {
             key: "x",
             header: "",
-            cell: (r) => (
-              <IconButton label="O'chirish" onClick={() => confirm(`${r.name} o'chirilsinmi?`) && remove.mutate(r.id)}>
-                <Trash2 className="h-4 w-4" />
-              </IconButton>
-            ),
+            cell: (r) =>
+              can("accounting.delete_worker") ? (
+                <IconButton label="O'chirish" onClick={() => confirm(`${r.name} o'chirilsinmi?`) && remove.mutate(r.id)}>
+                  <Trash2 className="h-4 w-4" />
+                </IconButton>
+              ) : null,
           },
         ]}
       />
@@ -279,22 +289,25 @@ function WorkersTab() {
 }
 
 function CarsTab() {
+  const { can } = useAuth();
   const { data } = useAll<Car>("finance/cars");
   const { save, remove } = useCatalogActions("finance/cars");
   const [name, setName] = useState("");
   return (
     <Card padded={false}>
-      <div className="flex gap-2 border-b border-slate-100 p-4 dark:border-slate-800">
-        <Input placeholder="Labo — Elyor" value={name} onChange={(e) => setName(e.target.value)} />
-        <Button disabled={!name.trim()} onClick={() => save.mutateAsync({ body: { name, ordering: (data?.length ?? 0) + 1 } }).then(() => setName(""))}>Qo'shish</Button>
-      </div>
+      {can("accounting.add_financecar") && (
+        <div className="flex gap-2 border-b border-slate-100 p-4 dark:border-slate-800">
+          <Input placeholder="Labo — Elyor" value={name} onChange={(e) => setName(e.target.value)} />
+          <Button disabled={!name.trim()} onClick={() => save.mutateAsync({ body: { name, ordering: (data?.length ?? 0) + 1 } }).then(() => setName(""))}>Qo'shish</Button>
+        </div>
+      )}
       <DataTable
         rows={data}
         rowKey={(r) => r.id}
         columns={[
           { key: "n", header: "Mashina / kim (zapravka)", cell: (r) => r.name },
-          { key: "a", header: "Faol", cell: (r) => <input type="checkbox" checked={r.is_active} onChange={(e) => save.mutate({ id: r.id, body: { is_active: e.target.checked } })} /> },
-          { key: "x", header: "", cell: (r) => <IconButton label="O'chirish" onClick={() => confirm(`${r.name} o'chirilsinmi?`) && remove.mutate(r.id)}><Trash2 className="h-4 w-4" /></IconButton> },
+          { key: "a", header: "Faol", cell: (r) => <input type="checkbox" checked={r.is_active} disabled={!can("accounting.change_financecar")} onChange={(e) => save.mutate({ id: r.id, body: { is_active: e.target.checked } })} /> },
+          { key: "x", header: "", cell: (r) => (can("accounting.delete_financecar") ? <IconButton label="O'chirish" onClick={() => confirm(`${r.name} o'chirilsinmi?`) && remove.mutate(r.id)}><Trash2 className="h-4 w-4" /></IconButton> : null) },
         ]}
       />
     </Card>
@@ -302,6 +315,7 @@ function CarsTab() {
 }
 
 function CategoriesTab() {
+  const { can } = useAuth();
   const { data } = useCategories();
   const { save } = useCatalogActions("finance/categories");
   const [edit, setEdit] = useState<Partial<FinCategory> | null>(null);
@@ -311,12 +325,12 @@ function CategoriesTab() {
     <Card
       padded={false}
       title="Kategoriyalar"
-      actions={<Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => (setErrors({}), setEdit({ kind: "expense", color: "#94A3B8", emoji: "📦", keywords: [], is_active: true }))}>Yangi</Button>}
+      actions={can("accounting.add_financecategory") && <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => (setErrors({}), setEdit({ kind: "expense", color: "#94A3B8", emoji: "📦", keywords: [], is_active: true }))}>Yangi</Button>}
     >
       <DataTable
         rows={data}
         rowKey={(r) => r.id}
-        onRowClick={(r) => (setErrors({}), setEdit(r))}
+        onRowClick={can("accounting.change_financecategory") ? (r) => (setErrors({}), setEdit(r)) : undefined}
         rowClassName={(r) => (r.is_active ? undefined : "opacity-50")}
         columns={[
           { key: "n", header: "Nomi", cell: (r) => <span><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: r.color }} />{r.emoji} {r.name}</span> },
@@ -406,6 +420,7 @@ function CategoriesTab() {
 }
 
 function ManualOrdersTab() {
+  const { can } = useAuth();
   const { data } = useAll<ManualOrder>("finance/manual-orders");
   const { save } = useCatalogActions("finance/manual-orders");
   return (
@@ -420,7 +435,7 @@ function ManualOrdersTab() {
           { key: "r", header: "ID", cell: (r) => <b>{r.ref}</b> },
           { key: "c", header: "Mijoz", cell: (r) => r.client },
           { key: "p", header: "Shartnoma", cell: (r) => som(r.price) },
-          { key: "s", header: "Yopilgan", cell: (r) => <input type="checkbox" checked={r.is_closed} onChange={(e) => save.mutate({ id: r.id, body: { is_closed: e.target.checked } })} /> },
+          { key: "s", header: "Yopilgan", cell: (r) => <input type="checkbox" checked={r.is_closed} disabled={!can("accounting.change_manualorder")} onChange={(e) => save.mutate({ id: r.id, body: { is_closed: e.target.checked } })} /> },
         ]}
       />
     </Card>
@@ -458,13 +473,13 @@ function ParamsTab() {
   const { data } = useGet<Params>("/finance/settings/");
   const [f, setF] = useState<Partial<Params>>({});
   useEffect(() => data && setF(data), [data]);
-  const save = useAction(() => api.patch("/finance/settings/", Object.fromEntries(PARAMS.map(([k]) => [k, f[k]]))), { success: "Saqlandi", invalidate: ["/finance/settings/"] });
+  const save = useAction(() => api.patch("/finance/settings/", Object.fromEntries(PARAMS.map(([k]) => [k, f[k]]))), { success: "Saqlandi", invalidate: ["/finance/settings/", "/finance/options/"] });
   return (
     <Card title="Bot parametrlari" actions={can("accounting.change_financecategory") && <Button size="sm" loading={save.isPending} onClick={() => save.mutate()}>Saqlash</Button>}>
       <div className="grid gap-4 sm:grid-cols-2">
         {PARAMS.map(([k, label, type]) => (
           <Field key={k} label={label} hint={k === "FIN_USD_RATE" && data ? `Hozir ishlatilayotgan kurs: ${som(data.usd_rate_effective)}` : undefined}>
-            <Input type={type} value={String(f[k] ?? "")} onChange={(e) => setF({ ...f, [k]: type === "number" ? Number(e.target.value) : e.target.value })} />
+            <Input type={type} value={String(f[k] ?? "")} disabled={!can("accounting.change_financecategory")} onChange={(e) => setF({ ...f, [k]: type === "number" ? Number(e.target.value) : e.target.value })} />
           </Field>
         ))}
       </div>

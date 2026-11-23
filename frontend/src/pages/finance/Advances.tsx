@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api, fieldErrors } from "@/api/client";
 import { useAction, useGet } from "@/api/hooks";
+import { useAuth } from "@/auth/AuthContext";
 import { Badge, Button, Card, DataTable, Empty, Field, Input, Modal, PageHeader, Segmented } from "@/components/ui";
 import { dateTime } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
@@ -29,6 +30,7 @@ const TONE = { pending: "warn", accepted: "ok", rejected: "danger" } as const;
 /** «Avans tasdiqlash»: the advance a manager entered when creating an order counts only
  * once the boss confirms he got the money (the same buttons come to him in Telegram). */
 export function FinanceAdvancesPage() {
+  const { can } = useAuth();
   const { state, set } = useUrlState({ status: "pending" });
   const { data, isFetching } = useGet<Advance[]>("/finance/advances/", state);
   const [other, setOther] = useState<Advance | null>(null);
@@ -88,7 +90,7 @@ export function FinanceAdvancesPage() {
               key: "x",
               header: "",
               cell: (r) =>
-                r.status === "pending" ? (
+                r.status === "pending" && can("accounting.change_advances") ? (
                   <div className="flex justify-end gap-2">
                     <Button size="sm" loading={act.isPending} onClick={() => act.mutate({ advance: r.id, action: "accept" })}>
                       ✅ Qabul qildim

@@ -9,6 +9,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from constance import config
+from django.db.models import Sum, prefetch_related_objects
 
 from . import services as S
 from .constants import CAT_TRANSFER, WAREHOUSE_CAT, WAREHOUSE_CAT_EMOJI, WAREHOUSE_CAT_NAME
@@ -96,16 +97,88 @@ def operation_dto(op: Operation) -> dict:
     }
 
 
-def debt_dto(d: Debt, client: str | None = None, paid=None) -> dict:
+def debt_allocations_dto(debts) -> dict[int, list[dict]]:
+    """{debt.pk: [{id, order_ref, client, amount, paid, remaining}]} for many debts in a
+    fixed number of queries (allocations prefetched, orders and per-share payments in one
+    query each). Never empty: a debt without rows shows its single order."""
+    debts = list(debts)
+    if debts:
+        prefetch_related_objects(
+            [d for d in debts if "allocations" not in getattr(d, "_prefetched_objects_cache", {})],
+            "allocations",
+        )
+    shares = {d.pk: list(d.allocations.all()) for d in debts}
+    refs = {a.order_ref for rows in shares.values() for a in rows} | {
+        d.order_ref for d in debts if not shares[d.pk]
+    }
+    infos = S.order_infos(refs) if refs else {}
+    split_ids = [d.pk for d in debts if len(shares[d.pk]) > 1]
+    paid_by: dict[tuple, tuple] = {}
+    if split_ids:
+        for r in (
+            Operation.objects.filter(debt_id__in=split_ids, is_deleted=False)
+            .order_by()
+            .values("debt_id", "debt_allocation_id")
+            .annotate(uzs=Sum("amount"), usd=Sum("orig_amount"))
+        ):
+            paid_by[(r["debt_id"], r["debt_allocation_id"])] = (r["uzs"], r["usd"])
+    out: dict[int, list[dict]] = {}
+    for d in debts:
+        rows = shares[d.pk]
+        total = S.D(d.total_cur)
+        if len(rows) > 1:
+            items = []
+            for a in rows:
+                uzs, usd = paid_by.get((d.pk, a.pk), (None, None))
+                items.append(
+                    (a.pk, a.order_ref, a.amount, S.D(usd if d.currency == "USD" else uzs))
+                )
+        elif rows:
+            paid = S.debt_paid_annotated(d)
+            items = [(rows[0].pk, rows[0].order_ref, rows[0].amount, paid)]
+        else:
+            items = [(None, d.order_ref, total, S.debt_paid_annotated(d))]
+        out[d.pk] = [
+            {
+                "id": aid,
+                "order_ref": ref,
+                "client": infos[ref].client if ref in infos else "",
+                "amount": dec(amount),
+                "paid": dec(paid),
+                "remaining": dec(max(S.D(amount) - S.D(paid), S.ZERO)),
+            }
+            for aid, ref, amount, paid in items
+        ]
+    return out
+
+
+def debt_order_text(allocations: list[dict]) -> str:
+    """«406, 407, 408 +2»: what an old client shows in the single `order_ref` slot."""
+    refs = [a["order_ref"] for a in allocations]
+    return ", ".join(refs[:3]) + (f" +{len(refs) - 3}" if len(refs) > 3 else "")
+
+
+def debt_dto(
+    d: Debt, client: str | None = None, paid=None, allocations: list[dict] | None = None
+) -> dict:
     """A debt with total / paid / remaining in its own currency. `paid` comes from
-    S.debts_qs()'s annotation when the caller has it (else one query)."""
+    S.debts_qs()'s annotation when the caller has it (else one query). `allocations`
+    from debt_allocations_dto() (computed here when missing). A split debt shows its
+    orders in `order_ref` as display text and no `client`; the rows are in `allocations`."""
     nums = S.debt_numbers(d, paid)
+    if allocations is None:
+        allocations = debt_allocations_dto([d])[d.pk]
     if d.created_by_id:
         by_name = d.created_by.name
     elif d.site_user_id:
         by_name = d.site_user.name or str(d.site_user.phone)
     else:
         by_name = ""
+    if len(allocations) > 1:
+        order_ref, client = debt_order_text(allocations), ""
+    else:
+        order_ref = allocations[0]["order_ref"]
+        client = client or allocations[0]["client"]
     return {
         "id": d.pk,
         "number": d.number,
@@ -120,8 +193,9 @@ def debt_dto(d: Debt, client: str | None = None, paid=None) -> dict:
         "paid": dec(nums["paid"]),
         "remaining": dec(nums["remaining"]),
         "category": category_dto(d.category),
-        "order_ref": d.order_ref,
+        "order_ref": order_ref,
         "client": client or "",
+        "allocations": allocations,
         "status": d.status,
         "status_label": d.get_status_display(),
         "closed_at": iso(d.closed_at),
@@ -130,6 +204,13 @@ def debt_dto(d: Debt, client: str | None = None, paid=None) -> dict:
         "comment": d.comment,
         "created_at": d.created_at.isoformat(),
     }
+
+
+def debt_rows(debts) -> list[dict]:
+    """Debt DTOs for many debts (from S.debts_qs()) in a fixed number of queries."""
+    debts = list(debts)
+    shares = debt_allocations_dto(debts)
+    return [debt_dto(d, None, S.debt_paid_annotated(d), shares[d.pk]) for d in debts]
 
 
 def operation_row_dto(op: Operation, scope_all: bool) -> dict:

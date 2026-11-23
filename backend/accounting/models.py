@@ -262,6 +262,15 @@ class Operation(models.Model):
         related_name="payments",
         verbose_name="Qarz",
     )
+    # Which order's share of a split debt this payment covers (see DebtAllocation).
+    debt_allocation = models.ForeignKey(
+        "accounting.DebtAllocation",
+        models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="legs",
+        verbose_name="Qarz ulushi",
+    )
     # Money a worker collected from a client and has to hand to the boss (/topshiruv).
     handover = models.CharField(
         max_length=16,
@@ -285,7 +294,18 @@ class Operation(models.Model):
         ordering = ["-date", "-number"]
         verbose_name = "Amal"
         verbose_name_plural = "Amallar"
-        permissions = [("view_all_operations", "Barcha hamyonlar va amallarni ko'rish")]
+        permissions = [
+            ("view_all_operations", "Barcha hamyonlar va amallarni ko'rish"),
+            ("view_finance_home", "Bosh sahifada moliya"),
+            ("view_finance_summary", "Moliya: Xulosa"),
+            ("view_finance_wallets", "Moliya: Hamyonlar"),
+            ("view_finance_orders", "Moliya: Buyurtmalar moliyasi"),
+            ("view_worker_card", "Moliya: Ishchi kartasi"),
+            ("view_advances", "Moliya: Avanslarni ko'rish"),
+            ("change_advances", "Moliya: Avanslarni tasdiqlash"),
+            ("view_finance_checks", "Moliya: Tekshiruv"),
+            ("view_order_bonus_line", "Moliya: Buyurtmadagi bonus"),
+        ]
         indexes = [
             models.Index(fields=["member", "date"]),
             models.Index(fields=["category", "date"]),
@@ -414,7 +434,6 @@ class Debt(models.Model):
 
     class Meta:
         ordering = ["-date", "-number"]
-        default_permissions = ()
         verbose_name = "Qarz"
         verbose_name_plural = "Qarzlar"
         indexes = [models.Index(fields=["status", "date"])]
@@ -427,6 +446,31 @@ class Debt(models.Model):
         if self.currency == Currency.USD and self.orig_amount is not None:
             return self.orig_amount
         return self.amount
+
+
+class DebtAllocation(models.Model):
+    """One order's share of a debt (a 100$ debt can be 20$ + 30$ + 50$ on three orders).
+    `amount` is in the debt's currency. Every payment Operation points at one allocation
+    and carries that order's `order_ref`. Debt.order_ref / Debt.order mirror the first row."""
+
+    debt = models.ForeignKey(Debt, models.CASCADE, related_name="allocations")
+    order = models.ForeignKey(
+        "order.Order", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    order_ref = models.CharField(max_length=32, db_index=True, verbose_name="Buyurtma ID")
+    amount = models.DecimalField(max_digits=16, decimal_places=2, verbose_name="Ulush")
+
+    class Meta:
+        ordering = ["id"]
+        verbose_name = "Qarz ulushi"
+        verbose_name_plural = "Qarz ulushlari"
+        constraints = [
+            models.UniqueConstraint(fields=["debt", "order_ref"], name="uniq_debt_alloc_ref"),
+            models.CheckConstraint(condition=models.Q(amount__gt=0), name="debt_alloc_amount_gt0"),
+        ]
+
+    def __str__(self):
+        return f"{self.order_ref}: {self.amount}"
 
 
 class MonthReport(models.Model):

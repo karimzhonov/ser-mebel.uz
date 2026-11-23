@@ -26,7 +26,6 @@ export interface Member {
 
 export interface MemberShort {
   id: number;
-  telegram_id: number;
   name: string;
   role: Role;
 }
@@ -145,6 +144,8 @@ export interface FinOrder {
   by_category: { code: string; amount: number; name?: string; emoji?: string }[];
   warehouse?: { number: number; date: string; product: string; quantity: number; unit_label: string; total: number }[];
   operations?: Operation[];
+  /** the debts on this order; total / paid / remaining are this order's share */
+  debts?: FinOrderDebt[];
   bonus?: Bonus | null;
 }
 
@@ -263,6 +264,16 @@ export interface Issue {
   fix: string;
 }
 
+/** One order's share of a debt, in the debt's currency. */
+export interface DebtAllocation {
+  id: number;
+  order_ref: string;
+  client: string;
+  amount: string;
+  paid: string;
+  remaining: string;
+}
+
 export interface Debt {
   id: number;
   number: number;
@@ -290,6 +301,15 @@ export interface Debt {
   payments?: Operation[];
   can_delete?: boolean;
   can_change?: boolean;
+  /** missing in responses from a backend older than the split */
+  allocations?: DebtAllocation[];
+}
+
+/** A row of FinOrder.debts. The share fields are missing on an older backend. */
+export interface FinOrderDebt extends Debt {
+  debt_total?: string;
+  is_split?: boolean;
+  share_status?: string;
 }
 
 export interface DebtStats {
@@ -302,6 +322,23 @@ export interface FinMe {
   member: Member | null;
   view_all: boolean;
   balance: number | null;
+}
+
+/** GET /finance/options/: read-only lists for the finance forms. `members` is empty
+ * without «Barcha hamyonlar», `workers` / `cars` without add/change_operation. */
+export interface FinOptionMember {
+  id: number;
+  name: string;
+  role: Role;
+  has_wallet: boolean;
+}
+
+export interface FinOptions {
+  categories: FinCategory[];
+  usd_rate: number;
+  members: FinOptionMember[];
+  workers: { name: string; is_active: boolean; is_boss: boolean }[];
+  cars: { name: string; is_active: boolean }[];
 }
 
 export interface Worker {

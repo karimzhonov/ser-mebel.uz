@@ -13,8 +13,8 @@ from oauth.models import TelegramMember
 pytestmark = pytest.mark.django_db
 
 URL = "/api/v1/finance/debts/"
-VIEW, ADD = "accounting.view_operation", "accounting.add_operation"
-CHANGE, DELETE = "accounting.change_operation", "accounting.delete_operation"
+VIEW, ADD = "accounting.view_debt", "accounting.add_debt"
+CHANGE, DELETE = "accounting.change_debt", "accounting.delete_debt"
 
 
 def mk(**kw):

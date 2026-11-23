@@ -1,15 +1,17 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useGet } from "@/api/hooks";
+import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
 import { Badge, Card, DataTable, Modal, PageHeader, SearchInput, Segmented, StatTile } from "@/components/ui";
 import { date } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
-import { CatLabel, inCur, som, useCategories } from "./shared";
+import { CatLabel, inCur, som, useFinOptions } from "./shared";
 import type { FinOrder, WalletRow } from "./types";
 
 export function FinanceWalletsPage() {
   const nav = useNavigate();
+  const { can } = useAuth();
   const { state, set } = useUrlState({ date_from: monthStartISO(), date_to: iso(new Date()) });
   const { data, isFetching } = useGet<{ results: WalletRow[]; staff_total: number; cash_total: number }>("/finance/wallets/", state);
   return (
@@ -28,7 +30,7 @@ export function FinanceWalletsPage() {
           rows={data?.results}
           loading={isFetching}
           rowKey={(r) => r.member.id}
-          onRowClick={(r) => nav(`/finance/operations?member=${r.member.id}&date_from=${state.date_from}&date_to=${state.date_to}`)}
+          onRowClick={can("accounting.view_operation") ? (r) => nav(`/finance/operations?member=${r.member.id}&date_from=${state.date_from}&date_to=${state.date_to}`) : undefined}
           rowClassName={(r) => (r.balance < 0 && r.member.role !== "admin" ? "bg-rose-50/60 dark:bg-rose-500/5" : undefined)}
           columns={[
             {
@@ -155,8 +157,8 @@ export function OrderFinance({ orderNumber }: { orderNumber: number }) {
 }
 
 function OrderFinanceBody({ o }: { o: FinOrder }) {
-  const { data: cats } = useCategories();
-  const byCode = Object.fromEntries((cats ?? []).map((c) => [c.code, c]));
+  const { data: options } = useFinOptions();
+  const byCode = Object.fromEntries((options?.categories ?? []).map((c) => [c.code, c]));
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -191,6 +193,27 @@ function OrderFinanceBody({ o }: { o: FinOrder }) {
                   <span className="muted">#{w.number} · {date(w.date)}</span> · {w.product} {w.quantity} {w.unit_label}
                 </span>
                 <span className="whitespace-nowrap tabular-nums text-rose-600">{som(w.total)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {o.debts && o.debts.length > 0 && (
+        <div>
+          <h4 className="mb-1 text-sm font-medium">📕 Qarzlar</h4>
+          <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+            {o.debts.map((d) => (
+              <div key={d.id} className="flex justify-between gap-3 py-2">
+                <span>
+                  <span className="muted">#{d.number} · {date(d.date)}</span> · {d.creditor} — {d.item}
+                  {d.is_split && d.debt_total && <span className="muted"> · umumiy qarz {inCur(d.debt_total, d.currency)}</span>}
+                </span>
+                <span className="whitespace-nowrap text-right tabular-nums">
+                  {inCur(d.total, d.currency)}
+                  <span className="muted block text-xs">
+                    to'langan {inCur(d.paid, d.currency)} · <span className={Number(d.remaining) > 0 ? "text-rose-600" : ""}>qoldiq {inCur(d.remaining, d.currency)}</span>
+                  </span>
+                </span>
               </div>
             ))}
           </div>

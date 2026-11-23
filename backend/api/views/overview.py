@@ -308,7 +308,7 @@ class OverviewView(APIView):
     # --- income / expense (Moliya operations, company-wide, in so'm) ------------------
 
     def accounting(self, user, params):
-        if not user.has_perm("accounting.view_all_operations"):
+        if not user.has_perms(("accounting.view_all_operations", "accounting.view_finance_home")):
             return None
         start, end = date_range(params)
         sm = finance.summary(start, end)
@@ -383,7 +383,7 @@ class OverviewView(APIView):
     # --- Moliya wallets: who holds how much right now (so'm) ---------------------------
 
     def wallets(self, user):
-        if not user.has_perm("accounting.view_all_operations"):
+        if not user.has_perms(("accounting.view_all_operations", "accounting.view_finance_home")):
             return None
         bal = finance.balances()
         rows = sorted(

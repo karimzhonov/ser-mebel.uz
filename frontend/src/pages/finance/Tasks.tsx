@@ -8,7 +8,8 @@ import { DateRangeFilter } from "@/components/DateRangeFilter";
 import { Badge, Button, Card, DataTable, Empty, Field, Input, Modal, PageHeader, Pagination, SearchInput, Segmented, Select, Textarea } from "@/components/ui";
 import { date, dateTime } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
-import { inCur, som, useFinMe, useMembers, usd } from "./shared";
+import { FOLLOWUP_TAB_PERMS, VIEW_ALL, type FollowupTab } from "./access";
+import { inCur, som, useFinMe, useFinOptions, usd } from "./shared";
 import type { Bonus, UnpaidReady, Feedback, Issue, MoneyRequest, MonthReport, Operation, SiteEntry, Warranty } from "./types";
 
 /* ------------------------------------------------------------------ requests */
@@ -101,7 +102,8 @@ function GiveModal({ req, onClose }: { req: MoneyRequest; onClose: () => void })
 export function FinanceReportsPage() {
   const { can } = useAuth();
   const { data: me } = useFinMe();
-  const { data: members } = useMembers({ role: "staff" }, !!me?.view_all);
+  const { data: options } = useFinOptions();
+  const members = options?.members.filter((m) => m.role === "staff");
   const { state, page, set } = useUrlState({ month: "" });
   const { data, isFetching } = useList<MonthReport>("finance/month-reports", { ...state, page });
   const [submit, setSubmit] = useState(false);
@@ -184,31 +186,34 @@ function SubmitModal({ members, self, onClose }: { members: { id: number; name: 
 }
 
 /* ------------------------------------------------------------------ follow-up (Готов) */
-type Tab = "bonus" | "handover" | "warranty" | "site" | "feedback";
+const FOLLOWUP_TABS: { value: FollowupTab; label: string }[] = [
+  { value: "bonus", label: "🎁 Bonuslar" },
+  { value: "handover", label: "💵 Topshiruv" },
+  { value: "warranty", label: "📜 Kafolat" },
+  { value: "site", label: "🌐 Saytga kiritish" },
+  { value: "feedback", label: "💬 Mijoz fikri" },
+];
 
 export function FinanceFollowupPage() {
-  const { state, set } = useUrlState({ tab: "bonus" as Tab });
+  const { can } = useAuth();
+  const { state, set } = useUrlState({ tab: "bonus" as FollowupTab });
+  const tabs = FOLLOWUP_TABS.filter((t) => can(...FOLLOWUP_TAB_PERMS[t.value]));
+  const tab = tabs.some((t) => t.value === state.tab) ? (state.tab as FollowupTab) : tabs[0]?.value;
   return (
     <div>
       <PageHeader title="Готов zakazlar" subtitle="Bonus, rahbarga topshirish, kafolat xati, saytga kiritish va mijoz fikri" />
       <div className="mb-4">
         <Segmented
-          value={state.tab as Tab}
-          onChange={(tab) => set({ tab })}
-          options={[
-            { value: "bonus", label: "🎁 Bonuslar" },
-            { value: "handover", label: "💵 Topshiruv" },
-            { value: "warranty", label: "📜 Kafolat" },
-            { value: "site", label: "🌐 Saytga kiritish" },
-            { value: "feedback", label: "💬 Mijoz fikri" },
-          ]}
+          value={tab}
+          onChange={(next) => set({ tab: next })}
+          options={tabs}
         />
       </div>
-      {state.tab === "bonus" && <BonusTab />}
-      {state.tab === "handover" && <HandoverTab />}
-      {state.tab === "warranty" && <WarrantyTab />}
-      {state.tab === "site" && <SiteTab />}
-      {state.tab === "feedback" && <FeedbackTab />}
+      {tab === "bonus" && <BonusTab />}
+      {tab === "handover" && <HandoverTab />}
+      {tab === "warranty" && <WarrantyTab />}
+      {tab === "site" && <SiteTab />}
+      {tab === "feedback" && <FeedbackTab />}
     </div>
   );
 }
@@ -324,6 +329,8 @@ function UnpaidList({ search }: { search: string }) {
 }
 
 function HandoverTab() {
+  const { can } = useAuth();
+  const canAct = can("accounting.add_operation", "accounting.change_operation", VIEW_ALL);
   const { data, isFetching } = useGet<Operation[]>("/finance/handover/");
   const act = useAction((v: { operation: number; action: "accept" | "drop" }) => api.post("/finance/handover/", v), { success: "Belgilandi", invalidate: ["finance"] });
   return (
@@ -345,14 +352,15 @@ function HandoverTab() {
           {
             key: "x",
             header: "",
-            cell: (r) => (
-              <div className="flex justify-end gap-2">
-                <Button size="sm" onClick={() => act.mutate({ operation: r.id, action: "accept" })}>Qabul qildim</Button>
-                <Button size="sm" variant="outline" onClick={() => confirm("Bu yozuv o'chirilsinmi (alohida kiritilgan)?") && act.mutate({ operation: r.id, action: "drop" })}>
-                  Alohida kiritilgan
-                </Button>
-              </div>
-            ),
+            cell: (r) =>
+              canAct ? (
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" onClick={() => act.mutate({ operation: r.id, action: "accept" })}>Qabul qildim</Button>
+                  <Button size="sm" variant="outline" onClick={() => confirm("Bu yozuv o'chirilsinmi (alohida kiritilgan)?") && act.mutate({ operation: r.id, action: "drop" })}>
+                    Alohida kiritilgan
+                  </Button>
+                </div>
+              ) : null,
           },
         ]}
       />
@@ -361,6 +369,7 @@ function HandoverTab() {
 }
 
 function WarrantyTab() {
+  const { can } = useAuth();
   const { state, page, set } = useUrlState({ given: "0", search: "", date_from: "", date_to: "" });
   const { data, isFetching } = useList<Warranty>("finance/warranty", { ...state, page });
   const give = useAction((id: number) => api.post(`/finance/warranty/${id}/give/`), { success: "Berildi", invalidate: ["finance"] });
@@ -378,7 +387,7 @@ function WarrantyTab() {
           { key: "o", header: "Zakaz", cell: (r) => <span><b>{r.order_ref}</b> · {r.client}</span> },
           { key: "r", header: "Готов", cell: (r) => date(r.ready_date) },
           { key: "g", header: "Holat", cell: (r) => (r.given ? <Badge tone="ok">Berildi · {date(r.given_at)} · {r.given_by}</Badge> : <Badge tone="warn">Berilmagan</Badge>) },
-          { key: "x", header: "", cell: (r) => (!r.given ? <Button size="sm" variant="outline" onClick={() => give.mutate(r.id)}>📜 Berildi</Button> : null) },
+          { key: "x", header: "", cell: (r) => (!r.given && can("accounting.change_warrantyletter") ? <Button size="sm" variant="outline" onClick={() => give.mutate(r.id)}>📜 Berildi</Button> : null) },
         ]}
       />
       <Pagination page={page} count={data?.count ?? 0} onPage={(p) => set({ page: p })} />
@@ -387,6 +396,7 @@ function WarrantyTab() {
 }
 
 function SiteTab() {
+  const { can } = useAuth();
   const { state, page, set } = useUrlState({ done: "0", date_from: "", date_to: "" });
   const { data, isFetching } = useList<SiteEntry>("finance/site-entry", { ...state, page });
   const done = useAction((id: number) => api.post(`/finance/site-entry/${id}/done/`), { success: "Belgilandi", invalidate: ["finance"] });
@@ -405,7 +415,7 @@ function SiteTab() {
           { key: "o", header: "Zakaz", cell: (r) => <span><b>{r.order_ref}</b> · {r.client}</span> },
           { key: "s", header: "Olingan", cell: (r) => `${r.sum_text} (${r.taken_by})` },
           { key: "q", header: "Yangi qoldiq", cell: (r) => r.rest_text },
-          { key: "x", header: "", cell: (r) => (r.is_done ? <span className="muted text-sm">✅ {date(r.done_at)} · {r.done_by}</span> : <Button size="sm" onClick={() => done.mutate(r.id)}>Saytga kiritdim</Button>) },
+          { key: "x", header: "", cell: (r) => (r.is_done ? <span className="muted text-sm">✅ {date(r.done_at)} · {r.done_by}</span> : can("accounting.change_siteentrytask") ? <Button size="sm" onClick={() => done.mutate(r.id)}>Saytga kiritdim</Button> : null) },
         ]}
       />
       <Pagination page={page} count={data?.count ?? 0} onPage={(p) => set({ page: p })} />

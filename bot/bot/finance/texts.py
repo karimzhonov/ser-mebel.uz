@@ -3,6 +3,8 @@ backend's DTO dicts (docs/BOT_CONTRACT.md section 1.2)."""
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from bot.common.fmt import cur_name, ddmm, esc, fmt_cur, money, month_full, num, usd
 from bot.common.kb import reply_kb
 
@@ -177,9 +179,7 @@ def sub_line(
     return order_line(ord_ref, order)
 
 
-def op_card(
-    t: dict, bal=None, order: dict | None = None, workers: list[dict] | None = None
-) -> str:
+def op_card(t: dict, bal=None, order: dict | None = None, workers: list[dict] | None = None) -> str:
     head = "➕ <b>KIRIM</b>" if t["kind"] == OP_INCOME else "➖ <b>CHIQIM</b>"
     cat = t["category"]
     lines = [
@@ -374,11 +374,40 @@ def _debt_order(d: dict) -> str:
     return f"🧾 {esc(ref)}" + (f" {esc(client)}" if client else "")
 
 
+def debt_split(d: dict) -> list[dict]:
+    """The allocations of a debt split over several orders (empty for an ordinary debt)."""
+    als = d.get("allocations") or []
+    return als if len(als) > 1 else []
+
+
+def _debt_orders_short(d: dict, als: list[dict]) -> str:
+    """«🧾 406: 20 · 407: 30 · 408: 50 +2» (3 orders at most)."""
+    cur = d.get("currency") or "UZS"
+    shown = " · ".join(
+        f"{esc(a.get('order_ref'))}: {debt_sum(a.get('amount'), cur)}" for a in als[:3]
+    )
+    more = f" +{len(als) - 3}" if len(als) > 3 else ""
+    return f"🧾 {shown}{more}"
+
+
+def debt_alloc_lines(als: list[dict], cur: str) -> list[str]:
+    """One line per order: «• 406 Nazira — 20 $ (to'langan 4 $)»."""
+    out = []
+    for a in als:
+        client = f" {esc(a['client'])}" if a.get("client") else ""
+        paid = a.get("paid")
+        tail = f" (to'langan {debt_sum(paid, cur)})" if paid and float(paid) > 0 else ""
+        out.append(f"• {esc(a.get('order_ref'))}{client} — {debt_sum(a.get('amount'), cur)}{tail}")
+    return out
+
+
 def debt_line(d: dict) -> str:
     cur = d.get("currency") or "UZS"
+    als = debt_split(d)
+    order = _debt_orders_short(d, als) if als else _debt_order(d)
     return (
         f"{debt_age_icon(d.get('days'), d.get('status', 'open'))} #{d['number']} · {d.get('days', 0)} kun"
-        f" · {esc(d['creditor'])} — {esc(str(d['item'])[:40])} · {_debt_order(d)}"
+        f" · {esc(d['creditor'])} — {esc(str(d['item'])[:40])} · {order}"
         f" · qoldiq {debt_sum(d.get('remaining'), cur)}"
     )
 
@@ -415,12 +444,13 @@ def debt_list_text(res: dict, closed: bool = False, page: int = 0) -> str:
 
 def debt_card(d: dict) -> str:
     cur = d.get("currency") or "UZS"
+    als = debt_split(d)
     lines = [
         f"📕 <b>Qarz #{d['number']}</b>",
         f"🏪 Kimdan: <b>{esc(d['creditor'])}</b>",
         f"📦 Nima olindi: {esc(d['item'])}",
         f"🗂 Kategoriya: {esc(cat_label(d.get('category')))}",
-        _debt_order(d),
+        *(["🧾 Buyurtmalar:", *debt_alloc_lines(als, cur)] if als else [_debt_order(d)]),
         f"📅 Olingan sana: {ddmm(d.get('date'))}",
         f"💰 Summa: <b>{debt_sum(d.get('total'), cur)}</b>",
         f"💸 To'langan: {debt_sum(d.get('paid'), cur)}",
@@ -441,13 +471,76 @@ def debt_card(d: dict) -> str:
             who = (p.get("member") or {}).get("name") or ""
             lines.append(
                 f"• #{p['number']} · {ddmm(p.get('date'))[:5]} · {money_text(p)}"
+                + (f" · 🧾 {esc(p['order_ref'])}" if als and p.get("order_ref") else "")
                 + (f" · {esc(who)}" if who else "")
             )
     return "\n".join(lines)
 
 
+DEBT_ASK_DELETE = "🗑 <b>Qarz o'chirilsinmi?</b>"
+DEBT_NO_DELETE = "ℹ️ Bu qarzni o'chirib bo'lmaydi: unga to'lov yozilgan."
+
+
+def debt_gone(number: int) -> str:
+    return f"❗ Qarz #{number} topilmadi yoki allaqachon o'chirilgan."
+
+
+def debt_deleted(number: int) -> str:
+    return f"🗑 Qarz #{number} o'chirildi."
+
+
+def _dq(v) -> Decimal:
+    return Decimal(str(v or 0)).quantize(Decimal("0.01"))
+
+
+def debt_rem(d: dict) -> Decimal:
+    """What of the draft's total is not yet given to an order (debt's own currency)."""
+    return _dq(d.get("tot")) - sum((_dq(r["a"]) for r in d.get("al") or []), Decimal(0))
+
+
+def debt_draft_rows(d: dict) -> list[str]:
+    cur = d.get("cur") or "UZS"
+    return [
+        f"• {esc(r['r'])}"
+        + (f" {esc(r['c'])}" if r.get("c") else "")
+        + f" — {debt_sum(r['a'], cur)}"
+        for r in d.get("al") or []
+    ]
+
+
+def debt_order_prompt(d: dict) -> str:
+    """The order-picker prompt: the rows entered so far and what is left (split debts)."""
+    text = "🧾 Qaysi buyurtma (mijoz ID) uchun?"
+    if not d.get("al"):
+        return text
+    cur = d.get("cur") or "UZS"
+    return (
+        "\n".join(["🧾 <b>Buyurtmalar:</b>", *debt_draft_rows(d)])
+        + f"\n🧮 Qoldi: <b>{debt_sum(debt_rem(d), cur)}</b>\n\n"
+        + text
+    )
+
+
+def debt_share_prompt(d: dict, last: bool) -> str:
+    cur = d.get("cur") or "UZS"
+    cr = d["cr"]
+    rem = debt_sum(debt_rem(d), cur)
+    head = f"🧾 {esc(cr['r'])}" + (f" · {esc(cr['c'])}" if cr.get("c") else "")
+    if last:
+        return f"{head}\n🧮 Qoldi: <b>{rem}</b>\nOxirgi ID: qoldiq to'liq shu ID ga yoziladi."
+    hint = "masalan: 20$" if cur == "USD" else "masalan: 500000"
+    return f"{head}\n🧮 Qoldi: <b>{rem}</b>\nShu ID ga qancha? Summani yozing ({hint}) yoki tugmani bosing."
+
+
 def debt_draft_card(d: dict) -> str:
-    """The add-flow confirmation (draft keys: creditor, item, preview, cat_label, ord, client)."""
+    """The add-flow confirmation (draft keys: creditor, item, preview, cat_label, al | ord, client)."""
+    rows = d.get("al")
+    if rows and len(rows) > 1:
+        order = "\n".join(["🧾 Buyurtmalar:", *debt_draft_rows(d)])
+    elif rows:
+        order = _debt_order({"order_ref": rows[0]["r"], "client": rows[0].get("c")})
+    else:
+        order = _debt_order({"order_ref": d["ord"], "client": d.get("client")})
     return "\n".join(
         [
             "📕 <b>Yangi qarz</b>",
@@ -455,7 +548,7 @@ def debt_draft_card(d: dict) -> str:
             f"📦 Nima olindi: {esc(d['item'])}",
             f"💰 Summa: <b>{esc(d['preview'])}</b>",
             f"🗂 Kategoriya: {esc(d['cat_label'])}",
-            _debt_order({"order_ref": d["ord"], "client": d.get("client")}),
+            order,
             "",
             "To'lov keyinroq o'z hamyoningizdan, shu buyurtma chiqimiga yoziladi.",
         ]
@@ -471,3 +564,41 @@ def debt_pay_card(d: dict) -> str:
             "👛 Hamyon: sizniki",
         ]
     )
+
+
+def _op_sum(op: dict) -> str:
+    if op.get("currency") == "USD":
+        return debt_sum(op.get("orig_amount"), "USD")
+    return money(op.get("amount"))
+
+
+def debt_paid_text(deb: dict, ops: list[dict]) -> str:
+    """The answer to a payment. One op of an ordinary debt keeps the old wording."""
+    cur = deb.get("currency") or "UZS"
+    closed = deb.get("status") == "closed"
+    if len(ops) == 1 and not debt_split(deb):
+        op = ops[0]
+        if closed:
+            return (
+                f"✅ Qarz #{deb['number']} to'liq yopildi ({deb.get('days', 0)} kun)"
+                f"\n💸 Chiqim #{op['number']}"
+            )
+        return (
+            f"✅ To'landi — chiqim #{op['number']}.\n"
+            f"🧮 Qoldiq: <b>{esc(debt_sum(deb.get('remaining'), cur))}</b>"
+        )
+    lines = [
+        f"#{op['number']}"
+        + (f" · 🧾 {esc(op['order_ref'])}" if op.get("order_ref") else "")
+        + f" · {_op_sum(op)}"
+        for op in ops
+    ]
+    head = (
+        f"✅ Qarz #{deb['number']} to'liq yopildi ({deb.get('days', 0)} kun)"
+        if closed
+        else "✅ To'landi"
+    )
+    out = [head, "💸 Chiqimlar:", *lines]
+    if not closed:
+        out.append(f"🧮 Qoldiq: <b>{esc(debt_sum(deb.get('remaining'), cur))}</b>")
+    return "\n".join(out)

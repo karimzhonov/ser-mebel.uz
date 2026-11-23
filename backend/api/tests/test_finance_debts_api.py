@@ -10,8 +10,8 @@ from accounting.models import Debt
 pytestmark = pytest.mark.django_db
 
 URL = "/api/v1/finance/debts/"
-VIEW, ADD = "accounting.view_operation", "accounting.add_operation"
-CHANGE, DELETE = "accounting.change_operation", "accounting.delete_operation"
+VIEW, ADD = "accounting.view_debt", "accounting.add_debt"
+CHANGE, DELETE = "accounting.change_debt", "accounting.delete_debt"
 ALL = "accounting.view_all_operations"
 BODY = {
     "creditor": "X",
@@ -203,7 +203,7 @@ def test_operations_list_exposes_debt_number(site_order, members, api):
     _, ali, _ = members
     d = mk()
     _, op = S.pay_debt(d, payer=ali, amount=10)
-    c = api(VIEW, ALL)
+    c = api("accounting.view_operation", ALL)
     rows = c.get("/api/v1/finance/operations/").json()
     rows = rows["results"] if isinstance(rows, dict) else rows
     mine = [r for r in rows if r["number"] == op.number]
@@ -212,7 +212,7 @@ def test_operations_list_exposes_debt_number(site_order, members, api):
 
 def test_order_detail_includes_debts(site_order, members, api):
     d = mk()
-    c = api(VIEW, ALL)
+    c = api(VIEW, "accounting.view_finance_orders", ALL)
     r = c.get("/api/v1/finance/orders/406/")
     assert r.status_code == 200, r.content
     debts = r.json()["debts"]

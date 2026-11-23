@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { api, fieldErrors } from "@/api/client";
 import type { Tone } from "@/api/types";
 import { useAction, useAll, useGet } from "@/api/hooks";
+import { useAuth } from "@/auth/AuthContext";
 import { Badge, Button, Field, Input, Modal, Segmented, Select, Spinner, Textarea } from "@/components/ui";
 import { iso } from "@/components/DateRangeFilter";
-import type { Car, FinCategory, FinMe, Member, Operation, Worker } from "./types";
+import { FIN_OPTIONS_PERMS, ORDER_OPTIONS_PERMS } from "./access";
+import type { FinCategory, FinMe, FinOptions, Member, Operation } from "./types";
 
 const nf = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 const nf2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -34,6 +36,12 @@ export function useMembers(params: Record<string, unknown> = {}, enabled = true)
 
 export function useCategories() {
   return useAll<FinCategory>("finance/categories");
+}
+
+/** Lists for the finance forms; never asked for without a right the endpoint accepts. */
+export function useFinOptions() {
+  const { canAny } = useAuth();
+  return useGet<FinOptions>(canAny(...FIN_OPTIONS_PERMS) ? "/finance/options/" : null);
 }
 
 export function CatLabel({ c }: { c?: Pick<FinCategory, "emoji" | "name" | "color"> | null }) {
@@ -124,12 +132,14 @@ export function OperationModal({
   onDebt?: () => void;
   onClose: () => void;
 }) {
+  const { canAny } = useAuth();
   const { data: me } = useFinMe();
-  const { data: members } = useMembers({}, !!me?.view_all);
-  const { data: cats } = useCategories();
-  const { data: workers } = useAll<Worker>("finance/workers");
-  const { data: cars } = useAll<Car>("finance/cars");
-  const { data: usdRate } = useGet<{ usd_rate_effective: number }>("/finance/settings/");
+  const { data: options } = useFinOptions();
+  const members = options?.members;
+  const cats = options?.categories;
+  const workers = options?.workers;
+  const cars = options?.cars;
+  const usdRate = options?.usd_rate;
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [f, setF] = useState<OpForm>(() =>
     op
@@ -166,7 +176,7 @@ export function OperationModal({
     if (!f.member && me?.member) setF((x) => ({ ...x, member: String(me.member!.id) }));
   }, [me, f.member]);
   useEffect(() => {
-    if (f.currency === "USD" && !f.rate && usdRate?.usd_rate_effective) setF((x) => ({ ...x, rate: String(usdRate.usd_rate_effective) }));
+    if (f.currency === "USD" && !f.rate && usdRate) setF((x) => ({ ...x, rate: String(usdRate) }));
   }, [f.currency, f.rate, usdRate]);
 
   const cat = cats?.find((c) => c.code === f.category_code);
@@ -176,7 +186,7 @@ export function OperationModal({
   );
   const needsOrder = !(f.kind === "expense" && (cat?.no_order || f.category_code === "oylik"));
   const bucket = f.kind === "income" ? (f.category_code === "qoldiq" ? "kutish,yakun" : "yangi,jarayonda,kutish,yakun") : f.category_code === "material" ? "jarayonda,yangi" : "jarayonda";
-  const { data: orderOpts } = useGet<{ ref: string; client: string; bucket: string }[]>(needsOrder ? "/finance/order-options/" : null, { bucket });
+  const { data: orderOpts } = useGet<{ ref: string; client: string; bucket: string }[]>(needsOrder && canAny(...ORDER_OPTIONS_PERMS) ? "/finance/order-options/" : null, { bucket });
 
   const save = useAction(
     async () => {
@@ -200,6 +210,7 @@ export function OperationModal({
   const set = (patch: Partial<OpForm>) => setF((x) => ({ ...x, ...patch }));
   const total = f.currency === "USD" ? Number(f.orig_amount || 0) * Number(f.rate || 0) : Number(f.amount || 0);
   const bossSalary = !!workers?.some((w) => w.is_boss && w.name.trim().toLowerCase() === f.worker.trim().toLowerCase());
+  const walletOptions: { id: number; name: string }[] = me?.view_all ? (members ?? []).filter((m) => m.has_wallet || String(m.id) === f.member) : me?.member ? [me.member] : [];
   const workerOptions = f.category_code === "zapravka" ? (cars ?? []).filter((c) => c.is_active).map((c) => c.name) : (workers ?? []).filter((w) => w.is_active).map((w) => w.name);
 
   return (
@@ -229,7 +240,7 @@ export function OperationModal({
           <Field label="Hamyon (xodim)" error={errors.member}>
             <Select value={f.member} onChange={(e) => set({ member: e.target.value })} disabled={!me?.view_all}>
               <option value="">— tanlang —</option>
-              {(me?.view_all ? members?.filter((m) => m.has_wallet || String(m.id) === f.member) : me?.member ? [me.member] : [])?.map((m) => (
+              {walletOptions.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
                 </option>
@@ -313,7 +324,8 @@ export function OperationModal({
 
 export function TransferModal({ onClose, defaultSender }: { onClose: () => void; defaultSender?: number | null }) {
   const { data: me } = useFinMe();
-  const { data: members } = useMembers({}, !!me?.view_all);
+  const { data: options } = useFinOptions();
+  const members = options?.members;
   const wallets = me?.view_all ? (members ?? []).filter((m) => m.has_wallet) : [];
   const [f, setF] = useState({ sender: defaultSender ? String(defaultSender) : me?.member ? String(me.member.id) : "", receiver: "", amount: "", comment: "" });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -321,7 +333,7 @@ export function TransferModal({ onClose, defaultSender }: { onClose: () => void;
     () => api.post("/finance/operations/transfer/", { sender: Number(f.sender), receiver: Number(f.receiver), amount: f.amount, comment: f.comment }),
     { success: "O'tkazildi", invalidate: ["finance"], onSuccess: onClose },
   );
-  const list = me?.view_all ? wallets : me?.member ? [me.member] : [];
+  const list: { id: number; name: string }[] = me?.view_all ? wallets : me?.member ? [me.member] : [];
   return (
     <Modal
       open

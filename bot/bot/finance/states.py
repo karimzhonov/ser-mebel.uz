@@ -71,6 +71,7 @@ class Debt(StatesGroup):
     category = State()
     order = State()
     ord_text = State()
+    share = State()
     confirm = State()
     pay_amount = State()
     pay_confirm = State()
@@ -113,6 +114,7 @@ STEP_STATE = {
     "qz_cat": Debt.category,
     "qz_order": Debt.order,
     "qz_ord_text": Debt.ord_text,
+    "qz_share": Debt.share,
     "qz_confirm": Debt.confirm,
     "qz_pay_amount": Debt.pay_amount,
     "qz_pay_confirm": Debt.pay_confirm,

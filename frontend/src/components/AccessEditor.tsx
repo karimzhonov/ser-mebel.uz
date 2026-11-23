@@ -6,6 +6,8 @@ import { Button, Empty, PageLoader, Switch } from "./ui";
 
 const LEVEL_LABEL: Record<string, string> = { none: "Yo'q", view: "Ko'rish", edit: "O'zgartirish", custom: "Qo'lda sozlangan" };
 const FLAGS_TITLE = "Vazifalar (bot)";
+/** Moliya switches stay with the Moliya pages, they are not bot duties. */
+const inOwnGroup = (s: AccessSection) => !s.is_flag || s.title === "Moliya";
 
 /** Per-section access as switches («Ko'rish» / «O'zgartirish») and one switch per task flag.
  * The same editor for a person (`/users/{id}/access/`) and a lavozim (`/groups/{id}/access/`):
@@ -32,8 +34,8 @@ export function AccessEditor({ path, subject, invalidate, onSaved }: { path: str
       else next[s.key] = v;
       return next;
     });
-  const sections = data.sections.filter((s) => !s.is_flag);
-  const flags = data.sections.filter((s) => s.is_flag);
+  const sections = data.sections.filter(inOwnGroup);
+  const flags = data.sections.filter((s) => !inOwnGroup(s));
   const titles = [...new Set(sections.map((s) => s.title))];
   const groups: { title: string; rows: AccessSection[] }[] = [
     ...titles.map((title) => ({ title, rows: sections.filter((s) => s.title === title) })),
