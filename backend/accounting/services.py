@@ -805,10 +805,14 @@ def update_operation(
                 raise ServiceError("To'lov sanasi qarz olingan sanadan oldin bo'lishi mumkin emas.")
             if "order_ref" in data:
                 data = {**data, "order_ref": _resolve_order(data["order_ref"])[0]}
-            if any(k in data and data[k] != v for k, v in current.items()):
+            # owner's rule: a debt is paid from the payer's own wallet, an edit can't move it
+            moved = "member" in data and getattr(data["member"], "pk", data["member"]) != (
+                op.member_id
+            )
+            if moved or any(k in data and data[k] != v for k, v in current.items()):
                 raise ServiceError(
-                    "Bu qarz to'lovi — turi, kategoriyasi, valyutasi va buyurtmasi o'zgarmaydi; "
-                    "o'chirib qaytadan to'lang."
+                    "Bu qarz to'lovi — hamyoni, turi, kategoriyasi, valyutasi va buyurtmasi "
+                    "o'zgarmaydi; o'chirib qaytadan to'lang."
                 )
         pair = _pair_of(op)
         if pair or op.category.kind == CategoryKind.INTERNAL:
@@ -2642,10 +2646,9 @@ def pay_debt_legs(
         rem = debt_numbers(debt)["remaining"]
         if sum(rem_by.values(), ZERO) != rem:
             raise ServiceError("Qarz to'lovlari buyurtma ulushlariga mos kelmaydi.")
-        if split and debt.category.no_order:
-            raise ServiceError(
-                "Bu kategoriya endi buyurtmasiz — bo'lingan qarzni to'lab bo'lmaydi."
-            )
+        # such a payment would leave the wallet without reaching the client's expenses
+        if debt.category.no_order:
+            raise ServiceError("Bu kategoriya endi buyurtmasiz — qarzni to'lab bo'lmaydi.")
         chosen = None
         if alloc_id is not None:
             chosen = next((a for a in allocs if a.pk == alloc_id), None)
