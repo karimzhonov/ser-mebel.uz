@@ -17,7 +17,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
 import requests
 from constance import config
@@ -25,7 +25,7 @@ from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Min, Q, Sum
+from django.db.models import Exists, Max, Min, OuterRef, Q, Sum
 
 from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden, ServiceNotFound
 from core.geo import obj_map_url
@@ -51,6 +51,7 @@ from .constants import (
 from .models import (
     ClientFeedback,
     Debt,
+    DebtAllocation,
     FinanceCategory,
     FinanceJobRun,
     ManualOrder,
@@ -586,6 +587,7 @@ def create_operation(
     actor_admin: bool = False,
     internal: bool = False,
     debt: Debt | None = None,
+    debt_allocation: DebtAllocation | None = None,
 ) -> Operation:
     """addTx_: one row in a member's wallet.
 
@@ -645,6 +647,7 @@ def create_operation(
                     pay_type=pay_type,
                     source=source,
                     debt=debt,
+                    debt_allocation=debt_allocation,
                 )
         except IntegrityError:
             if number:
@@ -1714,7 +1717,15 @@ def checks() -> list[dict]:
         if t.kind == OpKind.EXPENSE:
             seen.setdefault((t.member_id, t.date, t.amount, t.category_id), []).append(t)
     for g in seen.values():
-        if len(g) > 1:
+        # equal legs of ONE debt on distinct order shares (a split debt paid with
+        # «Hammasi») are not a double entry; anything else still is
+        legs_of_one_debt = (
+            len({t.debt_id for t in g}) == 1
+            and g[0].debt_id is not None
+            and all(t.debt_allocation_id for t in g)
+            and len({t.debt_allocation_id for t in g}) == len(g)
+        )
+        if len(g) > 1 and not legs_of_one_debt:
             add(
                 "m",
                 f"{g[0].member.name}: bir xil yozuv {len(g)} marta",
@@ -2288,11 +2299,15 @@ def debts_qs(status: str = "open", owner: TelegramMember | None = None):
     """Live debts with paid_uzs / paid_usd annotated (no N+1 on the paid sum).
 
     owner: owner's rule — a staff member sees (and pays) only the debts he wrote
-    himself; None = everything (the boss / finance admins)."""
+    himself; None = everything (the boss / finance admins).
+
+    Never join `allocations` in a filter on this queryset: it would multiply the Sum()
+    annotations. Filter on an order with `debts_with_order()` (an Exists)."""
     live = Q(payments__is_deleted=False)
     qs = (
         Debt.objects.filter(is_deleted=False)
         .select_related("category", "created_by", "site_user")
+        .prefetch_related("allocations")
         .annotate(
             paid_uzs=Sum("payments__amount", filter=live),
             paid_usd=Sum("payments__orig_amount", filter=live),
@@ -2316,7 +2331,7 @@ def debt_paid_annotated(debt: Debt) -> Decimal:
 def debt_stats(owner: TelegramMember | None = None) -> dict:
     """{open_count, open_uzs, open_usd}: what is still owed across open debts."""
     out = {"open_count": 0, "open_uzs": ZERO, "open_usd": ZERO}
-    for d in debts_qs("open", owner):
+    for d in debts_qs("open", owner).prefetch_related(None):
         rem = debt_numbers(d, debt_paid_annotated(d))["remaining"]
         out["open_count"] += 1
         out["open_usd" if d.currency == "USD" else "open_uzs"] += rem
@@ -2355,12 +2370,134 @@ def _debt_money(
     return amount, None, None
 
 
+MAX_DEBT_ALLOCATIONS = 10
+
+
+def debt_order_q(ref: str, *, contains: bool = False) -> Q:
+    """The debt is on order `ref`: through its own (first-allocation) `order_ref`, which
+    also finds old debts without allocation rows, or through ANY allocation row (an
+    Exists, never a join: a join would multiply the paid Sum() annotations of
+    debts_qs(); the OR keeps a debt listed once)."""
+    lookup = {"order_ref__icontains": ref} if contains else {"order_ref": ref}
+    return Q(**lookup) | Q(Exists(DebtAllocation.objects.filter(debt=OuterRef("pk"), **lookup)))
+
+
+def debts_with_order(qs, ref: str, *, contains: bool = False):
+    return qs.filter(debt_order_q(ref, contains=contains))
+
+
+def _alloc_amount(value) -> Decimal:
+    if value is None or isinstance(value, (bool, list, dict)) or str(value).strip() == "":
+        raise ServiceError("Ulush summasi noto'g'ri.", "allocations")
+    try:
+        d = value if isinstance(value, Decimal) else Decimal(str(value).strip())
+    except (InvalidOperation, ValueError):
+        raise ServiceError("Ulush summasi noto'g'ri.", "allocations")
+    if not d.is_finite() or d <= 0 or d >= Decimal(10) ** 13:
+        raise ServiceError("Ulush summasi 0 dan katta bo'lishi kerak.", "allocations")
+    return q2(d)
+
+
+def _clean_debt_allocations(raw, total, currency: str) -> list[dict]:
+    """[{ref, order, amount}] from the entered shares. Malformed input is always a
+    ServiceError(field="allocations") (the bot view has no serializer in front)."""
+    if not isinstance(raw, (list, tuple)) or not raw:
+        raise ServiceError("Kamida bitta buyurtma kerak.", "allocations")
+    if len(raw) > MAX_DEBT_ALLOCATIONS:
+        raise ServiceError(
+            f"Bir qarz ko'pi bilan {MAX_DEBT_ALLOCATIONS} ta buyurtmaga bo'linadi.", "allocations"
+        )
+    seen: set[str] = set()
+    out: list[dict] = []
+    for row in raw:
+        if not isinstance(row, dict):
+            raise ServiceError("Ulush qatori noto'g'ri.", "allocations")
+        ref = row.get("ref")
+        if ref is None or isinstance(ref, (bool, list, dict)) or not str(ref).strip():
+            raise ServiceError("Buyurtma ID yozilmagan.", "allocations")
+        ref = str(ref).strip()
+        if len(ref) > 32:
+            raise ServiceError(f"Buyurtma topilmadi: {ref[:32]}", "allocations")
+        info = order_info(ref)
+        if info is None:
+            raise ServiceError(f"Buyurtma topilmadi: {ref}", "allocations")
+        canonical, order = _resolve_order(info.ref)
+        if canonical in seen:
+            raise ServiceError(f"{canonical} buyurtmasi ikki marta yozilgan.", "allocations")
+        seen.add(canonical)
+        out.append({"ref": canonical, "order": order, "amount": _alloc_amount(row.get("amount"))})
+    total = q2(total)
+    if sum((r["amount"] for r in out), ZERO) != total:
+        raise ServiceError(
+            f"Ulushlar yig'indisi qarz summasiga ({fmt_cur(total, currency)}) teng bo'lishi kerak.",
+            "allocations",
+        )
+    return out
+
+
+def _debt_total_in(currency: str, so_m, orig):
+    return orig if currency == "USD" and orig is not None else so_m
+
+
+def _sync_allocations(debt: Debt, rows: list[dict]) -> None:
+    """Make the debt's allocation rows equal `rows` (keeps rows whose ref is unchanged so
+    their payments stay linked) and mirror the first row onto Debt.order_ref / order."""
+    existing = {a.order_ref: a for a in debt.allocations.all()}
+    keep = set()
+    for r in rows:
+        a = existing.get(r["ref"])
+        if a:
+            if a.amount != r["amount"] or a.order_id != (r["order"].pk if r["order"] else None):
+                a.amount, a.order = r["amount"], r["order"]
+                a.save(update_fields=["amount", "order"])
+            keep.add(a.pk)
+        else:
+            a = DebtAllocation.objects.create(
+                debt=debt, order=r["order"], order_ref=r["ref"], amount=r["amount"]
+            )
+            keep.add(a.pk)
+    debt.allocations.exclude(pk__in=keep).delete()
+    first = debt.allocations.order_by("id").first()
+    debt.order_ref, debt.order = (first.order_ref, first.order) if first else ("", None)
+    debt.save(update_fields=["order_ref", "order", "updated_at"])
+
+
+def _debt_allocations(debt: Debt) -> list[DebtAllocation]:
+    """The debt's allocations in row order; a debt written before the split feature
+    (no rows yet) gets its single row on first use. A debt with a non-positive sum can't
+    have one (amount > 0): it has no rows and nothing is payable on it."""
+    allocs = list(debt.allocations.all())
+    if not allocs and D(debt.total_cur) > 0:
+        allocs = [
+            DebtAllocation.objects.create(
+                debt=debt,
+                order=debt.order,
+                order_ref=debt.order_ref,
+                amount=debt.total_cur,
+            )
+        ]
+    return allocs
+
+
+def debt_allocation_paid(debt: Debt) -> dict:
+    """{allocation_id (or None): live paid sum in the debt's currency}."""
+    field_name = "orig_amount" if debt.currency == "USD" else "amount"
+    rows = (
+        debt.payments.filter(is_deleted=False)
+        .order_by()
+        .values("debt_allocation_id")
+        .annotate(s=Sum(field_name))
+    )
+    return {r["debt_allocation_id"]: D(r["s"]) for r in rows}
+
+
 def create_debt(
     *,
     creditor: str,
     item: str,
     category_code: str,
-    order_ref: str,
+    order_ref: str = "",
+    allocations=None,
     currency: str = "UZS",
     amount=None,
     orig_amount=None,
@@ -2371,7 +2508,9 @@ def create_debt(
     source: str = "bot",
     actor_admin: bool = False,
 ) -> Debt:
-    """A new debt (something taken on credit for a client's order). Books no money."""
+    """A new debt (something taken on credit for a client's order, or split over several
+    orders: `allocations=[{ref, amount}]`, shares in the debt's currency summing to the
+    total). Exactly one of `order_ref` / `allocations`. Books no money."""
     creditor = _debt_text(creditor, 255, "Kimdan olinganini yozing")
     item = _debt_text(item, 500, "Nima olinganini yozing")
     on_date = _debt_date(on_date)
@@ -2379,15 +2518,23 @@ def create_debt(
         raise ServiceError("Noto'g'ri valyuta.")
     cat = category(category_code)
     _check_debt_category(cat, actor_admin)
-    info = order_info(order_ref)
-    if info is None:
-        raise ServiceError("Buyurtma topilmadi.", "order_ref")
-    ref, order = _resolve_order(info.ref)
+    has_ref = bool(str(order_ref or "").strip())
+    if allocations is not None and has_ref:
+        raise ServiceError("order_ref yoki allocations — ikkalasi birga emas.", "allocations")
     so_m, orig, rate = _debt_money(currency, amount, orig_amount)
+    total = _debt_total_in(currency, so_m, orig)
+    if allocations is None:
+        info = order_info(order_ref)
+        if info is None:
+            raise ServiceError("Buyurtma topilmadi.", "order_ref")
+        ref, order = _resolve_order(info.ref)
+        rows = [{"ref": ref, "order": order, "amount": q2(total)}]
+    else:
+        rows = _clean_debt_allocations(allocations, total, currency)
     for _ in range(5):
         try:
             with transaction.atomic():
-                return Debt.objects.create(
+                debt = Debt.objects.create(
                     number=_next_number(Debt),
                     date=on_date,
                     creditor=creditor,
@@ -2397,13 +2544,18 @@ def create_debt(
                     orig_amount=orig,
                     rate=rate,
                     category=cat,
-                    order=order,
-                    order_ref=ref,
+                    order=rows[0]["order"],
+                    order_ref=rows[0]["ref"],
                     comment=(comment or "")[:2000],
                     created_by=created_by,
                     site_user=site_user,
                     source=source,
                 )
+                for r in rows:
+                    DebtAllocation.objects.create(
+                        debt=debt, order=r["order"], order_ref=r["ref"], amount=r["amount"]
+                    )
+                return debt
         except IntegrityError:
             continue
     raise ServiceError("Qarzni saqlab bo'lmadi, qayta urinib ko'ring.")
@@ -2411,7 +2563,8 @@ def create_debt(
 
 def refresh_debt(debt_id: int) -> Debt:
     """Recompute status / closed_at from the live payments. Raises (rolling the caller's
-    transaction back) if the payments exceed the debt."""
+    transaction back) if the payments exceed the debt, a live payment is not tied to an
+    order's share any more, or an order's share is overpaid."""
     with transaction.atomic():
         debt = Debt.objects.select_for_update().get(pk=debt_id)
         if debt.is_deleted:
@@ -2420,6 +2573,20 @@ def refresh_debt(debt_id: int) -> Debt:
         total = D(debt.total_cur)
         if paid > total:
             raise ServiceError("To'lovlar qarz summasidan oshib ketadi.")
+        allocs = list(debt.allocations.all())
+        if allocs:
+            by_alloc = debt_allocation_paid(debt)
+            if by_alloc.get(None):
+                raise ServiceError(
+                    "To'lov buyurtma ulushiga bog'lanmagan (ulush o'chirilgan) — "
+                    "tiklab bo'lmaydi."
+                )
+            for a in allocs:
+                if by_alloc.get(a.pk, ZERO) > a.amount:
+                    raise ServiceError(
+                        f"{a.order_ref} buyurtma ulushidan ({fmt_cur(a.amount, debt.currency)}) "
+                        "ko'p to'lab bo'lmaydi."
+                    )
         if paid >= total:
             last = debt.payments.filter(is_deleted=False).aggregate(m=Max("date"))["m"]
             debt.status, debt.closed_at = "closed", last or today()
@@ -2429,19 +2596,35 @@ def refresh_debt(debt_id: int) -> Debt:
     return debt
 
 
-def pay_debt(
+def _allocation_id(value) -> int | None:
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return None
+    if isinstance(value, bool) or not str(value).strip().isdigit():
+        raise ServiceError("Buyurtma ulushi noto'g'ri.", "allocation")
+    return int(str(value).strip())
+
+
+def pay_debt_legs(
     debt: Debt,
     *,
     payer: TelegramMember,
+    allocation=None,
     amount=None,
     on_date: date | None = None,
     author: TelegramMember | None = None,
     site_user: User | None = None,
     source: str = "bot",
     actor_admin: bool = False,
-) -> tuple[Debt, Operation]:
-    """One payment = one expense in the payer's wallet, in the debt's category and on its
-    order. `amount` is in the debt's currency; None pays the whole remainder."""
+) -> tuple[Debt, list[Operation]]:
+    """Payments of a debt: every payment is one expense in the payer's wallet, in the
+    debt's category and on ONE order's share (DebtAllocation). `amount` is in the debt's
+    currency, None = the whole remainder (of the chosen share, or of the debt).
+
+    Split debt (more than one order): `allocation` + amount = that share partly;
+    `allocation` alone = its whole remainder; neither = the whole debt remainder, one
+    operation per unpaid share (atomic); amount without `allocation` = refused (the payer
+    must choose the order). A single-order debt behaves as it always did."""
+    alloc_id = _allocation_id(allocation)
     with transaction.atomic():
         debt = Debt.objects.select_for_update().select_related("category").get(pk=debt.pk)
         if debt.is_deleted:
@@ -2450,42 +2633,85 @@ def pay_debt(
             raise ServiceConflict("Qarz allaqachon to'langan.")
         if not payer.has_wallet:
             raise ServiceError("Sizning hamyoningiz yo'q.")
-        rem = debt_numbers(debt)["remaining"]
-        amt = rem if amount is None else q2(amount)
-        if amt <= 0:
+        allocs = _debt_allocations(debt)
+        if not allocs:
             raise ServiceError("Summa 0 dan katta bo'lishi kerak.")
-        if amt > rem:
-            raise ServiceError(f"Qoldiqdan ({fmt_cur(rem, debt.currency)}) ko'p to'lab bo'lmaydi.")
+        split = len(allocs) > 1
+        paid_by = debt_allocation_paid(debt)
+        rem_by = {a.pk: max(a.amount - paid_by.get(a.pk, ZERO), ZERO) for a in allocs}
+        rem = debt_numbers(debt)["remaining"]
+        if sum(rem_by.values(), ZERO) != rem:
+            raise ServiceError("Qarz to'lovlari buyurtma ulushlariga mos kelmaydi.")
+        if split and debt.category.no_order:
+            raise ServiceError(
+                "Bu kategoriya endi buyurtmasiz — bo'lingan qarzni to'lab bo'lmaydi."
+            )
+        chosen = None
+        if alloc_id is not None:
+            chosen = next((a for a in allocs if a.pk == alloc_id), None)
+            if chosen is None:
+                raise ServiceError("Bu buyurtma bu qarzga tegishli emas.", "allocation")
+            if rem_by[chosen.pk] <= 0:
+                raise ServiceError(f"{chosen.order_ref} ulushi allaqachon to'langan.", "allocation")
+        if amount is not None and q2(amount) <= 0:
+            raise ServiceError("Summa 0 dan katta bo'lishi kerak.")
+        if split and chosen is None:
+            if amount is not None:
+                raise ServiceError("Buyurtmani tanlang.", "allocation")
+            plan = [(a, rem_by[a.pk]) for a in allocs if rem_by[a.pk] > 0]
+        else:
+            target = chosen or allocs[0]
+            limit = rem_by[target.pk] if split else rem
+            amt = limit if amount is None else q2(amount)
+            if amt > limit:
+                raise ServiceError(
+                    f"Qoldiqdan ({fmt_cur(limit, debt.currency)}) ko'p to'lab bo'lmaydi."
+                )
+            plan = [(target, amt)]
         on_date = on_date or today()
         if on_date < debt.date:
             raise ServiceError("To'lov sanasi qarz olingan sanadan oldin bo'lishi mumkin emas.")
+        rate = None
         if debt.currency == "USD":
             rate = usd_rate()
             if not rate:
                 raise ServiceError("Dollar kursi topilmadi.")
-            so_m, orig = q2(round(amt * rate)), amt
-        else:
-            rate, so_m, orig = None, amt, None
-        op = create_operation(
-            member=payer,
-            author=author,
-            kind=OpKind.EXPENSE,
-            amount=so_m,
-            category_code=debt.category.code,
-            currency=debt.currency,
-            orig_amount=orig,
-            rate=rate,
-            order_ref=debt.order_ref,
-            comment=f"📕 Qarz #{debt.number}: {debt.item} — {debt.creditor}"[:2000],
-            source=source,
-            site_user=site_user,
-            on_date=on_date,
-            actor_admin=actor_admin,
-            internal=False,
-            debt=debt,
-        )
+        ops = []
+        for a, amt in plan:
+            if debt.currency == "USD":
+                so_m, orig = q2(round(amt * rate)), amt
+            else:
+                so_m, orig = amt, None
+            tag = f" ({a.order_ref})" if split else ""
+            ops.append(
+                create_operation(
+                    member=payer,
+                    author=author,
+                    kind=OpKind.EXPENSE,
+                    amount=so_m,
+                    category_code=debt.category.code,
+                    currency=debt.currency,
+                    orig_amount=orig,
+                    rate=rate,
+                    order_ref=a.order_ref,
+                    comment=f"📕 Qarz #{debt.number}{tag}: {debt.item} — {debt.creditor}"[:2000],
+                    source=source,
+                    site_user=site_user,
+                    on_date=on_date,
+                    actor_admin=actor_admin,
+                    internal=False,
+                    debt=debt,
+                    debt_allocation=a,
+                )
+            )
         debt = refresh_debt(debt.pk)
-    return debt, op
+    return debt, ops
+
+
+def pay_debt(debt: Debt, **kwargs) -> tuple[Debt, Operation]:
+    """pay_debt_legs() for callers that expect one operation (the first)."""
+    debt, ops = pay_debt_legs(debt, **kwargs)
+    return debt, ops[0]
 
 
 def can_modify_debt(member: TelegramMember | None, debt: Debt | None, admin: bool) -> bool:
@@ -2502,7 +2728,11 @@ def can_modify_debt(member: TelegramMember | None, debt: Debt | None, admin: boo
 
 def update_debt(debt: Debt, data: dict, *, actor_admin: bool = False) -> Debt:
     """Site edit. Category and order are frozen once a payment exists (they would stop
-    matching the booked expenses); the new total can't go under what is paid."""
+    matching the booked expenses); the new total can't go under what is paid.
+
+    `allocations` replaces the order shares while nothing is paid; once a payment exists
+    a split debt's shares and total are frozen (an identical payload is a no-op). A
+    split debt can't be edited through `order_ref` or a changed total alone."""
     allowed = {
         "creditor",
         "item",
@@ -2510,6 +2740,7 @@ def update_debt(debt: Debt, data: dict, *, actor_admin: bool = False) -> Debt:
         "date",
         "category_code",
         "order_ref",
+        "allocations",
         "amount",
         "orig_amount",
     }
@@ -2521,6 +2752,16 @@ def update_debt(debt: Debt, data: dict, *, actor_admin: bool = False) -> Debt:
         if debt.is_deleted:
             raise ServiceError("Qarz topilmadi.")
         has_payments = debt.payments.filter(is_deleted=False).exists()
+        allocs = _debt_allocations(debt)
+        split = len(allocs) > 1
+        new_allocs = data.get("allocations")
+        if new_allocs is not None and str(data.get("order_ref") or "").strip():
+            raise ServiceError("order_ref yoki allocations — ikkalasi birga emas.", "allocations")
+        if split and new_allocs is None and "order_ref" in data:
+            raise ServiceError(
+                "Qarz bir necha buyurtmaga bo'lingan — ulushlarni (allocations) yuboring.",
+                "order_ref",
+            )
         if "creditor" in data:
             debt.creditor = _debt_text(data["creditor"], 255, "Kimdan olinganini yozing")
         if "item" in data:
@@ -2539,20 +2780,55 @@ def update_debt(debt: Debt, data: dict, *, actor_admin: bool = False) -> Debt:
             cat = category(data["category_code"])
             _check_debt_category(cat, actor_admin)
             debt.category = cat
-        if "order_ref" in data and _resolve_order(data["order_ref"])[0] != debt.order_ref:
-            if has_payments:
-                raise ServiceError("To'lov bor — buyurtmani o'zgartirib bo'lmaydi.")
-            info = order_info(data["order_ref"])
-            if info is None:
-                raise ServiceError("Buyurtma topilmadi.", "order_ref")
-            debt.order_ref, debt.order = _resolve_order(info.ref)
+        old_total = D(debt.total_cur)
+        new_total = old_total
         if "amount" in data or "orig_amount" in data:
-            debt.amount, debt.orig_amount, debt.rate = _debt_money(
+            so_m, orig, rate = _debt_money(
                 debt.currency,
                 data.get("amount", debt.amount),
                 data.get("orig_amount", debt.orig_amount),
             )
+            new_total = D(_debt_total_in(debt.currency, so_m, orig))
+            if split and new_allocs is None and new_total != old_total:
+                raise ServiceError(
+                    "Qarz bir necha buyurtmaga bo'lingan — summani o'zgartirsangiz, "
+                    "ulushlarni (allocations) ham yuboring.",
+                    "allocations",
+                )
+            if not (split and new_allocs is None):
+                debt.amount, debt.orig_amount, debt.rate = so_m, orig, rate
+        rows = None
+        if new_allocs is not None:
+            rows = _clean_debt_allocations(new_allocs, new_total, debt.currency)
+            if has_payments:
+                same = new_total == old_total and {(r["ref"], r["amount"]) for r in rows} == {
+                    (a.order_ref, a.amount) for a in allocs
+                }
+                if not same:
+                    raise ServiceError(
+                        "To'lov bor — buyurtma ulushlarini o'zgartirib bo'lmaydi. "
+                        "Avval to'lovlarni o'chiring.",
+                        "allocations",
+                    )
+                rows = None  # identical: nothing to change
+        elif not split:
+            # single-order debt: its one share follows the order and the total
+            ref = allocs[0].order_ref if allocs else debt.order_ref
+            order = allocs[0].order if allocs else debt.order
+            if "order_ref" in data and _resolve_order(data["order_ref"])[0] != ref:
+                if has_payments:
+                    raise ServiceError("To'lov bor — buyurtmani o'zgartirib bo'lmaydi.")
+                info = order_info(data["order_ref"])
+                if info is None:
+                    raise ServiceError("Buyurtma topilmadi.", "order_ref")
+                ref, order = _resolve_order(info.ref)
+            if allocs or new_total > 0:
+                rows = [{"ref": ref, "order": order, "amount": q2(new_total)}]
+            else:  # a zero-sum legacy debt has no rows: only its order_ref follows
+                debt.order_ref, debt.order = ref, order
         debt.save()
+        if rows is not None:
+            _sync_allocations(debt, rows)
         debt = refresh_debt(debt.pk)
     return debt
 
@@ -2655,10 +2931,11 @@ def get_debt(number: int) -> Debt:
     return debt
 
 
-def pay_debt_as(
-    actor: TelegramMember, number: int, amount_text: str | None = None
-) -> tuple[Debt, Operation]:
-    """The bot's rule: the payer's own wallet pays; the sum must be in the debt's currency."""
+def pay_debt_as_legs(
+    actor: TelegramMember, number: int, amount_text: str | None = None, allocation=None
+) -> tuple[Debt, list[Operation]]:
+    """The bot's rule: the payer's own wallet pays; the sum must be in the debt's currency.
+    `allocation` = the order's share to pay (see pay_debt_legs)."""
     _debt_actor(actor)
     if not actor.has_wallet:
         raise ServiceForbidden("Sizning hamyoningiz yo'q.")
@@ -2675,11 +2952,19 @@ def pay_debt_as(
                 else "Qarz so'mda — summani so'mda yozing (masalan 500000)."
             )
         amount = m["orig"] if debt.currency == "USD" else m["amount"]
-    return pay_debt(
+    return pay_debt_legs(
         debt,
         payer=actor,
         author=actor,
+        allocation=allocation,
         amount=amount,
         source="bot",
         actor_admin=actor.is_admin,
     )
+
+
+def pay_debt_as(
+    actor: TelegramMember, number: int, amount_text: str | None = None, allocation=None
+) -> tuple[Debt, Operation]:
+    debt, ops = pay_debt_as_legs(actor, number, amount_text, allocation)
+    return debt, ops[0]

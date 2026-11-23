@@ -236,6 +236,7 @@ class OperationBriefSerializer(serializers.ModelSerializer):
             "number",
             "date",
             "debt_number",
+            "order_ref",
             "kind",
             "amount",
             "currency",
@@ -331,6 +332,11 @@ class OperationWriteSerializer(serializers.Serializer):
     date = serializers.DateField(required=False)
 
 
+class DebtAllocationInputSerializer(serializers.Serializer):
+    ref = serializers.CharField(max_length=32)
+    amount = serializers.DecimalField(max_digits=16, decimal_places=2, min_value=Decimal("0.01"))
+
+
 class DebtWriteSerializer(serializers.Serializer):
     """Input for a new debt; the rules are in accounting.services.create_debt."""
 
@@ -338,7 +344,8 @@ class DebtWriteSerializer(serializers.Serializer):
     creditor = serializers.CharField(max_length=255)
     item = serializers.CharField(max_length=500)
     category_code = serializers.SlugField()
-    order_ref = serializers.CharField(max_length=32)
+    order_ref = serializers.CharField(max_length=32, required=False, allow_blank=True)
+    allocations = DebtAllocationInputSerializer(many=True, required=False, allow_empty=False)
     currency = serializers.ChoiceField(choices=["UZS", "USD"], default="UZS")
     amount = serializers.DecimalField(
         max_digits=16, decimal_places=2, required=False, allow_null=True
@@ -348,6 +355,15 @@ class DebtWriteSerializer(serializers.Serializer):
     )
     comment = serializers.CharField(required=False, allow_blank=True, default="")
 
+    def validate(self, attrs):
+        has_ref = bool((attrs.get("order_ref") or "").strip())
+        has_alloc = "allocations" in attrs
+        if has_ref == has_alloc:
+            raise serializers.ValidationError(
+                {"allocations": "order_ref yoki allocations — aynan bittasi kerak."}
+            )
+        return attrs
+
 
 class DebtUpdateSerializer(serializers.Serializer):
     date = serializers.DateField(required=False)
@@ -355,6 +371,7 @@ class DebtUpdateSerializer(serializers.Serializer):
     item = serializers.CharField(max_length=500, required=False)
     category_code = serializers.SlugField(required=False)
     order_ref = serializers.CharField(max_length=32, required=False)
+    allocations = DebtAllocationInputSerializer(many=True, required=False, allow_empty=False)
     amount = serializers.DecimalField(
         max_digits=16, decimal_places=2, required=False, allow_null=True
     )
@@ -374,6 +391,7 @@ class DebtPaySerializer(serializers.Serializer):
         min_value=Decimal("0.01"),
     )
     date = serializers.DateField(required=False)
+    allocation = serializers.IntegerField(required=False, allow_null=True, min_value=1)
 
 
 class TransferSerializer(serializers.Serializer):

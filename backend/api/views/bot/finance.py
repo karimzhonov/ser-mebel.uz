@@ -17,6 +17,7 @@ from rest_framework.response import Response
 from accounting import events as E
 from accounting import followup
 from accounting import services as S
+from accounting.dto import debt_rows
 from accounting.excel import member_month_xlsx, month_xlsx
 from accounting.images import card_values, report_card_png
 from accounting.models import (
@@ -222,7 +223,7 @@ class ParseView(BotAPIView):
                 {
                     "amount": D.dec(m["amount"]),
                     "cur": m["cur"],
-                    "orig": D.dec(m["orig"]),
+                    "orig": D.dec(S.q2(m["orig"])) if m["orig"] is not None else None,
                     "rate": D.dec(m["rate"], 4),
                 }
             )
@@ -914,13 +915,7 @@ class ReportTemplateView(BotAPIView):
 
 # ------------------------------------------------------------------ debts («Qarzlar»)
 def _debt_rows(debts) -> list[dict]:
-    infos = S.order_infos([d.order_ref for d in debts])
-    return [
-        D.debt_dto(
-            d, infos[d.order_ref].client if d.order_ref in infos else "", S.debt_paid_annotated(d)
-        )
-        for d in debts
-    ]
+    return debt_rows(debts)
 
 
 def _debt_one(pk: int) -> dict:
@@ -962,6 +957,7 @@ class DebtsView(BotAPIView):
             item=d.get("item") or "",
             category_code=d.get("category") or "",
             order_ref=d.get("order_ref") or "",
+            allocations=d.get("allocations"),
             comment=d.get("comment") or "",
         )
         row = _debt_one(debt.pk)
@@ -997,12 +993,16 @@ class DebtView(BotAPIView):
 class DebtPayView(BotAPIView):
     def post(self, request, number):
         me = self.require_active()
-        debt, op = S.pay_debt_as(me, number, request.data.get("amount_text") or None)
-        E.operation_created(op, author=me)
+        debt, ops = S.pay_debt_as_legs(
+            me, number, request.data.get("amount_text") or None, request.data.get("allocation")
+        )
+        for op in ops:
+            E.operation_created(op, author=me)
         return Response(
             {
                 "debt": _debt_one(debt.pk),
-                "operation": D.operation_dto(op),
+                "operation": D.operation_dto(ops[0]),
+                "operations": [D.operation_dto(op) for op in ops],
                 "balance": D.dec(S.balance(me)),
             }
         )

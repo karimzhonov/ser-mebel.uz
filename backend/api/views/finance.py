@@ -34,7 +34,7 @@ from accounting import salary as SAL
 from accounting import services as S
 from accounting import workers as WK
 from accounting.constants import WAREHOUSE_CAT, WAREHOUSE_CAT_EMOJI, WAREHOUSE_CAT_NAME
-from accounting.dto import debt_dto
+from accounting.dto import debt_rows
 from accounting.excel import build_xlsx
 from accounting.models import (
     ClientFeedback,
@@ -896,7 +896,7 @@ class DebtViewSet(
         status = p.get("status", "open") if self.action == "list" else "all"
         qs = S.debts_qs(status, scoped_member(self.request))
         if p.get("order_ref"):
-            qs = qs.filter(order_ref=p["order_ref"])
+            qs = S.debts_with_order(qs, p["order_ref"])
         if self.action != "list":
             return qs
         q = (p.get("search") or "").strip()
@@ -904,7 +904,7 @@ class DebtViewSet(
             qs = qs.filter(
                 Q(creditor__icontains=q)
                 | Q(item__icontains=q)
-                | Q(order_ref__icontains=q)
+                | S.debt_order_q(q, contains=True)
                 | Q(comment__icontains=q)
             )
         if status == "open":
@@ -914,15 +914,7 @@ class DebtViewSet(
         return qs.order_by("-date", "-number")
 
     def _rows(self, debts) -> list[dict]:
-        infos = S.order_infos([d.order_ref for d in debts])
-        return [
-            debt_dto(
-                d,
-                infos[d.order_ref].client if d.order_ref in infos else "",
-                S.debt_paid_annotated(d),
-            )
-            for d in debts
-        ]
+        return debt_rows(debts)
 
     def _one(self, pk) -> dict:
         d = S.debts_qs("all").get(pk=pk)
@@ -972,7 +964,8 @@ class DebtViewSet(
             creditor=d["creditor"],
             item=d["item"],
             category_code=d["category_code"],
-            order_ref=d["order_ref"],
+            order_ref=d.get("order_ref", ""),
+            allocations=d.get("allocations"),
             currency=d["currency"],
             amount=d.get("amount"),
             orig_amount=d.get("orig_amount"),
@@ -1016,21 +1009,27 @@ class DebtViewSet(
             raise ValidationError({"member": f"{d['member'].name}ning hamyoni yo'q."})
         author = acting_member(request)
         with transaction.atomic():
-            _, op = S.pay_debt(
+            _, ops = S.pay_debt_legs(
                 debt,
                 payer=d["member"],
                 author=author,
+                allocation=d.get("allocation"),
                 amount=d.get("amount"),
                 on_date=d.get("date"),
                 site_user=request.user,
                 source="site",
                 actor_admin=only is None,
             )
-        E.operation_created(op, author=author, from_site=True)
-        op = Operation.objects.select_related(
-            "member", "author", "site_user", "category", "pair", "debt"
-        ).get(pk=op.pk)
-        return Response({"debt": self._one(debt.pk), "operation": _op_ser(request)(op).data})
+        for op in ops:
+            E.operation_created(op, author=author, from_site=True)
+        by_pk = {
+            o.pk: o
+            for o in Operation.objects.select_related(
+                "member", "author", "site_user", "category", "pair", "debt"
+            ).filter(pk__in=[o.pk for o in ops])
+        }
+        rows = _op_ser(request, many=True)([by_pk[o.pk] for o in ops]).data
+        return Response({"debt": self._one(debt.pk), "operation": rows[0], "operations": rows})
 
     @action(detail=False, methods=["get"])
     def stats(self, request):
@@ -1042,6 +1041,45 @@ class DebtViewSet(
                 "open_usd": str(st["open_usd"]),
             }
         )
+
+
+def _order_debts(request, info) -> list[dict]:
+    """The order page's debts: only THIS order's share of each (siblings of a split debt
+    are not exposed). Row-scoped like the debts list: without VIEW_ALL only the debts the
+    acting member wrote, nothing for a user not linked to a member (the page itself stays
+    open, unlike scoped_member())."""
+    owner = None
+    if not request.user.has_perm(VIEW_ALL):
+        owner = acting_member(request)
+        if owner is None:
+            return []
+    qs = S.debts_with_order(S.debts_qs("all", owner), info.ref).order_by("date", "number")
+    out = []
+    for row in debt_rows(qs):
+        mine = next((a for a in row["allocations"] if a["order_ref"] == info.ref), None)
+        split = len(row["allocations"]) > 1
+        row["debt_total"] = row["total"]
+        row["is_split"] = split
+        if mine:
+            row["share_status"] = "closed" if S.D(mine["remaining"]) <= 0 else "open"
+            if split:
+                share = S.D(mine["amount"])
+                if row["currency"] == "USD":
+                    row["orig_amount"] = mine["amount"]
+                    row["amount"] = str(S.q2(round(share * S.D(row["rate"]))))
+                else:
+                    row["amount"] = mine["amount"]
+                row["total"], row["paid"], row["remaining"] = (
+                    mine["amount"],
+                    mine["paid"],
+                    mine["remaining"],
+                )
+                row["order_ref"], row["client"] = info.ref, info.client
+                row["allocations"] = [mine]
+        else:
+            row["share_status"] = row["status"]
+        out.append(row)
+    return out
 
 
 class FinanceOrderDetailView(APIView):
@@ -1057,14 +1095,7 @@ class FinanceOrderDetailView(APIView):
         row = _order_row(info, st)
         can_ops = u.has_perm(ACC + "view_operation")
         row["operations"] = OperationSerializer(st["rows"], many=True).data if can_ops else []
-        row["debts"] = (
-            [
-                debt_dto(d, info.client, S.debt_paid_annotated(d))
-                for d in S.debts_qs("all").filter(order_ref=info.ref).order_by("date", "number")
-            ]
-            if u.has_perm(ACC + "view_debt")
-            else []
-        )
+        row["debts"] = _order_debts(request, info) if u.has_perm(ACC + "view_debt") else []
         row["warehouse"] = [
             {**r, "quantity": f(r["quantity"]), "total": f(r["total"])}
             for r in st["warehouse_rows"]

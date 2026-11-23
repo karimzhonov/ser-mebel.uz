@@ -1,0 +1,21 @@
+{
+  "creditor": "Bahor LDSP do'koni",
+  "item": "LDSP 10 list",
+  "amount_text": "100$",
+  "category": "material",
+  "comment": "",
+  "allocations": [
+    {
+      "ref": "406",
+      "amount": "20.00"
+    },
+    {
+      "ref": "407",
+      "amount": "30.00"
+    },
+    {
+      "ref": "408",
+      "amount": "50.00"
+    }
+  ]
+}

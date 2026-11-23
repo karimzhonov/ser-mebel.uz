@@ -198,6 +198,27 @@ function OrderFinanceBody({ o }: { o: FinOrder }) {
           </div>
         </div>
       )}
+      {o.debts && o.debts.length > 0 && (
+        <div>
+          <h4 className="mb-1 text-sm font-medium">📕 Qarzlar</h4>
+          <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+            {o.debts.map((d) => (
+              <div key={d.id} className="flex justify-between gap-3 py-2">
+                <span>
+                  <span className="muted">#{d.number} · {date(d.date)}</span> · {d.creditor} — {d.item}
+                  {d.is_split && d.debt_total && <span className="muted"> · umumiy qarz {inCur(d.debt_total, d.currency)}</span>}
+                </span>
+                <span className="whitespace-nowrap text-right tabular-nums">
+                  {inCur(d.total, d.currency)}
+                  <span className="muted block text-xs">
+                    to'langan {inCur(d.paid, d.currency)} · <span className={Number(d.remaining) > 0 ? "text-rose-600" : ""}>qoldiq {inCur(d.remaining, d.currency)}</span>
+                  </span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
         {o.operations?.map((t) => (
           <div key={t.id} className="flex justify-between gap-3 py-2">
