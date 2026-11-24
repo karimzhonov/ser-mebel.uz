@@ -959,6 +959,11 @@ def _slug(s: str) -> str:
     return re.sub(r"[^\w-]+", "_", s, flags=re.U).strip("_")[:60] or "xodim"
 
 
+def paper_for(kind: str) -> str:
+    """Default paper: a short ODDIY sheet fits A5, the rest is A4."""
+    return "a5" if kind == SheetKind.ODDIY else "a4"
+
+
 def approve_sheet(sheet: SalarySheet, *, by=None) -> SalarySheet:
     """Rahbar: «Tasdiqlash». Freezes the sheet, renders the PDF and files it into the
     folder of each worker on it (SBORKA: every partner too)."""
@@ -986,7 +991,7 @@ def approve_sheet(sheet: SalarySheet, *, by=None) -> SalarySheet:
             k: view["totals"][k] for k in ("earned_total", "minus_total", "advances_total", "rest")
         }
         sheet.save()
-        content = render_pdf(view)
+        content = render_pdf(view, paper_for(sheet.kind))
         ym = ym_of(sheet.month)
         suffix = f"_v{sheet.version}" if sheet.version > 1 else ""
         who = getattr(by, "name", "") or "rahbar"

@@ -150,7 +150,10 @@ class SalarySheetViewSet(
         sheet = self.get_object()
         view = P.sheet_view(sheet)
         name = f"Oylik_{view['month']}_{view['worker']}_No{sheet.number}.pdf"
-        resp = HttpResponse(render_pdf(view), content_type="application/pdf")
+        size = request.query_params.get("size") or P.paper_for(sheet.kind)
+        if size not in ("a4", "a5"):
+            raise ServiceError("Qog'oz o'lchami: a4 yoki a5.", "size")
+        resp = HttpResponse(render_pdf(view, size), content_type="application/pdf")
         ascii_name = name.encode("ascii", "ignore").decode() or "oylik.pdf"
         disp = "attachment" if request.query_params.get("download") else "inline"
         resp["Content-Disposition"] = f"{disp}; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name)}"

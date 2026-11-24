@@ -427,6 +427,11 @@ def test_list_filters_and_pdf(admin_api, people, orders):
     pdf = admin_api.get(f"{URL}{s['id']}/pdf/")
     assert pdf.status_code == 200 and pdf["Content-Type"] == "application/pdf"
     assert pdf.content.startswith(b"%PDF")
-    opts = admin_api.get(f"{URL}options/")
+    # ODDIY defaults to A5 (420 × 595 pt); A4 can still be asked for
+    assert b"/MediaBox [ 0 0 419.5" in pdf.content
+    a4 = admin_api.get(f"{URL}{s['id']}/pdf/", {"size": "a4"})
+    assert a4.status_code == 200 and b"/MediaBox [ 0 0 595.2" in a4.content
+    assert admin_api.get(f"{URL}{s['id']}/pdf/", {"size": "a3"}).status_code == 400
+    opts =admin_api.get(f"{URL}options/")
     assert opts.status_code == 200 and {k["value"] for k in opts.data["kinds"]} >= {"sborka", "zamer"}
     assert SalarySheet.objects.count() == 1

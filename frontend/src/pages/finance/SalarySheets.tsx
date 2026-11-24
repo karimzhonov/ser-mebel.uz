@@ -364,6 +364,8 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
   const [form, setForm] = useState<Form>(() => toForm(initial));
   const [dirty, setDirty] = useState(false);
   const [printing, setPrinting] = useState(false);
+  // paper: a short ODDIY sheet fits A5 (the server picks the same default)
+  const [paper, setPaper] = useState<"a4" | "a5">(initial.kind === "oddiy" ? "a5" : "a4");
   const [returning, setReturning] = useState(false);
   const [preview, setPreview] = useState<{ keys: number[]; data: SheetPreview } | null>(null);
   const [previewing, setPreviewing] = useState(false);
@@ -462,6 +464,14 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
         }
         actions={
           <>
+            <Segmented
+              value={paper}
+              onChange={(v) => setPaper(v as "a4" | "a5")}
+              options={[
+                { value: "a4", label: "A4" },
+                { value: "a5", label: "A5" },
+              ]}
+            />
             <Button variant="outline" icon={<Printer className="h-4 w-4" />} disabled={dirty} onClick={() => setPrinting(true)}>
               Chop etish
             </Button>
@@ -656,7 +666,7 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
       </div>
 
       {printing && (
-        <PdfViewer url={`${path}pdf/`} name={`Oylik varaqasi №${sheet.number}`} downloadName={`Oylik_${sheet.month}_${sheet.worker}.pdf`} onClose={() => setPrinting(false)} />
+        <PdfViewer url={`${path}pdf/?size=${paper}`} name={`Oylik varaqasi №${sheet.number}`} downloadName={`Oylik_${sheet.month}_${sheet.worker}.pdf`} onClose={() => setPrinting(false)} />
       )}
       {returning && (
         <ReturnModal
