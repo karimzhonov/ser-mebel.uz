@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { AlertTriangle, ArrowLeft, Check, FileText, Plus, Printer, RotateCcw, Save, Send, Trash2, X } from "lucide-react";
 import { api } from "@/api/client";
@@ -29,8 +29,11 @@ import { date } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 import { som, usd } from "./shared";
 import type {
+  LineCalc,
   LineSection,
+  OrderBrief,
   SalarySheet,
+  SheetPreview,
   SheetKind,
   SheetListRow,
   SheetOptions,
@@ -295,6 +298,45 @@ function toPayload(f: Form) {
   };
 }
 
+type LineInfo = { calc: LineCalc | null; found: boolean | null; order: OrderBrief | null };
+/** what the order lookup last put into a row (null = the user's own value, never touched) */
+type AutoFilled = { ref: string; title: string | null; amount: string | null; on_date: string | null };
+
+const normRef = (r: string) => r.trim().replace(/^#/, "");
+const numStr = (v: string) => String(Number(v));
+
+/** Fill client name / order sum / hand-over date from the typed ID — only into fields
+ * that are empty or still hold what an earlier lookup put there (the user's own edits
+ * stay). Returns the same object when nothing changes (no render loop). */
+function fillFromOrders(f: Form, sent: { key: number; ref: string }[], data: SheetPreview, memo: Record<number, AutoFilled>): Form {
+  let changed = false;
+  const lines = f.lines.map((l) => {
+    const i = sent.findIndex((x) => x.key === l.key);
+    const o = i >= 0 ? data.lines[i]?.order : null;
+    const ref = normRef(l.order_ref);
+    if (!o || !ref || sent[i].ref !== ref) return l;
+    const prev = memo[l.key];
+    const free = (field: "title" | "amount" | "on_date") => l[field] === "" || (prev?.[field] != null && l[field] === prev[field]);
+    const auto: AutoFilled = { ref, title: null, amount: null, on_date: null };
+    const next = { ...l };
+    if (l.section !== "collect" && free("title")) next.title = auto.title = o.client;
+    let amount: string | null = null;
+    if ((l.section === "taken" || l.section === "delivered") && o.total_usd) amount = numStr(o.total_usd);
+    if (l.section === "collect" && Number(o.total) > 0) amount = numStr(o.total);
+    if (amount && free("amount")) {
+      next.amount = auto.amount = amount;
+      if (l.section === "collect") next.currency = o.currency;
+    }
+    if (l.section === "collect" && o.ready_date && free("on_date")) next.on_date = auto.on_date = o.ready_date;
+    memo[l.key] = auto;
+    // idempotent: only a real difference makes a new form (no request loop)
+    if (next.title === l.title && next.amount === l.amount && next.on_date === l.on_date && next.currency === l.currency) return l;
+    changed = true;
+    return next;
+  });
+  return changed ? { ...f, lines } : f;
+}
+
 export function FinanceSalarySheetPage() {
   const { id } = useParams();
   const path = `${BASE}${id}/`;
@@ -318,6 +360,10 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
   const [dirty, setDirty] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [returning, setReturning] = useState(false);
+  const [preview, setPreview] = useState<{ keys: number[]; data: SheetPreview } | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const autoFill = useRef<Record<number, AutoFilled>>({});
+  const reqSeq = useRef(0);
   useEffect(() => setSheet(initial), [initial]);
 
   const edit = sheet.can.edit;
@@ -329,7 +375,42 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
     setSheet(s);
     setForm(toForm(s));
     setDirty(false);
+    setPreview(null);
+    reqSeq.current++;
   };
+
+  // the unsaved form computed by the server (debounced): live totals + the order
+  // behind every typed ID, which fills the client name / sum while they are untouched
+  useEffect(() => {
+    if (!edit || !dirty) return;
+    const id = ++reqSeq.current;
+    const sent = form.lines.map((l) => ({ key: l.key, ref: normRef(l.order_ref) }));
+    const body = toPayload(form);
+    setPreviewing(true);
+    const timer = setTimeout(() => {
+      api
+        .post<SheetPreview>(`${path}preview/`, body)
+        .then((r) => {
+          if (id !== reqSeq.current) return;
+          setPreview({ keys: sent.map((x) => x.key), data: r.data });
+          setPreviewing(false);
+          setForm((f) => fillFromOrders(f, sent, r.data, autoFill.current));
+        })
+        .catch(() => id === reqSeq.current && setPreviewing(false));
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [form, dirty, edit, path]);
+
+  const live = dirty && preview ? preview.data : null;
+  const stale = dirty && (previewing || !preview);
+  const lineInfo = useMemo(() => {
+    const m = new Map<number, LineInfo>();
+    if (live && preview) preview.keys.forEach((k, i) => m.set(k, preview.data.lines[i]));
+    else if (!dirty) form.lines.forEach((l, i) => sheet.lines[i] && m.set(l.key, { calc: sheet.lines[i], found: null, order: null }));
+    return m;
+  }, [live, preview, dirty, form.lines, sheet.lines]);
+  const sectionTotals = live?.sections ?? sheet.sections;
+  const shown = live ? { ...sheet, members: live.members, advances: live.advances } : sheet;
   const upd = (patch: Partial<Form>) => {
     setForm((f) => ({ ...f, ...patch }));
     setDirty(true);
@@ -349,7 +430,7 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
     onSuccess: () => nav("/finance/salary"),
   });
 
-  const t = sheet.totals;
+  const t = live?.totals ?? sheet.totals;
   const busy = save.isPending || submit.isPending || approve.isPending || ret.isPending;
 
   return (
@@ -440,10 +521,20 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
         </div>
       </Card>
 
-      {form.kind === "sborka" && <MembersCard form={form} opts={opts} sheet={sheet} edit={edit} upd={upd} />}
+      {form.kind === "sborka" && <MembersCard form={form} opts={opts} sheet={shown} edit={edit} upd={upd} />}
 
       {kindInfo.sections.map((sec) => (
-        <LinesCard key={sec} section={sec} form={form} sheet={sheet} opts={opts} edit={edit} upd={upd} dirty={dirty} />
+        <LinesCard
+          key={sec}
+          section={sec}
+          form={form}
+          opts={opts}
+          edit={edit}
+          upd={upd}
+          info={lineInfo}
+          total={sectionTotals.find((s) => s.key === sec)?.total}
+          stale={stale}
+        />
       ))}
 
       {(fields.has("instagram") || fields.has("late") || fields.has("absent")) && (
@@ -478,21 +569,29 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
                 >
                   <Input type="number" min={0} value={form.instagram_count} disabled={!edit} onChange={(e) => upd({ instagram_count: e.target.value })} />
                 </Field>
-                {!dirty && t.instagram_usd && <div className="text-sm">Bonus: <b>{usd(t.instagram_usd)}</b></div>}
+                {t.instagram_usd && (
+                  <div className={cn("text-sm", stale && "opacity-50")}>
+                    Bonus: <b>{usd(t.instagram_usd)}</b>
+                  </div>
+                )}
               </div>
             )}
           </div>
         </Card>
       )}
 
-      <AdvancesCard sheet={sheet} />
+      <AdvancesCard sheet={shown} />
 
       <Card className="p-5">
         <div className="grid gap-5 lg:grid-cols-2">
           <div>
             <h3 className="mb-2 font-semibold">Yakuniy hisob-kitob</h3>
-            {dirty && <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">O'zgarishlar saqlanmagan — jami saqlangandan keyin yangilanadi.</p>}
-            <div className={cn("divide-y divide-slate-100 text-sm dark:divide-slate-800", dirty && "opacity-50")}>
+            {dirty && (
+              <p className="mb-2 text-xs text-amber-700 dark:text-amber-300">
+                {stale ? "Hisoblanmoqda…" : "Hisob yangilandi, lekin hali saqlanmagan — «Saqlash»ni bosing."}
+              </p>
+            )}
+            <div className={cn("divide-y divide-slate-100 text-sm dark:divide-slate-800", stale && "opacity-50")}>
               {t.earned.map((x) => (
                 <Row key={x.label} label={x.label} value={som(x.amount)} />
               ))}
@@ -689,23 +788,23 @@ const SECTION_HINT: Partial<Record<LineSection, string>> = {
 function LinesCard({
   section,
   form,
-  sheet,
   opts,
   edit,
   upd,
-  dirty,
+  info,
+  total,
+  stale,
 }: {
   section: LineSection;
   form: Form;
-  sheet: SalarySheet;
   opts: SheetOptions;
   edit: boolean;
   upd: (p: Partial<Form>) => void;
-  dirty: boolean;
+  info: Map<number, LineInfo>;
+  total: string | undefined;
+  stale: boolean;
 }) {
   const rows = form.lines.filter((l) => l.section === section);
-  const saved = sheet.lines.filter((l) => l.section === section);
-  const total = sheet.sections.find((s) => s.key === section)?.total;
   const hasRef = section === "job" || section === "taken" || section === "delivered" || section === "collect";
   const pct = section === "taken" ? "bonus_percent" : section === "delivered" ? "bonus2_percent" : null;
 
@@ -773,13 +872,21 @@ function LinesCard({
             </thead>
             <tbody>
               {rows.map((l, i) => {
-                const s = !dirty ? saved[i] : undefined;
+                const li = info.get(l.key);
+                const s = li?.calc;
                 return (
-                  <tr key={l.key} className="border-t border-slate-100 align-middle dark:border-slate-800">
-                    <td className="muted py-1.5">{i + 1}</td>
+                  <tr key={l.key} className="border-t border-slate-100 align-top dark:border-slate-800">
+                    <td className="muted py-3">{i + 1}</td>
                     {hasRef && (
                       <td className="py-1.5 pr-2">
                         <Input value={l.order_ref} disabled={!edit} placeholder="406" onChange={(e) => setLine(l.key, { order_ref: e.target.value })} />
+                        {li?.found === false && normRef(l.order_ref) && <div className="mt-0.5 text-xs text-rose-600">ID topilmadi</div>}
+                        {li?.order && (
+                          <div className="muted mt-0.5 max-w-[11rem] truncate text-xs" title={`${li.order.client} · ${li.order.status}`}>
+                            {section === "collect" ? li.order.client : li.order.status}
+                            {li.order.total_usd && ` · ${usd(li.order.total_usd)}`}
+                          </div>
+                        )}
                       </td>
                     )}
                     {(section === "collect" || section === "deduction") && (
@@ -822,7 +929,7 @@ function LinesCard({
                       </td>
                     )}
                     {section !== "job" && section !== "car" && (
-                      <td className="py-1.5 text-right tabular-nums">
+                      <td className={cn("py-3 text-right tabular-nums", stale && "opacity-50")}>
                         {s ? (
                           <span title={s.days != null ? `${s.days} kun · ${Number(s.percent ?? 0)}%` : undefined}>
                             {som(s.value)}
@@ -855,8 +962,8 @@ function LinesCard({
         ) : (
           <span />
         )}
-        {total !== undefined && !dirty && (
-          <span className="text-sm">
+        {total !== undefined && (
+          <span className={cn("text-sm", stale && "opacity-50")}>
             Jami: <b className="tabular-nums">{som(total)}</b>
           </span>
         )}

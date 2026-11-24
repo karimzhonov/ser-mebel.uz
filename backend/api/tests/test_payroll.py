@@ -141,6 +141,47 @@ def test_menejer_bonus_is_percent_of_the_order_in_dollars_not_the_order(admin_ap
     assert r.data["bonus_percent"] == "3"
 
 
+def test_preview_shows_client_order_sum_and_live_totals_without_saving(admin_api, people, orders):
+    ManualOrder.objects.filter(ref="370").update(price=24_000_000)
+    s = new(admin_api, people[2], "menejer")
+    body = {
+        "fixed": "5000000",
+        "bonus_percent": "3",
+        "lines": [
+            {"section": "taken", "order_ref": "370", "amount": "1000"},
+            {"section": "taken", "order_ref": "999", "amount": "500"},  # no such order
+            {"section": "taken", "order_ref": "", "amount": ""},  # half-typed row
+        ],
+    }
+    r = admin_api.post(f"{URL}{s['id']}/preview/", body, format="json")
+    assert r.status_code == 200, r.data
+    rows = r.data["lines"]
+    assert rows[0]["found"] is True
+    assert rows[0]["order"]["client"] == "Ulug'bek"
+    assert Decimal(rows[0]["order"]["total_usd"]) == 2000  # 24 mln so'm / 12 000
+    assert Decimal(rows[0]["calc"]["value"]) == 360_000
+    assert rows[1]["found"] is False and rows[1]["order"] is None
+    assert Decimal(rows[2]["calc"]["value"]) == 0
+    assert Decimal(r.data["totals"]["earned_total"]) == 5_000_000 + 360_000 + 180_000
+    # nothing was written
+    fresh = admin_api.get(f"{URL}{s['id']}/").data
+    assert fresh["lines"] == [] and Decimal(fresh["totals"]["earned_total"]) == 0
+
+
+def test_preview_needs_the_fill_permission(api, people, orders):
+    s = SalarySheet.objects.create(
+        number=1,
+        kind="oddiy",
+        worker=people[2],
+        month=date(2026, 10, 1),
+        period_start=date(2026, 10, 1),
+        period_end=date(2026, 10, 31),
+        usd_rate=12000,
+    )
+    c = api("payroll.view_salarysheet")
+    assert c.post(f"{URL}{s.pk}/preview/", {}, format="json").status_code == 403
+
+
 def test_zamer_collect_bonus_by_days_and_instagram_tiers(admin_api, people, orders):
     s = new(admin_api, people[2], "zamer")
     r = patch(

@@ -108,6 +108,13 @@ class SalarySheetViewSet(
         return Response(P.options())
 
     @action(detail=True, methods=["post"])
+    def preview(self, request, pk=None):
+        """Live totals + the order behind each typed ID, for the unsaved form."""
+        require_perm(request.user, CHANGE)
+        data = request.data if isinstance(request.data, dict) else {}
+        return Response(P.preview_sheet(self.get_object(), data))
+
+    @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):
         require_perm(request.user, CHANGE)
         return Response(self._detail(request, P.submit_sheet(self.get_object(), by=request.user)))

@@ -127,6 +127,32 @@ export interface SalarySheet {
   can: { edit: boolean; submit: boolean; approve: boolean; return: boolean; delete: boolean };
 }
 
+export interface OrderBrief {
+  client: string;
+  status: string;
+  total: string;
+  currency: "UZS" | "USD";
+  total_usd: string | null;
+  ready_date: string | null;
+}
+
+export interface LineCalc {
+  days: number | null;
+  percent: string | null;
+  bonus_usd: string | null;
+  value: string;
+}
+
+/** POST …/preview/ — the unsaved form computed by the server; `lines` follow the
+ * order of the lines that were sent. */
+export interface SheetPreview {
+  lines: { calc: LineCalc | null; found: boolean | null; order: OrderBrief | null }[];
+  sections: { key: LineSection; title: string; total: string }[];
+  members: SheetMemberRow[];
+  advances: SheetAdvance[];
+  totals: SheetTotals;
+}
+
 export interface SheetOptions {
   kinds: { value: SheetKind; label: string; sections: LineSection[]; fields: SheetField[] }[];
   section_titles: Record<LineSection, string>;

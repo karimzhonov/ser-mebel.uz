@@ -16,6 +16,7 @@ into each worker's folder. Stage 1 books no money anywhere."""
 
 from __future__ import annotations
 
+import copy
 import re
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
@@ -235,12 +236,14 @@ def _line_value(sheet: SalarySheet, ln: SheetLine) -> dict:
     return row
 
 
-def compute(sheet: SalarySheet) -> dict:
-    """The whole sheet as data (the API, the page and the PDF all read this)."""
+def compute(sheet: SalarySheet, *, lines=None, members=None) -> dict:
+    """The whole sheet as data (the API, the page and the PDF all read this).
+    `lines` / `members` replace the saved ones (the unsaved preview)."""
     kind = sheet.kind
     fields = KIND_FIELDS[kind]
     sections = KIND_SECTIONS[kind]
-    lines = [ln for ln in sheet.lines.all() if ln.section in sections]
+    src = sheet.lines.all() if lines is None else lines
+    lines = [ln for ln in src if ln.section in sections]
     rows = [_line_value(sheet, ln) for ln in lines]
     by_sec: dict[str, list[dict]] = {s: [] for s in sections}
     for r in rows:
@@ -278,7 +281,7 @@ def compute(sheet: SalarySheet) -> dict:
     if LineSection.DEDUCTION in sections:
         minus.append(("Ushlanmalar", q2(total(LineSection.DEDUCTION))))
 
-    people = members_of(sheet)
+    people = members if members else members_of(sheet)
     workers = [m.worker for m in people]
     by_key = {S._worker_key(w.name): w for w in workers}
     if sheet.snapshot is None:
@@ -369,6 +372,130 @@ def warnings(sheet: SalarySheet) -> list[str]:
                 "qo'shilmadi, «Amallar»da tekshiring."
             )
     return out
+
+
+# ------------------------------------------------------------------ live preview
+def _soft_dec(v) -> Decimal:
+    try:
+        out = D(v)
+    except ServiceError:
+        return ZERO
+    return out if out.is_finite() and out >= 0 else ZERO
+
+
+def _soft_int(v) -> int:
+    try:
+        return max(0, int(D(v)))
+    except (ServiceError, ValueError, ArithmeticError):
+        return 0
+
+
+def _soft_date(v) -> date | None:
+    if isinstance(v, date):
+        return v
+    try:
+        return date.fromisoformat(str(v)[:10]) if v else None
+    except ValueError:
+        return None
+
+
+def _order_brief(info, rate: Decimal) -> dict:
+    total = q2(info.total)
+    if info.currency == "USD":
+        total_usd = total
+    else:
+        total_usd = q2(total / rate) if rate > 0 else None
+    return {
+        "client": info.client,
+        "status": info.status_label,
+        "total": str(total),
+        "currency": info.currency,
+        "total_usd": str(total_usd) if total_usd is not None else None,
+        "ready_date": info.ready_date.isoformat() if info.ready_date else None,
+    }
+
+
+def preview_sheet(sheet: SalarySheet, data: dict) -> dict:
+    """What the sheet would show with these unsaved inputs — nothing is written and
+    nothing is refused: half-typed rows just count as 0. Each line also carries the
+    order it points to (client, contract sum) so the page can fill the row in."""
+    tmp = copy.copy(sheet)  # never saved
+    kind = data.get("kind")
+    tmp.kind = kind if kind in KIND_SECTIONS else sheet.kind
+    for f in ("fixed", "bonus_percent", "bonus2_percent", "late_rate", "absent_rate"):
+        if f in data:
+            setattr(tmp, f, _soft_dec(data[f]))
+    for f in ("late_days", "absent_days", "instagram_count"):
+        if f in data:
+            setattr(tmp, f, _soft_int(data[f]))
+    rate = _soft_dec(data.get("usd_rate", sheet.usd_rate))
+    tmp.usd_rate = rate if rate > 0 else sheet.usd_rate
+    start, end = _soft_date(data.get("period_start")), _soft_date(data.get("period_end"))
+    if start and end and start <= end and (end - start).days <= MAX_PERIOD_DAYS:
+        tmp.period_start, tmp.period_end = start, end
+    sections = KIND_SECTIONS[tmp.kind]
+
+    raw = list(data.get("lines") or [])[:MAX_LINES]
+    refs = {_norm_ref(ln.get("order_ref")) for ln in raw} - {""}
+    infos = S.order_infos(refs) if refs else {}
+    objs, rows = [], []
+    for ln in raw:
+        sec = ln.get("section")
+        ref = _norm_ref(ln.get("order_ref"))
+        cur = "USD" if ln.get("currency") == "USD" else "UZS"
+        if sec in (LineSection.JOB, LineSection.CAR):
+            cur = "UZS"
+        if sec in USD_SECTIONS:
+            cur = "USD"
+        r = _soft_dec(ln.get("rate"))
+        obj = SheetLine(
+            sheet=tmp,
+            section=sec,
+            order_ref=ref,
+            title=str(ln.get("title") or ""),
+            on_date=_soft_date(ln.get("on_date")),
+            paid_on=_soft_date(ln.get("paid_on")),
+            currency=cur,
+            amount=_soft_dec(ln.get("amount")),
+            rate=r if r > 0 else None,
+        )
+        info = infos.get(ref) if ref else None
+        row = None
+        if sec in sections:
+            objs.append(obj)
+            v = _line_value(tmp, obj)
+            row = {k: v[k] for k in ("days", "percent", "bonus_usd", "value")}
+        rows.append(
+            {
+                "calc": row,
+                "found": (info is not None) if ref and sec in REF_SECTIONS else None,
+                "order": _order_brief(info, D(tmp.usd_rate)) if info else None,
+            }
+        )
+
+    members = None
+    raw_m = data.get("members")
+    if tmp.kind == SheetKind.SBORKA and raw_m:
+        pairs = []
+        for m in raw_m[:MAX_MEMBERS]:
+            try:
+                pairs.append((int(m.get("worker")), m))
+            except (TypeError, ValueError, AttributeError):
+                continue
+        found = Worker.objects.in_bulk([i for i, _ in pairs])
+        members = [
+            SheetMember(sheet=tmp, worker=found[i], share=_soft_dec(m.get("share")), position=n)
+            for n, (i, m) in enumerate(pairs)
+            if i in found
+        ]
+    view = compute(tmp, lines=objs, members=members)
+    return {
+        "lines": rows,
+        "sections": view["sections"],
+        "members": view["members"],
+        "advances": view["advances"],
+        "totals": view["totals"],
+    }
 
 
 def refresh_totals(sheet: SalarySheet) -> SalarySheet:
