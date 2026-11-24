@@ -347,7 +347,9 @@ def test_duplicate_order_id_is_a_warning_not_an_error(admin_api, people, orders)
     r = patch(admin_api, b, lines=[{"section": "job", "order_ref": "370", "amount": "100"}] * 2)
     assert r.status_code == 200
     text = " ".join(r.data["warnings"])
-    assert "2 marta" in text and f"№{a['number']}" in text
+    assert "2 marta" in text
+    # the same ID on another worker's sheet is normal — no warning
+    assert f"№{a['number']}" not in text
 
 
 # ---------------------------------------------------------------- the flow

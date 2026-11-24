@@ -415,22 +415,8 @@ def warnings(sheet: SalarySheet) -> list[str]:
     for (sec, ref), n in seen.items():
         if n > 1:
             out.append(f"ID {ref} «{SECTION_TITLES[sec]}» bo'limida {n} marta yozilgan.")
-    refs = {ref for _, ref in seen}
-    if refs:
-        others = (
-            SheetLine.objects.filter(order_ref__in=refs, section__in=[s for s, _ in seen])
-            .exclude(sheet=sheet)
-            .filter(
-                sheet__period_start__lte=sheet.period_end, sheet__period_end__gte=sheet.period_start
-            )
-            .select_related("sheet__worker")
-        )
-        for ln in others:
-            if (ln.section, ln.order_ref) in seen:
-                out.append(
-                    f"ID {ln.order_ref} shu davrdagi boshqa varaqda ham bor: "
-                    f"№{ln.sheet.number} ({ln.sheet.worker.name})."
-                )
+    # the same ID on other people's sheets is normal (several workers earn on one
+    # order), so only a repeat inside this sheet is flagged
     manual = [
         ln.order_ref
         for ln in sheet.lines.all()
