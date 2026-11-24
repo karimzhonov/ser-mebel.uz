@@ -19,10 +19,12 @@ class SheetLineInSerializer(serializers.Serializer):
     on_date = serializers.DateField(required=False, allow_null=True, default=None)
     paid_on = serializers.DateField(required=False, allow_null=True, default=None)
     currency = serializers.ChoiceField(choices=["UZS", "USD"], required=False, allow_blank=True, default="")
-    amount = _money()
+    amount = _money(required=False, default=0)  # a «Bonuslar» row takes its own
     rate = serializers.DecimalField(
         max_digits=16, decimal_places=4, required=False, allow_null=True, default=None
     )
+    # collect row taken from «Bonuslar»: the server fills dates / sum / bonus from it
+    order_bonus = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
 class SalarySheetWriteSerializer(serializers.Serializer):

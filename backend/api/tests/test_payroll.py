@@ -11,7 +11,7 @@ import pytest
 from constance import config
 
 from accounting import services as S
-from accounting.models import ManualOrder, Operation, Worker, WorkerFile
+from accounting.models import ManualOrder, Operation, OrderBonus, Worker, WorkerFile
 from payroll.models import SalarySheet
 
 pytestmark = pytest.mark.django_db
@@ -180,6 +180,70 @@ def test_preview_needs_the_fill_permission(api, people, orders):
     )
     c = api("payroll.view_salarysheet")
     assert c.post(f"{URL}{s.pk}/preview/", {}, format="json").status_code == 403
+
+
+def _done_bonus(ref, receiver, **kw):
+    data = dict(
+        order_ref=ref,
+        client="Ulug'bek",
+        total=Decimal(1000),
+        currency="USD",
+        ready_date=date(2026, 10, 1),
+        paid_date=date(2026, 10, 3),
+        status="done",
+        days=2,
+        percent=Decimal("0.5"),
+        bonus=Decimal(59_000),  # fixed in «Bonuslar» at that day's rate, not the sheet's
+        receiver=receiver,
+    )
+    data.update(kw)
+    return OrderBonus.objects.create(**data)
+
+
+def test_zamer_takes_collect_bonus_from_bonuslar_once(admin_api, people, orders):
+    umid, jam = people[2], people[1]
+    mine = _done_bonus("370", "Umid")
+    _done_bonus("378", "Boshqa odam")  # someone else's
+    _done_bonus("SM-001", "Umid", paid_date=date(2026, 11, 5))  # next period
+    s = new(admin_api, umid, "zamer")
+    rows = [x for x in s["lines"] if x["section"] == "collect"]
+    assert [(x["order_ref"], x["order_bonus"], Decimal(x["value"])) for x in rows] == [
+        ("370", mine.pk, 59_000)
+    ]
+    assert amounts(s["totals"])["Pul yechish bonusi"] == 59_000
+
+    # saving keeps the link and the «Bonuslar» numbers, whatever the row says
+    r = patch(
+        admin_api,
+        s,
+        lines=[{"section": "collect", "order_bonus": mine.pk, "amount": "1", "on_date": "2026-01-01"}],
+    )
+    assert r.status_code == 200, r.data
+    row = r.data["lines"][0]
+    assert (row["on_date"], row["paid_on"], row["days"], Decimal(row["value"])) == (
+        "2026-10-01",
+        "2026-10-03",
+        2,
+        59_000,
+    )
+
+    found = admin_api.get(f"{URL}{s['id']}/order-bonuses/").data
+    assert found["matched"] is True and [x["order_ref"] for x in found["rows"]] == ["370"]
+
+    # the same bonus on another sheet is refused
+    other = new(admin_api, jam, "zamer")
+    r = patch(admin_api, other, lines=[{"section": "collect", "order_bonus": mine.pk}])
+    assert r.status_code == 400 and "ikki marta" in str(r.data)
+
+    # a hand-typed row for a tracked order is flagged
+    r = patch(
+        admin_api,
+        other,
+        lines=[
+            {"section": "collect", "order_ref": "378", "on_date": "2026-10-01", "paid_on": "2026-10-02", "currency": "UZS", "amount": "100"}
+        ],
+    )
+    assert r.status_code == 200 and any("Bonuslar" in w for w in r.data["warnings"])
 
 
 def test_zamer_collect_bonus_by_days_and_instagram_tiers(admin_api, people, orders):

@@ -44,6 +44,27 @@ export interface SheetLine {
   percent: string | null;
   bonus_usd: string | null;
   value: string;
+  /** «Bonuslar» row this collect line comes from (its days / % / bonus are final) */
+  order_bonus: number | null;
+}
+
+/** GET …/order-bonuses/ — «Bonuslar» closed in the sheet's period */
+export interface OrderBonusPick {
+  matched: boolean;
+  rows: {
+    order_bonus: number;
+    order_ref: string;
+    title: string;
+    on_date: string | null;
+    paid_on: string | null;
+    currency: "UZS" | "USD";
+    amount: string;
+    days: number | null;
+    percent: string;
+    bonus: string;
+    receiver: string;
+    on_sheet: number | null;
+  }[];
 }
 
 export interface SheetAdvance {

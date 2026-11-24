@@ -151,6 +151,19 @@ class SheetLine(models.Model):
     amount = models.DecimalField(max_digits=16, decimal_places=2)
     # deduction in USD: its own rate (empty = the sheet's)
     rate = models.DecimalField(max_digits=16, decimal_places=4, null=True, blank=True)
+    # collect: taken from «Bonuslar» (Готов → paid in full) — its days / percent /
+    # bonus are the source of truth, the row only shows them
+    order_bonus = models.ForeignKey(
+        "accounting.OrderBonus",
+        models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="sheet_lines",
+    )
 
     class Meta:
         ordering = ["section", "position", "id"]
+        constraints = [
+            # one «Bonuslar» row is paid on one sheet only
+            models.UniqueConstraint(fields=["order_bonus"], name="uniq_sheetline_order_bonus")
+        ]

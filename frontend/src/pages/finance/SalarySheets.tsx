@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { AlertTriangle, ArrowLeft, Check, FileText, Plus, Printer, RotateCcw, Save, Send, Trash2, X } from "lucide-react";
-import { api } from "@/api/client";
+import { AlertTriangle, ArrowLeft, Check, Download, FileText, Plus, Printer, RotateCcw, Save, Send, Trash2, X } from "lucide-react";
+import { toast } from "sonner";
+import { api, errorMessage } from "@/api/client";
 import { useAction, useGet, useList } from "@/api/hooks";
 import type { Tone } from "@/api/types";
 import { useAuth } from "@/auth/AuthContext";
@@ -31,6 +32,7 @@ import { som, usd } from "./shared";
 import type {
   LineCalc,
   LineSection,
+  OrderBonusPick,
   OrderBrief,
   SalarySheet,
   SheetPreview,
@@ -199,6 +201,7 @@ interface FormLine {
   currency: "UZS" | "USD";
   amount: string;
   rate: string;
+  order_bonus: number | null;
 }
 
 interface Form {
@@ -259,6 +262,7 @@ function toForm(s: SalarySheet): Form {
       currency: l.currency,
       amount: n0(l.amount),
       rate: l.rate ? n0(l.rate) : "",
+      order_bonus: l.order_bonus ?? null,
     })),
   };
 }
@@ -294,6 +298,7 @@ function toPayload(f: Form) {
       currency: l.currency,
       amount: l.amount || "0",
       rate: l.rate || null,
+      order_bonus: l.order_bonus,
     })),
   };
 }
@@ -314,7 +319,7 @@ function fillFromOrders(f: Form, sent: { key: number; ref: string }[], data: She
     const i = sent.findIndex((x) => x.key === l.key);
     const o = i >= 0 ? data.lines[i]?.order : null;
     const ref = normRef(l.order_ref);
-    if (!o || !ref || sent[i].ref !== ref) return l;
+    if (!o || !ref || sent[i].ref !== ref || l.order_bonus != null) return l;
     const prev = memo[l.key];
     const free = (field: "title" | "amount" | "on_date") => l[field] === "" || (prev?.[field] != null && l[field] === prev[field]);
     const auto: AutoFilled = { ref, title: null, amount: null, on_date: null };
@@ -534,6 +539,7 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
           info={lineInfo}
           total={sectionTotals.find((s) => s.key === sec)?.total}
           stale={stale}
+          path={path}
         />
       ))}
 
@@ -794,6 +800,7 @@ function LinesCard({
   info,
   total,
   stale,
+  path,
 }: {
   section: LineSection;
   form: Form;
@@ -803,6 +810,7 @@ function LinesCard({
   info: Map<number, LineInfo>;
   total: string | undefined;
   stale: boolean;
+  path: string;
 }) {
   const rows = form.lines.filter((l) => l.section === section);
   const hasRef = section === "job" || section === "taken" || section === "delivered" || section === "collect";
@@ -824,14 +832,58 @@ function LinesCard({
           currency: section === "taken" || section === "delivered" || section === "collect" ? "USD" : "UZS",
           amount: "",
           rate: "",
+          order_bonus: null,
         },
       ],
     });
+
+  const [pulling, setPulling] = useState(false);
+  // «Bonuslardan olish»: the period's closed «Bonuslar» rows → collect lines (a
+  // hand-typed row with the same ID is replaced, so nothing is paid twice)
+  const pullBonuses = async () => {
+    setPulling(true);
+    try {
+      const { data } = await api.get<OrderBonusPick>(`${path}order-bonuses/`);
+      const have = new Set(form.lines.map((l) => l.order_bonus).filter((x) => x != null));
+      const rows = data.rows.filter((r) => !r.on_sheet && !have.has(r.order_bonus));
+      const elsewhere = data.rows.filter((r) => r.on_sheet);
+      if (!data.matched && rows.length) {
+        const who = [...new Set(rows.map((r) => r.receiver || "—"))].join(", ");
+        if (!confirm(`Bu xodim nomiga bonus topilmadi. Shu davrdagi bonuslar «${who}» nomida. Baribir qo'shilsinmi?`)) return;
+      }
+      const refs = new Set(rows.map((r) => r.order_ref));
+      const kept = form.lines.filter((l) => !(l.section === "collect" && l.order_bonus == null && refs.has(normRef(l.order_ref))));
+      const added: FormLine[] = rows.map((r) => ({
+        key: nextKey(),
+        section: "collect",
+        order_ref: r.order_ref,
+        title: r.title,
+        on_date: r.on_date ?? "",
+        paid_on: r.paid_on ?? "",
+        currency: r.currency,
+        amount: numStr(r.amount),
+        rate: "",
+        order_bonus: r.order_bonus,
+      }));
+      if (added.length) upd({ lines: [...kept, ...added] });
+      toast.success(added.length ? `${added.length} ta bonus qo'shildi — «Saqlash»ni bosing` : "Yangi bonus yo'q");
+      if (elsewhere.length) toast(`${elsewhere.length} ta bonus boshqa varaqda: ` + elsewhere.map((r) => `ID ${r.order_ref} → №${r.on_sheet}`).join(", "));
+    } catch (e) {
+      toast.error(errorMessage(e));
+    } finally {
+      setPulling(false);
+    }
+  };
 
   return (
     <Card className="p-5">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
         <h3 className="font-semibold">{opts.section_titles[section]}</h3>
+        {section === "collect" && edit && (
+          <Button variant="outline" size="sm" icon={<Download className="h-4 w-4" />} loading={pulling} onClick={pullBonuses}>
+            Bonuslardan olish
+          </Button>
+        )}
         {pct && (
           <label className="flex items-center gap-2 text-sm">
             Bonus foizi
@@ -874,12 +926,15 @@ function LinesCard({
               {rows.map((l, i) => {
                 const li = info.get(l.key);
                 const s = li?.calc;
+                const fromBonus = l.order_bonus != null;
+                const lock = !edit || fromBonus;
                 return (
                   <tr key={l.key} className="border-t border-slate-100 align-top dark:border-slate-800">
                     <td className="muted py-3">{i + 1}</td>
                     {hasRef && (
                       <td className="py-1.5 pr-2">
-                        <Input value={l.order_ref} disabled={!edit} placeholder="406" onChange={(e) => setLine(l.key, { order_ref: e.target.value })} />
+                        <Input value={l.order_ref} disabled={lock} placeholder="406" onChange={(e) => setLine(l.key, { order_ref: e.target.value })} />
+                        {fromBonus && <div className="mt-0.5 text-xs font-medium text-brand-600">«Bonuslar»dan</div>}
                         {li?.found === false && normRef(l.order_ref) && <div className="mt-0.5 text-xs text-rose-600">ID topilmadi</div>}
                         {li?.order && (
                           <div className="muted mt-0.5 max-w-[11rem] truncate text-xs" title={`${li.order.client} · ${li.order.status}`}>
@@ -891,12 +946,12 @@ function LinesCard({
                     )}
                     {(section === "collect" || section === "deduction") && (
                       <td className="py-1.5 pr-2">
-                        <Input type="date" value={l.on_date} disabled={!edit} onChange={(e) => setLine(l.key, { on_date: e.target.value })} />
+                        <Input type="date" value={l.on_date} disabled={lock} onChange={(e) => setLine(l.key, { on_date: e.target.value })} />
                       </td>
                     )}
                     {section === "collect" && (
                       <td className="py-1.5 pr-2">
-                        <Input type="date" value={l.paid_on} disabled={!edit} onChange={(e) => setLine(l.key, { paid_on: e.target.value })} />
+                        <Input type="date" value={l.paid_on} disabled={lock} onChange={(e) => setLine(l.key, { paid_on: e.target.value })} />
                       </td>
                     )}
                     {section !== "collect" && (
@@ -906,14 +961,14 @@ function LinesCard({
                     )}
                     {(section === "collect" || section === "deduction") && (
                       <td className="py-1.5 pr-2">
-                        <Select value={l.currency} disabled={!edit} onChange={(e) => setLine(l.key, { currency: e.target.value as "UZS" | "USD" })}>
+                        <Select value={l.currency} disabled={lock} onChange={(e) => setLine(l.key, { currency: e.target.value as "UZS" | "USD" })}>
                           <option value="USD">USD</option>
                           <option value="UZS">UZS</option>
                         </Select>
                       </td>
                     )}
                     <td className="py-1.5 pr-2">
-                      <Input type="number" inputMode="decimal" className="text-right" value={l.amount} disabled={!edit} onChange={(e) => setLine(l.key, { amount: e.target.value })} />
+                      <Input type="number" inputMode="decimal" className="text-right" value={l.amount} disabled={lock} onChange={(e) => setLine(l.key, { amount: e.target.value })} />
                     </td>
                     {section === "deduction" && (
                       <td className="py-1.5 pr-2">

@@ -29,7 +29,7 @@ from accounting import salary as SAL
 from accounting import services as S
 from accounting import workers as WK
 from accounting.constants import BONUS_TIERS, PayType
-from accounting.models import Worker, WorkerFile
+from accounting.models import OrderBonus, Worker, WorkerFile
 from accounting.text import add_months, month_full, today
 from core.exceptions import ServiceError
 
@@ -193,6 +193,71 @@ def _advance_row(t, workers_by_key: dict) -> dict:
     }
 
 
+# ------------------------------------------------------------------ «Bonuslar»
+def _same_person(receiver: str, worker: Worker) -> bool:
+    """Does «Kimga» on a bonus (bot member names, comma-joined) name this worker?
+    Word sets, either way round: «Yusupov» ↔ «Yusupov Ali»."""
+    key = set(S._worker_key(worker.name).split())
+    if not key:
+        return False
+    for part in (receiver or "").split(","):
+        p = set(S._worker_key(part).split())
+        if p and (p <= key or key <= p):
+            return True
+    return False
+
+
+def _bonus_line(b: OrderBonus) -> dict:
+    """A «Bonuslar» row as a sheet line (the form's shape)."""
+    return {
+        "section": LineSection.COLLECT,
+        "order_ref": b.order_ref,
+        "title": b.client,
+        "on_date": b.ready_date.isoformat() if b.ready_date else None,
+        "paid_on": b.paid_date.isoformat() if b.paid_date else None,
+        "currency": b.currency,
+        "amount": str(q2(b.total)),
+        "rate": None,
+        "order_bonus": b.pk,
+    }
+
+
+def _bonuses_in_period(sheet: SalarySheet):
+    return OrderBonus.objects.filter(
+        status="done",
+        paid_date__gte=sheet.period_start,
+        paid_date__lte=sheet.period_end,
+    ).order_by("paid_date", "id")
+
+
+def order_bonuses_for(sheet: SalarySheet) -> dict:
+    """«Bonuslar» closed (money in, bonus fixed) inside the sheet's period whose «Kimga»
+    is this worker. When no row names them, every row of the period is offered with
+    `matched: false` so the accountant decides. `on_sheet` = already on that sheet №."""
+    rows = list(_bonuses_in_period(sheet))
+    used = dict(
+        SheetLine.objects.filter(order_bonus__in=rows)
+        .exclude(sheet=sheet)
+        .values_list("order_bonus_id", "sheet__number")
+    )
+    mine = [b for b in rows if _same_person(b.receiver, sheet.worker)]
+    pick = mine or rows
+    return {
+        "matched": bool(mine),
+        "rows": [
+            {
+                **_bonus_line(b),
+                "days": b.days,
+                "percent": plain(b.percent or ZERO),
+                "bonus": str(q2(b.bonus or ZERO)),
+                "receiver": b.receiver,
+                "on_sheet": used.get(b.pk),
+            }
+            for b in pick
+        ],
+    }
+
+
 # ------------------------------------------------------------------ the maths
 def _line_value(sheet: SalarySheet, ln: SheetLine) -> dict:
     """One row with what it adds to the sheet in so'm (`value`)."""
@@ -213,7 +278,15 @@ def _line_value(sheet: SalarySheet, ln: SheetLine) -> dict:
         "percent": None,
         "bonus_usd": None,
         "value": "0",
+        "order_bonus": ln.order_bonus_id,
     }
+    b = ln.order_bonus if ln.order_bonus_id else None
+    if ln.section == LineSection.COLLECT and b is not None:
+        # «Bonuslar» already fixed the days, percent and so'm when the money came in
+        row["days"] = b.days
+        row["percent"] = plain(b.percent or ZERO)
+        row["value"] = str(q2(b.bonus or ZERO))
+        return row
     if ln.section in (LineSection.JOB, LineSection.CAR):
         value = amount
     elif ln.section in USD_SECTIONS:
@@ -242,7 +315,7 @@ def compute(sheet: SalarySheet, *, lines=None, members=None) -> dict:
     kind = sheet.kind
     fields = KIND_FIELDS[kind]
     sections = KIND_SECTIONS[kind]
-    src = sheet.lines.all() if lines is None else lines
+    src = sheet.lines.select_related("order_bonus") if lines is None else lines
     lines = [ln for ln in src if ln.section in sections]
     rows = [_line_value(sheet, ln) for ln in lines]
     by_sec: dict[str, list[dict]] = {s: [] for s in sections}
@@ -358,6 +431,21 @@ def warnings(sheet: SalarySheet) -> list[str]:
                     f"ID {ln.order_ref} shu davrdagi boshqa varaqda ham bor: "
                     f"№{ln.sheet.number} ({ln.sheet.worker.name})."
                 )
+    manual = [
+        ln.order_ref
+        for ln in sheet.lines.all()
+        if ln.section == LineSection.COLLECT and ln.order_ref and not ln.order_bonus_id
+    ]
+    if manual and LineSection.COLLECT in KIND_SECTIONS[sheet.kind]:
+        tracked = sorted(
+            OrderBonus.objects.filter(order_ref__in=manual).values_list("order_ref", flat=True)
+        )
+        if tracked:
+            out.append(
+                "Pul yechish bonusi qo'lda yozilgan, lekin «Bonuslar»da hisoblangan: "
+                + ", ".join(tracked)
+                + " — «Bonuslardan olish» bilan oling, ikki marta to'lanmasin."
+            )
     if sheet.kind == SheetKind.SBORKA and sheet.snapshot is None:
         names = [m.worker.name for m in members_of(sheet)]
         if len(names) > 1:
@@ -435,9 +523,16 @@ def preview_sheet(sheet: SalarySheet, data: dict) -> dict:
         tmp.period_start, tmp.period_end = start, end
     sections = KIND_SECTIONS[tmp.kind]
 
-    raw = list(data.get("lines") or [])[:MAX_LINES]
+    raw = [ln for ln in list(data.get("lines") or [])[:MAX_LINES] if isinstance(ln, dict)]
     refs = {_norm_ref(ln.get("order_ref")) for ln in raw} - {""}
     infos = S.order_infos(refs) if refs else {}
+    bonus_ids = []
+    for ln in raw:
+        try:
+            bonus_ids.append(int(ln.get("order_bonus") or 0))
+        except (TypeError, ValueError):
+            pass
+    bonuses = OrderBonus.objects.filter(status="done").in_bulk([i for i in bonus_ids if i])
     objs, rows = [], []
     for ln in raw:
         sec = ln.get("section")
@@ -459,6 +554,12 @@ def preview_sheet(sheet: SalarySheet, data: dict) -> dict:
             amount=_soft_dec(ln.get("amount")),
             rate=r if r > 0 else None,
         )
+        try:
+            b = bonuses.get(int(ln.get("order_bonus") or 0))
+        except (TypeError, ValueError):
+            b = None
+        if b is not None and sec == LineSection.COLLECT:
+            obj.order_bonus = b
         info = infos.get(ref) if ref else None
         row = None
         if sec in sections:
@@ -548,7 +649,7 @@ def create_sheet(worker: Worker, *, month: str | None = None, kind: str | None =
     if not rate or rate <= 0:
         raise ServiceError("Dollar kursi topilmadi — Moliya sozlamalarida kiriting.")
     same = prev if prev and prev.kind == kind else None
-    copy = {
+    carried = {
         f: getattr(same, f)
         for f in ("fixed", "bonus_percent", "bonus2_percent", "late_rate", "absent_rate")
     } if same else {}
@@ -567,8 +668,10 @@ def create_sheet(worker: Worker, *, month: str | None = None, kind: str | None =
                     usd_rate=rate,
                     created_by=by,
                     updated_by=by,
-                    **copy,
+                    **carried,
                 )
+                if LineSection.COLLECT in KIND_SECTIONS[kind]:
+                    _add_own_bonuses(sheet)
                 if kind == SheetKind.SBORKA:
                     old = list(same.members.all()) if same else []
                     if old:
@@ -584,6 +687,33 @@ def create_sheet(worker: Worker, *, month: str | None = None, kind: str | None =
     else:
         raise ServiceError("Varaqni ochib bo'lmadi, qayta urinib ko'ring.")
     return refresh_totals(sheet)
+
+
+def _add_own_bonuses(sheet: SalarySheet) -> None:
+    """A new SOTUV / ZAMER sheet starts with this worker's «Bonuslar» of the period."""
+    found = order_bonuses_for(sheet)
+    if not found["matched"]:
+        return
+    free = [r for r in found["rows"] if not r["on_sheet"]]
+    bonuses = OrderBonus.objects.in_bulk([r["order_bonus"] for r in free])
+    SheetLine.objects.bulk_create(
+        [
+            SheetLine(
+                sheet=sheet,
+                section=LineSection.COLLECT,
+                position=i,
+                order_ref=b.order_ref,
+                order_id=b.order_id,
+                title=b.client[:255],
+                on_date=b.ready_date,
+                paid_on=b.paid_date,
+                currency=b.currency,
+                amount=q2(b.total),
+                order_bonus=b,
+            )
+            for i, b in enumerate((bonuses[r["order_bonus"]] for r in free), start=1)
+        ]
+    )
 
 
 def _lock(sheet: SalarySheet) -> SalarySheet:
@@ -617,18 +747,72 @@ def _clean_members(sheet: SalarySheet, kind: str, raw) -> list[dict] | None:
     return rows
 
 
-def _clean_lines(kind: str, raw) -> list[dict] | None:
+def _bonus_rows(sheet: SalarySheet, raw) -> dict[int, OrderBonus]:
+    """The «Bonuslar» rows the lines point to, each checked: closed, used once."""
+    ids = []
+    for ln in raw:
+        try:
+            if ln.get("order_bonus"):
+                ids.append(int(ln["order_bonus"]))
+        except (TypeError, ValueError) as e:
+            raise ServiceError("Bonus noto'g'ri.", "lines") from e
+    if not ids:
+        return {}
+    if len(ids) != len(set(ids)):
+        raise ServiceError("Bitta bonus varaqqa ikki marta qo'shilgan.", "lines")
+    rows = OrderBonus.objects.in_bulk(ids)
+    for bid in ids:
+        b = rows.get(bid)
+        if b is None or b.status != "done":
+            raise ServiceError("Bonus topilmadi yoki hali yopilmagan («Olindi» emas).", "lines")
+    other = (
+        SheetLine.objects.filter(order_bonus_id__in=ids)
+        .exclude(sheet=sheet)
+        .select_related("sheet__worker", "order_bonus")
+        .first()
+    )
+    if other:
+        raise ServiceError(
+            f"ID {other.order_bonus.order_ref} bonusi №{other.sheet.number} varaqda bor "
+            f"({other.sheet.worker.name}) — ikki marta to'lanmaydi.",
+            "lines",
+        )
+    return rows
+
+
+def _clean_lines(kind: str, raw, sheet: SalarySheet) -> list[dict] | None:
     if raw is None:
         return None
     if len(raw) > MAX_LINES:
         raise ServiceError(f"Qatorlar juda ko'p ({MAX_LINES} tagacha).", "lines")
     allowed = KIND_SECTIONS[kind]
+    bonuses = _bonus_rows(sheet, raw)
     out = []
     refs = set()
     for i, ln in enumerate(raw, start=1):
         sec = ln.get("section")
         if sec not in allowed:
             raise ServiceError(f"{i}-qator: bu varaq turida «{sec}» bo'limi yo'q.", "lines")
+        if ln.get("order_bonus"):
+            if sec != LineSection.COLLECT:
+                raise ServiceError(f"{i}-qator: bonus faqat pul yechish bo'limida.", "lines")
+            b = bonuses[int(ln["order_bonus"])]
+            out.append(
+                {
+                    "section": sec,
+                    "position": i,
+                    "order_ref": b.order_ref,
+                    "title": (str(ln.get("title") or "").strip() or b.client)[:255],
+                    "on_date": b.ready_date,
+                    "paid_on": b.paid_date,
+                    "currency": b.currency,
+                    "amount": q2(b.total),
+                    "rate": None,
+                    "order_bonus": b,
+                    "order_id": b.order_id,
+                }
+            )
+            continue
         amount = D(ln.get("amount"))
         if amount <= 0:
             raise ServiceError(f"{i}-qator: summa 0 dan katta bo'lsin.", "lines")
@@ -671,6 +855,8 @@ def _clean_lines(kind: str, raw) -> list[dict] | None:
     if missing:
         raise ServiceError("Bunday buyurtma ID topilmadi: " + ", ".join(missing), "lines")
     for r in out:
+        if "order_bonus" in r:
+            continue
         info = infos.get(r["order_ref"]) if r["order_ref"] else None
         r["order"] = info.order if info else None
         if info and not r["title"]:
@@ -715,7 +901,7 @@ def update_sheet(sheet: SalarySheet, data: dict, *, by=None) -> SalarySheet:
             if D(getattr(sheet, f)) > HUNDRED:
                 raise ServiceError("Foiz 100 dan oshmasin.", f)
         members = _clean_members(sheet, kind, data.get("members"))
-        lines = _clean_lines(kind, data.get("lines"))
+        lines = _clean_lines(kind, data.get("lines"), sheet)
         sheet.updated_by = by
         sheet.save()
         if members is not None:

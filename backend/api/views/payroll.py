@@ -114,6 +114,12 @@ class SalarySheetViewSet(
         data = request.data if isinstance(request.data, dict) else {}
         return Response(P.preview_sheet(self.get_object(), data))
 
+    @action(detail=True, methods=["get"], url_path="order-bonuses")
+    def order_bonuses(self, request, pk=None):
+        """«Bonuslar» closed in the sheet's period, for «Bonuslardan olish»."""
+        require_perm(request.user, CHANGE)
+        return Response(P.order_bonuses_for(self.get_object()))
+
     @action(detail=True, methods=["post"])
     def submit(self, request, pk=None):
         require_perm(request.user, CHANGE)
