@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'metering.price',
     'discussion',
     'accounting',
+    'payroll',
     'hr',
     'warehouse',
 

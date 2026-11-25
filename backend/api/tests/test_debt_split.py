@@ -456,7 +456,7 @@ def test_hammasi_failure_through_the_api_writes_nothing(orders, members, api, mo
 
     monkeypatch.setattr(S, "create_operation", flaky)
     c = api(VIEW, ADD, CHANGE, ALL)
-    link(boss, c)
+    link(ali, c)
     r = c.post(f"{URL}{d.pk}/pay/", {"member": ali.pk}, format="json")
     assert r.status_code == 400
     assert Operation.objects.filter(debt=d).count() == 0

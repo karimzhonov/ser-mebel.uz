@@ -238,7 +238,7 @@ export function OperationModal({
         )}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Hamyon (xodim)" error={errors.member}>
-            <Select value={f.member} onChange={(e) => set({ member: e.target.value })} disabled={!me?.view_all}>
+            <Select value={f.member} onChange={(e) => set({ member: e.target.value })} disabled={!me?.view_all || !!op?.debt_number}>
               <option value="">— tanlang —</option>
               {walletOptions.map((m) => (
                 <option key={m.id} value={m.id}>

@@ -3,7 +3,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenRefreshView
 
-from .views import call_center, finance, hr, metering, orders, users, warehouse
+from .views import call_center, finance, hr, metering, orders, payroll, users, warehouse
 from .views.auth import LoginView, LogoutView, MeView, TelegramLoginView
 from .views.dashboard import BoardsView, MetaView, ServiceOutView
 from .views.files import FileView, FolderMessagesView, FolderView
@@ -43,6 +43,7 @@ router.register("finance/bonuses", finance.OrderBonusViewSet, basename="orderbon
 router.register("finance/warranty", finance.WarrantyLetterViewSet, basename="warrantyletter")
 router.register("finance/site-entry", finance.SiteEntryTaskViewSet, basename="siteentrytask")
 router.register("finance/feedback", finance.ClientFeedbackViewSet, basename="clientfeedback")
+router.register("finance/salary-sheets", payroll.SalarySheetViewSet, basename="salarysheet")
 router.register("hr/attendance", hr.AttendanceViewSet, basename="attendance")
 router.register("hr/employees", hr.EmployeeViewSet, basename="employee")
 router.register("hr/groups", hr.WorkGroupViewSet, basename="workgroup")

@@ -1003,11 +1003,17 @@ class DebtViewSet(
         s.is_valid(raise_exception=True)
         d = s.validated_data
         only = scoped_member(request)
-        if only and d["member"].pk != only.pk:
+        author = acting_member(request)
+        # owner's rule: a debt is paid only from the payer's own wallet, whoever they are
+        if not author:
+            raise PermissionDenied(
+                "Profilingiz Telegram a'zoga ulanmagan — qarzni o'z hamyoningizdan to'lash uchun "
+                "avval ulang."
+            )
+        if d["member"].pk != author.pk:
             raise PermissionDenied("Faqat o'z hamyoningizdan to'lay olasiz.")
         if not d["member"].has_wallet:
             raise ValidationError({"member": f"{d['member'].name}ning hamyoni yo'q."})
-        author = acting_member(request)
         with transaction.atomic():
             _, ops = S.pay_debt_legs(
                 debt,

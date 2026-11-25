@@ -364,25 +364,20 @@ export function DebtModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-/** «To'lash»: an expense in the chosen wallet, on the debt's order. On a split debt the
- * payer picks the order each time, or «Hammasi» for the whole remainder. */
+/** «To'lash»: an expense in the payer's OWN wallet, on the debt's order. On a split debt
+ * the payer picks the order each time, or «Hammasi» for the whole remainder. */
 export function DebtPayModal({ debt, onClose }: { debt: Debt; onClose: () => void }) {
   const { data: me } = useFinMe();
-  const { data: fin } = useFinOptions();
   const qc = useQueryClient();
-  const members = fin?.members;
   // the list row may be stale: another payment changes what each order still owes
   const { data: fresh } = useGet<Debt>(isSplitDebt(debt) ? `/finance/debts/${debt.id}/` : null);
   const current = fresh ?? debt;
   const split = isSplitDebt(current);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const [member, setMember] = useState("");
   const [amount, setAmount] = useState(String(Number(debt.remaining)));
   const [target, setTarget] = useState("");
   const [day, setDay] = useState(iso(new Date()));
-  const wallet = member || (me?.member ? String(me.member.id) : "");
-  const allWallets = (members ?? []).filter((m) => m.has_wallet);
-  const wallets: { id: number; name: string }[] = me?.view_all && allWallets.length ? allWallets : me?.member ? [me.member] : [];
+  const wallet = me?.member?.has_wallet ? String(me.member.id) : "";
   const unpaid = split ? debtAllocations(current).filter((a) => (toCents(a.remaining) ?? 0) > 0) : [];
   const chosen = unpaid.find((a) => String(a.id) === target);
   const payAll = split && target === "all" && unpaid.length > 0;
@@ -435,14 +430,15 @@ export function DebtPayModal({ debt, onClose }: { debt: Debt; onClose: () => voi
           <span className="font-semibold text-rose-600">Qoldiq: {inCur(current.remaining, current.currency)}</span>
         </p>
         <Field label="Hamyon" error={errors.member}>
-          <Select value={wallet} onChange={(e) => setMember(e.target.value)} disabled={!me?.view_all}>
-            <option value="">— tanlang —</option>
-            {wallets.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </Select>
+          {wallet ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium dark:border-slate-700 dark:bg-slate-800">{me?.member?.name}</div>
+          ) : (
+            me && (
+              <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                {me.member ? "Sizning hamyoningiz yo'q." : "Profilingiz Telegram a'zoga ulanmagan. Qarzni faqat o'z hamyoningizdan to'lash mumkin."}
+              </p>
+            )
+          )}
         </Field>
         {split && (
           <Field label="Buyurtma" error={errors.allocation || (payAll ? errors.amount : undefined)}>

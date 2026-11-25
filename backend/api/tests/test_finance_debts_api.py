@@ -105,15 +105,53 @@ def test_pay_wallet_scoping(site_order, members, api, bot_events):
     r = c.post(f"{URL}{d.pk}/pay/", {"member": vali.pk, "amount": "1000"}, format="json")
     assert r.status_code == 403
     assert not bot_events.of("finance.operation_created")
-    # an admin (view_all) may pay from another wallet, but not from a wallet-less one
+    # owner's rule: view_all does not open other wallets, everyone pays from their own
     a = api(VIEW, ADD, ALL)
-    bad = a.post(f"{URL}{d.pk}/pay/", {"member": nowallet.pk, "amount": "1000"}, format="json")
+    unlinked = a.post(f"{URL}{d.pk}/pay/", {"member": vali.pk, "amount": "1000"}, format="json")
+    assert unlinked.status_code == 403
+    link(boss, a)
+    other = a.post(f"{URL}{d.pk}/pay/", {"member": vali.pk, "amount": "1000"}, format="json")
+    assert other.status_code == 403
+    assert S.balance(vali) == 0 and not bot_events.of("finance.operation_created")
+    w = api(VIEW, ADD, ALL)
+    link(nowallet, w)
+    bad = w.post(f"{URL}{d.pk}/pay/", {"member": nowallet.pk, "amount": "1000"}, format="json")
     assert bad.status_code == 400
-    ok = a.post(f"{URL}{d.pk}/pay/", {"member": vali.pk, "amount": "1000"}, format="json")
+    before = S.balance(boss)
+    ok = a.post(f"{URL}{d.pk}/pay/", {"member": boss.pk, "amount": "1000"}, format="json")
     assert ok.status_code == 200, ok.content
     assert ok.json()["operation"]["debt_number"] == d.number
-    assert S.balance(vali) == Decimal("-1000")
+    assert S.balance(boss) == before - Decimal("1000")
+    assert S.order_stats(d.order_ref)["spent"] == Decimal("1000")
     assert bot_events.one("finance.operation_created")
+
+
+def test_debt_payment_wallet_cannot_be_moved_by_edit(site_order, members):
+    from core.exceptions import ServiceError
+
+    _, ali, vali = members
+    d = mk(created_by=ali)
+    _, op = S.pay_debt(d, payer=ali, amount=Decimal("1000"))
+    with pytest.raises(ServiceError):
+        S.update_operation(op, {"member": vali}, actor_admin=True)
+    op.refresh_from_db()
+    assert op.member_id == ali.pk and S.balance(vali) == 0
+    # the edit form always resends the wallet: the same one is fine
+    edited = S.update_operation(op, {"member": ali, "comment": "izoh"}, actor_admin=True)
+    assert edited.comment == "izoh" and edited.member_id == ali.pk
+
+
+def test_single_debt_on_no_order_category_is_not_paid_past_the_order(site_order, members):
+    from accounting.models import FinanceCategory, Operation
+    from core.exceptions import ServiceError
+
+    _, ali, _ = members
+    d = mk(created_by=ali)
+    FinanceCategory.objects.filter(pk=d.category_id).update(no_order=True)
+    d.refresh_from_db()
+    with pytest.raises(ServiceError):
+        S.pay_debt(d, payer=ali, amount=Decimal("1000"))
+    assert not Operation.objects.filter(debt=d).exists() and S.balance(ali) == 0
 
 
 def test_pay_own_wallet_closes_and_conflicts_after(site_order, members, api, bot_events):
@@ -266,16 +304,17 @@ def test_staff_does_not_see_or_touch_others_debts(site_order, members, api, bot_
 
 
 def test_view_all_user_sees_and_pays_every_debt(site_order, members, api):
-    _, ali, vali = members
+    boss, ali, vali = members
     a = mk(created_by=ali)
     b = mk(created_by=vali)
     c = api(VIEW, ADD, ALL)
+    link(boss, c)
     assert c.get(URL).json()["count"] == 2
     assert c.get(URL + "stats/").json()["open_count"] == 2
     assert c.get(f"{URL}{b.pk}/").status_code == 200
-    ok = c.post(f"{URL}{a.pk}/pay/", {"member": ali.pk, "amount": "1000"}, format="json")
+    ok = c.post(f"{URL}{a.pk}/pay/", {"member": boss.pk, "amount": "1000"}, format="json")
     assert ok.status_code == 200, ok.content
-    ok = c.post(f"{URL}{b.pk}/pay/", {"member": vali.pk, "amount": "1000"}, format="json")
+    ok = c.post(f"{URL}{b.pk}/pay/", {"member": boss.pk, "amount": "1000"}, format="json")
     assert ok.status_code == 200, ok.content
 
 

@@ -8,6 +8,7 @@ import { cn } from "@/lib/cn";
 import { date } from "@/lib/format";
 import { useUrlState } from "@/lib/useUrlState";
 import { SalaryModal } from "./SalaryModal";
+import { WorkerSheetsLink } from "./SalarySheets";
 import { WorkerFiles, WorkerMonths, WorkerProfilePanel } from "./WorkerFolder";
 import { som, usd } from "./shared";
 import type { WorkerCard, WorkerCardResponse, WorkerListItem } from "./types";
@@ -205,9 +206,10 @@ function CardView({ card, period }: { card: WorkerCard; period: string }) {
           <span className="muted text-xs">Butun davr: {som(card.all_time)}</span>
           {card.pay_day && <span className="muted text-xs">🗓 Oylik kuni: har oyning {card.pay_day}-sanasi</span>}
         </div>
+        {card.worker_id && <WorkerSheetsLink workerId={card.worker_id} />}
         {folder && (
-          <Button icon={<FileSpreadsheet className="h-4 w-4" />} onClick={() => setSalary(true)}>
-            Oylik chiqarish
+          <Button variant="outline" icon={<FileSpreadsheet className="h-4 w-4" />} onClick={() => setSalary(true)}>
+            Excel (eski)
           </Button>
         )}
       </div>

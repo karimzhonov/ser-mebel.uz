@@ -44,6 +44,7 @@ import {
   ListTodo,
   Presentation,
   BookX,
+  ClipboardList,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/api/client";
@@ -121,6 +122,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { to: "/finance/requests", label: "Pul so'rovlari", icon: HandCoins, finance: "requests" },
       { to: "/finance/reports", label: "Oylik hisob", icon: CalendarCheck, finance: "reports" },
       { to: "/finance/worker-card", label: "Ishchi kartasi", icon: HardHat, finance: "workerCard" },
+      { to: "/finance/salary", label: "Oylik varaqlari", icon: ClipboardList, finance: "salary" },
       { to: "/finance/advances", label: "Avans tasdiqlash", icon: BadgeCheck, finance: "advances" },
       { to: "/finance/followup", label: "Готов va bonuslar", icon: Gift, finance: "followup" },
       { to: "/finance/checks", label: "Tekshiruv", icon: ShieldCheck, finance: "checks" },
