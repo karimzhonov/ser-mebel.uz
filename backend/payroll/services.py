@@ -19,8 +19,8 @@ Stage 2 (money, still no wallet move on approval):
     «mashina puli» split over the sheet's IDs by contract sum; returning the sheet
     removes them. Fiksa / oklad / Instagram / fines stay off the orders (overhead,
     stage 3). The order's «spent» counts them (accounting.services.order_stats).
-  * what the company owes = each approved sheet's OSTATOK (SBORKA: each partner's
-    own rest). The accountant keeps paying in the bot (wallet expense «Oylik», pay
+  * what the company owes = each approved sheet's OSTATOK (SBORKA: the team's whole
+    rest — a payment to any partner pays it). The accountant keeps paying in the bot (wallet expense «Oylik», pay
     type «Oylik», the worker); `ledger()` matches those payments to the worker's
     oldest unpaid approved sheets, first in first out — nothing is stored, so an
     edited or deleted payment is followed at once. Salary payments never carry an
@@ -1211,15 +1211,6 @@ PAY_STATUS = {
 }
 
 
-def _own_rest(view: dict, worker_id: int) -> Decimal:
-    """What this sheet owes this person: SBORKA — their own rest, else the OSTATOK."""
-    members = view.get("members") or []
-    if members:
-        own = next((m for m in members if m.get("worker_id") == worker_id), None)
-        return max(q2(own["rest"]), ZERO) if own else ZERO
-    return max(q2((view.get("totals") or {}).get("rest")), ZERO)
-
-
 def _pay_row(t, part: Decimal) -> dict:
     return {
         "id": t.id,
@@ -1248,6 +1239,7 @@ def ledger() -> dict:
     if not sheets:
         return out
     dues: dict[str, list[dict]] = {}
+    entries: list[dict] = []
     for sh in sheets:
         out["sheets"][sh.pk] = {"due": ZERO, "paid": ZERO, "payments": []}
         if not isinstance(sh.snapshot, dict):
@@ -1259,11 +1251,13 @@ def ledger() -> dict:
             if sh.kind == SheetKind.SBORKA and prefetched
             else [sh.worker]
         )
-        for w in people:
-            due = _own_rest(sh.snapshot, w.pk)
-            dues.setdefault(S._worker_key(w.name), []).append(
-                {"sheet": sh, "due": due, "left": due}
-            )
+        # one debt per sheet: SBORKA's whole OSTATOK is handed to the team (usually to
+        # the bosh usta), so a payment to any partner pays the sheet, not one share
+        due = max(q2((sh.snapshot.get("totals") or {}).get("rest")), ZERO)
+        entry = {"sheet": sh, "due": due, "left": due}
+        entries.append(entry)
+        for key in {S._worker_key(w.name) for w in people}:
+            dues.setdefault(key, []).append(entry)
     # from the first sheet's period on: earlier payments can never match, later ones
     # that match nothing are shown as «loose» on the sheet of their period
     start = min(sh.period_start for sh in sheets)
@@ -1287,11 +1281,10 @@ def ledger() -> dict:
             out["sheets"][d["sheet"].pk]["payments"].append(_pay_row(t, take))
         if left > 0:
             out["loose"].setdefault(key, []).append(_pay_row(t, left))
-    for rows in dues.values():
-        for d in rows:
-            s = out["sheets"][d["sheet"].pk]
-            s["due"] += d["due"]
-            s["paid"] += d["due"] - d["left"]
+    for d in entries:
+        s = out["sheets"][d["sheet"].pk]
+        s["due"] += d["due"]
+        s["paid"] += d["due"] - d["left"]
     return out
 
 

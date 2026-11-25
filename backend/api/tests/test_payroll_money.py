@@ -242,7 +242,9 @@ def test_payment_too_early_for_any_sheet_is_shown_as_loose(admin_api, people, me
     assert [Decimal(x["amount"]) for x in p["loose"]] == [400_000]
 
 
-def test_sborka_partners_are_paid_against_their_own_share(admin_api, people, members, orders):
+def test_sborka_team_money_paid_to_the_bosh_usta_pays_the_whole_sheet(
+    admin_api, people, members, orders
+):
     dil, jam, _ = people
     s = approved(
         admin_api,
@@ -251,12 +253,13 @@ def test_sborka_partners_are_paid_against_their_own_share(admin_api, people, mem
         members=[{"worker": dil.pk, "share": "60"}, {"worker": jam.pk, "share": "40"}],
         lines=[{"section": "job", "order_ref": "370", "amount": "10000000"}],
     )
-    pay(members, "Jamshid", 5_000_000, date(2026, 11, 1))  # 1 mln more than his share
+    pay(members, "Dilmurod", 8_000_000, date(2026, 11, 1))  # more than his 60 % share
     p = admin_api.get(f"{URL}{s['id']}/").data["payment"]
-    assert p["status"] == "partial" and Decimal(p["paid"]) == 4_000_000
-    assert [Decimal(x["amount"]) for x in p["loose"]] == [1_000_000]
-    pay(members, "Dilmurod", 6_000_000, date(2026, 11, 2))
-    assert admin_api.get(f"{URL}{s['id']}/").data["payment"]["status"] == "paid"
+    assert p["status"] == "partial" and Decimal(p["paid"]) == 8_000_000 and p["loose"] == []
+    pay(members, "Jamshid", 2_500_000, date(2026, 11, 2))  # a partner pays the rest
+    p = admin_api.get(f"{URL}{s['id']}/").data["payment"]
+    assert p["status"] == "paid" and Decimal(p["left"]) == 0
+    assert [Decimal(x["amount"]) for x in p["loose"]] == [500_000]
 
 
 def test_draft_and_submitted_sheets_have_no_payment_block(admin_api, people):
