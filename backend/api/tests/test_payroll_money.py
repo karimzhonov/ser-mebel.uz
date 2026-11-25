@@ -262,6 +262,22 @@ def test_sborka_team_money_paid_to_the_bosh_usta_pays_the_whole_sheet(
     assert [Decimal(x["amount"]) for x in p["loose"]] == [500_000]
 
 
+def test_the_payment_form_sees_how_much_is_still_owed(api, admin_api, people, members, orders):
+    umid = people[2]
+    sep = approved(admin_api, umid, "oddiy", month="2026-09", fixed="3000000")
+    octo = approved(admin_api, umid, "oddiy", month="2026-10", fixed="2000000")
+    pay(members, "Umid", 1_000_000, date(2026, 10, 2))
+    r = admin_api.get(f"{URL}owed/", {"worker": " umid "})
+    assert r.status_code == 200, r.data
+    assert Decimal(r.data["total"]) == 4_000_000
+    assert [(s["number"], Decimal(s["left"])) for s in r.data["sheets"]] == [
+        (sep["number"], 2_000_000),
+        (octo["number"], 2_000_000),
+    ]
+    assert admin_api.get(f"{URL}owed/", {"worker": "Boshqa"}).data["sheets"] == []
+    assert api("accounting.view_operation").get(f"{URL}owed/", {"worker": "Umid"}).status_code == 403
+
+
 def test_draft_and_submitted_sheets_have_no_payment_block(admin_api, people):
     r = admin_api.post(URL, {"worker": people[2].pk, "kind": "oddiy", "month": "2026-10"}, format="json")
     assert r.data["payment"] is None and r.data["costs"] == []

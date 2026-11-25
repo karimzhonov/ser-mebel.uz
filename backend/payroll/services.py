@@ -20,8 +20,8 @@ Stage 2 (money, still no wallet move on approval):
     removes them. Fiksa / oklad / Instagram / fines stay off the orders (overhead,
     stage 3). The order's «spent» counts them (accounting.services.order_stats).
   * what the company owes = each approved sheet's OSTATOK (SBORKA: the team's whole
-    rest — a payment to any partner pays it). The accountant keeps paying in the bot (wallet expense «Oylik», pay
-    type «Oylik», the worker); `ledger()` matches those payments to the worker's
+    rest — a payment to any partner pays it). The accountant keeps paying in the bot
+    (wallet expense «Oylik», pay type «Oylik», the worker); `ledger()` matches those payments to the worker's
     oldest unpaid approved sheets, first in first out — nothing is stored, so an
     edited or deleted payment is followed at once. Salary payments never carry an
     order ID (accounting.services.create_operation), so nothing is counted twice."""
@@ -1235,13 +1235,20 @@ def ledger() -> dict:
         .prefetch_related("members__worker")
         .order_by("month", "number")
     )
-    out: dict = {"sheets": {}, "loose": {}}
+    out: dict = {"sheets": {}, "loose": {}, "keys": {}}
     if not sheets:
         return out
     dues: dict[str, list[dict]] = {}
     entries: list[dict] = []
     for sh in sheets:
-        out["sheets"][sh.pk] = {"due": ZERO, "paid": ZERO, "payments": []}
+        out["sheets"][sh.pk] = {
+            "due": ZERO,
+            "paid": ZERO,
+            "payments": [],
+            "number": sh.number,
+            "month": ym_of(sh.month),
+            "worker": sh.worker.name,
+        }
         if not isinstance(sh.snapshot, dict):
             continue
         # the prefetched members (members_of() would query again for every sheet)
@@ -1258,6 +1265,7 @@ def ledger() -> dict:
         entries.append(entry)
         for key in {S._worker_key(w.name) for w in people}:
             dues.setdefault(key, []).append(entry)
+            out["keys"].setdefault(key, []).append(sh.pk)
     # from the first sheet's period on: earlier payments can never match, later ones
     # that match nothing are shown as «loose» on the sheet of their period
     start = min(sh.period_start for sh in sheets)
@@ -1294,6 +1302,32 @@ def pay_status(due: Decimal, paid: Decimal) -> str:
     if paid <= 0:
         return "unpaid"
     return "partial" if paid < due else "paid"
+
+
+def owed_to(name: str) -> dict:
+    """What is still to hand over to this person («Kimga oylik» as typed) on their
+    approved sheets, oldest first — shown while the salary is being paid, so the
+    accountant sees how much to give. SBORKA: the team's whole rest."""
+    key = S._worker_key(name)
+    led = ledger() if key else {"sheets": {}, "keys": {}}
+    rows = []
+    for pk in led["keys"].get(key, []):
+        s = led["sheets"][pk]
+        left = q2(s["due"] - s["paid"])
+        if left > 0:
+            rows.append(
+                {
+                    "id": pk,
+                    "number": s["number"],
+                    "month": s["month"],
+                    "worker": s["worker"],
+                    "due": str(q2(s["due"])),
+                    "paid": str(q2(s["paid"])),
+                    "left": str(left),
+                }
+            )
+    total = sum((D(r["left"]) for r in rows), ZERO)
+    return {"worker": name, "total": str(q2(total)), "sheets": rows}
 
 
 def sheet_payment(sheet: SalarySheet, led: dict | None = None) -> dict | None:

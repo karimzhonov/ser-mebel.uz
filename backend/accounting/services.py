@@ -479,7 +479,7 @@ def order_stats(ref: str) -> dict:
         st["cats"][WAREHOUSE_CAT] = wh
     # approved salary sheets (payroll stage 2): the wage booked on the client without a
     # wallet move; salary payments never carry an order ID, so it is not counted twice
-    pay =order_costs([ref]).get(str(ref), ZERO)
+    pay = order_costs([ref]).get(str(ref), ZERO)
     st["payroll"] = pay
     st["payroll_rows"] = order_cost_lines(ref) if pay else []
     if pay:

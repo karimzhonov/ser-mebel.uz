@@ -118,6 +118,14 @@ class SalarySheetViewSet(
     def sheet_options(self, request):
         return Response(P.options())
 
+    @action(detail=False, methods=["get"])
+    def owed(self, request):
+        """How much salary is still to be handed to `?worker=<name>` (the operation form
+        shows it while an «Oylik» is being paid)."""
+        require_perm(request.user, "payroll.view_salarysheet")
+        name = str(request.query_params.get("worker") or "").strip()[:255]
+        return Response(P.owed_to(name))
+
     @action(detail=True, methods=["post"])
     def preview(self, request, pk=None):
         """Live totals + the order behind each typed ID, for the unsaved form."""
