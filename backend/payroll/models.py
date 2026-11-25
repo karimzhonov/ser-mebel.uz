@@ -167,3 +167,33 @@ class SheetLine(models.Model):
             # one «Bonuslar» row is paid on one sheet only
             models.UniqueConstraint(fields=["order_bonus"], name="uniq_sheetline_order_bonus")
         ]
+
+
+class CostSource(models.TextChoices):
+    LINE = "line", "Varaqdagi ID"
+    CAR = "car", "Mashina puli (summaga qarab)"
+
+
+class SheetCost(models.Model):
+    """Stage 2: what an APPROVED sheet costs each client ID. Written on approval,
+    removed when the sheet is returned. No wallet moves here — the order's «spent»
+    counts these rows (accounting.services.order_stats); the wallet only moves when the
+    salary is actually paid (an «Oylik» operation, never booked on an order)."""
+
+    sheet = models.ForeignKey(SalarySheet, models.CASCADE, related_name="costs")
+    order_ref = models.CharField(max_length=32, db_index=True, verbose_name="Buyurtma ID")
+    order = models.ForeignKey(
+        "order.Order", models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    source = models.CharField(max_length=8, choices=CostSource.choices, default=CostSource.LINE)
+    amount = models.DecimalField(max_digits=16, decimal_places=2, verbose_name="Summa (so'm)")
+
+    class Meta:
+        ordering = ["sheet", "order_ref", "source"]
+        verbose_name = "Oylik xarajati (ID bo'yicha)"
+        verbose_name_plural = "Oylik xarajatlari (ID bo'yicha)"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["sheet", "order_ref", "source"], name="uniq_sheetcost_sheet_ref_source"
+            )
+        ]

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
-from payroll.models import LineSection, SalarySheet, SheetKind
+from payroll import services as P
+from payroll.models import LineSection, SalarySheet, SheetKind, SheetStatus
 
 
 def _money(**kw):
@@ -68,6 +69,7 @@ class SalarySheetListSerializer(serializers.ModelSerializer):
     earned = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     approved_by_name = serializers.SerializerMethodField()
+    pay = serializers.SerializerMethodField()
 
     class Meta:
         model = SalarySheet
@@ -92,7 +94,27 @@ class SalarySheetListSerializer(serializers.ModelSerializer):
             "approved_by_name",
             "approved_at",
             "updated_at",
+            "pay",
         ]
+
+    def get_pay(self, obj):
+        """Approved sheets: {status, status_label, paid, left} from the ledger (None
+        otherwise, or when the view gave no ledger)."""
+        led = self.context.get("ledger")
+        if led is None or obj.status != SheetStatus.APPROVED:
+            return None
+        if callable(led):  # built once, on the first approved row of the page
+            led = self.context["ledger"] = led()
+        row = led["sheets"].get(obj.pk)
+        if row is None:
+            return None
+        st = P.pay_status(row["due"], row["paid"])
+        return {
+            "status": st,
+            "status_label": P.PAY_STATUS[st],
+            "paid": float(row["paid"]),
+            "left": float(row["due"] - row["paid"]),
+        }
 
     def get_month(self, obj):
         return obj.month.strftime("%Y-%m")

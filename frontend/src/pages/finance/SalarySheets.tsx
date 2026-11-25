@@ -34,7 +34,9 @@ import type {
   LineSection,
   OrderBonusPick,
   OrderBrief,
+  PayStatus,
   SalarySheet,
+  SheetPaymentRow,
   SheetPreview,
   SheetKind,
   SheetListRow,
@@ -51,6 +53,8 @@ function StatusBadge({ status, label }: { status: SheetStatus; label: string }) 
   return <Badge tone={STATUS_TONE[status]}>{label}</Badge>;
 }
 
+const PAY_TONE: Record<PayStatus, Tone> = { none: "idle", unpaid: "danger", partial: "warn", paid: "ok" };
+
 /* =================================================================== list */
 
 export function FinanceSalaryListPage() {
@@ -63,7 +67,7 @@ export function FinanceSalaryListPage() {
     <div className="space-y-4">
       <PageHeader
         title="Oylik varaqlari"
-        subtitle="Bugalter to'ldiradi va tasdiqlashga yuboradi, rahbar tasdiqlaydi — PDF xodim papkasiga o'zi tushadi. Hamyonga hali hech narsa yozilmaydi."
+        subtitle="Bugalter to'ldiradi, rahbar tasdiqlaydi — PDF xodim papkasiga tushadi, ID bo'yicha summalar mijoz xarajatiga yoziladi (hamyondan pul chiqmaydi). Oylik botda «Oylik» turi bilan berilganda varaqqa o'zi bog'lanadi."
         actions={
           can("payroll.add_salarysheet") && (
             <Button icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>
@@ -114,6 +118,12 @@ export function FinanceSalaryListPage() {
                 <div className="flex flex-wrap items-center gap-1">
                   <StatusBadge status={r.status} label={r.status_label} />
                   {r.returned_note && r.status === "draft" && <Badge tone="danger">Qaytarilgan</Badge>}
+                  {r.pay && r.pay.status !== "none" && (
+                    <Badge tone={PAY_TONE[r.pay.status]}>
+                      {r.pay.status_label}
+                      {r.pay.status === "partial" && ` · qoldi ${som(r.pay.left)}`}
+                    </Badge>
+                  )}
                 </div>
               ),
             },
@@ -634,6 +644,9 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
         </div>
       </Card>
 
+      {sheet.payment && <PaymentCard sheet={sheet} />}
+      {sheet.status === "approved" && <CostsCard sheet={sheet} />}
+
       <div className="sticky bottom-0 z-20 -mx-1 rounded-2xl border border-slate-200 bg-white/95 px-4 py-3 shadow-pop backdrop-blur dark:border-slate-800 dark:bg-slate-900/95">
         <div className="flex flex-wrap items-center justify-end gap-2">
           {dirty && <span className="muted mr-auto text-sm">Saqlanmagan o'zgarishlar bor</span>}
@@ -657,7 +670,7 @@ function SheetEditor({ sheet: initial, opts }: { sheet: SalarySheet; opts: Sheet
               icon={<Check className="h-4 w-4" />}
               disabled={dirty || busy}
               loading={approve.isPending}
-              onClick={() => confirm(`№${sheet.number} — ${som(t.rest)} tasdiqlansinmi? PDF xodim papkasiga saqlanadi.`) && approve.mutate()}
+              onClick={() => confirm(`№${sheet.number} — ${som(t.rest)} tasdiqlansinmi? PDF xodim papkasiga saqlanadi, ID bo'yicha summalar mijozlar xarajatiga yoziladi.`) && approve.mutate()}
             >
               Tasdiqlash
             </Button>
@@ -1068,6 +1081,114 @@ function AdvancesCard({ sheet }: { sheet: SalarySheet }) {
                 {som(a.amount)}
                 {a.currency === "USD" && a.orig_amount && <span className="muted ml-1 text-xs">({usd(a.orig_amount)})</span>}
               </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function PayRow({ p, part }: { p: SheetPaymentRow; part: boolean }) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-2 py-1.5">
+      <span>
+        <span className="muted">
+          #{p.number} · {date(p.date)}
+        </span>
+        <span className="muted"> · hamyon: {p.wallet}</span>
+        {p.comment && <span className="muted"> · {p.comment}</span>}
+      </span>
+      <span className="tabular-nums">
+        {som(p.amount)}
+        {part && p.op_amount !== p.amount && <span className="muted ml-1 text-xs">({som(p.op_amount)} dan)</span>}
+      </span>
+    </div>
+  );
+}
+
+/** Stage 2: the OSTATOK against the «Oylik» payments made in the bot / «Amallar». */
+function PaymentCard({ sheet }: { sheet: SalarySheet }) {
+  const p = sheet.payment!;
+  return (
+    <Card className="p-5">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-semibold">To'lovlar</h3>
+        <Badge tone={PAY_TONE[p.status]}>{p.status_label}</Badge>
+      </div>
+      <div className="mb-3 grid grid-cols-3 gap-3 text-sm">
+        <div>
+          <div className="muted text-xs">Berilishi kerak</div>
+          <b className="tabular-nums">{som(p.due)}</b>
+        </div>
+        <div>
+          <div className="muted text-xs">Berildi</div>
+          <b className="tabular-nums text-emerald-700 dark:text-emerald-400">{som(p.paid)}</b>
+        </div>
+        <div>
+          <div className="muted text-xs">Qoldi</div>
+          <b className={cn("tabular-nums", Number(p.left) > 0 && "text-rose-600")}>{som(p.left)}</b>
+        </div>
+      </div>
+      <p className="muted mb-2 text-xs">
+        Oylik botda (yoki «Amallar»da) «Oylik» kategoriyasi, xodim va «Oylik» turi bilan berilsa, shu yerga o'zi tushadi: avval eng eski to'lanmagan varaq yopiladi,
+        ortig'i keyingisiga o'tadi. Avanslar yuqorida ayirilgan.
+      </p>
+      {p.payments.length === 0 ? (
+        <p className="muted text-sm">Hali to'lov yo'q.</p>
+      ) : (
+        <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+          {p.payments.map((x) => (
+            <PayRow key={`${x.id}-${x.amount}`} p={x} part />
+          ))}
+        </div>
+      )}
+      {p.loose.length > 0 && (
+        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+          <div className="mb-1 flex items-center gap-1.5 font-medium text-amber-800 dark:text-amber-200">
+            <AlertTriangle className="h-4 w-4" /> Hech bir varaqqa tushmagan «Oylik» to'lovlari
+          </div>
+          <p className="muted mb-1 text-xs">
+            Oylik kunidan {p.grace_days} kundan ko'proq oldin berilgan yoki qarzdan ortiq berilgan. Agar shu varaq uchun bo'lsa, «Amallar»da sanasini tekshiring.
+          </p>
+          <div className="divide-y divide-amber-200/60 dark:divide-amber-500/20">
+            {p.loose.map((x) => (
+              <PayRow key={`${x.id}-loose`} p={x} part />
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+/** Stage 2: what the approval booked on each client (no wallet move). */
+function CostsCard({ sheet }: { sheet: SalarySheet }) {
+  const total = sheet.costs.reduce((s, c) => s + Number(c.amount), 0);
+  return (
+    <Card className="p-5">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="font-semibold">Mijozlar xarajatiga yozildi</h3>
+        <span className="text-sm">
+          Jami: <b className="tabular-nums">{som(total)}</b>
+        </span>
+      </div>
+      <p className="muted mb-2 text-xs">
+        Hamyondan pul chiqmaydi — bu summa buyurtmaning «Sarflandi»siga qo'shiladi. Mashina puli shu varaqdagi ID'larga buyurtma summasiga qarab bo'lingan. Fiksa / oklad
+        mijozlarga yozilmaydi (umumiy xarajat).
+      </p>
+      {sheet.costs.length === 0 ? (
+        <p className="muted text-sm">Bu varaqda ID bo'yicha summa yo'q.</p>
+      ) : (
+        <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+          {sheet.costs.map((c) => (
+            <div key={`${c.order_ref}-${c.source}`} className="flex flex-wrap items-baseline justify-between gap-2 py-1.5">
+              <span>
+                <b>ID {c.order_ref}</b>
+                {c.client && <span> · {c.client}</span>}
+                {c.source === "car" && <span className="muted"> · {c.source_label}</span>}
+              </span>
+              <span className="tabular-nums">{som(c.amount)}</span>
             </div>
           ))}
         </div>

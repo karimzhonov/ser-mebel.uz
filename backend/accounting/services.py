@@ -470,6 +470,16 @@ def order_stats(ref: str) -> dict:
     if wh:
         st["spent"] += wh
         st["cats"][WAREHOUSE_CAT] = wh
+    # approved salary sheets (payroll stage 2): the wage booked on the client without a
+    # wallet move; salary payments never carry an order ID, so it is not counted twice
+    from payroll.services import order_cost_lines, order_costs
+
+    pay = order_costs([ref]).get(str(ref), ZERO)
+    st["payroll"] = pay
+    st["payroll_rows"] = order_cost_lines(ref) if pay else []
+    if pay:
+        st["spent"] += pay
+        st["cats"][CAT_SALARY] = st["cats"].get(CAT_SALARY, ZERO) + pay
     return st
 
 
@@ -494,6 +504,12 @@ def order_stats_bulk(refs) -> dict[str, dict]:
         st = out.setdefault(ref, {"spent": ZERO, "collected": ZERO, "cats": {}})
         st["spent"] += wh
         st["cats"][WAREHOUSE_CAT] = wh
+    from payroll.services import order_costs
+
+    for ref, pay in order_costs(list(refs)).items():
+        st = out.setdefault(ref, {"spent": ZERO, "collected": ZERO, "cats": {}})
+        st["spent"] += pay
+        st["cats"][CAT_SALARY] = st["cats"].get(CAT_SALARY, ZERO) + pay
     for st in out.values():
         st.setdefault("warehouse", st["cats"].get(WAREHOUSE_CAT, ZERO))
     return out
@@ -875,6 +891,10 @@ def update_operation(
             op.worker = (data["worker"] or "")[:255]
         if "pay_type" in data:
             op.pay_type = data["pay_type"] or ""
+        # same rule as create_operation: a salary is never booked on an order — the
+        # approved salary sheet books the wage there (payroll), so it would count twice
+        if op.kind == OpKind.EXPENSE and op.category.code == CAT_SALARY:
+            op.order_ref, op.order = "", None
         if op.category.code != CAT_SALARY or op.kind != OpKind.EXPENSE:
             op.pay_type = ""
         elif op.pay_type and ("pay_type" in data or "worker" in data):

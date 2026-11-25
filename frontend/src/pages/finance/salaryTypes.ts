@@ -27,6 +27,43 @@ export interface SheetListRow {
   approved_by_name: string;
   approved_at: string | null;
   updated_at: string;
+  /** approved sheets only: how much of the OSTATOK the «Oylik» payments covered */
+  pay: { status: PayStatus; status_label: string; paid: number; left: number } | null;
+}
+
+export type PayStatus = "none" | "unpaid" | "partial" | "paid";
+
+/** one «Oylik» payment (wallet expense) — `amount` is the part that went to this sheet */
+export interface SheetPaymentRow {
+  id: number;
+  number: number;
+  date: string;
+  amount: string;
+  op_amount: string;
+  worker: string;
+  wallet: string;
+  comment: string;
+}
+
+export interface SheetPayment {
+  due: string;
+  paid: string;
+  left: string;
+  status: PayStatus;
+  status_label: string;
+  payments: SheetPaymentRow[];
+  /** «Oylik» payments of the period that no sheet took (too early / more than owed) */
+  loose: SheetPaymentRow[];
+  grace_days: number;
+}
+
+/** what the approved sheet booked on each client ID (no wallet move) */
+export interface SheetCostRow {
+  order_ref: string;
+  client: string;
+  source: "line" | "car";
+  source_label: string;
+  amount: string;
 }
 
 export interface SheetLine {
@@ -145,6 +182,8 @@ export interface SalarySheet {
   submitted_at: string | null;
   approved_by: string;
   approved_at: string | null;
+  costs: SheetCostRow[];
+  payment: SheetPayment | null;
   can: { edit: boolean; submit: boolean; approve: boolean; return: boolean; delete: boolean };
 }
 

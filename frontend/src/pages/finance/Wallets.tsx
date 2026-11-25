@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useGet } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
@@ -193,6 +193,25 @@ function OrderFinanceBody({ o }: { o: FinOrder }) {
                   <span className="muted">#{w.number} · {date(w.date)}</span> · {w.product} {w.quantity} {w.unit_label}
                 </span>
                 <span className="whitespace-nowrap tabular-nums text-rose-600">{som(w.total)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {o.payroll && o.payroll.length > 0 && (
+        <div>
+          <h4 className="mb-1 text-sm font-medium">👷 Oylik varaqlaridan</h4>
+          <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+            {o.payroll.map((p) => (
+              <div key={`${p.number}-${p.source}`} className="flex justify-between gap-3 py-2">
+                <span>
+                  <Link to={`/finance/salary/${p.sheet_id}`} className="text-brand-600 hover:underline">
+                    №{p.number}
+                  </Link>{" "}
+                  · {p.month} · {p.worker}
+                  {p.source === "car" && <span className="muted"> · {p.source_label}</span>}
+                </span>
+                <span className="whitespace-nowrap tabular-nums text-rose-600">{som(p.amount)}</span>
               </div>
             ))}
           </div>

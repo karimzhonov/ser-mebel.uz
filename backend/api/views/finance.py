@@ -838,6 +838,9 @@ class FinanceOrdersView(APIView):
             from warehouse.services import allocation_refs
 
             booked |= allocation_refs() - set(infos)
+            from payroll.services import cost_refs
+
+            booked |= cost_refs() - set(infos)
             for ref, info in S.order_infos(booked).items():
                 if info.bucket in buckets:
                     infos[ref] = info
@@ -1106,6 +1109,13 @@ class FinanceOrderDetailView(APIView):
             {**r, "quantity": f(r["quantity"]), "total": f(r["total"])}
             for r in st["warehouse_rows"]
         ]
+        # approved salary sheets booked on this ID (payroll stage 2): who earned how much
+        # is shown only to those who may open the sheets (the total stays in «spent»)
+        row["payroll"] = (
+            [{**r, "amount": f(r["amount"])} for r in st.get("payroll_rows", [])]
+            if u.has_perm("payroll.view_salarysheet")
+            else []
+        )
         bn = (
             OrderBonus.objects.filter(order_ref=info.ref).first()
             if u.has_perm(ACC + "view_order_bonus_line")

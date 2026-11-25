@@ -143,6 +143,8 @@ export interface FinOrder {
   ready_date: string | null;
   by_category: { code: string; amount: number; name?: string; emoji?: string }[];
   warehouse?: { number: number; date: string; product: string; quantity: number; unit_label: string; total: number }[];
+  /** approved salary sheets booked on this ID (no wallet move); empty without payroll.view_salarysheet */
+  payroll?: { sheet_id: number; number: number; month: string; worker: string; kind_label: string; source: "line" | "car"; source_label: string; amount: number }[];
   operations?: Operation[];
   /** the debts on this order; total / paid / remaining are this order's share */
   debts?: FinOrderDebt[];

@@ -12,17 +12,29 @@ and every sheet: − the advances (Avans) paid in the period → OSTATOK.
 
 Advances are read live from «Amallar» (oylik, pay type «Avans») until the sheet is
 approved; approval freezes everything into `snapshot`, renders the PDF and files it
-into each worker's folder. Stage 1 books no money anywhere."""
+into each worker's folder.
+
+Stage 2 (money, still no wallet move on approval):
+  * approval writes `SheetCost` rows — every ID row's so'm onto that client, and
+    «mashina puli» split over the sheet's IDs by contract sum; returning the sheet
+    removes them. Fiksa / oklad / Instagram / fines stay off the orders (overhead,
+    stage 3). The order's «spent» counts them (accounting.services.order_stats).
+  * what the company owes = each approved sheet's OSTATOK (SBORKA: each partner's
+    own rest). The accountant keeps paying in the bot (wallet expense «Oylik», pay
+    type «Oylik», the worker); `ledger()` matches those payments to the worker's
+    oldest unpaid approved sheets, first in first out — nothing is stored, so an
+    edited or deleted payment is followed at once. Salary payments never carry an
+    order ID (accounting.services.create_operation), so nothing is counted twice."""
 
 from __future__ import annotations
 
 import copy
 import re
-from datetime import date
+from datetime import date, time, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 
 from django.db import IntegrityError, transaction
-from django.db.models import Max, Q
+from django.db.models import Max, Q, Sum
 from django.utils import timezone
 
 from accounting import salary as SAL
@@ -33,7 +45,16 @@ from accounting.models import OrderBonus, Worker, WorkerFile
 from accounting.text import add_months, month_full, today
 from core.exceptions import ServiceError
 
-from .models import LineSection, SalarySheet, SheetKind, SheetLine, SheetMember, SheetStatus
+from .models import (
+    CostSource,
+    LineSection,
+    SalarySheet,
+    SheetCost,
+    SheetKind,
+    SheetLine,
+    SheetMember,
+    SheetStatus,
+)
 
 ZERO = Decimal(0)
 HUNDRED = Decimal(100)
@@ -952,6 +973,8 @@ def return_sheet(sheet: SalarySheet, *, reason: str = "", by=None) -> SalaryShee
         sheet.returned_note = str(reason or "").strip()[:500]
         sheet.updated_by = by
         sheet.save()
+        # a draft costs the clients nothing; the next approval books it again
+        sheet.costs.all().delete()
     return refresh_totals(sheet)
 
 
@@ -991,6 +1014,7 @@ def approve_sheet(sheet: SalarySheet, *, by=None) -> SalarySheet:
             k: view["totals"][k] for k in ("earned_total", "minus_total", "advances_total", "rest")
         }
         sheet.save()
+        book_costs(sheet, view)
         content = render_pdf(view, paper_for(sheet.kind))
         ym = ym_of(sheet.month)
         suffix = f"_v{sheet.version}" if sheet.version > 1 else ""
@@ -1006,6 +1030,254 @@ def approve_sheet(sheet: SalarySheet, *, by=None) -> SalarySheet:
                 user=by,
             )
     return sheet
+
+
+# ------------------------------------------------------------------ stage 2: client costs
+def cost_rows(view: dict) -> list[dict]:
+    """What an approved sheet costs each client ID, in so'm. Every ID row adds its
+    value; «mashina puli» is split over the sheet's IDs by contract sum (owner's rule:
+    a bigger order means more trips; equal parts when no sum is known)."""
+    per: dict[str, Decimal] = {}
+    order_ids: dict[str, int | None] = {}
+    for r in view.get("lines") or []:
+        ref = r.get("order_ref") or ""
+        if r.get("section") not in REF_SECTIONS or not ref:
+            continue
+        per[ref] = per.get(ref, ZERO) + max(D(r.get("value")), ZERO)
+        if r.get("order_id"):
+            order_ids[ref] = r["order_id"]
+    out = [
+        {"order_ref": ref, "order_id": order_ids.get(ref), "source": CostSource.LINE, "amount": q2(v)}
+        for ref, v in per.items()
+        if q2(v) > 0
+    ]
+    car = q2((view.get("totals") or {}).get("car_total") or 0)
+    if car > 0 and per:
+        # only the IDs the worker actually earned on (all of them if none did)
+        refs = [ref for ref, v in per.items() if v > 0] or list(per)
+        infos = S.order_infos(refs)
+        weights = [max(D(getattr(infos.get(ref), "price_uzs", None) or 0), ZERO) for ref in refs]
+        if sum(weights, ZERO) <= 0:
+            weights = [Decimal(1)] * len(refs)
+        whole = sum(weights, ZERO)
+        parts = [q2(car * w / whole) for w in weights]
+        # rounding: the tiyins left over go to the biggest order
+        big = max(range(len(refs)), key=lambda i: weights[i])
+        parts[big] += car - sum(parts, ZERO)
+        out += [
+            {"order_ref": ref, "order_id": order_ids.get(ref), "source": CostSource.CAR, "amount": p}
+            for ref, p in zip(refs, parts)
+            if p > 0
+        ]
+    return out
+
+
+def book_costs(sheet: SalarySheet, view: dict) -> None:
+    """(Re)write the sheet's client costs — called inside approve_sheet's transaction."""
+    sheet.costs.all().delete()
+    SheetCost.objects.bulk_create(
+        [
+            SheetCost(
+                sheet=sheet,
+                order_ref=r["order_ref"],
+                order_id=r["order_id"],
+                source=r["source"],
+                amount=r["amount"],
+            )
+            for r in cost_rows(view)
+        ]
+    )
+
+
+def _approved_costs():
+    return SheetCost.objects.filter(sheet__status=SheetStatus.APPROVED)
+
+
+def order_costs(refs) -> dict[str, Decimal]:
+    """{order ref: so'm of approved salary sheets} — part of the order's «spent»."""
+    refs = [str(r) for r in refs if r]
+    if not refs:
+        return {}
+    return {
+        r["order_ref"]: r["t"]
+        for r in _approved_costs()
+        .filter(order_ref__in=refs)
+        .values("order_ref")
+        .annotate(t=Sum("amount"))
+    }
+
+
+def order_cost_lines(ref: str) -> list[dict]:
+    """The approved sheets behind an order's salary cost (the order's money card)."""
+    rows = (
+        _approved_costs()
+        .filter(order_ref=str(ref))
+        .select_related("sheet__worker")
+        .order_by("sheet__month", "sheet__number", "source")
+    )
+    return [
+        {
+            "sheet_id": c.sheet_id,
+            "number": c.sheet.number,
+            "month": ym_of(c.sheet.month),
+            "worker": c.sheet.worker.name,
+            "kind_label": c.sheet.get_kind_display(),
+            "source": c.source,
+            "source_label": c.get_source_display(),
+            "amount": c.amount,
+        }
+        for c in rows
+    ]
+
+
+def cost_refs() -> set[str]:
+    return set(_approved_costs().values_list("order_ref", flat=True).distinct())
+
+
+def sheet_costs(sheet: SalarySheet) -> list[dict]:
+    rows = list(sheet.costs.all())
+    infos = S.order_infos([c.order_ref for c in rows]) if rows else {}
+    return [
+        {
+            "order_ref": c.order_ref,
+            "client": getattr(infos.get(c.order_ref), "client", "") or "",
+            "source": c.source,
+            "source_label": c.get_source_display(),
+            "amount": str(q2(c.amount)),
+        }
+        for c in rows
+    ]
+
+
+# ------------------------------------------------------------------ stage 2: owed / paid
+# a salary paid a few days before the pay day still counts for that month's sheet;
+# anything earlier belongs to an older (Excel) salary and is left alone
+GRACE_DAYS = 5
+PAY_STATUS = {
+    "none": "To'lanadigan qoldiq yo'q",
+    "unpaid": "To'lanmagan",
+    "partial": "Qisman to'langan",
+    "paid": "To'langan",
+}
+
+
+def _own_rest(view: dict, worker_id: int) -> Decimal:
+    """What this sheet owes this person: SBORKA — their own rest, else the OSTATOK."""
+    members = view.get("members") or []
+    if members:
+        own = next((m for m in members if m.get("worker_id") == worker_id), None)
+        return max(q2(own["rest"]), ZERO) if own else ZERO
+    return max(q2((view.get("totals") or {}).get("rest")), ZERO)
+
+
+def _pay_row(t, part: Decimal) -> dict:
+    return {
+        "id": t.id,
+        "number": t.number,
+        "date": t.date.isoformat(),
+        "amount": str(q2(part)),
+        "op_amount": str(q2(t.amount)),
+        "worker": t.worker,
+        "wallet": t.member.name if t.member_id else "",
+        "comment": t.comment or "",
+    }
+
+
+def ledger() -> dict:
+    """Every approved sheet against the «Oylik» payments: {"sheets": {sheet id: {due,
+    paid, payments}}, "loose": {worker key: [payments not matched to a sheet]}}.
+    A payment goes to the person's oldest approved sheet with money left whose pay day
+    is at most GRACE_DAYS after it; what is left over moves on to the next one."""
+    sheets = list(
+        SalarySheet.objects.filter(status=SheetStatus.APPROVED, snapshot__isnull=False)
+        .select_related("worker")
+        .prefetch_related("members__worker")
+        .order_by("month", "number")
+    )
+    out: dict = {"sheets": {}, "loose": {}}
+    if not sheets:
+        return out
+    dues: dict[str, list[dict]] = {}
+    for sh in sheets:
+        out["sheets"][sh.pk] = {"due": ZERO, "paid": ZERO, "payments": []}
+        if not isinstance(sh.snapshot, dict):
+            continue
+        # the prefetched members (members_of() would query again for every sheet)
+        prefetched = list(sh.members.all())
+        people = (
+            [m.worker for m in prefetched]
+            if sh.kind == SheetKind.SBORKA and prefetched
+            else [sh.worker]
+        )
+        for w in people:
+            due = _own_rest(sh.snapshot, w.pk)
+            dues.setdefault(S._worker_key(w.name), []).append(
+                {"sheet": sh, "due": due, "left": due}
+            )
+    # from the first sheet's period on: earlier payments can never match, later ones
+    # that match nothing are shown as «loose» on the sheet of their period
+    start = min(sh.period_start for sh in sheets)
+    ops = [
+        t
+        for t in S.salary_ops(start).filter(pay_type=PayType.SALARY)
+        if S._worker_key(t.worker) in dues
+    ]
+    ops.sort(key=lambda t: (t.date, t.time or time.min, t.id))
+    for t in ops:
+        key = S._worker_key(t.worker)
+        left = q2(t.amount)
+        for d in dues[key]:
+            if left <= 0:
+                break
+            if d["left"] <= 0 or t.date < d["sheet"].period_end - timedelta(days=GRACE_DAYS):
+                continue
+            take = min(left, d["left"])
+            d["left"] -= take
+            left -= take
+            out["sheets"][d["sheet"].pk]["payments"].append(_pay_row(t, take))
+        if left > 0:
+            out["loose"].setdefault(key, []).append(_pay_row(t, left))
+    for rows in dues.values():
+        for d in rows:
+            s = out["sheets"][d["sheet"].pk]
+            s["due"] += d["due"]
+            s["paid"] += d["due"] - d["left"]
+    return out
+
+
+def pay_status(due: Decimal, paid: Decimal) -> str:
+    if due <= 0:
+        return "none"
+    if paid <= 0:
+        return "unpaid"
+    return "partial" if paid < due else "paid"
+
+
+def sheet_payment(sheet: SalarySheet, led: dict | None = None) -> dict | None:
+    """The «To'lovlar» block of an approved sheet (None for a draft / submitted one).
+    `loose` = this person's «Oylik» payments from the sheet's period on that no sheet
+    took (paid too early, or more than owed) — for the accountant to check."""
+    if sheet.status != SheetStatus.APPROVED or not sheet.snapshot:
+        return None
+    led = led if led is not None else ledger()
+    row = led["sheets"].get(sheet.pk) or {"due": ZERO, "paid": ZERO, "payments": []}
+    st = pay_status(row["due"], row["paid"])
+    keys = {S._worker_key(m.worker.name) for m in members_of(sheet)}
+    since = sheet.period_start.isoformat()
+    loose = [
+        p for k in keys for p in led["loose"].get(k, []) if p["date"] >= since
+    ]
+    loose.sort(key=lambda p: (p["date"], p["number"]))
+    return {
+        "due": str(q2(row["due"])),
+        "paid": str(q2(row["paid"])),
+        "left": str(q2(row["due"] - row["paid"])),
+        "status": st,
+        "status_label": PAY_STATUS[st],
+        "payments": row["payments"],
+        "loose": loose,
+        "grace_days": GRACE_DAYS,
+    }
 
 
 # ------------------------------------------------------------------ read
