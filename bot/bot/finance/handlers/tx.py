@@ -203,6 +203,35 @@ async def next_step(ctx: Ctx, d: dict):
     return await say(await draft_text(ctx, d), ik(rows))
 
 
+async def show_owed(ctx: Ctx, d: dict):
+    """After «🧾 Oylik»: how much is still to be handed to this person on approved
+    salary sheets (`finance/salary-owed/`, admins only). Never blocks the flow — an
+    error or an older backend just skips the hint."""
+    try:
+        owed = await ctx.get("finance/salary-owed/", worker=d.get("worker") or "")
+    except BackendError:
+        return
+    total = D(owed.get("total") or 0)
+    sheets = owed.get("sheets") or []
+    if total <= 0 or not sheets:
+        d.pop("owed", None)
+        return await ctx.send(
+            f"ℹ️ {esc(owed.get('worker') or '')} uchun to'lanmagan tasdiqlangan oylik varag'i yo'q."
+        )
+    d["owed"] = str(total)
+    lines = [f"📋 <b>{esc(owed.get('worker') or '')}</b>ga berilishi kerak: <b>{money(total)}</b>"]
+    for s in sheets:
+        lines.append(
+            f"• Varaq №{s['number']} · {esc(s['month'])} — {money(s['left'])}"
+            f" <i>({money(s['due'])} dan)</i>"
+        )
+    kb = None
+    if d.get("amount") and D(d["amount"]) != total:
+        lines.append(f"✍️ Siz yozgan summa: {money(d['amount'])}")
+        kb = ik([[b(f"✏️ Summani {money(total)} qilish", "owe:set")]])
+    await ctx.send("\n".join(lines), kb)
+
+
 async def order_choice_kb(ctx: Ctx, d: dict, cat: dict | None):
     want, general = K.order_buckets(d["kind"], d["cat"])
     orders = await ctx.get("finance/orders/", buckets=",".join(want))
@@ -387,7 +416,18 @@ async def tx_callback(ctx: Ctx, cmd: str, arg: str, d: dict | None) -> bool:
     ):
         d["pay"] = arg
         await edit("✔️ " + T.pay_label(arg))
+        if arg == "Oylik":
+            await show_owed(ctx, d)
         await next_step(ctx, d)
+        return True
+    if cmd == "owe" and arg == "set" and d and d.get("pay") == "Oylik" and d.get("owed"):
+        # «✏️ Summani … qilish»: the amount becomes what the sheets still owe
+        d.update(amount=str(round(D(d["owed"]))), cur="UZS", orig=None, rate=None)
+        await edit("✔️ Summa: " + money(d["amount"]))
+        if d.get("step") == "confirm":
+            await next_step(ctx, d)
+        else:
+            await ctx.set_st(d)
         return True
     if cmd == "car" and d and d.get("step") == "car":
         car = next((c for c in await A.cars(ctx) if str(c["id"]) == arg), None)

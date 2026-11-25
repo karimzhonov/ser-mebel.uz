@@ -262,6 +262,27 @@ def test_sborka_team_money_paid_to_the_bosh_usta_pays_the_whole_sheet(
     assert [Decimal(x["amount"]) for x in p["loose"]] == [500_000]
 
 
+def test_money_booked_to_the_whole_team_in_the_bot_counts_for_the_sborka_sheet(
+    admin_api, people, members, orders
+):
+    dil, jam, _ = people  # both in group «Sborka»
+    team = "👥 Sborka (butun komanda)"  # what the bot writes for «butun komanda»
+    pay(members, team, 1_000_000, date(2026, 10, 5), pay_type="Avans")
+    s = approved(
+        admin_api,
+        dil,
+        "sborka",
+        members=[{"worker": dil.pk, "share": "60"}, {"worker": jam.pk, "share": "40"}],
+        lines=[{"section": "job", "order_ref": "370", "amount": "10000000"}],
+    )
+    assert Decimal(s["totals"]["advances_total"]) == 1_000_000  # the team advance
+    pay(members, team, 9_000_000, date(2026, 11, 1))
+    p = admin_api.get(f"{URL}{s['id']}/").data["payment"]
+    assert p["status"] == "paid" and p["loose"] == []
+    owed = admin_api.get(f"{URL}owed/", {"worker": team}).data
+    assert owed["sheets"] == []
+
+
 def test_the_payment_form_sees_how_much_is_still_owed(api, admin_api, people, members, orders):
     umid = people[2]
     sep = approved(admin_api, umid, "oddiy", month="2026-09", fixed="3000000")
@@ -276,6 +297,22 @@ def test_the_payment_form_sees_how_much_is_still_owed(api, admin_api, people, me
     ]
     assert admin_api.get(f"{URL}owed/", {"worker": "Boshqa"}).data["sheets"] == []
     assert api("accounting.view_operation").get(f"{URL}owed/", {"worker": "Umid"}).status_code == 403
+
+
+def test_the_bot_shows_the_boss_what_is_owed(bot_client, admin_api, people, members, orders):
+    import json
+    from pathlib import Path
+
+    approved(admin_api, people[2], "oddiy", month="2026-10", fixed="2000000")
+    pay(members, "Umid", 500_000, date(2026, 11, 2))
+    r = bot_client.get("finance/salary-owed/?worker=Umid", actor=100)  # the boss
+    assert r.status_code == 200, r.data
+    assert Decimal(r.data["total"]) == 1_500_000 and len(r.data["sheets"]) == 1
+    fixture = Path(__file__).resolve().parents[3] / "docs" / "bot_contract" / "misc.salary_owed_response.json"
+    if fixture.exists():  # the contract dir is mounted only in some runs
+        want = json.loads(fixture.read_text(encoding="utf-8"))
+        assert set(r.data) == set(want) and set(r.data["sheets"][0]) == set(want["sheets"][0])
+    assert bot_client.get("finance/salary-owed/?worker=Umid", actor=200).status_code == 403
 
 
 def test_draft_and_submitted_sheets_have_no_payment_block(admin_api, people):

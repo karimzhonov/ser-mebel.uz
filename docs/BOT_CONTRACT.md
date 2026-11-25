@@ -190,6 +190,7 @@ Actor comes from `X-Bot-Actor`. Every role rule is enforced server-side.
 | GET | `finance/members/{tg}/balance/` | `{balance}` (self, or admin) | `S.balance` |
 | GET | `finance/categories/?kind=` | `[Category]` | `S.categories`, `S.category` |
 | GET | `finance/workers/` | `[Worker]` (active) | `Worker.objects` `:749/:820/:847/:867/:2069`; group labels / team logic move to bot |
+| GET | `finance/salary-owed/?worker=<name>` | **admin only** (403 otherwise) → `{worker, total, sheets: [{id, number, month, worker, due, paid, left}]}` (example: `misc.salary_owed_response.json`) — what is still to be handed to that person on approved salary sheets, oldest first (SBORKA: the team's whole rest; `worker` may also be the bot's team label «👥 {group} (butun komanda)» — `keyboards.team_name` — which matches that team's SBORKA sheets, so keep that format stable; the bot ignores any error here and just skips the hint; money as decimal strings, so'm; `sheets: []` / `total: "0.00"` when nothing is owed or the name matches no sheet). The bot shows it after «🧾 Oylik» is picked | `payroll.services.owed_to` |
 | GET | `finance/cars/` | `[Car]` | `:920`, `:2084` |
 | POST | `finance/parse/` | `{text, mode: "quick"\|"money"}` → quick `{kind, val, cur, cat, ord, com}\|null`; money `{amount, cur, orig, rate}\|null` (400 when no rate) | `parse_quick` / `parse_money` / `S.money_in`; parsers stay in `accounting/text.py` |
 | GET | `finance/orders/?buckets=a,b` | `[OrderBrief]` | `S.open_orders` |

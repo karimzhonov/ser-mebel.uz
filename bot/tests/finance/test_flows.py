@@ -181,6 +181,30 @@ async def test_other_salary_has_only_avans_and_oylik(be, cats, make_ctx):
     assert not (await ctx.st()).get("pay")
 
 
+async def test_oylik_shows_what_is_owed_and_can_take_that_amount(be, cats, make_ctx):
+    ctx = await _salary_to(be, cats, make_ctx, "Dilmurod")
+    be.routes[("GET", "finance/salary-owed/")] = fx("misc.salary_owed_response")
+    await CB.on_callback(ctx, "pay:Oylik")
+    _, path, _, params = [c for c in be.calls if c[1] == "finance/salary-owed/"][-1]
+    assert params == {"worker": "Dilmurod"}
+    owed = next(t for t in texts(ctx) if "berilishi kerak" in t)
+    assert "11 660 000" in owed and "№3" in owed
+    d = await ctx.st()
+    assert d["pay"] == "Oylik" and d["amount"] == "1000"
+    await CB.on_callback(ctx, "owe:set")
+    assert (await ctx.st())["amount"] == "11660000"
+
+
+async def test_oylik_hint_is_skipped_when_the_backend_refuses(be, cats, make_ctx):
+    ctx = await _salary_to(be, cats, make_ctx, "Dilmurod")
+    be.routes[("GET", "finance/salary-owed/")] = BackendDown("down")
+    await CB.on_callback(ctx, "pay:Oylik")
+    d = await ctx.st()
+    assert d["pay"] == "Oylik" and "owed" not in d
+    await CB.on_callback(ctx, "owe:set")  # a stale button does nothing
+    assert (await ctx.st())["amount"] == "1000"
+
+
 async def test_advance_other_amount_posts_amount_text(be, make_ctx):
     adv = fx("dto.advance.1")
     be.routes[("POST", "finance/parse/")] = {"amount": "5400000.00", "cur": "UZS"}

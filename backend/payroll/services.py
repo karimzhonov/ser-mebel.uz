@@ -184,9 +184,13 @@ def members_of(sheet: SalarySheet) -> list[SheetMember]:
 
 
 # ------------------------------------------------------------------ advances
-def advances_for(workers: list[Worker], start: date, end: date) -> list:
-    """«Avans» payments to these people in the period, oldest first."""
+def advances_for(workers: list[Worker], start: date, end: date, *, team: bool = False) -> list:
+    """«Avans» payments to these people in the period, oldest first. `team` (SBORKA):
+    also those booked to their whole team («👥 … (butun komanda)» in the bot)."""
     keys = {S._worker_key(w.name): w for w in workers}
+    if team:
+        keys.update({team_key(w.group): None for w in workers})
+        keys.pop("", None)
     rows = [
         t
         for t in S.salary_ops(start, end).filter(pay_type=PayType.ADVANCE)
@@ -379,7 +383,12 @@ def compute(sheet: SalarySheet, *, lines=None, members=None) -> dict:
     workers = [m.worker for m in people]
     by_key = {S._worker_key(w.name): w for w in workers}
     if sheet.snapshot is None:
-        adv_rows = [_advance_row(t, by_key) for t in advances_for(workers, sheet.period_start, sheet.period_end)]
+        adv_rows = [
+            _advance_row(t, by_key)
+            for t in advances_for(
+                workers, sheet.period_start, sheet.period_end, team=kind == SheetKind.SBORKA
+            )
+        ]
     else:  # frozen: never re-read the wallets
         adv_rows = sheet.snapshot.get("advances", [])
     adv_total = q2(sum((D(a["amount"]) for a in adv_rows), ZERO))
@@ -1211,6 +1220,23 @@ PAY_STATUS = {
 }
 
 
+def team_key(group: str) -> str:
+    """The «Kimga oylik» the bot writes when the whole team is picked —
+    «👥 1-komanda (butun komanda)» (bot keyboards.team_name: the group without its
+    «(…)» tail) — as a worker key, so such a payment pays that team's SBORKA sheet."""
+    short = re.sub(r"\s*\(.*\)\s*$", "", group or "")
+    return S._worker_key(f"👥 {short} (butun komanda)") if short.strip() else ""
+
+
+def _sheet_keys(sheet: SalarySheet, people) -> set[str]:
+    """Names a payment for this sheet can carry: each person on it, and for SBORKA
+    also their team's «butun komanda» label."""
+    keys = {S._worker_key(w.name) for w in people}
+    if sheet.kind == SheetKind.SBORKA:
+        keys |= {team_key(w.group) for w in people}
+    return keys - {""}
+
+
 def _pay_row(t, part: Decimal) -> dict:
     return {
         "id": t.id,
@@ -1263,7 +1289,7 @@ def ledger() -> dict:
         due = max(q2((sh.snapshot.get("totals") or {}).get("rest")), ZERO)
         entry = {"sheet": sh, "due": due, "left": due}
         entries.append(entry)
-        for key in {S._worker_key(w.name) for w in people}:
+        for key in _sheet_keys(sh, people):
             dues.setdefault(key, []).append(entry)
             out["keys"].setdefault(key, []).append(sh.pk)
     # from the first sheet's period on: earlier payments can never match, later ones
@@ -1339,7 +1365,7 @@ def sheet_payment(sheet: SalarySheet, led: dict | None = None) -> dict | None:
     led = led if led is not None else ledger()
     row = led["sheets"].get(sheet.pk) or {"due": ZERO, "paid": ZERO, "payments": []}
     st = pay_status(row["due"], row["paid"])
-    keys = {S._worker_key(m.worker.name) for m in members_of(sheet)}
+    keys = _sheet_keys(sheet, [m.worker for m in members_of(sheet)])
     since = sheet.period_start.isoformat()
     loose = [
         p for k in keys for p in led["loose"].get(k, []) if p["date"] >= since
