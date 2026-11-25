@@ -453,8 +453,15 @@ def order_stats(ref: str) -> dict:
         .select_related("category", "member", "debt")
         .order_by("date", "number")
     )
+    from payroll.services import car_money_op_ids, order_cost_lines, order_costs
+
     st = {"spent": ZERO, "collected": ZERO, "cats": {}, "rows": rows}
+    # car money of an approved salary sheet: the sheet splits it over its IDs (below),
+    # so the wallet expense typed with this ID is not counted again
+    car_ids = car_money_op_ids([ref])
     for t in rows:
+        if t.id in car_ids:
+            continue
         # a transfer carries the order ref (handing a client's money to the boss) but
         # moves cash between wallets — it is not money spent on the order
         if t.kind == OpKind.EXPENSE and t.category.kind != CategoryKind.INTERNAL:
@@ -472,9 +479,7 @@ def order_stats(ref: str) -> dict:
         st["cats"][WAREHOUSE_CAT] = wh
     # approved salary sheets (payroll stage 2): the wage booked on the client without a
     # wallet move; salary payments never carry an order ID, so it is not counted twice
-    from payroll.services import order_cost_lines, order_costs
-
-    pay = order_costs([ref]).get(str(ref), ZERO)
+    pay =order_costs([ref]).get(str(ref), ZERO)
     st["payroll"] = pay
     st["payroll_rows"] = order_cost_lines(ref) if pay else []
     if pay:
@@ -485,9 +490,14 @@ def order_stats(ref: str) -> dict:
 
 def order_stats_bulk(refs) -> dict[str, dict]:
     """spent / collected / per-category for many orders in one query."""
+    from payroll.services import car_money_op_ids, order_costs
+
+    refs = list(refs)
     out: dict[str, dict] = {}
     rows = (
-        Operation.objects.filter(order_ref__in=list(refs), is_deleted=False)
+        Operation.objects.filter(order_ref__in=refs, is_deleted=False)
+        # an approved salary sheet's car money is split by the sheet (order_costs)
+        .exclude(id__in=car_money_op_ids(refs))
         .values("order_ref", "kind", "category__code", "category__kind")
         .annotate(total=Sum("amount"))
     )
@@ -504,9 +514,7 @@ def order_stats_bulk(refs) -> dict[str, dict]:
         st = out.setdefault(ref, {"spent": ZERO, "collected": ZERO, "cats": {}})
         st["spent"] += wh
         st["cats"][WAREHOUSE_CAT] = wh
-    from payroll.services import order_costs
-
-    for ref, pay in order_costs(list(refs)).items():
+    for ref, pay in order_costs(refs).items():
         st = out.setdefault(ref, {"spent": ZERO, "collected": ZERO, "cats": {}})
         st["spent"] += pay
         st["cats"][CAT_SALARY] = st["cats"].get(CAT_SALARY, ZERO) + pay

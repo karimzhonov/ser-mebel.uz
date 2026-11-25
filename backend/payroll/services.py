@@ -1130,6 +1130,56 @@ def order_cost_lines(ref: str) -> list[dict]:
     ]
 
 
+# «🚚 Mashina / dostavka»: how the car money of a SBORKA sheet is paid from a wallet
+CAR_CATEGORY = "mashina"
+
+
+def car_money_op_ids(refs) -> set[int]:
+    """Wallet expenses on these orders that ARE an approved sheet's car money, so the
+    order must not count them (owner's rule: the sheet splits the car money over the
+    worker's IDs by contract sum, whatever ID the payment was typed with). Matched by:
+    category «Mashina / dostavka», «Kimga / mashina» = a person on a SBORKA sheet that
+    has car money, dated from the sheet's period start to GRACE_DAYS after its end."""
+    refs = [str(r) for r in refs if r]
+    if not refs:
+        return set()
+    windows = []
+    sheets = (
+        SalarySheet.objects.filter(
+            status=SheetStatus.APPROVED, kind=SheetKind.SBORKA, snapshot__isnull=False
+        )
+        .select_related("worker")
+        .prefetch_related("members__worker")
+    )
+    for sh in sheets:
+        if not isinstance(sh.snapshot, dict):
+            continue
+        totals = sh.snapshot.get("totals") or {}
+        if q2(totals.get("car_total") or 0) <= 0:
+            continue
+        keys = {S._worker_key(m.worker.name) for m in sh.members.all()}
+        keys.add(S._worker_key(sh.worker.name))
+        windows.append((sh.period_start, sh.period_end + timedelta(days=GRACE_DAYS), keys))
+    if not windows:
+        return set()
+    from accounting.constants import OpKind
+    from accounting.models import Operation
+
+    ops = Operation.objects.filter(
+        is_deleted=False,
+        kind=OpKind.EXPENSE,
+        category__code=CAR_CATEGORY,
+        order_ref__in=refs,
+        date__gte=min(w[0] for w in windows),
+        date__lte=max(w[1] for w in windows),
+    ).values_list("id", "date", "worker")
+    return {
+        i
+        for i, d, who in ops
+        if any(a <= d <= b and S._worker_key(who) in keys for a, b, keys in windows)
+    }
+
+
 def cost_refs() -> set[str]:
     return set(_approved_costs().values_list("order_ref", flat=True).distinct())
 

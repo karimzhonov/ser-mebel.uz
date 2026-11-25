@@ -105,6 +105,53 @@ def test_approval_books_each_id_and_splits_car_money_by_order_sum_without_a_wall
     assert spent("370") == Decimal("4750000")  # booked once, not twice
 
 
+def test_car_money_paid_from_a_wallet_with_an_id_is_not_counted_twice(
+    admin_api, people, members, orders
+):
+    def car_op(who, ref, amount, on):
+        return S.create_operation(
+            member=members[0],
+            kind="expense",
+            amount=amount,
+            category_code="mashina",
+            worker=who,
+            order_ref=ref,
+            on_date=on,
+            actor_admin=True,
+        )
+
+    car_op("Dilmurod", "370", 1_000_000, date(2026, 10, 15))  # the sheet's car money
+    car_op("Gazel", "370", 300_000, date(2026, 10, 15))  # a real delivery: counts
+    approved(
+        admin_api,
+        people[0],
+        "sborka",
+        lines=[
+            {"section": "job", "order_ref": "370", "amount": "4000000"},
+            {"section": "job", "order_ref": "378", "amount": "1000000"},
+            {"section": "car", "amount": "1000000"},
+        ],
+    )
+    # 4 mln job + 750 000 of the split car money + the 300 000 delivery
+    assert spent("370") == Decimal("5050000")
+    assert S.order_stats_bulk(["370"])["370"]["spent"] == Decimal("5050000")
+    assert spent("378") == Decimal("1250000")
+
+
+def test_every_id_percent_goes_to_its_client_fixed_does_not(admin_api, people, orders):
+    # MENEJER: 1 % of a $10 000 order at 12 000 = 1 200 000 on that client
+    approved(
+        admin_api,
+        people[2],
+        "menejer",
+        fixed="3000000",
+        bonus_percent="1",
+        lines=[{"section": "taken", "order_ref": "378", "amount": "10000"}],
+    )
+    assert spent("378") == Decimal("1200000")
+    assert spent("370") == 0
+
+
 def test_car_money_is_split_equally_when_no_contract_sum_is_known(admin_api, people, orders):
     ManualOrder.objects.update(price=0)
     approved(
