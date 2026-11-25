@@ -132,7 +132,25 @@ export function FinanceSalaryListPage() {
               key: "r",
               header: "Ostatok",
               className: "text-right",
-              cell: (r) => <span className={cn("font-semibold tabular-nums", r.rest < 0 && "text-rose-600")}>{som(r.rest)}</span>,
+              cell: (r) => <span className={cn("tabular-nums", r.rest < 0 && "text-rose-600")}>{som(r.rest)}</span>,
+              hideOnMobile: true,
+            },
+            {
+              key: "p",
+              header: "Berildi",
+              className: "text-right",
+              cell: (r) => (r.pay ? <span className="tabular-nums text-emerald-700 dark:text-emerald-400">{som(r.pay.paid)}</span> : <span className="muted">—</span>),
+              hideOnMobile: true,
+            },
+            {
+              key: "l",
+              header: "Qoldi",
+              className: "text-right",
+              // approved: what is still to hand over after the «Oylik» payments; else the sheet's OSTATOK
+              cell: (r) => {
+                const left = r.pay ? r.pay.left : r.rest;
+                return <span className={cn("font-semibold tabular-nums", left > 0 && r.pay && "text-rose-600", left < 0 && "text-rose-600")}>{som(left)}</span>;
+              },
             },
           ]}
         />
