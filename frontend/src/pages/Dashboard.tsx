@@ -52,7 +52,6 @@ function FullDashboard() {
           )
         }
       />
-      {!operator && can("oauth.user_production_head") && <ServiceOutPanel />}
       {operator ? (
         <TodayWork />
       ) : (
@@ -67,6 +66,12 @@ function FullDashboard() {
         />
       )}
       {tab === "board" ? <Boards /> : <OverviewPanel from={state.date_from} to={state.date_to} />}
+      {/* owner's rule: the production head's «Usluga'dan chiqadigan» panel goes last on the home page */}
+      {!operator && can("oauth.user_production_head") && (
+        <div className="mt-4">
+          <ServiceOutPanel />
+        </div>
+      )}
     </div>
   );
 }
