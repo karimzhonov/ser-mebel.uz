@@ -191,7 +191,10 @@ class CategoriesView(BotAPIView):
     def get(self, request):
         self.require_active()
         return Response(
-            [D.category_dto(c) for c in S.categories(request.query_params.get("kind") or None)]
+            [
+                D.category_dto(c, with_wallets=True)
+                for c in S.categories(request.query_params.get("kind") or None)
+            ]
         )
 
 
@@ -199,6 +202,19 @@ class WorkersView(BotAPIView):
     def get(self, request):
         self.require_active()
         return Response([D.worker_dto(w) for w in Worker.objects.filter(is_active=True)])
+
+
+class SalaryOwedView(BotAPIView):
+    """What is still to be handed to `?worker=<name>` on approved salary sheets — shown
+    when the boss picks «🧾 Oylik» (payroll.services.owed_to). Admins only: only they
+    book an «Oylik» in the bot, and it is per-worker pay."""
+
+    def get(self, request):
+        self.require_admin()
+        from payroll.services import owed_to
+
+        name = str(request.query_params.get("worker") or "").strip()[:255]
+        return Response(owed_to(name))
 
 
 class CarsView(BotAPIView):

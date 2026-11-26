@@ -64,3 +64,13 @@ def salary_reminder():
 @shared_task
 def cleanup():
     jobs.cleanup()
+
+
+@shared_task
+def assign_overheads():
+    """Stage 3: fix the overhead share of every order that became Готов (from
+    FIN_OVERHEAD_SINCE) and has none yet. Idempotent — a share is written once
+    (OrderOverhead.order_ref is unique), so a redelivered or doubled run adds nothing."""
+    from . import overhead
+
+    return overhead.assign_pending()

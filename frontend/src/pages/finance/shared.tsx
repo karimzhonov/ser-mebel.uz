@@ -8,6 +8,13 @@ import { iso } from "@/components/DateRangeFilter";
 import { FIN_OPTIONS_PERMS, ORDER_OPTIONS_PERMS } from "./access";
 import type { FinCategory, FinMe, FinOptions, Member, Operation } from "./types";
 
+/** GET /finance/salary-sheets/owed/?worker= — approved sheets not yet paid in full */
+interface SalaryOwed {
+  worker: string;
+  total: string;
+  sheets: { id: number; number: number; month: string; worker: string; due: string; paid: string; left: string }[];
+}
+
 const nf = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
 const nf2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -132,7 +139,7 @@ export function OperationModal({
   onDebt?: () => void;
   onClose: () => void;
 }) {
-  const { canAny } = useAuth();
+  const { can, canAny } = useAuth();
   const { data: me } = useFinMe();
   const { data: options } = useFinOptions();
   const members = options?.members;
@@ -181,8 +188,13 @@ export function OperationModal({
 
   const cat = cats?.find((c) => c.code === f.category_code);
   const catOptions = useMemo(
-    () => (cats ?? []).filter((c) => c.is_active && (c.kind === f.kind || (c.kind === "internal" && !!op)) || c.code === op?.category_detail.code),
-    [cats, f.kind, op],
+    () =>
+      (cats ?? []).filter(
+        (c) =>
+          (c.is_active && (c.kind === f.kind || (c.kind === "internal" && !!op)) && (!c.members?.length || c.members.includes(Number(f.member)))) ||
+          c.code === op?.category_detail.code,
+      ),
+    [cats, f.kind, op, f.member],
   );
   const needsOrder = !(f.kind === "expense" && (cat?.no_order || f.category_code === "oylik"));
   const bucket = f.kind === "income" ? (f.category_code === "qoldiq" ? "kutish,yakun" : "yangi,jarayonda,kutish,yakun") : f.category_code === "material" ? "jarayonda,yangi" : "jarayonda";
@@ -211,6 +223,17 @@ export function OperationModal({
   const total = f.currency === "USD" ? Number(f.orig_amount || 0) * Number(f.rate || 0) : Number(f.amount || 0);
   const bossSalary = !!workers?.some((w) => w.is_boss && w.name.trim().toLowerCase() === f.worker.trim().toLowerCase());
   const walletOptions: { id: number; name: string }[] = me?.view_all ? (members ?? []).filter((m) => m.has_wallet || String(m.id) === f.member) : me?.member ? [me.member] : [];
+  // paying a salary: how much is still owed on this person's approved sheets
+  const payingSalary = f.kind === "expense" && f.category_code === "oylik" && f.pay_type === "Oylik";
+  const [owedName, setOwedName] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setOwedName(f.worker.trim()), 400);
+    return () => clearTimeout(t);
+  }, [f.worker]);
+  const { data: owed, isFetching: owedLoading } = useGet<SalaryOwed>(
+    payingSalary && owedName && can("payroll.view_salarysheet") ? "/finance/salary-sheets/owed/" : null,
+    { worker: owedName },
+  );
   const workerOptions = f.category_code === "zapravka" ? (cars ?? []).filter((c) => c.is_active).map((c) => c.name) : (workers ?? []).filter((w) => w.is_active).map((w) => w.name);
 
   return (
@@ -299,6 +322,39 @@ export function OperationModal({
                   {(bossSalary || f.pay_type === "Uy uchun") && <option value="Uy uchun">🏠 Uy uchun</option>}
                 </Select>
               </Field>
+            )}
+          </div>
+        )}
+        {payingSalary && owed && !owedLoading && (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800/50">
+            {owed.sheets.length === 0 ? (
+              <span className="muted">«{owed.worker}» uchun to'lanmagan tasdiqlangan oylik varag'i yo'q.</span>
+            ) : (
+              <>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span>Berilishi kerak{op ? " (shu to'lovdan keyin)" : ""}:</span>
+                  <span className="flex items-center gap-2">
+                    <b className="tabular-nums text-rose-600">{som(owed.total)}</b>
+                    {!op && f.currency === "UZS" && (
+                      <Button size="sm" variant="outline" onClick={() => set({ amount: String(Math.round(Number(owed.total))) })}>
+                        Summaga qo'yish
+                      </Button>
+                    )}
+                  </span>
+                </div>
+                <ul className="muted mt-1 space-y-0.5 text-xs">
+                  {owed.sheets.map((s) => (
+                    <li key={s.id} className="flex justify-between gap-2">
+                      <span>
+                        Varaq №{s.number} · {s.month} · {s.worker}
+                      </span>
+                      <span className="tabular-nums">
+                        {som(s.left)} <span className="opacity-70">({som(s.due)} dan)</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </>
             )}
           </div>
         )}

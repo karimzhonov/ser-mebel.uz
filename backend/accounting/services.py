@@ -25,7 +25,7 @@ from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from django.db import IntegrityError, transaction
-from django.db.models import Exists, Max, Min, OuterRef, Q, Sum
+from django.db.models import Count, Exists, Max, Min, OuterRef, Q, Sum
 
 from core.exceptions import ServiceConflict, ServiceError, ServiceForbidden, ServiceNotFound
 from core.geo import obj_map_url
@@ -39,12 +39,14 @@ from .constants import (
     CAT_ADVANCE,
     CAT_FROM_BOSS,
     CAT_FUEL,
+    CAT_PROFIT,
     CAT_REFUND,
     CAT_REST,
     CAT_SALARY,
     CAT_TRANSFER,
     WAREHOUSE_CAT,
     CategoryKind,
+    Currency,
     OpKind,
     PayType,
 )
@@ -179,7 +181,7 @@ def set_duty_exclusive(member: TelegramMember, duty: str) -> None:
 
 # =================================================================== categories
 def categories(kind: str | None = None, active=True):
-    qs = FinanceCategory.objects.all()
+    qs = FinanceCategory.objects.prefetch_related("members")
     if active:
         qs = qs.filter(is_active=True)
     if kind:
@@ -189,6 +191,14 @@ def categories(kind: str | None = None, active=True):
 
 def category(code: str) -> FinanceCategory | None:
     return FinanceCategory.objects.filter(code=code).first()
+
+
+def check_wallet_allowed(cat: FinanceCategory, member) -> None:
+    """A category limited to some wallets (FinanceCategory.members, e.g. «Omborga
+    xarid») is booked only into those wallets."""
+    allowed = list(cat.members.values_list("pk", flat=True))
+    if allowed and getattr(member, "pk", None) not in allowed:
+        raise ServiceError(f"«{cat.name}» faqat tanlangan xodimlar hamyonidan yoziladi.")
 
 
 # =================================================================== USD rate
@@ -446,6 +456,63 @@ def all_order_ids() -> list[str]:
     return ids + list(ManualOrder.objects.values_list("ref", flat=True))
 
 
+def unpaid_debts(refs) -> dict[str, dict[str, Decimal]]:
+    """{order ref: {category code: so'm}} — the part of open «Qarzlar» on these orders
+    that is not paid yet. It is the order's cost from the day the thing was taken on
+    credit; every payment is an expense on the same ID that lowers this by as much, so
+    «spent» stays the debt's full sum and nothing is counted twice. Debts are paid only
+    through «Qarzlar» (owner's rule). A USD share is in so'm at the debt's own rate;
+    a payment at another rate moves «spent» by the real difference."""
+    refs = [str(r) for r in refs if r]
+    if not refs:
+        return {}
+    allocs = list(
+        DebtAllocation.objects.filter(
+            order_ref__in=refs, debt__is_deleted=False, debt__status="open"
+        ).select_related("debt__category")
+    )
+    if not allocs:
+        return {}
+    debt_ids = {a.debt_id for a in allocs}
+    live = Operation.objects.filter(is_deleted=False)
+    by_alloc = {
+        r["debt_allocation_id"]: r
+        for r in live.filter(debt_allocation_id__in=[a.id for a in allocs])
+        .values("debt_allocation_id")
+        .annotate(uzs=Sum("amount"), usd=Sum("orig_amount"))
+    }
+    # payments made before debts could be split carry no allocation: they belong to the
+    # debt's only share
+    no_alloc = {
+        r["debt_id"]: r
+        for r in live.filter(debt_id__in=debt_ids, debt_allocation__isnull=True)
+        .values("debt_id")
+        .annotate(uzs=Sum("amount"), usd=Sum("orig_amount"))
+    }
+    shares = dict(
+        DebtAllocation.objects.filter(debt_id__in=debt_ids)
+        .values("debt_id")
+        .annotate(n=Count("id"))
+        .values_list("debt_id", "n")
+    )
+    out: dict[str, dict[str, Decimal]] = {}
+    for a in allocs:
+        d = a.debt
+        usd = d.currency == Currency.USD
+        key = "usd" if usd else "uzs"
+        paid = D((by_alloc.get(a.id) or {}).get(key))
+        if shares.get(d.id) == 1:
+            paid += D((no_alloc.get(d.id) or {}).get(key))
+        left = max(D(a.amount) - paid, ZERO)
+        if usd:
+            # whole so'm, like a USD payment leg (round(orig * rate))
+            left = q2(round(left * D(d.rate))) if d.rate else ZERO
+        if left > 0:
+            cats = out.setdefault(a.order_ref, {})
+            cats[d.category.code] = cats.get(d.category.code, ZERO) + left
+    return out
+
+
 def order_stats(ref: str) -> dict:
     """Spent / collected per order (orderStats_)."""
     rows = list(
@@ -453,13 +520,28 @@ def order_stats(ref: str) -> dict:
         .select_related("category", "member", "debt")
         .order_by("date", "number")
     )
+    from payroll.services import car_money_op_ids, order_cost_lines, order_costs
+
     st = {"spent": ZERO, "collected": ZERO, "cats": {}, "rows": rows}
+    # car money of an approved salary sheet: the sheet splits it over its IDs (below),
+    # so the wallet expense typed with this ID is not counted again
+    from .overhead import car_op_ids
+
+    # + company cars (FinanceCar.is_overhead): overhead, shared by every order (stage 3)
+    car_ids = car_money_op_ids([ref]) | car_op_ids([ref])
     for t in rows:
+        if t.id in car_ids:
+            continue
         # a transfer carries the order ref (handing a client's money to the boss) but
         # moves cash between wallets — it is not money spent on the order
         if t.kind == OpKind.EXPENSE and t.category.kind != CategoryKind.INTERNAL:
             st["spent"] += t.amount
             st["cats"][t.category.code] = st["cats"].get(t.category.code, ZERO) + t.amount
+        elif t.kind == OpKind.INCOME and t.category.code == CAT_REFUND:
+            # «↩️ Qaytim»: money back for something already bought for this order — it
+            # lowers what the order cost (as in the summary), it is not client money
+            st["spent"] -= t.amount
+            st["cats"][CAT_REFUND] = st["cats"].get(CAT_REFUND, ZERO) - t.amount
         elif t.category.code in (CAT_ADVANCE, CAT_REST):
             st["collected"] += t.amount
     from warehouse.services import order_spending, order_spending_lines
@@ -470,14 +552,35 @@ def order_stats(ref: str) -> dict:
     if wh:
         st["spent"] += wh
         st["cats"][WAREHOUSE_CAT] = wh
+    # approved salary sheets (payroll stage 2): the wage booked on the client without a
+    # wallet move; salary payments never carry an order ID, so it is not counted twice
+    pay = order_costs([ref]).get(str(ref), ZERO)
+    st["payroll"] = pay
+    st["payroll_rows"] = order_cost_lines(ref) if pay else []
+    if pay:
+        st["spent"] += pay
+        st["cats"][CAT_SALARY] = st["cats"].get(CAT_SALARY, ZERO) + pay
+    # what was taken on credit for this order and is not paid yet (see unpaid_debts)
+    st["debt"] = ZERO
+    for code, v in unpaid_debts([ref]).get(str(ref), {}).items():
+        st["debt"] += v
+        st["spent"] += v
+        st["cats"][code] = st["cats"].get(code, ZERO) + v
     return st
 
 
 def order_stats_bulk(refs) -> dict[str, dict]:
     """spent / collected / per-category for many orders in one query."""
+    from payroll.services import car_money_op_ids, order_costs
+
+    from .overhead import car_op_ids
+
+    refs = list(refs)
     out: dict[str, dict] = {}
     rows = (
-        Operation.objects.filter(order_ref__in=list(refs), is_deleted=False)
+        Operation.objects.filter(order_ref__in=refs, is_deleted=False)
+        # an approved salary sheet's car money is split by the sheet (order_costs)
+        .exclude(id__in=car_money_op_ids(refs) | car_op_ids(refs))
         .values("order_ref", "kind", "category__code", "category__kind")
         .annotate(total=Sum("amount"))
     )
@@ -486,6 +589,9 @@ def order_stats_bulk(refs) -> dict[str, dict]:
         if r["kind"] == OpKind.EXPENSE and r["category__kind"] != CategoryKind.INTERNAL:
             st["spent"] += r["total"]
             st["cats"][r["category__code"]] = st["cats"].get(r["category__code"], ZERO) + r["total"]
+        elif r["kind"] == OpKind.INCOME and r["category__code"] == CAT_REFUND:
+            st["spent"] -= r["total"]  # a refund lowers the order's cost (see order_stats)
+            st["cats"][CAT_REFUND] = st["cats"].get(CAT_REFUND, ZERO) - r["total"]
         elif r["category__code"] in (CAT_ADVANCE, CAT_REST):
             st["collected"] += r["total"]
     from warehouse.services import order_spending
@@ -494,6 +600,16 @@ def order_stats_bulk(refs) -> dict[str, dict]:
         st = out.setdefault(ref, {"spent": ZERO, "collected": ZERO, "cats": {}})
         st["spent"] += wh
         st["cats"][WAREHOUSE_CAT] = wh
+    for ref, pay in order_costs(refs).items():
+        st = out.setdefault(ref, {"spent": ZERO, "collected": ZERO, "cats": {}})
+        st["spent"] += pay
+        st["cats"][CAT_SALARY] = st["cats"].get(CAT_SALARY, ZERO) + pay
+    for ref, cats in unpaid_debts(refs).items():
+        st = out.setdefault(ref, {"spent": ZERO, "collected": ZERO, "cats": {}})
+        for code, v in cats.items():
+            st["spent"] += v
+            st["debt"] = st.get("debt", ZERO) + v
+            st["cats"][code] = st["cats"].get(code, ZERO) + v
     for st in out.values():
         st.setdefault("warehouse", st["cats"].get(WAREHOUSE_CAT, ZERO))
     return out
@@ -612,9 +728,13 @@ def create_operation(
     pay_type = clean_pay_type(pay_type or "Avans", worker) if is_salary else ""
     if currency == "USD" and (not orig_amount or not rate):
         raise ServiceError("Dollar summasi va kursi kerak.")
+    if cat.code == CAT_PROFIT and not internal:
+        # capped by the profit pool and locked there — never a plain booking
+        raise ServiceError("Foyda faqat saytdagi «Foyda» sahifasidan yechiladi.")
     if not internal:
         _check_category_allowed(cat, actor_admin)
         _check_date_allowed(on_date, actor_admin)
+        check_wallet_allowed(cat, member)
     ref, order = _resolve_order(order_ref)
     if kind == OpKind.EXPENSE and (cat.no_order or cat.code == CAT_SALARY):
         ref, order = "", None
@@ -830,7 +950,17 @@ def update_operation(
             _check_date_allowed(data["date"], actor_admin)
         if "kind" in data:
             op.kind = data["kind"]
+        cat_changed = False
+        money_keys = {"amount", "orig_amount", "rate", "currency", "kind", "member"}
+        if op.category.code == CAT_PROFIT and (
+            money_keys & set(data) or data.get("category_code", CAT_PROFIT) != CAT_PROFIT
+        ):
+            raise ServiceError(
+                "«Foyda yechish»ni o'zgartirib bo'lmaydi — o'chirib, «Foyda» sahifasidan qaytadan yeching."
+            )
         if "category_code" in data and data["category_code"] != op.category.code:
+            if data["category_code"] == CAT_PROFIT:
+                raise ServiceError("Foyda faqat saytdagi «Foyda» sahifasidan yechiladi.")
             if CAT_FROM_BOSS in (data["category_code"], op.category.code):
                 # a «Rahbardan» row carries the boss's paired chiqim (boss_hand_out)
                 raise ServiceError(
@@ -843,12 +973,18 @@ def update_operation(
                 raise ServiceError(f"«{cat.name}» kategoriyasi endi ishlatilmaydi.")
             _check_category_allowed(cat, actor_admin)
             op.category = cat
+            cat_changed = True
         if op.category.kind == CategoryKind.EXPENSE and op.kind != OpKind.EXPENSE:
             raise ServiceError("Bu kategoriya faqat chiqim uchun.")
         if op.category.kind == CategoryKind.INCOME and op.kind != OpKind.INCOME:
             raise ServiceError("Bu kategoriya faqat kirim uchun.")
         if "member" in data:
+            member_changed = getattr(data["member"], "pk", data["member"]) != op.member_id
             op.member = data["member"]
+        else:
+            member_changed = False
+        if cat_changed or member_changed:
+            check_wallet_allowed(op.category, op.member)
         if "currency" in data:
             op.currency = data["currency"]
         if "orig_amount" in data:
@@ -875,6 +1011,10 @@ def update_operation(
             op.worker = (data["worker"] or "")[:255]
         if "pay_type" in data:
             op.pay_type = data["pay_type"] or ""
+        # same rule as create_operation: a salary is never booked on an order — the
+        # approved salary sheet books the wage there (payroll), so it would count twice
+        if op.kind == OpKind.EXPENSE and op.category.code == CAT_SALARY:
+            op.order_ref, op.order = "", None
         if op.category.code != CAT_SALARY or op.kind != OpKind.EXPENSE:
             op.pay_type = ""
         elif op.pay_type and ("pay_type" in data or "worker" in data):

@@ -12,7 +12,7 @@ from constance import config
 from django.db.models import Sum, prefetch_related_objects
 
 from . import services as S
-from .constants import CAT_TRANSFER, WAREHOUSE_CAT, WAREHOUSE_CAT_EMOJI, WAREHOUSE_CAT_NAME
+from .constants import CAT_SALARY, CAT_TRANSFER, WAREHOUSE_CAT, WAREHOUSE_CAT_EMOJI, WAREHOUSE_CAT_NAME
 from .models import (
     ClientFeedback,
     Debt,
@@ -61,8 +61,10 @@ def member_dto(m) -> dict | None:
     }
 
 
-def category_dto(c: FinanceCategory) -> dict:
-    return {
+def category_dto(c: FinanceCategory, *, with_wallets: bool = False) -> dict:
+    """`with_wallets` (the `finance/categories/` list only): additive `only_tg` = the
+    Telegram ids of the only wallets that may book it ([] = everyone)."""
+    out = {
         "code": c.code,
         "name": c.name,
         "emoji": c.emoji,
@@ -72,6 +74,9 @@ def category_dto(c: FinanceCategory) -> dict:
         "archive": c.archive,
         "excluded": c.excluded,
     }
+    if with_wallets:
+        out["only_tg"] = sorted(m.telegram_id for m in c.members.all() if m.telegram_id)
+    return out
 
 
 def operation_dto(op: Operation) -> dict:
@@ -233,9 +238,19 @@ def order_brief_dto(info: S.OrderInfo) -> dict:
 def order_card_dto(info: S.OrderInfo, stats: dict, full: bool) -> dict:
     """`full` (finance admins only) adds the contract money; for everyone else those
     keys are absent."""
-    names = {c.code: c for c in FinanceCategory.objects.filter(code__in=list(stats["cats"]))}
+    # the wage booked by approved salary sheets (payroll) is per-worker pay: only
+    # finance admins see it on the card; for everyone else it is left out entirely
+    hidden = 0 if full else (stats.get("payroll") or 0)
+    spent_cats = dict(stats["cats"])
+    if hidden:
+        left_salary = spent_cats.get(CAT_SALARY, 0) - hidden
+        if left_salary > 0:
+            spent_cats[CAT_SALARY] = left_salary
+        else:
+            spent_cats.pop(CAT_SALARY, None)
+    names = {c.code: c for c in FinanceCategory.objects.filter(code__in=list(spent_cats))}
     cats = []
-    for code, v in sorted(stats["cats"].items(), key=lambda kv: -kv[1]):
+    for code, v in sorted(spent_cats.items(), key=lambda kv: -kv[1]):
         c = names.get(code)
         if code == WAREHOUSE_CAT:
             cats.append(
@@ -278,7 +293,7 @@ def order_card_dto(info: S.OrderInfo, stats: dict, full: bool) -> dict:
             else None
         ),
         "stats": {
-            "spent": dec(stats["spent"]),
+            "spent": dec(stats["spent"] - hidden),
             "collected": dec(stats["collected"]),
             "warehouse": dec(stats.get("warehouse") or 0),
             "cats": cats,

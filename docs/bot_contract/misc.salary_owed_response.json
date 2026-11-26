@@ -1,0 +1,15 @@
+{
+  "worker": "Dilmurod",
+  "total": "11660000.00",
+  "sheets": [
+    {
+      "id": 3,
+      "number": 3,
+      "month": "2026-11",
+      "worker": "Dilmurod",
+      "due": "21200000.00",
+      "paid": "9540000.00",
+      "left": "11660000.00"
+    }
+  ]
+}

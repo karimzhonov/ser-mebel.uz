@@ -124,7 +124,7 @@ class _CatalogViewSet(viewsets.ModelViewSet):
 
 
 class FinanceCategoryViewSet(_CatalogViewSet):
-    queryset = FinanceCategory.objects.all()
+    queryset = FinanceCategory.objects.prefetch_related("members")
     serializer_class = FinanceCategorySerializer
 
     def perform_destroy(self, instance):
@@ -779,10 +779,12 @@ def _cat_names(codes) -> dict:
     return names
 
 
-def _order_row(info, st, names: dict | None = None) -> dict:
+def _order_row(info, st, names: dict | None = None, share=None) -> dict:
+    """`share`: the order's OrderOverhead (stage 3) — the net profit takes it off."""
     if names is None:
         names = _cat_names(st["cats"])
     profit = info.price_uzs - st["spent"] if info.price_uzs else None
+    overhead = share.amount if share is not None else None
     return {
         "ref": info.ref,
         "client": info.client,
@@ -798,8 +800,14 @@ def _order_row(info, st, names: dict | None = None) -> dict:
         "price_uzs": f(info.price_uzs),
         "spent": f(st["spent"]),
         "warehouse_spent": f(st.get("warehouse") or 0),
+        # part of «spent» taken on credit and not paid yet («Qarzlar»)
+        "debt_unpaid": f(st.get("debt") or 0),
         "collected": f(st["collected"]),
         "profit": None if profit is None else f(profit),
+        # stage 3: the share of the overhead fixed on its Готов day (None before / not yet)
+        "overhead": None if overhead is None else f(overhead),
+        "overhead_rate": None if share is None else float(share.rate),
+        "net_profit": None if profit is None or overhead is None else f(profit - overhead),
         "spent_percent": (
             round(float(st["spent"] * 100 / info.price_uzs)) if info.price_uzs else None
         ),
@@ -838,6 +846,9 @@ class FinanceOrdersView(APIView):
             from warehouse.services import allocation_refs
 
             booked |= allocation_refs() - set(infos)
+            from payroll.services import cost_refs
+
+            booked |= cost_refs() - set(infos)
             for ref, info in S.order_infos(booked).items():
                 if info.bucket in buckets:
                     infos[ref] = info
@@ -846,8 +857,11 @@ class FinanceOrdersView(APIView):
         stats = S.order_stats_bulk([i.ref for i in chosen])
         empty = {"spent": S.ZERO, "collected": S.ZERO, "cats": {}}
         names = _cat_names({c for st in stats.values() for c in st["cats"]})
+        from accounting.overhead import shares
+
+        parts = shares([i.ref for i in chosen])
         for info in chosen:
-            refs.append(_order_row(info, stats.get(info.ref, empty), names))
+            refs.append(_order_row(info, stats.get(info.ref, empty), names, parts.get(info.ref)))
         refs.sort(
             key=lambda r: (
                 not r["ref"].isdigit(),
@@ -1098,7 +1112,9 @@ class FinanceOrderDetailView(APIView):
         if not info:
             raise NotFound("Buyurtma topilmadi.")
         st = S.order_stats(info.ref)
-        row = _order_row(info, st)
+        from accounting.overhead import shares
+
+        row = _order_row(info, st, share=shares([info.ref]).get(info.ref))
         can_ops = u.has_perm(ACC + "view_operation")
         row["operations"] = OperationSerializer(st["rows"], many=True).data if can_ops else []
         row["debts"] = _order_debts(request, info) if u.has_perm(ACC + "view_debt") else []
@@ -1106,6 +1122,13 @@ class FinanceOrderDetailView(APIView):
             {**r, "quantity": f(r["quantity"]), "total": f(r["total"])}
             for r in st["warehouse_rows"]
         ]
+        # approved salary sheets booked on this ID (payroll stage 2): who earned how much
+        # is shown only to those who may open the sheets (the total stays in «spent»)
+        row["payroll"] = (
+            [{**r, "amount": f(r["amount"])} for r in st.get("payroll_rows", [])]
+            if u.has_perm("payroll.view_salarysheet")
+            else []
+        )
         bn = (
             OrderBonus.objects.filter(order_ref=info.ref).first()
             if u.has_perm(ACC + "view_order_bonus_line")
@@ -1113,6 +1136,91 @@ class FinanceOrderDetailView(APIView):
         )
         row["bonus"] = OrderBonusSerializer(bn).data if bn else None
         return Response(row)
+
+
+def _money_rows(rows: list[dict]) -> list[dict]:
+    return [{k: (f(v) if isinstance(v, Decimal) else v) for k, v in r.items()} for r in rows]
+
+
+class OverheadView(APIView):
+    """Stage 3 «Foyda»: umumiy xarajat by month against the shares the orders took, the
+    current rate and the profit that may be taken out (accounting/overhead.py)."""
+
+    permission_classes = [IsStaffUser]
+
+    def get(self, request):
+        require_perm(request.user, ACC + "view_finance_summary", VIEW_ALL)
+        from accounting import overhead as OH
+
+        months = min(max(int_param(request.query_params, "months") or 6, 1), 24)
+        rep = OH.report(months)
+        r, pool = rep["rate"], rep["pool"]
+        return Response(
+            {
+                "since": rep["since"],
+                "rate": {
+                    "months": r["months"],
+                    "overhead": f(r["overhead"]),
+                    "sales": f(r["sales"]),
+                    "rate": float(r["rate"]),
+                },
+                "months": [
+                    {
+                        **{k: m[k] for k in ("month", "label", "counted")},
+                        "total": f(m["total"]),
+                        "allocated": f(m["allocated"]),
+                        "difference": f(m["difference"]),
+                        "sales": f(m["sales"]),
+                        "parts": _money_rows(m["parts"]),
+                        "sheets": _money_rows(m["sheets"]),
+                    }
+                    for m in rep["months"]
+                ],
+                "pool": {
+                    **{k: f(pool[k]) for k in ("gross", "overhead", "withdrawn", "available")},
+                    "paid_orders": _money_rows(pool["paid_orders"]),
+                    "waiting": _money_rows(pool["waiting"]),
+                },
+                "can_withdraw": request.user.has_perm(ACC + "withdraw_profit")
+                and acting_member(request) is not None,
+                # owner's rule: profit is taken out of the boss's OWN wallet only
+                "wallets": [
+                    {"id": m.pk, "name": m.name, "balance": f(S.balance(m))}
+                    for m in [acting_member(request)]
+                    if m is not None and request.user.has_perm(ACC + "withdraw_profit")
+                ],
+            }
+        )
+
+
+class ProfitWithdrawView(APIView):
+    """«Foyda yechish»: an expense in «💰 Foyda yechish» from a boss wallet."""
+
+    permission_classes = [IsStaffUser]
+
+    def post(self, request):
+        require_perm(request.user, ACC + "withdraw_profit")
+        from accounting import overhead as OH
+
+        # owner's rule: only out of the acting person's own wallet
+        member = acting_member(request)
+        if member is None:
+            raise PermissionDenied(
+                "Profilingiz Telegram a'zoga ulanmagan — foyda o'z hamyoningizdan yechiladi."
+            )
+        asked = int_param(request.data, "member")
+        if asked is not None and asked != member.pk:
+            raise PermissionDenied("Foyda faqat o'z hamyoningizdan yechiladi.")
+        try:
+            amount = Decimal(str(request.data.get("amount") or "0"))
+        except ArithmeticError:
+            amount = Decimal("NaN")
+        if not amount.is_finite() or abs(amount) > OH.MAX_WITHDRAW:
+            raise ValidationError({"amount": "Summa noto'g'ri."})
+        op = OH.withdraw_profit(
+            member, amount, comment=str(request.data.get("comment") or ""), site_user=request.user
+        )
+        return Response({"number": op.number, "amount": f(op.amount)}, status=201)
 
 
 class FinanceOrderOptionsView(APIView):
@@ -1179,7 +1287,7 @@ class FinanceOptionsView(APIView):
             ACC + "view_monthreport",
         )
         members, workers, cars = [], [], []
-        cats = FinanceCategory.objects.all()
+        cats = FinanceCategory.objects.prefetch_related("members")
         if not u.has_perm(VIEW_ALL):
             cats = cats.filter(admin_only=False)  # staff never saw these (categories CRUD 403)
         if u.has_perm(VIEW_ALL):
@@ -1217,6 +1325,8 @@ SETTING_KEYS = [
     "FIN_READY_DAYS",
     "FIN_BONUS_SINCE",
     "FIN_WARRANTY_SINCE",
+    "FIN_BOSS_SALARY",
+    "FIN_OVERHEAD_SINCE",
 ]
 
 
@@ -1227,6 +1337,7 @@ SETTING_RANGES = {
     "FIN_WARN_PERCENT": (1, 100),
     "FIN_USD_RATE": (0, 1_000_000),
     "FIN_READY_DAYS": (1, 365),
+    "FIN_BOSS_SALARY": (0, 10_000_000_000),
 }
 
 
@@ -1253,7 +1364,7 @@ class FinanceSettingsView(APIView):
             lo_hi = SETTING_RANGES.get(k)
             if lo_hi and not lo_hi[0] <= value <= lo_hi[1]:
                 raise ValidationError({k: f"{lo_hi[0]} dan {lo_hi[1]} gacha bo'lishi kerak."})
-            if k in ("FIN_BONUS_SINCE", "FIN_WARRANTY_SINCE") and value:
+            if k in ("FIN_BONUS_SINCE", "FIN_WARRANTY_SINCE", "FIN_OVERHEAD_SINCE") and value:
                 try:
                     date.fromisoformat(value)
                 except ValueError:

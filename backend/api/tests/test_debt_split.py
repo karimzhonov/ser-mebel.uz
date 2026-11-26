@@ -127,9 +127,12 @@ class Check:
     def after(self, ops):
         now = snapshot(self.member, self.refs)
         sum_ops = sum((o.amount for o in ops), D(0))
-        # wallet delta (a debit) == the sum of what the orders received
+        # the wallet pays exactly the legs; the orders carried the debt since the day it
+        # was taken (unpaid part counts in «spent»), so a payment only moves cash — at
+        # most a whole so'm of rounding per USD leg
         d_orders = sum((now[r] - self.before[r] for r in self.refs), D(0))
-        assert self.before["bal"] - now["bal"] == d_orders == sum_ops
+        assert self.before["bal"] - now["bal"] == sum_ops
+        assert abs(d_orders) <= len(ops)
         # order_stats == order_stats_bulk for every order
         bulk = S.order_stats_bulk(self.refs)
         for r in self.refs:
@@ -438,8 +441,8 @@ def test_hammasi_failure_on_the_last_op_leaves_nothing(orders, members, monkeypa
     assert calls["n"] == 3
     assert Operation.objects.filter(debt=d).count() == 0
     assert S.balance(ali) == 0 and Debt.objects.get(pk=d.pk).status == "open"
-    for r in ("406", "407", "408"):
-        assert spent(r) == 0
+    # nothing paid: each order still carries its unpaid share of the debt
+    assert [spent(r) for r in ("406", "407", "408")] == [20, 30, 50]
 
 
 def test_hammasi_failure_through_the_api_writes_nothing(orders, members, api, monkeypatch):
@@ -515,7 +518,8 @@ def test_concurrent_hammasi_and_chosen_pay_never_exceed_the_debt(orders, members
     paid = S.debt_allocation_paid(fresh)
     for al in DebtAllocation.objects.filter(debt=d):
         assert paid.get(al.pk, 0) <= al.amount
-    assert sum(spent(r) for r in ("406", "407", "408")) == S.debt_paid(fresh)
+    # paid legs + unpaid shares: the orders always carry the whole debt
+    assert sum(spent(r) for r in ("406", "407", "408")) == 100
 
 
 # ------------------------------------------------------------------ 6. validation
@@ -1477,3 +1481,23 @@ def test_checks_hammasi_legs_not_flagged_same_allocation_twice_flagged(orders, m
     pay(d2, ali, allocation=a.pk, amount=D("10000"))
     pay(d2, ali, allocation=a.pk, amount=D("10000"))
     assert _dups()
+
+
+# ------------------------------------------------------------------ order cost of a debt
+def test_the_order_carries_the_debt_from_the_day_it_is_taken(orders, members):
+    _, ali, _ = members
+    d = mk_split((("406", "200000"), ("407", "300000")))
+    # nothing paid yet: each order already costs its share
+    assert spent("406") == 200000 and spent("407") == 300000
+    assert S.order_stats("406")["debt"] == 200000
+    d, _ = pay(d, ali, allocation=alloc(d, "407").pk, amount=D("100000"))
+    assert spent("407") == 300000  # 100 000 paid + 200 000 still owed
+    assert S.order_stats("407")["debt"] == 200000
+    d, _ = pay(d, ali)
+    assert d.status == "closed" and spent("406") == 200000 and spent("407") == 300000
+    assert S.order_stats("407")["debt"] == 0
+    # a deleted debt costs nothing
+    d2 = mk_single(order_ref="408", amount=50000)
+    assert spent("408") == 50000
+    S.delete_debt(d2)
+    assert spent("408") == 0

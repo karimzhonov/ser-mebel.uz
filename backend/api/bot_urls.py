@@ -41,6 +41,7 @@ urlpatterns = [
     path("finance/members/<int:tg>/duty/", finance.MemberDutyView.as_view()),
     path("finance/categories/", finance.CategoriesView.as_view()),
     path("finance/workers/", finance.WorkersView.as_view()),
+    path("finance/salary-owed/", finance.SalaryOwedView.as_view()),
     path("finance/cars/", finance.CarsView.as_view()),
     path("finance/parse/", finance.ParseView.as_view()),
     path("finance/orders/", finance.OrdersView.as_view()),

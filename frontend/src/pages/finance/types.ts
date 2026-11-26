@@ -45,6 +45,8 @@ export interface FinCategory {
   archive: boolean;
   ordering: number;
   is_active: boolean;
+  /** only these wallets (member ids) may book it; empty = everyone */
+  members?: number[];
 }
 
 export interface Operation {
@@ -136,13 +138,21 @@ export interface FinOrder {
   price_uzs: number;
   spent: number;
   warehouse_spent?: number;
+  /** part of `spent` taken on credit and not paid yet */
+  debt_unpaid?: number;
   collected: number;
   profit: number | null;
+  /** stage 3: the overhead share fixed on the Готов day (null: before the start / not yet) */
+  overhead?: number | null;
+  overhead_rate?: number | null;
+  net_profit?: number | null;
   spent_percent: number | null;
   end_date: string | null;
   ready_date: string | null;
   by_category: { code: string; amount: number; name?: string; emoji?: string }[];
   warehouse?: { number: number; date: string; product: string; quantity: number; unit_label: string; total: number }[];
+  /** approved salary sheets booked on this ID (no wallet move); empty without payroll.view_salarysheet */
+  payroll?: { sheet_id: number; number: number; month: string; worker: string; kind_label: string; source: "line" | "car"; source_label: string; amount: number }[];
   operations?: Operation[];
   /** the debts on this order; total / paid / remaining are this order's share */
   debts?: FinOrderDebt[];
@@ -361,6 +371,8 @@ export interface Car {
   name: string;
   ordering: number;
   is_active: boolean;
+  /** company car: its costs are overhead (stage 3) */
+  is_overhead?: boolean;
 }
 
 export interface ManualOrder {

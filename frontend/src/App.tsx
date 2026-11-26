@@ -28,6 +28,7 @@ import { HrCalendarPage, HrEmployeesPage, HrRatingPage, HrSettingsPage } from "@
 import { canOpenFinancePage, firstFinancePage, type FinancePage } from "@/pages/finance/access";
 import FinanceWorkerCardPage from "@/pages/finance/WorkerCard";
 import { FinanceSalaryListPage, FinanceSalarySheetPage } from "@/pages/finance/SalarySheets";
+import { FinanceProfitPage } from "@/pages/finance/Profit";
 import { FinanceAdvancesPage } from "@/pages/finance/Advances";
 import { FinanceChecksPage, FinanceFollowupPage, FinanceReportsPage, FinanceRequestsPage } from "@/pages/finance/Tasks";
 import UsersPage from "@/pages/Users";
@@ -92,6 +93,7 @@ export default function App() {
         <Route path="finance/reports" element={<FinanceGuard page="reports"><FinanceReportsPage /></FinanceGuard>} />
         <Route path="finance/worker-card" element={<FinanceGuard page="workerCard"><FinanceWorkerCardPage /></FinanceGuard>} />
         <Route path="finance/salary" element={<FinanceGuard page="salary"><FinanceSalaryListPage /></FinanceGuard>} />
+        <Route path="finance/profit" element={<FinanceGuard page="profit"><FinanceProfitPage /></FinanceGuard>} />
         <Route path="finance/salary/:id" element={<FinanceGuard page="salary"><FinanceSalarySheetPage /></FinanceGuard>} />
         <Route path="finance/followup" element={<FinanceGuard page="followup"><FinanceFollowupPage /></FinanceGuard>} />
         <Route path="finance/advances" element={<FinanceGuard page="advances"><FinanceAdvancesPage /></FinanceGuard>} />

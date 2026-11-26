@@ -307,6 +307,12 @@ function CarsTab() {
         columns={[
           { key: "n", header: "Mashina / kim (zapravka)", cell: (r) => r.name },
           { key: "a", header: "Faol", cell: (r) => <input type="checkbox" checked={r.is_active} disabled={!can("accounting.change_financecar")} onChange={(e) => save.mutate({ id: r.id, body: { is_active: e.target.checked } })} /> },
+          {
+            key: "o",
+            header: "O'zgarmas xarajat",
+            // company car: its costs are shared by every order, even when typed with an ID
+            cell: (r) => <input type="checkbox" title="Kompaniya mashinasi — xarajati hamma buyurtmalarga bo'linadi" checked={!!r.is_overhead} disabled={!can("accounting.change_financecar")} onChange={(e) => save.mutate({ id: r.id, body: { is_overhead: e.target.checked } })} />,
+          },
           { key: "x", header: "", cell: (r) => (can("accounting.delete_financecar") ? <IconButton label="O'chirish" onClick={() => confirm(`${r.name} o'chirilsinmi?`) && remove.mutate(r.id)}><Trash2 className="h-4 w-4" /></IconButton> : null) },
         ]}
       />
@@ -317,6 +323,8 @@ function CarsTab() {
 function CategoriesTab() {
   const { can } = useAuth();
   const { data } = useCategories();
+  const { data: allMembers } = useMembers();
+  const wallets = (allMembers ?? []).filter((m) => m.has_wallet);
   const { save } = useCatalogActions("finance/categories");
   const [edit, setEdit] = useState<Partial<FinCategory> | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -333,7 +341,7 @@ function CategoriesTab() {
         onRowClick={can("accounting.change_financecategory") ? (r) => (setErrors({}), setEdit(r)) : undefined}
         rowClassName={(r) => (r.is_active ? undefined : "opacity-50")}
         columns={[
-          { key: "n", header: "Nomi", cell: (r) => <span><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: r.color }} />{r.emoji} {r.name}</span> },
+          { key: "n", header: "Nomi", cell: (r) => <span><span className="mr-1 inline-block h-2 w-2 rounded-full" style={{ background: r.color }} />{r.emoji} {r.name}{!!r.members?.length && <span className="muted ml-1 text-xs">· faqat {r.members.length} ta hamyon</span>}</span> },
           { key: "c", header: "Kod", cell: (r) => <code className="text-xs">{r.code}</code> },
           { key: "k", header: "Turi", cell: (r) => kinds[r.kind] },
           {
@@ -412,6 +420,25 @@ function CategoriesTab() {
                 {label}
               </label>
             ))}
+            {edit.kind === "expense" && (
+              <Field label="Faqat shu hamyonlar" hint="Hech kim belgilanmasa — hamma yoza oladi. Belgilanganlardan boshqalarga bu kategoriya botda ham, saytda ham chiqmaydi.">
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  {wallets.map((m) => {
+                    const on = (edit.members ?? []).includes(m.id);
+                    return (
+                      <label key={m.id} className="flex items-center gap-1.5 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => setEdit({ ...edit, members: on ? (edit.members ?? []).filter((x) => x !== m.id) : [...(edit.members ?? []), m.id] })}
+                        />
+                        {m.name}
+                      </label>
+                    );
+                  })}
+                </div>
+              </Field>
+            )}
           </div>
         </Modal>
       )}
@@ -453,6 +480,8 @@ interface Params {
   FIN_READY_DAYS: number;
   FIN_BONUS_SINCE: string;
   FIN_WARRANTY_SINCE: string;
+  FIN_BOSS_SALARY: number;
+  FIN_OVERHEAD_SINCE: string;
   usd_rate_effective: number;
 }
 
@@ -466,6 +495,8 @@ const PARAMS: [keyof Params, string, string][] = [
   ["FIN_READY_DAYS", "«Готов» zakaz qoldiq to'lov ro'yxatida necha kun turadi", "number"],
   ["FIN_BONUS_SINCE", "Bonus kuzatuvi shu sanadan keyingi «Готов»lar uchun", "date"],
   ["FIN_WARRANTY_SINCE", "Kafolat xati eslatmasi shu sanadan keyingi «Готов»lar uchun", "date"],
+  ["FIN_BOSS_SALARY", "Rahbarning belgilangan oyligi, so'm (umumiy xarajatga kiradi; 0 — hisoblanmaydi)", "number"],
+  ["FIN_OVERHEAD_SINCE", "Umumiy xarajat ulushi shu sanadan keyingi «Готов»larga yoziladi", "date"],
 ];
 
 function ParamsTab() {

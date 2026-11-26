@@ -10,9 +10,15 @@ from bot.common.kb import CANCEL, b, grid, ik
 from bot.finance.texts import CAT_ADVANCE, CAT_FROM_BOSS, CAT_REST, OP_EXPENSE, OP_INCOME
 
 
-def cat_kb(cats: list[dict], admin: bool):
-    """Expense categories (`cats` = kind expense)."""
-    cs = [c for c in cats if admin or not c["admin_only"]]
+def wallet_may_use(c: dict, wallet_tg) -> bool:
+    """`only_tg` (additive, finance/categories/): only these wallets book it; [] = all."""
+    only = c.get("only_tg") or []
+    return not only or wallet_tg in only
+
+
+def cat_kb(cats: list[dict], admin: bool, wallet_tg=None):
+    """Expense categories (`cats` = kind expense) the draft's wallet may book."""
+    cs = [c for c in cats if (admin or not c["admin_only"]) and wallet_may_use(c, wallet_tg)]
     return ik(
         grid([b(f"{c['emoji']} {c['name']}", f"cat:{c['code']}") for c in cs], 2) + [[CANCEL]]
     )

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useGet } from "@/api/hooks";
 import { useAuth } from "@/auth/AuthContext";
 import { DateRangeFilter, iso, monthStartISO } from "@/components/DateRangeFilter";
@@ -164,9 +164,20 @@ function OrderFinanceBody({ o }: { o: FinOrder }) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="Shartnoma" value={o.total ? inCur(o.total, o.currency) : "—"} tone="primary" hint={o.currency === "USD" ? `≈ ${som(o.price_uzs)}` : undefined} />
         <StatTile label="Saytda olingan" value={o.paid === null ? "—" : inCur(o.paid, o.currency)} tone="ok" hint={o.rest !== null ? `qoldiq ${inCur(o.rest, o.currency)}` : undefined} />
-        <StatTile label="Sarflandi" value={som(o.spent)} tone="danger" hint={o.spent_percent !== null ? `${o.spent_percent}%` : undefined} />
+        <StatTile label="Sarflandi" value={som(o.spent)} tone="danger" hint={[o.spent_percent !== null ? `${o.spent_percent}%` : "", o.debt_unpaid ? `shundan qarz ${som(o.debt_unpaid)}` : ""].filter(Boolean).join(" · ") || undefined} />
         <StatTile label={o.profit !== null && o.profit < 0 ? "Zarar" : "Foyda"} value={o.profit === null ? "—" : som(o.profit)} tone={o.profit !== null && o.profit < 0 ? "danger" : "ok"} />
       </div>
+      {o.overhead != null && (
+        <p className="text-sm">
+          🏢 Umumiy xarajat ulushi: <b className="tabular-nums">{som(o.overhead)}</b>
+          {o.overhead_rate != null && <span className="muted"> (stavka {(o.overhead_rate * 100).toFixed(1)}%)</span>}
+          {o.net_profit != null && (
+            <>
+              {" "}· Sof foyda: <b className={o.net_profit < 0 ? "tabular-nums text-rose-600" : "tabular-nums text-emerald-700 dark:text-emerald-400"}>{som(o.net_profit)}</b>
+            </>
+          )}
+        </p>
+      )}
       {o.bonus && (
         <p className="text-sm">
           🎁 Bonus: <b>{o.bonus.status_label}</b> · Готов {date(o.bonus.ready_date)}
@@ -193,6 +204,25 @@ function OrderFinanceBody({ o }: { o: FinOrder }) {
                   <span className="muted">#{w.number} · {date(w.date)}</span> · {w.product} {w.quantity} {w.unit_label}
                 </span>
                 <span className="whitespace-nowrap tabular-nums text-rose-600">{som(w.total)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {o.payroll && o.payroll.length > 0 && (
+        <div>
+          <h4 className="mb-1 text-sm font-medium">👷 Oylik varaqlaridan</h4>
+          <div className="divide-y divide-slate-100 text-sm dark:divide-slate-800">
+            {o.payroll.map((p) => (
+              <div key={`${p.number}-${p.source}`} className="flex justify-between gap-3 py-2">
+                <span>
+                  <Link to={`/finance/salary/${p.sheet_id}`} className="text-brand-600 hover:underline">
+                    №{p.number}
+                  </Link>{" "}
+                  · {p.month} · {p.worker}
+                  {p.source === "car" && <span className="muted"> · {p.source_label}</span>}
+                </span>
+                <span className="whitespace-nowrap tabular-nums text-rose-600">{som(p.amount)}</span>
               </div>
             ))}
           </div>

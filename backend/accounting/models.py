@@ -26,6 +26,13 @@ class FinanceCategory(models.Model):
     archive = models.BooleanField(default=False, verbose_name="«Arxiv ID» tugmasi")
     ordering = models.PositiveIntegerField(default=0, verbose_name="Tartib")
     is_active = models.BooleanField(default=True, verbose_name="Faol")
+    # only these wallets may book it (e.g. «Omborga xarid»); empty = everyone
+    members = models.ManyToManyField(
+        "oauth.TelegramMember",
+        blank=True,
+        related_name="allowed_categories",
+        verbose_name="Faqat shu hamyonlar",
+    )
 
     class Meta:
         ordering = ["kind", "ordering", "id"]
@@ -145,6 +152,9 @@ class FinanceCar(models.Model):
     name = models.CharField(max_length=128, unique=True, verbose_name="Mashina / kim")
     ordering = models.PositiveIntegerField(default=0)
     is_active = models.BooleanField(default=True, verbose_name="Faol")
+    # owner's rule (stage 3): a company car — its costs are overhead shared by every
+    # order, even when typed with an order ID (accounting/overhead.py)
+    is_overhead = models.BooleanField(default=False, verbose_name="O'zgarmas xarajat")
 
     class Meta:
         ordering = ["ordering", "id"]
@@ -305,6 +315,7 @@ class Operation(models.Model):
             ("change_advances", "Moliya: Avanslarni tasdiqlash"),
             ("view_finance_checks", "Moliya: Tekshiruv"),
             ("view_order_bonus_line", "Moliya: Buyurtmadagi bonus"),
+            ("withdraw_profit", "Moliya: Foyda yechish"),
         ]
         indexes = [
             models.Index(fields=["member", "date"]),
@@ -685,3 +696,29 @@ class FinanceJobRun(models.Model):
 
     def __str__(self):
         return self.key
+
+
+class OrderOverhead(models.Model):
+    """Stage 3: the order's share of the company's overhead (umumiy xarajat), fixed on
+    the day it became Готов and never recomputed: contract sum × the rate of the three
+    whole months before that month (overhead ÷ contract sums of the orders that became
+    Готов in them). accounting/overhead.py writes it; the order's net profit reads it."""
+
+    order_ref = models.CharField(max_length=32, unique=True, verbose_name="Buyurtma ID")
+    ready_date = models.DateField(db_index=True, verbose_name="Готов sanasi")
+    base = models.DecimalField(max_digits=16, decimal_places=2, verbose_name="Shartnoma (so'm)")
+    rate = models.DecimalField(max_digits=9, decimal_places=6, verbose_name="Stavka (ulush)")
+    amount = models.DecimalField(max_digits=16, decimal_places=2, verbose_name="Ulush (so'm)")
+    window_start = models.DateField(verbose_name="Stavka davri boshi")
+    window_end = models.DateField(verbose_name="Stavka davri oxiri")
+    overhead_total = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    sales_total = models.DecimalField(max_digits=16, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-ready_date", "order_ref"]
+        verbose_name = "Buyurtmaning umumiy xarajat ulushi"
+        verbose_name_plural = "Buyurtmalarning umumiy xarajat ulushlari"
+
+    def __str__(self):
+        return f"{self.order_ref}: {self.amount}"

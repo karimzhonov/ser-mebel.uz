@@ -68,6 +68,9 @@ class SalarySheetViewSet(
             "submitted_at": sheet.submitted_at,
             "approved_by": getattr(sheet.approved_by, "name", "") or "",
             "approved_at": sheet.approved_at,
+            # stage 2: what was booked on the clients and what has been paid so far
+            "costs": P.sheet_costs(sheet) if sheet.status == SheetStatus.APPROVED else [],
+            "payment": P.sheet_payment(sheet),
             "can": {
                 "edit": draft and user.has_perm(CHANGE),
                 "submit": draft and user.has_perm(CHANGE),
@@ -77,6 +80,14 @@ class SalarySheetViewSet(
                 "delete": draft and not sheet.version and user.has_perm("payroll.delete_salarysheet"),
             },
         }
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if self.action == "list":
+            # one pass over every approved sheet and «Oylik» payment for the whole page,
+            # made only when the page has an approved row (the serializer calls it)
+            ctx["ledger"] = P.ledger
+        return ctx
 
     def retrieve(self, request, *args, **kwargs):
         return Response(self._detail(request, self.get_object()))
@@ -106,6 +117,14 @@ class SalarySheetViewSet(
     @action(detail=False, methods=["get"], url_path="options")
     def sheet_options(self, request):
         return Response(P.options())
+
+    @action(detail=False, methods=["get"])
+    def owed(self, request):
+        """How much salary is still to be handed to `?worker=<name>` (the operation form
+        shows it while an «Oylik» is being paid)."""
+        require_perm(request.user, "payroll.view_salarysheet")
+        name = str(request.query_params.get("worker") or "").strip()[:255]
+        return Response(P.owed_to(name))
 
     @action(detail=True, methods=["post"])
     def preview(self, request, pk=None):

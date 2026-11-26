@@ -38,6 +38,12 @@ CAT_REST = "qoldiq"
 # «↩️ Qaytim / vozvrat»: money that came back for something already paid — it lowers
 # the expense, it is not income (summary)
 CAT_REFUND = "qaytim"
+# «💰 Foyda yechish» (stage 3): the boss takes profit out; booked only by
+# accounting/overhead.withdraw_profit (capped by the profit pool), excluded
+CAT_PROFIT = "foyda"
+# «📦 Omborga xarid»: stock for the warehouse — out of the wallet, but a client's cost
+# only when given out of the warehouse (warehouse chiqim); never overhead
+CAT_STOCK = "omborga"
 # Pseudo category on an order's money card: furnitura given from the warehouse (ombor)
 # to the client's ID. Not a FinanceCategory row - it comes from warehouse chiqim lines.
 WAREHOUSE_CAT = "_ombor"

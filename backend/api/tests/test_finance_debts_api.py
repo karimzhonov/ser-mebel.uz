@@ -122,7 +122,9 @@ def test_pay_wallet_scoping(site_order, members, api, bot_events):
     assert ok.status_code == 200, ok.content
     assert ok.json()["operation"]["debt_number"] == d.number
     assert S.balance(boss) == before - Decimal("1000")
-    assert S.order_stats(d.order_ref)["spent"] == Decimal("1000")
+    # the whole debt is on the order since it was taken; 1000 of it is paid now
+    st = S.order_stats(d.order_ref)
+    assert st["spent"] == d.amount and st["debt"] == d.amount - Decimal("1000")
     assert bot_events.one("finance.operation_created")
 
 
