@@ -225,3 +225,15 @@ async def test_advance_buttons_are_for_the_boss_only(be, make_ctx):
     ctx = make_ctx(admin=False)
     await CB.on_callback(ctx, "avk:12")
     assert not [c for c in be.calls if "advances" in c[1]]
+
+
+def test_category_limited_to_some_wallets_is_hidden_from_others():
+    cats = [
+        {"code": "material", "name": "Material", "emoji": "🧱", "admin_only": False},
+        {"code": "omborga", "name": "Omborga xarid", "emoji": "📦", "admin_only": False,
+         "only_tg": [555]},
+    ]
+    codes = lambda kb: [b.callback_data for row in kb.inline_keyboard for b in row]  # noqa: E731
+    assert "cat:omborga" not in codes(K.cat_kb(cats, False, 111))
+    assert "cat:omborga" in codes(K.cat_kb(cats, False, 555))
+    assert "cat:material" in codes(K.cat_kb(cats, False, 111))

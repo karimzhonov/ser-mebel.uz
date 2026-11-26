@@ -90,6 +90,12 @@ v1 = [
         name="api-finance-order-options",
     ),
     path("finance/checks/", finance.ChecksView.as_view(), name="api-finance-checks"),
+    path("finance/overhead/", finance.OverheadView.as_view(), name="api-finance-overhead"),
+    path(
+        "finance/overhead/withdraw/",
+        finance.ProfitWithdrawView.as_view(),
+        name="api-finance-profit-withdraw",
+    ),
     path("finance/export/", finance.ExportView.as_view(), name="api-finance-export"),
     path("finance/settings/", finance.FinanceSettingsView.as_view(), name="api-finance-settings"),
     path("finance/handover/", finance.HandoverView.as_view(), name="api-finance-handover"),

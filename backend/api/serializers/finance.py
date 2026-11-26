@@ -129,7 +129,9 @@ class FinanceCategorySerializer(serializers.ModelSerializer):
             "archive",
             "ordering",
             "is_active",
+            "members",
         ]
+        extra_kwargs = {"members": {"required": False}}
 
     def validate_code(self, code):
         if self.instance and self.instance.code != code:
@@ -210,7 +212,7 @@ class WorkerFileSerializer(serializers.ModelSerializer):
 class FinanceCarSerializer(serializers.ModelSerializer):
     class Meta:
         model = FinanceCar
-        fields = ["id", "name", "ordering", "is_active"]
+        fields = ["id", "name", "ordering", "is_active", "is_overhead"]
 
 
 class ManualOrderSerializer(serializers.ModelSerializer):

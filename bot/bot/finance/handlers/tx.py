@@ -128,7 +128,7 @@ async def next_step(ctx: Ctx, d: dict):
             if kind == OP_EXPENSE:
                 return await say(
                     "🗂 Nimaga sarflandi?",
-                    K.cat_kb(await A.categories(ctx, "expense"), ctx.admin),
+                    K.cat_kb(await A.categories(ctx, "expense"), ctx.admin, d.get("uid")),
                 )
             return await say("📥 Pul qayerdan keldi?", K.src_kb(await A.categories(ctx, "income")))
     cat = await A.category(ctx, d["cat"])
@@ -438,6 +438,9 @@ async def tx_callback(ctx: Ctx, cmd: str, arg: str, d: dict | None) -> bool:
     if cmd == "cat" and d and d.get("step") == "category":
         c = await A.category(ctx, arg)
         if not c or (c["admin_only"] and not ctx.admin):
+            return True
+        if not K.wallet_may_use(c, d.get("uid")):
+            await ctx.send("❗ Bu kategoriya faqat tanlangan xodimlar hamyonidan yoziladi.")
             return True
         d["cat"] = arg
         await edit("✔️ " + T.cat_label(c))

@@ -188,8 +188,13 @@ export function OperationModal({
 
   const cat = cats?.find((c) => c.code === f.category_code);
   const catOptions = useMemo(
-    () => (cats ?? []).filter((c) => c.is_active && (c.kind === f.kind || (c.kind === "internal" && !!op)) || c.code === op?.category_detail.code),
-    [cats, f.kind, op],
+    () =>
+      (cats ?? []).filter(
+        (c) =>
+          (c.is_active && (c.kind === f.kind || (c.kind === "internal" && !!op)) && (!c.members?.length || c.members.includes(Number(f.member)))) ||
+          c.code === op?.category_detail.code,
+      ),
+    [cats, f.kind, op, f.member],
   );
   const needsOrder = !(f.kind === "expense" && (cat?.no_order || f.category_code === "oylik"));
   const bucket = f.kind === "income" ? (f.category_code === "qoldiq" ? "kutish,yakun" : "yangi,jarayonda,kutish,yakun") : f.category_code === "material" ? "jarayonda,yangi" : "jarayonda";

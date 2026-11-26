@@ -191,7 +191,10 @@ class CategoriesView(BotAPIView):
     def get(self, request):
         self.require_active()
         return Response(
-            [D.category_dto(c) for c in S.categories(request.query_params.get("kind") or None)]
+            [
+                D.category_dto(c, with_wallets=True)
+                for c in S.categories(request.query_params.get("kind") or None)
+            ]
         )
 
 

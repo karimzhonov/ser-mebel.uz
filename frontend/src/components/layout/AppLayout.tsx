@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import {
+  TrendingUp,
   Boxes,
   Brush,
   Calculator,
@@ -123,6 +124,7 @@ const NAV: { title: string; items: NavItem[] }[] = [
       { to: "/finance/reports", label: "Oylik hisob", icon: CalendarCheck, finance: "reports" },
       { to: "/finance/worker-card", label: "Ishchi kartasi", icon: HardHat, finance: "workerCard" },
       { to: "/finance/salary", label: "Oylik varaqlari", icon: ClipboardList, finance: "salary" },
+      { to: "/finance/profit", label: "Foyda", icon: TrendingUp, finance: "profit" },
       { to: "/finance/advances", label: "Avans tasdiqlash", icon: BadgeCheck, finance: "advances" },
       { to: "/finance/followup", label: "Готов va bonuslar", icon: Gift, finance: "followup" },
       { to: "/finance/checks", label: "Tekshiruv", icon: ShieldCheck, finance: "checks" },

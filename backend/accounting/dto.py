@@ -61,8 +61,10 @@ def member_dto(m) -> dict | None:
     }
 
 
-def category_dto(c: FinanceCategory) -> dict:
-    return {
+def category_dto(c: FinanceCategory, *, with_wallets: bool = False) -> dict:
+    """`with_wallets` (the `finance/categories/` list only): additive `only_tg` = the
+    Telegram ids of the only wallets that may book it ([] = everyone)."""
+    out = {
         "code": c.code,
         "name": c.name,
         "emoji": c.emoji,
@@ -72,6 +74,9 @@ def category_dto(c: FinanceCategory) -> dict:
         "archive": c.archive,
         "excluded": c.excluded,
     }
+    if with_wallets:
+        out["only_tg"] = sorted(m.telegram_id for m in c.members.all() if m.telegram_id)
+    return out
 
 
 def operation_dto(op: Operation) -> dict:

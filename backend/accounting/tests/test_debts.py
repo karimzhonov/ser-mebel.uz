@@ -101,12 +101,16 @@ def test_usd_debt_tracked_in_dollars(site_order, members):
 
 
 def test_no_double_counting(site_order, members):
+    """The order carries the debt from the day it is taken; a payment only moves cash
+    (stage 3 rule: the unpaid part of a debt is in the order's spent)."""
     _, ali, _ = members
-    before = S.order_stats("406")
+    before = S.order_stats("406")["spent"]
     d = mk()
-    assert S.order_stats("406")["spent"] == before["spent"] if "spent" in before else True
+    with_debt = S.order_stats("406")["spent"]
+    assert with_debt == before + d.amount
     S.pay_debt(d, payer=ali, amount=100000)
     assert S.balance(ali) == Decimal("-100000")
+    assert S.order_stats("406")["spent"] == with_debt
 
 
 # ------------------------------------------------------------------ site API

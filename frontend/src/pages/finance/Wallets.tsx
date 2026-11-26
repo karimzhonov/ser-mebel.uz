@@ -164,9 +164,20 @@ function OrderFinanceBody({ o }: { o: FinOrder }) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatTile label="Shartnoma" value={o.total ? inCur(o.total, o.currency) : "—"} tone="primary" hint={o.currency === "USD" ? `≈ ${som(o.price_uzs)}` : undefined} />
         <StatTile label="Saytda olingan" value={o.paid === null ? "—" : inCur(o.paid, o.currency)} tone="ok" hint={o.rest !== null ? `qoldiq ${inCur(o.rest, o.currency)}` : undefined} />
-        <StatTile label="Sarflandi" value={som(o.spent)} tone="danger" hint={o.spent_percent !== null ? `${o.spent_percent}%` : undefined} />
+        <StatTile label="Sarflandi" value={som(o.spent)} tone="danger" hint={[o.spent_percent !== null ? `${o.spent_percent}%` : "", o.debt_unpaid ? `shundan qarz ${som(o.debt_unpaid)}` : ""].filter(Boolean).join(" · ") || undefined} />
         <StatTile label={o.profit !== null && o.profit < 0 ? "Zarar" : "Foyda"} value={o.profit === null ? "—" : som(o.profit)} tone={o.profit !== null && o.profit < 0 ? "danger" : "ok"} />
       </div>
+      {o.overhead != null && (
+        <p className="text-sm">
+          🏢 Umumiy xarajat ulushi: <b className="tabular-nums">{som(o.overhead)}</b>
+          {o.overhead_rate != null && <span className="muted"> (stavka {(o.overhead_rate * 100).toFixed(1)}%)</span>}
+          {o.net_profit != null && (
+            <>
+              {" "}· Sof foyda: <b className={o.net_profit < 0 ? "tabular-nums text-rose-600" : "tabular-nums text-emerald-700 dark:text-emerald-400"}>{som(o.net_profit)}</b>
+            </>
+          )}
+        </p>
+      )}
       {o.bonus && (
         <p className="text-sm">
           🎁 Bonus: <b>{o.bonus.status_label}</b> · Готов {date(o.bonus.ready_date)}

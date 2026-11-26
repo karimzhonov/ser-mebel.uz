@@ -12,6 +12,7 @@ export type FinancePage =
   | "reports"
   | "workerCard"
   | "salary"
+  | "profit"
   | "advances"
   | "followup"
   | "checks"
@@ -72,6 +73,7 @@ const PAGES: { page: FinancePage; to: string; alternatives: string[][] }[] = [
   { page: "reports", to: "/finance/reports", alternatives: [["accounting.view_monthreport"]] },
   { page: "workerCard", to: "/finance/worker-card", alternatives: [["accounting.view_worker_card", VIEW_ALL]] },
   { page: "salary", to: "/finance/salary", alternatives: [["payroll.view_salarysheet"]] },
+  { page: "profit", to: "/finance/profit", alternatives: [["accounting.view_finance_summary", VIEW_ALL]] },
   { page: "advances", to: "/finance/advances", alternatives: [["accounting.view_advances", VIEW_ALL]] },
   { page: "followup", to: "/finance/followup", alternatives: Object.values(FOLLOWUP_TAB_PERMS) },
   { page: "checks", to: "/finance/checks", alternatives: [["accounting.view_finance_checks", VIEW_ALL]] },

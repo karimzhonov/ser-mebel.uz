@@ -254,6 +254,9 @@ CONSTANCE_CONFIG = {
     'FIN_BONUS_SINCE': ('', "Moliya: shu sanadan keyin «Готов» bo'lganlarga bonus kuzatuvi (bo'sh — birinchi ishga tushgan kun)", str),
     'FIN_WARRANTY_SINCE': ('', "Moliya: kafolat xati eslatmasi shu sanadan keyin «Готов» bo'lganlarga (bo'sh — birinchi ishga tushgan kun)", str),
     'FIN_REPORT_TEMPLATE': ('', "Moliya: hisob-kitob varaqasi fon rasmi (media yo'li)", str),
+    # Moliya stage 3: overhead (umumiy xarajat) shared over the orders, «Foyda yechish»
+    'FIN_BOSS_SALARY': (0, "Moliya: rahbarning belgilangan oyligi (so'm, umumiy xarajat; 0 — hisoblanmaydi)", int),
+    'FIN_OVERHEAD_SINCE': ('2026-12-01', "Moliya: shu sanadan «Готов» bo'lganlarga umumiy xarajat ulushi yoziladi", str),
     # Zamer (measurer reminders in the bot)
     'METERING_DIGEST_HOUR': (20, "Zamer: ertangi zamerlar ro'yxati soat nechada yuboriladi", int),
     'METERING_REMIND_BEFORE_MIN': (60, "Zamer: zamerdan necha daqiqa oldin eslatish", int),
@@ -323,6 +326,8 @@ CONSTANCE_CONFIG_FIELDSETS = OrderedDict(
                 "FIN_BONUS_SINCE",
                 "FIN_WARRANTY_SINCE",
                 "FIN_REPORT_TEMPLATE",
+                "FIN_BOSS_SALARY",
+                "FIN_OVERHEAD_SINCE",
             )
         },
         "Zamer": {

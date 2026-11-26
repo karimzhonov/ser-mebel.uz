@@ -45,6 +45,10 @@ def periodic_tasks() -> dict[str, tuple[str, dict]]:
             {"minute": "0", "hour": SALARY_REMIND_HOURS},
         ),
         "moliya: tozalash": ("accounting.tasks.cleanup", {"minute": "30", "hour": "3"}),
+        "moliya: umumiy xarajat ulushlari": (
+            "accounting.tasks.assign_overheads",
+            {"minute": "15"},
+        ),
         "hr: davomat jadvali": ("hr.tasks.tick", {"minute": "*"}),
         "crm: vazifa eslatmalari": ("call_center.tasks.task_reminders", {"minute": "*"}),
         "zamer: eslatmalar": ("metering.tasks.metering_reminders", {"minute": "*"}),

@@ -1143,16 +1143,11 @@ def order_cost_lines(ref: str) -> list[dict]:
 CAR_CATEGORY = "mashina"
 
 
-def car_money_op_ids(refs) -> set[int]:
-    """Wallet expenses on these orders that ARE an approved sheet's car money, so the
-    order must not count them (owner's rule: the sheet splits the car money over the
-    worker's IDs by contract sum, whatever ID the payment was typed with). Matched by:
-    category «Mashina / dostavka», «Kimga / mashina» = a person on a SBORKA sheet that
-    has car money, dated from the sheet's period start to GRACE_DAYS after its end."""
-    refs = [str(r) for r in refs if r]
-    if not refs:
-        return set()
-    windows = []
+def sheet_car_windows() -> list[tuple[date, date, set[str]]]:
+    """(from, to, names) of every approved SBORKA sheet with car money: a «Mashina /
+    dostavka» expense to one of these people in that window IS that sheet's car money
+    (the sheet splits it over its IDs), whatever ID — or none — it was typed with."""
+    out = []
     sheets = (
         SalarySheet.objects.filter(
             status=SheetStatus.APPROVED, kind=SheetKind.SBORKA, snapshot__isnull=False
@@ -1168,7 +1163,23 @@ def car_money_op_ids(refs) -> set[int]:
             continue
         keys = {S._worker_key(m.worker.name) for m in sh.members.all()}
         keys.add(S._worker_key(sh.worker.name))
-        windows.append((sh.period_start, sh.period_end + timedelta(days=GRACE_DAYS), keys))
+        out.append((sh.period_start, sh.period_end + timedelta(days=GRACE_DAYS), keys - {""}))
+    return out
+
+
+def is_sheet_car_money(d: date, worker: str, category_code: str, windows) -> bool:
+    who = S._worker_key(worker)
+    return category_code == CAR_CATEGORY and any(a <= d <= b and who in k for a, b, k in windows)
+
+
+def car_money_op_ids(refs) -> set[int]:
+    """Wallet expenses on these orders that ARE an approved sheet's car money, so the
+    order must not count them (owner's rule: the sheet splits the car money over the
+    worker's IDs by contract sum, whatever ID the payment was typed with)."""
+    refs = [str(r) for r in refs if r]
+    if not refs:
+        return set()
+    windows = sheet_car_windows()
     if not windows:
         return set()
     from accounting.constants import OpKind
@@ -1182,11 +1193,7 @@ def car_money_op_ids(refs) -> set[int]:
         date__gte=min(w[0] for w in windows),
         date__lte=max(w[1] for w in windows),
     ).values_list("id", "date", "worker")
-    return {
-        i
-        for i, d, who in ops
-        if any(a <= d <= b and S._worker_key(who) in keys for a, b, keys in windows)
-    }
+    return {i for i, d, who in ops if is_sheet_car_money(d, who, CAR_CATEGORY, windows)}
 
 
 def cost_refs() -> set[str]:
